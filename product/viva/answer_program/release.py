@@ -1,4 +1,4 @@
-"""Mechanical release gates for the single AnswerProgram path."""
+"""Mechanical release gates for the single semantic-to-AnswerProgram path."""
 
 from __future__ import annotations
 
@@ -9,14 +9,15 @@ import pathlib
 from vivacore import promptstore, versions
 
 from ..tools.registry import PACKAGE, PROMPTS
-from .admission import (admission_report_digest, current_contract_digests,
-                        validate_admission_report)
+from .admission import (_report_from_measured_run, admission_report_digest,
+                        current_contract_digests, validate_admission_report)
 from .schema import ANSWER_PROGRAM_VERSION, AnswerResourcePolicy
 
 _BANNED_PRODUCTION_NAMES = (
     "NativePlanner", "TextPlanner", "DEFAULT_MAX_CALLS",
     "SPEAK_CLOSING_VERSION", "queued_calls", "SHAPE_TOOL", "FINAL_TOOL",
-    "_committable(", "_noted(", "_shape_taken(")
+    "_committable(", "_noted(", "_shape_taken(",
+    "compile_answer_program", "COMPILE_TOOL")
 
 
 @dataclass(frozen=True)
@@ -26,17 +27,29 @@ class ReleaseCheck:
 
 
 def check_single_path(package_root=None):
-    root = pathlib.Path(package_root or pathlib.Path(__file__).resolve().parents[1])
+    if package_root is None:
+        project = pathlib.Path(__file__).resolve().parents[3]
+        roots = (project / "product" / "viva", project / "desktop" / "src")
+    else:
+        roots = (pathlib.Path(package_root),)
     failures = []
-    if (root / "planners.py").exists():
-        failures.append("procedural_planner_packaged")
-    for path in root.rglob("*.py"):
-        if path.resolve() == pathlib.Path(__file__).resolve():
-            continue
-        text = path.read_text(encoding="utf-8")
-        for name in _BANNED_PRODUCTION_NAMES:
-            if name in text:
-                failures.append(f"banned_runtime_symbol:{name}:{path.name}")
+    for root in roots:
+        if (root / "planners.py").exists():
+            failures.append("procedural_planner_packaged")
+        for path in root.rglob("*"):
+            if (not path.is_file()
+                    or path.suffix not in {".py", ".ts", ".tsx", ".js", ".jsx"}
+                    or path.resolve() == pathlib.Path(__file__).resolve()):
+                continue
+            text = path.read_text(encoding="utf-8")
+            for name in _BANNED_PRODUCTION_NAMES:
+                if name in text:
+                    failures.append(
+                        f"banned_runtime_symbol:{name}:{path.relative_to(root)}")
+    manifest = versions.manifest(PACKAGE)
+    for family in ("answer_program", "answer_program_retry"):
+        if family in manifest.get("in_force", {}):
+            failures.append(f"superseded_prompt_family_in_force:{family}")
     return ReleaseCheck(not failures, tuple(sorted(set(failures))))
 
 
@@ -62,9 +75,11 @@ def check_profile(profile, manifest, report=None, policy=None):
         "program_schema": profile.program_schema_digest,
         "resource_policy": profile.resource_policy_digest,
         "financial_query_schema": profile.financial_query_schema_digest,
+        "semantic_request_schema": profile.semantic_request_schema_digest,
+        "semantic_catalog": profile.semantic_catalog_digest,
+        "deterministic_builders": profile.deterministic_builder_digest,
         "keyed_corpus": profile.keyed_corpus_digest,
         "adversarial_corpus": profile.adversarial_corpus_digest,
-        "reviewed_intents": profile.reviewed_intents_digest,
         "persona_pack": profile.persona_pack_digest,
     }
     for name, expected in current.items():
@@ -79,7 +94,8 @@ def check_profile(profile, manifest, report=None, policy=None):
     return ReleaseCheck(not failures, tuple(failures))
 
 
-def write_release_bundle(path, *, profile, manifest, report):
+def write_release_bundle(path, *, profile, manifest, measured_run):
+    report = _report_from_measured_run(measured_run)
     if not report.admitted:
         raise ValueError("release bundle needs an admitted measured report")
     checked = check_profile(profile, manifest, report)

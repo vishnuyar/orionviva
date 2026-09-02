@@ -31,6 +31,7 @@ import calendar
 import datetime
 from decimal import Decimal
 from functools import lru_cache
+import re
 
 from .. import quantity, render
 from ..ledger import networth
@@ -49,6 +50,7 @@ from .registry import Registry, ToolSpec
 
 LIABILITY = "liability"
 REAL_KINDS = ("depository", LIABILITY, "investment")
+FILTER_KINDS = (*REAL_KINDS, "card_account")
 
 # How many journal entries one read returns: the most recent, and fewer than a
 # movement read returns rows.
@@ -136,7 +138,7 @@ _FILTER_PROPERTIES = {
     "tag": {"type": "string"},
     "merchant": {"type": "string"},
     "currency": {"type": "string"},
-    "kind": {"type": "string", "enum": list(REAL_KINDS)},
+    "kind": {"type": "string", "enum": list(FILTER_KINDS)},
     "window": {"type": "object",
                "properties": {"from": {"type": "string"},
                               "to": {"type": "string"},
@@ -373,18 +375,21 @@ def _known(values, cap: int = 40) -> list:
 
 
 def _resolve_account_filter(proj, filters: dict) -> dict:
-    """Resolve one exact visible account name to its ledger account id.
-
-    Existing ids pass through. A name resolves only when its normalized form
-    names exactly one real account; ambiguous or unknown names remain unchanged
-    and are refused by the ordinary account filter validation.
-    """
+    """Resolve an exact id or one uniquely reached visible entity label."""
     account = str(filters.get("account") or "")
     if not account or account in set(proj.accounts()):
         return filters
-    wanted = " ".join(account.casefold().split())
-    matches = [info.account for info in _real_accounts(proj)
-               if " ".join(str(info.name or "").casefold().split()) == wanted]
+    tokens = lambda value: tuple(re.findall(
+        r"[^\W_]+", str(value).casefold(), flags=re.UNICODE))
+    wanted = tokens(account)
+    infos = _real_accounts(proj)
+    matches = []
+    for info in infos:
+        labels = {tokens(value) for value in (info.name, info.institution)}
+        if wanted and any(
+                wanted == label[index:index + len(wanted)]
+                for label in labels for index in range(len(label))):
+            matches.append(info.account)
     if len(matches) != 1:
         return filters
     return {**filters, "account": matches[0]}
@@ -446,11 +451,11 @@ def _check_filters(proj, filters: dict) -> ToolResult | None:
                 "unknown_currency",
                 f"No account holds '{filters['currency']}'.",
                 {"known_currencies": _known(held)}))
-    if "kind" in filters and filters["kind"] not in REAL_KINDS:
+    if "kind" in filters and filters["kind"] not in FILTER_KINDS:
         faults.append((
             "unknown_account_kind",
             f"No balance account kind '{filters['kind']}' exists.",
-            {"known_account_kinds": list(REAL_KINDS)}))
+            {"known_account_kinds": list(FILTER_KINDS)}))
     window = filters.get("window", {})
     for edge in ("from", "to"):
         if edge in window and not _is_iso_date(window[edge]):
@@ -780,4 +785,4 @@ def _month_slice(month: str, narrowed) -> dict | None:
 
 
 
-__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_KIND', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', '_resolve_account_filter', 'MANY_BAD_FILTERS', '_check_filters', '_resolve_window_preset', '_in_window', '_movement_passes', '_attested_coverage', '_shared_currency', '_scope', '_of_an_empty_read', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']
+__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_KIND', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'FILTER_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', '_resolve_account_filter', 'MANY_BAD_FILTERS', '_check_filters', '_resolve_window_preset', '_in_window', '_movement_passes', '_attested_coverage', '_shared_currency', '_scope', '_of_an_empty_read', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']

@@ -41,7 +41,7 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     registry.register(ToolSpec(
         name="query_ledger", params=ledger_tools.QUERY_LEDGER_PARAMS,
         fn=lambda args: ledger_tools.query_ledger(proj, args, locale, today),
-        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "period"],
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "date_of", "period"],
                "figure_types": ["money", "count", "rate"],
                "quantities": list(MEASURES),
                "entity_kinds": ["account", "merchant", "category", "document"]},
@@ -50,16 +50,16 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     registry.register(ToolSpec(
         name="list_movements", params=ledger_tools.LIST_MOVEMENTS_PARAMS,
         fn=lambda args: ledger_tools.list_movements(proj, args, today),
-        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "period"],
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "date_of", "period"],
                "figure_types": ["money", "count"],
                "quantities": ["movement", "count"],
                "entity_kinds": ["account", "merchant", "category"]},
         bounds={"max_figures": 80, "max_payload_bytes": 5000,
                 "max_execution_ms": 1000}))
     registry.register(ToolSpec(
-        name="check_completeness", params=_NO_PARAMS,
+        name="check_completeness", params=ledger_tools.COMPLETENESS_PARAMS,
         fn=lambda args: ledger_tools.check_completeness(proj, args),
-        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "period"],
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "date_of", "period"],
                "figure_types": ["count"], "quantities": ["count"],
                "entity_kinds": ["account", "document"]},
         bounds={"max_figures": 80, "max_payload_bytes": 5000,
@@ -67,8 +67,9 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     registry.register(ToolSpec(
         name="get_provenance", params=ledger_tools.PROVENANCE_PARAMS,
         fn=lambda args: ledger_tools.get_provenance(proj, args),
-        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "period"],
-               "figure_types": ["count"], "quantities": ["count"],
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "date_of", "period"],
+               "figure_types": ["count", "money"],
+               "quantities": ["count", "movement"],
                "entity_kinds": ["account", "document"]},
         bounds={"max_figures": 80, "max_payload_bytes": 5000,
                 "max_execution_ms": 1000}))

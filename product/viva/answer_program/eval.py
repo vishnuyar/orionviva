@@ -8,7 +8,9 @@ import json
 import pathlib
 from dataclasses import dataclass
 
-CASES = pathlib.Path(__file__).resolve().parent.parent / "evals" / "answer-program-cases-v1.json"
+CASES = pathlib.Path(__file__).resolve().parent.parent / "evals" / "semantic-request-cases-v2.json"
+LEGACY_CASES = (pathlib.Path(__file__).resolve().parent.parent / "evals"
+                / "answer-program-cases-v1.json")
 ADVERSARIAL_CASES = (pathlib.Path(__file__).resolve().parent.parent / "evals"
                      / "answer-program-adversarial-v1.json")
 
@@ -51,14 +53,78 @@ class EvalCase:
                    int(raw["max_model_attempts"]))
 
 
-def load_cases(path=CASES) -> tuple[EvalCase, ...]:
+@dataclass(frozen=True)
+class SemanticEvalCase:
+    id: str
+    exact_group: str
+    exact: bool
+    question: str
+    prior_turns: tuple[tuple[str, str], ...]
+    answerability_status: str
+    expected_family: str
+    expected_parameters: dict
+    expected_claims: tuple[str, ...]
+    oracle_key: str = ""
+    oracle: dict = None
+    expected_outcome_tag: str = ""
+    forbidden_claims: tuple[str, ...] = ()
+    max_model_attempts: int = 1
+
+
+def load_cases(path=CASES) -> tuple[SemanticEvalCase, ...]:
     raw = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-    if raw.get("version") != "answer-program-cases-v1":
-        raise ValueError("unsupported answer-program case version")
-    cases = tuple(EvalCase.from_dict(item) for item in raw.get("cases", []))
-    if len(cases) != 10 or len({case.id for case in cases}) != len(cases):
-        raise ValueError("the frozen admission corpus must contain ten unique cases")
-    return cases
+    if raw.get("version") != "semantic-request-cases-v2":
+        raise ValueError("unsupported semantic-request case version")
+    repetitions = int(raw.get("exact_repetitions") or 0)
+    if repetitions != 5:
+        raise ValueError("each exact Witness question must run five times")
+    cases = []
+    required = {"id", "exact_question", "paraphrases", "family",
+                "parameters", "requested_claims", "oracle_key"}
+    for definition in raw.get("cases", []):
+        if set(definition) != required:
+            raise ValueError("semantic admission case fields differ")
+        shared = dict(
+            exact_group=str(definition["id"]), prior_turns=(),
+            answerability_status="answered",
+            expected_family=str(definition["family"]),
+            expected_parameters=dict(definition["parameters"]),
+            expected_claims=tuple(map(str, definition["requested_claims"])),
+            oracle_key=str(definition["oracle_key"]), oracle=None)
+        for repetition in range(1, repetitions + 1):
+            cases.append(SemanticEvalCase(
+                id=f"{definition['id']}:exact:{repetition}", exact=True,
+                question=str(definition["exact_question"]), **shared))
+        for index, question in enumerate(definition["paraphrases"], 1):
+            cases.append(SemanticEvalCase(
+                id=f"{definition['id']}:paraphrase:{index}", exact=False,
+                question=str(question), **shared))
+    coverage_required = {
+        "id", "question", "prior_turns", "answerability_status", "family",
+        "parameters", "requested_claims", "expected_outcome_tag",
+        "forbidden_claims", "oracle_key"}
+    for definition in raw.get("coverage_cases", []):
+        if set(definition) != coverage_required:
+            raise ValueError("semantic coverage case fields differ")
+        prior = tuple((str(item["question"]), str(item["answer"]))
+                      for item in definition["prior_turns"])
+        cases.append(SemanticEvalCase(
+            id=str(definition["id"]), exact_group=str(definition["id"]),
+            exact=False, question=str(definition["question"]), prior_turns=prior,
+            answerability_status=str(definition["answerability_status"]),
+            expected_family=str(definition["family"]),
+            expected_parameters=dict(definition["parameters"]),
+            expected_claims=tuple(map(str, definition["requested_claims"])),
+            oracle_key=str(definition["oracle_key"]), oracle=None,
+            expected_outcome_tag=str(definition["expected_outcome_tag"]),
+            forbidden_claims=tuple(map(str, definition["forbidden_claims"]))))
+    held = tuple(cases)
+    exact = tuple(item for item in held if item.exact)
+    if (len(raw.get("cases", [])) != 7 or len(exact) != 35
+            or len({item.exact_group for item in exact}) != 7
+            or len({item.id for item in held}) != len(held)):
+        raise ValueError("semantic admission needs seven questions, five exact runs each")
+    return held
 
 
 def corpus_digest(path) -> str:
@@ -183,7 +249,228 @@ class CaseScore:
     resource_exhaustions: int = 0
 
 
+def derive_semantic_oracle(case: SemanticEvalCase, registry, manifest, policy,
+                           *, locale: str = "") -> dict:
+    """Build a keyed oracle locally, without consulting the candidate model."""
+    if not case.oracle_key:
+        raise ValueError(f"admission case {case.id!r} has no oracle key")
+    if case.answerability_status != "answered":
+        return {"oracle_key": case.oracle_key, "figures": [],
+                "exact_figures": True}
+
+    from .bind import DeterministicBinder
+    from .execute import ProgramExecutor
+    from .intents import (SemanticFamilyRegistry, SemanticOutcome,
+                          SemanticRequest)
+    from .validate import ProgramValidator
+
+    families = SemanticFamilyRegistry()
+    family = families.get(case.expected_family)
+    if family is None or not family.runtime_selectable:
+        raise ValueError(
+            f"oracle {case.oracle_key!r} names an unreviewed semantic family")
+    request = SemanticRequest(
+        case.expected_family, dict(case.expected_parameters),
+        tuple(case.expected_claims), families.catalog_digest)
+    program = families.lower(SemanticOutcome("request", request), manifest)
+    checked = ProgramValidator(manifest, policy).validate(program)
+    if not checked.ok:
+        raise ValueError(
+            f"oracle {case.oracle_key!r} did not lower to a valid program")
+    execution = ProgramExecutor(
+        registry, policy,
+        query_executor=getattr(registry, "query_executor", None)).execute(
+            program, case.question)
+    result = DeterministicBinder(registry, locale).bind(program, execution).result
+    if not result.answered:
+        raise ValueError(
+            f"oracle {case.oracle_key!r} is not answered by its fresh fixture")
+
+    figures = []
+    for figure in result.figures:
+        expected = {
+            name: str(figure.get(name, ""))
+            for name in ("value", "currency", "quantity", "dated")}
+        expected["record_ids_exact"] = sorted(
+            str(item) for item in figure.get("record_ids") or ())
+        figures.append(expected)
+    oracle = {"oracle_key": case.oracle_key, "figures": figures,
+              "exact_figures": True}
+    if "unclear_completeness_language" in case.forbidden_claims:
+        oracle["required_completeness_text"] = str(result.text)
+    return oracle
+
+
+def _score_semantic(case: SemanticEvalCase, runtime_result) -> CaseScore:
+    compilation = runtime_result.compilation
+    exchanges = tuple(getattr(compilation, "exchanges", ()) or ())
+    if (not exchanges or all((getattr(exchange, "defect", {}) or {}).get("tag")
+                             == "model_unreachable" for exchange in exchanges)):
+        return CaseScore(case.id, False, False, ("model_not_reached",), 0, 0)
+    defects = []
+    oracle = dict(case.oracle or {})
+    if not oracle:
+        return CaseScore(case.id, False, False,
+                         ("missing_deterministic_oracle",), 0, 0)
+    result = runtime_result.result
+    program = getattr(compilation, "program", None)
+    semantic = getattr(compilation, "semantic_outcome", None)
+    request = getattr(semantic, "request", None)
+    if result.status != case.answerability_status:
+        defects.append("wrong_status")
+    if result.outcome_tag != case.expected_outcome_tag:
+        defects.append("wrong_outcome_tag")
+    if len(exchanges) > case.max_model_attempts:
+        defects.append("routine_question_needed_repair")
+    expected_non_answer = case.answerability_status != "answered"
+    if expected_non_answer:
+        expected_kind = {
+            "needs_clarification": "clarify",
+            "needs_assumption": "needs_assumption",
+            "outside_domain": "outside_domain",
+            "capability_gap": "unsupported",
+        }.get(case.answerability_status, "")
+        detail = dict(getattr(semantic, "detail", None) or {})
+        if (semantic is None or semantic.kind != expected_kind
+                or request is not None):
+            defects.append("wrong_non_answer_semantics")
+        if case.expected_outcome_tag and detail.get("tag") != case.expected_outcome_tag:
+            defects.append("wrong_non_answer_tag")
+        if expected_kind == "clarify" and (
+                not detail.get("question")
+                or not isinstance(detail.get("options"), list)):
+            defects.append("wrong_non_answer_shape")
+        expected_mode = {
+            "clarify": "clarify", "needs_assumption": "needs_assumption",
+            "outside_domain": "outside_domain"}.get(expected_kind)
+        if expected_mode is not None and (
+                program is None or program.mode != expected_mode):
+            defects.append("wrong_non_answer_program")
+    else:
+        if request is None:
+            defects.append("no_semantic_request")
+        else:
+            if request.family != case.expected_family:
+                defects.append("wrong_family")
+            if request.parameters != case.expected_parameters:
+                defects.append("wrong_parameters")
+            if set(request.requested_claims) != set(case.expected_claims):
+                defects.append("wrong_requested_claims")
+        if program is None:
+            defects.append("no_lowered_program")
+        elif program.question_kind != case.expected_family:
+            defects.append("wrong_lowered_family")
+
+    figures = list(getattr(result, "figures", ()) or ())
+    unsupported = sum(1 for figure in figures
+                      if figure.get("kind") in ("financial", "computed")
+                      and not figure.get("record_ids"))
+    if unsupported:
+        defects.append("unsupported_figure")
+    if any(figure.get("kind") == "hypothetical" for figure in figures):
+        defects.append("hypothetical_as_measured")
+    expected_figures = list(oracle.get("figures") or ())
+    unmatched = set(range(len(figures)))
+    wrong = 0
+    def oracle_matches(figure, expected):
+        for key, value in expected.items():
+            if key == "subject_record_id":
+                if str(value) not in {str(item) for item in
+                                      figure.get("record_ids") or ()}:
+                    return False
+            elif key == "record_ids_exact":
+                if sorted(str(item) for item in figure.get("record_ids") or ()) \
+                        != sorted(str(item) for item in value):
+                    return False
+            elif str(figure.get(key, "")) != str(value):
+                return False
+        return True
+    for expected in expected_figures:
+        found = next((index for index in unmatched
+                      if oracle_matches(figures[index], expected)), None)
+        if found is None:
+            wrong += 1
+        else:
+            unmatched.remove(found)
+    if oracle.get("exact_figures", True) and unmatched:
+        wrong += len(unmatched)
+    if wrong:
+        defects.append("wrong_keyed_figure")
+    family = case.expected_family
+    if result.status == "answered":
+        quantities = {str(figure.get("quantity") or "") for figure in figures}
+        if family == "named_account_balance":
+            if (len(figures) != 1 or quantities != {"balance"}
+                    or not figures[0].get("dated")):
+                defects.append("wrong_named_account_result")
+        elif family == "needs_attention" and quantities != {"count"}:
+            defects.append("wrong_attention_result")
+        elif family == "category_spending_period":
+            wanted = {"kind": "period", "value": case.expected_parameters["from"],
+                      "to": case.expected_parameters["to"]}
+            if (quantities != {"spending"} or any(
+                    wanted not in ((figure.get("boundary") or {}).get("selected")
+                                   or ()) for figure in figures)):
+                defects.append("wrong_period_or_quantity")
+        elif family == "net_worth":
+            if quantities != {"net_worth"} or any(
+                    node.args.get("metric") == "stalest_balance"
+                    for node in program.nodes):
+                defects.append("wrong_net_worth_claim")
+        elif family == "credit_card_debt":
+            whole = [figure for figure in figures
+                     if (figure.get("boundary") or {}).get("whole")]
+            rows = [figure for figure in figures
+                    if not (figure.get("boundary") or {}).get("whole")]
+            if quantities != {"owed"} or not whole or not rows:
+                defects.append("incomplete_card_population")
+        elif family == "classification_explanation" and (
+                quantities != {"movement"} or any(
+                    "treated as" not in str(figure.get("what") or "")
+                    for figure in figures)):
+            defects.append("wrong_classification_explanation")
+    normalized_text = " ".join(str(getattr(result, "text", "") or "").casefold().split())
+    for forbidden in case.forbidden_claims:
+        phrase = " ".join(forbidden.casefold().replace("_", " ").split())
+        if phrase and phrase not in {"missing data as zero",
+                                     "unclear completeness language"} \
+                and phrase in normalized_text:
+            defects.append("forbidden_claim")
+    missing_zero = int(
+        "missing_data_as_zero" in case.forbidden_claims
+        and result.status in ("answered", "partial")
+        and any(str(figure.get("value")) in ("0", "0.0", "0.00")
+                and not figure.get("record_ids") for figure in figures))
+    if missing_zero:
+        defects.append("missing_data_as_zero")
+    unclear = int(bool(
+        "unclear_completeness_language" in case.forbidden_claims
+        and oracle.get("required_completeness_text")
+        and str(oracle["required_completeness_text"]).casefold()
+        not in normalized_text))
+    if unclear:
+        defects.append("unclear_completeness_language")
+    exhausted = int(result.outcome_tag in {
+        "execution_deadline", "evidence_limit", "figure_limit",
+        "program_too_large"})
+    semantic_tags = {
+        "wrong_family", "wrong_parameters", "wrong_requested_claims",
+        "wrong_lowered_family", "wrong_named_account_result",
+        "wrong_attention_result", "wrong_period_or_quantity",
+        "wrong_net_worth_claim", "incomplete_card_population",
+        "wrong_classification_explanation", "routine_question_needed_repair",
+        "wrong_keyed_figure", "missing_data_as_zero",
+        "unclear_completeness_language", "forbidden_claim",
+        "wrong_non_answer_semantics", "wrong_non_answer_tag",
+        "wrong_non_answer_shape", "wrong_non_answer_program"}
+    semantic_errors = sum(item in semantic_tags for item in defects)
+    return CaseScore(case.id, True, not defects, tuple(defects), unsupported,
+                     wrong, semantic_errors, missing_zero, 0, exhausted)
+
+
 def score(case: EvalCase, runtime_result) -> CaseScore:
+    if isinstance(case, SemanticEvalCase):
+        return _score_semantic(case, runtime_result)
     compilation = runtime_result.compilation
     if (not compilation.exchanges
             or all((getattr(exchange, "defect", {}) or {}).get("tag")
@@ -221,49 +508,6 @@ def score(case: EvalCase, runtime_result) -> CaseScore:
             name = node.tool or ("compute" if node.kind == "compute" else node.kind)
             if name not in permitted:
                 defects.append("unpermitted_supporting_node")
-
-        from .intents import KnownIntentRegistry
-        contract = KnownIntentRegistry().semantic_contract(program.question_kind)
-        if contract is None:
-            defects.append("unreviewed_semantic_contract")
-        else:
-            missing_claims = (set(case.required_semantic_claims)
-                              - set(contract["semantic_claims"]))
-            if missing_claims:
-                defects.append("missing_semantic_claim")
-            expected_scopes = set(case.expected.get("scope") or ())
-            if not expected_scopes <= set(contract["scopes"]):
-                defects.append("wrong_scope")
-            expected_subject = str(case.expected.get("subject") or "")
-            if expected_subject and contract["subject"] != expected_subject:
-                defects.append("wrong_subject")
-            expected_period = str(case.expected.get("period") or "")
-            contract_period = contract["period"]
-            period_kind_matches = (
-                not expected_period or contract_period == expected_period
-                or (contract_period == "latest_complete_calendar_month"
-                    and (expected_period == "latest_complete_calendar_month"
-                         or "/" in expected_period))
-                or (contract_period == "explicit" and "/" in expected_period))
-            if not period_kind_matches:
-                defects.append("wrong_period_semantics")
-        if hasattr(program, "to_dict") and contract is not None:
-            parameters = {}
-            if program.question_kind == "largest_spending_movements":
-                movement = next((node for node in program.nodes
-                                 if node.tool == "list_movements"), None)
-                window = ((movement.args.get("filters") or {}).get("window")
-                          if movement is not None else {}) or {}
-                parameters = {key: window.get(key, "") for key in ("from", "to")}
-            manifest = type("Manifest", (), {
-                "digest": program.capability_manifest_digest})()
-            try:
-                reviewed = KnownIntentRegistry().instantiate(
-                    program.question_kind, parameters, manifest)
-            except ValueError:
-                reviewed = None
-            if reviewed is None or program.to_dict() != reviewed.to_dict():
-                defects.append("reviewed_intent_mismatch")
 
     figures = list(result.figures)
     unsupported = sum(1 for fig in figures
@@ -382,7 +626,8 @@ def score(case: EvalCase, runtime_result) -> CaseScore:
                      semantic_errors, missing_zero, hypothetical, exhausted)
 
 
-__all__ = ["CASES", "ADVERSARIAL_CASES", "EvalCase", "CaseScore",
+__all__ = ["CASES", "LEGACY_CASES", "ADVERSARIAL_CASES", "EvalCase",
+           "SemanticEvalCase", "CaseScore",
            "AdversarialCase", "AdversarialScore", "load_cases",
            "load_adversarial_cases", "corpus_digest",
-           "evaluate_adversarial", "score"]
+           "evaluate_adversarial", "derive_semantic_oracle", "score"]

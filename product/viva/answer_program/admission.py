@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import datetime
 import hashlib
 import json
@@ -16,7 +16,7 @@ from .compiler import COMPILER_VERSION
 from .schema import (ANSWER_PROGRAM_VERSION, CAPABILITY_MANIFEST_VERSION,
                      AnswerProgram)
 
-ADMISSION_PROFILE_VERSION = "answer-program-admission-v1"
+ADMISSION_PROFILE_VERSION = "semantic-request-admission-v1"
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,52 @@ class AdmissionReport:
     adversarial_passed: bool = False
     thresholds: dict = None
     case_ids: tuple[str, ...] = ()
+    attempt_evidence: tuple[dict, ...] = ()
+    publication_source: str = ""
+
+
+_MEASURED_RUN_SEAL = object()
+
+
+class _MeasuredAdmissionRun:
+    """Process-local proof that this report came from the live suite runner."""
+
+    __slots__ = ("_report", "_report_digest", "_report_snapshot", "_seal")
+
+    def __init__(self, report, seal):
+        if seal is not _MEASURED_RUN_SEAL:
+            raise TypeError("measured admission runs are minted by run_live_suite")
+        snapshot = json.dumps(asdict(report), sort_keys=True,
+                              separators=(",", ":"))
+        object.__setattr__(self, "_report", report)
+        object.__setattr__(self, "_report_snapshot", snapshot)
+        object.__setattr__(self, "_report_digest", hashlib.sha256(
+            snapshot.encode()).hexdigest())
+        object.__setattr__(self, "_seal", seal)
+
+    @property
+    def report(self):
+        return self._report
+
+    def __setattr__(self, name, value):
+        raise TypeError("a measured admission run is immutable")
+
+    def __reduce__(self):
+        raise TypeError("a measured admission run is deliberately non-serializable")
+
+
+def _report_from_measured_run(measured_run):
+    if (not isinstance(measured_run, _MeasuredAdmissionRun)
+            or measured_run._seal is not _MEASURED_RUN_SEAL):
+        raise ValueError(
+            "a model profile cannot be published without a sealed measured live run")
+    snapshot = json.dumps(asdict(measured_run._report), sort_keys=True,
+                          separators=(",", ":"))
+    digest = hashlib.sha256(snapshot.encode()).hexdigest()
+    if (snapshot != measured_run._report_snapshot
+            or digest != measured_run._report_digest):
+        raise ValueError("the sealed measured live run report was mutated")
+    return measured_run._report
 
 
 @dataclass(frozen=True)
@@ -63,9 +109,11 @@ class AdmissionProfile:
     program_schema_digest: str = ""
     resource_policy_digest: str = ""
     financial_query_schema_digest: str = ""
+    semantic_request_schema_digest: str = ""
+    semantic_catalog_digest: str = ""
+    deterministic_builder_digest: str = ""
     keyed_corpus_digest: str = ""
     adversarial_corpus_digest: str = ""
-    reviewed_intents_digest: str = ""
     persona_pack_digest: str = ""
     program_schema_version: str = ANSWER_PROGRAM_VERSION
     capability_manifest_version: str = CAPABILITY_MANIFEST_VERSION
@@ -78,8 +126,11 @@ class AdmissionProfile:
                     self.capability_manifest_digest,
                     self.program_schema_digest, self.resource_policy_digest,
                     self.financial_query_schema_digest,
+                    self.semantic_request_schema_digest,
+                    self.semantic_catalog_digest,
+                    self.deterministic_builder_digest,
                     self.keyed_corpus_digest, self.adversarial_corpus_digest,
-                    self.reviewed_intents_digest, self.persona_pack_digest,
+                    self.persona_pack_digest,
                     self.admission_report_digest)):
             raise ValueError("an admission profile needs exact model and contract ids")
         if not self.prompt_digest:
@@ -108,6 +159,9 @@ def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
                 if within_repair_valid is not None
                 else tuple(item.passed for item in scores))
     measured = bool(scores) and all(item.measured for item in scores)
+    complete_attempts = (len(attempts) == len(scores)
+                         and len(first) == len(scores)
+                         and len(repaired) == len(scores))
     total = max(1, len(scores))
     p95_attempts = (sorted(attempts)[max(0, math.ceil(len(attempts) * .95) - 1)]
                     if attempts else 0)
@@ -148,7 +202,9 @@ def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
             threshold_failures.append(name)
     if not measured:
         hard.append("unmeasured_model")
-    admitted = measured and not hard and not threshold_failures
+    if not complete_attempts:
+        hard.append("incomplete_attempt_evidence")
+    admitted = measured and complete_attempts and not hard and not threshold_failures
     return AdmissionReport(measured, admitted, metrics, tuple(hard),
                            tuple(threshold_failures), dict(identity or {}),
                            dict(contract_digests or {}), adversarial_passed,
@@ -156,7 +212,8 @@ def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
                            tuple(str(item.case_id) for item in scores))
 
 
-def admitted_profile(report, *, manifest):
+def admitted_profile(measured_run, *, manifest):
+    report = _report_from_measured_run(measured_run)
     if not report.admitted:
         raise ValueError("a model profile cannot be published before every gate passes")
     identity = dict(report.identity or {})
@@ -183,8 +240,9 @@ def admitted_profile(report, *, manifest):
             versions.path_of(PACKAGE, ANSWER_PROGRAM_VERSION)):
         raise ValueError("the measured schema differs from this build")
     required_contracts = {
-        "resource_policy", "financial_query_schema", "keyed_corpus",
-        "adversarial_corpus", "reviewed_intents", "persona_pack"}
+        "resource_policy", "financial_query_schema", "semantic_request_schema",
+        "semantic_catalog", "deterministic_builders", "keyed_corpus",
+        "adversarial_corpus", "persona_pack"}
     if not required_contracts <= set(contracts) or any(
             not contracts[name] for name in required_contracts):
         raise ValueError("a model profile needs every measured build contract")
@@ -197,9 +255,11 @@ def admitted_profile(report, *, manifest):
         program_schema_digest=schema_digest,
         resource_policy_digest=contracts["resource_policy"],
         financial_query_schema_digest=contracts["financial_query_schema"],
+        semantic_request_schema_digest=contracts["semantic_request_schema"],
+        semantic_catalog_digest=contracts["semantic_catalog"],
+        deterministic_builder_digest=contracts["deterministic_builders"],
         keyed_corpus_digest=contracts["keyed_corpus"],
         adversarial_corpus_digest=contracts["adversarial_corpus"],
-        reviewed_intents_digest=contracts["reviewed_intents"],
         persona_pack_digest=contracts["persona_pack"],
         thresholds=AdmissionThresholds(**dict(report.thresholds)),
         metrics=dict(report.metrics),
@@ -220,22 +280,28 @@ def resource_policy_digest(policy) -> str:
 
 def current_contract_digests(manifest, policy) -> dict[str, str]:
     from .eval import ADVERSARIAL_CASES, CASES, corpus_digest
-    from .intents import reviewed_intents_digest
+    from .intents import SemanticFamilyRegistry
     from ..query.schema import FINANCIAL_QUERY_SCHEMA_VERSION
 
     persona_version = versions.active(PACKAGE, "persona_pack")
+    semantic_schema_version = versions.active(PACKAGE,
+                                              "semantic_request_schema")
+    families = SemanticFamilyRegistry()
     return {
         "program_schema": versions.fingerprint(
             versions.path_of(PACKAGE, ANSWER_PROGRAM_VERSION)),
         "financial_query_schema": versions.fingerprint(
             versions.path_of(PACKAGE, FINANCIAL_QUERY_SCHEMA_VERSION)),
+        "semantic_request_schema": versions.fingerprint(
+            versions.path_of(PACKAGE, semantic_schema_version)),
+        "semantic_catalog": families.catalog_digest,
+        "deterministic_builders": (families.admission_digest(manifest)
+                                   if manifest is not None else ""),
         "compiler_prompt": promptstore.digest(PROMPTS, COMPILER_VERSION),
         "capability_manifest": manifest.digest if manifest is not None else "",
         "resource_policy": resource_policy_digest(policy),
         "keyed_corpus": corpus_digest(CASES),
         "adversarial_corpus": corpus_digest(ADVERSARIAL_CASES),
-        "reviewed_intents": (reviewed_intents_digest(manifest)
-                             if manifest is not None else ""),
         "persona_pack": versions.fingerprint(
             versions.path_of(PACKAGE, persona_version)),
     }
@@ -258,12 +324,54 @@ def validate_admission_report(report, profile=None) -> tuple[str, ...]:
     metrics = dict(raw.get("metrics") or {})
     thresholds = dict(raw.get("thresholds") or {})
     from .eval import load_cases
-    expected_case_ids = tuple(item.id for item in load_cases())
+    expected_cases = load_cases()
+    expected_case_ids = tuple(item.id for item in expected_cases)
+    expected_oracle_keys = {item.id: item.oracle_key for item in expected_cases}
     observed_case_ids = tuple(map(str, raw.get("case_ids") or ()))
     if observed_case_ids != expected_case_ids:
         failures.append("incomplete_keyed_corpus")
     if int(metrics.get("cases") or 0) != len(expected_case_ids):
         failures.append("admission_case_count_mismatch")
+    attempts = tuple(raw.get("attempt_evidence") or ())
+    by_case = {case_id: [] for case_id in expected_case_ids}
+    from vivacore.models import AnthropicAdapter, OpenAICompatAdapter
+    live_adapters = {
+        f"{kind.__module__}.{kind.__qualname__}"
+        for kind in (AnthropicAdapter, OpenAICompatAdapter)}
+    for item in attempts:
+        if not isinstance(item, dict) or str(item.get("case_id") or "") not in by_case:
+            failures.append("invalid_attempt_evidence")
+            continue
+        case_id = str(item["case_id"])
+        by_case[case_id].append(int(item.get("attempt") or 0))
+        required = {"case_id", "attempt", "oracle_key", "oracle_digest",
+                    "request_digest", "response_digest", "resolved_model",
+                    "modality", "provider_adapter", "usage_reported"}
+        if (not required <= set(item) or not item["request_digest"]
+                or not item["response_digest"] or not item["resolved_model"]
+                or not item["oracle_key"] or not item["oracle_digest"]
+                or not item["provider_adapter"]
+                or item["usage_reported"] is not True):
+            failures.append("invalid_attempt_evidence")
+        if str(item.get("oracle_key") or "") != expected_oracle_keys[case_id]:
+            failures.append("oracle_key_mismatch")
+        if str(item.get("provider_adapter") or "") not in live_adapters:
+            failures.append("provider_double_not_admissible")
+    if any(not numbers for numbers in by_case.values()):
+        failures.append("incomplete_attempt_evidence")
+    if any(sorted(numbers) != list(range(1, len(numbers) + 1))
+           for numbers in by_case.values() if numbers):
+        failures.append("invalid_attempt_sequence")
+    measurements = metrics.get("turn_measurements")
+    if (not isinstance(measurements, list)
+            or {str(item.get("case_id") or "") for item in measurements
+                if isinstance(item, dict)} != set(expected_case_ids)
+            or any(int(item.get("attempts") or 0)
+                   != len(by_case.get(str(item.get("case_id") or ""), ()))
+                   for item in measurements if isinstance(item, dict))):
+        failures.append("attempt_measurements_mismatch")
+    if raw.get("publication_source") != "live_provider_suite":
+        failures.append("non_live_publication_source")
     for name in ("unsupported_figures", "confidently_wrong",
                  "keyed_semantic_errors", "missing_data_as_zero",
                  "hypothetical_as_measured", "resource_exhaustions"):
@@ -292,9 +400,11 @@ def validate_admission_report(report, profile=None) -> tuple[str, ...]:
             "program_schema": profile.program_schema_digest,
             "resource_policy": profile.resource_policy_digest,
             "financial_query_schema": profile.financial_query_schema_digest,
+            "semantic_request_schema": profile.semantic_request_schema_digest,
+            "semantic_catalog": profile.semantic_catalog_digest,
+            "deterministic_builders": profile.deterministic_builder_digest,
             "keyed_corpus": profile.keyed_corpus_digest,
             "adversarial_corpus": profile.adversarial_corpus_digest,
-            "reviewed_intents": profile.reviewed_intents_digest,
             "persona_pack": profile.persona_pack_digest,
         }
         for name, expected in expected_contracts.items():
@@ -311,40 +421,64 @@ def run_live_suite(*, cases, registry_factory, compiler_factory, thresholds,
                    policy=None, today="", locale="", latency_ceiling_ms=None,
                    evidence_ceiling_bytes=None):
     """Run the frozen suite through a real compiler adapter and fresh fixtures."""
-    from .eval import evaluate_adversarial, score
+    from .eval import derive_semantic_oracle, evaluate_adversarial, score
     from .schema import AnswerResourcePolicy
     from .validate import ProgramValidator
     from ..session import Session
 
     policy = policy or AnswerResourcePolicy()
     scores, attempts, first_valid, repaired_valid = [], [], [], []
-    latencies, evidence_sizes = [], []
+    latencies, evidence_sizes, turn_metrics = [], [], []
     turns = []
     manifests = []
+    oracles = {}
     for case in cases:
         registry = registry_factory()
-        manifests.append(CapabilityManifest.from_registry(registry))
+        manifest = CapabilityManifest.from_registry(registry)
+        manifests.append(manifest)
+        oracle = derive_semantic_oracle(
+            case, registry, manifest, policy, locale=locale)
+        oracles[case.id] = oracle
         session = Session(
             registry, compiler_factory, resource_policy=policy,
             today=(lambda value=today: value), locale=locale,
             prior_turns=case.prior_turns)
         turn = session.ask(case.question)
         turns.append(turn)
-        runtime_result = getattr(turn, "_runtime_result", None)
         # Session intentionally exposes serializable turn data, so reconstruct
         # only the scoring facade here rather than retaining a live runtime.
+        from .intents import SemanticFamilyRegistry
+        semantic = (SemanticFamilyRegistry().parse(
+                    turn.semantic_request,
+                    type("Context", (), {"question": case.question,
+                                         "prior_turns": case.prior_turns})())
+                    if turn.semantic_request else None)
         compilation = type("Compilation", (), {
             "exchanges": turn.exchanges,
+            "semantic_outcome": semantic,
             "program": (AnswerProgram.from_dict(turn.program)
                         if turn.program else None)})()
         facade = type("Runtime", (), {"result": turn.result,
                                       "compilation": compilation})()
-        scores.append(score(case, facade))
+        scored_case = replace(case, oracle=oracle)
+        scores.append(score(scored_case, facade))
         attempts.append(len(turn.exchanges))
         first_valid.append(bool(turn.exchanges and turn.exchanges[0].parse_ok))
         repaired_valid.append(bool(turn.program))
-        latencies.append(sum(exchange.latency_s for exchange in turn.exchanges) * 1000)
+        latency_ms = sum(exchange.latency_s for exchange in turn.exchanges) * 1000
+        latencies.append(latency_ms)
         evidence_sizes.append(int((turn.execution or {}).get("evidence_bytes", 0)))
+        turn_metrics.append({
+            "case_id": case.id,
+            "family": str(getattr(case, "expected_family", "")),
+            "exact_group": str(getattr(case, "exact_group", "")),
+            "exact": bool(getattr(case, "exact", False)),
+            "attempts": len(turn.exchanges),
+            "input_tokens": sum(item.input_tokens for item in turn.exchanges),
+            "output_tokens": sum(item.output_tokens for item in turn.exchanges),
+            "cost_usd": sum(item.cost_usd for item in turn.exchanges),
+            "latency_ms": latency_ms,
+        })
 
     def p95(values):
         held = sorted(values)
@@ -404,16 +538,54 @@ def run_live_suite(*, cases, registry_factory, compiler_factory, thresholds,
         evidence_ceiling_bytes=evidence_ceiling_bytes,
         identity=identity, contract_digests=contracts,
         adversarial_passed=adversarial_passed)
+    by_family = {}
+    for item in turn_metrics:
+        family = by_family.setdefault(item["family"], {
+            "turns": 0, "input_tokens": 0, "output_tokens": 0,
+            "cost_usd": 0.0, "latency_ms": 0.0})
+        family["turns"] += 1
+        for name in ("input_tokens", "output_tokens", "cost_usd", "latency_ms"):
+            family[name] += item[name]
+    measured_metrics = dict(report.metrics)
+    measured_metrics["turn_measurements"] = turn_metrics
+    measured_metrics["family_measurements"] = by_family
+    report = AdmissionReport(
+        report.measured, report.admitted, measured_metrics,
+        report.hard_failures, report.threshold_failures, report.identity,
+        report.contract_digests, report.adversarial_passed, report.thresholds,
+        report.case_ids, report.attempt_evidence, report.publication_source)
+    attempt_evidence = []
+    live_provider = True
+    for case, turn in zip(cases, turns):
+        for number, exchange in enumerate(turn.exchanges, 1):
+            live_provider = live_provider and bool(exchange.live_provider)
+            digest = lambda value: hashlib.sha256(json.dumps(
+                value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
+            attempt_evidence.append({
+                "case_id": case.id, "attempt": number,
+                "oracle_key": case.oracle_key,
+                "oracle_digest": digest(oracles[case.id]),
+                "request_digest": digest(exchange.request),
+                "response_digest": digest(exchange.response),
+                "resolved_model": exchange.resolved_model,
+                "modality": exchange.modality,
+                "provider_adapter": exchange.provider_adapter,
+                "usage_reported": exchange.usage_reported})
     hard = list(report.hard_failures)
     hard.extend(identity_failures)
+    if not live_provider:
+        hard.append("provider_double_not_admissible")
+    if any(not item["usage_reported"] for item in attempt_evidence):
+        hard.append("provider_usage_unreported")
     if not adversarial_passed:
         hard.append("adversarial_contract_failure")
     report = AdmissionReport(
         report.measured, report.admitted and not hard, report.metrics,
         tuple(dict.fromkeys(hard)), report.threshold_failures,
         report.identity, report.contract_digests, report.adversarial_passed,
-        report.thresholds, report.case_ids)
-    return report, tuple(scores), tuple(turns)
+        report.thresholds, report.case_ids, tuple(attempt_evidence),
+        "live_provider_suite" if live_provider else "")
+    return _MeasuredAdmissionRun(report, _MEASURED_RUN_SEAL), tuple(scores), tuple(turns)
 
 
 __all__ = ["ADMISSION_PROFILE_VERSION", "AdmissionProfile",

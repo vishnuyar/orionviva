@@ -1,10 +1,9 @@
-"""Viva speaks by compiling one bounded AnswerProgram per turn.
+"""Viva speaks through one compact semantic request per turn.
 
-The model sees question context and a capability manifest, never live vault
-values.  It emits the complete answer shape, local read/query DAG, and binding
-selectors in one response.  Code validates the whole program before any read,
-executes it deterministically, and binds only evidence produced by the named
-source nodes.  A single targeted repair is allowed before reads begin.
+The model sees data-blind question context and a reviewed semantic catalog,
+never live vault values or executable contracts. Code lowers the selected
+meaning and typed parameters to a complete AnswerProgram, validates it before
+any read, then uses the existing deterministic execution and delivery path.
 """
 
 from __future__ import annotations

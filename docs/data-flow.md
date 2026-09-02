@@ -104,12 +104,14 @@ the read side.
 ## A person asks, and the answer arrives with receipts
 
 The answering path (`product/viva/answer_program/`, `product/viva/query/`, and
-the delivery laws in `product/viva/tools/`) is built so that a model compiles
+the delivery laws in `product/viva/tools/`) is built so that a model selects
 meaning and never sees or produces a current-turn financial value:
 
-1. **The program.** One model call commits the typed shape, finite local read
-   graph, selectors, and required/optional policy before any read. One targeted
-   structural repair is the only second attempt.
+1. **The program.** One model call selects a reviewed semantic family, typed
+   parameters, and requested claims. Code lowers that request to the typed
+   shape, finite local read graph, selectors, and required/optional policy
+   before any read. One complete semantic-request repair is the only second
+   attempt.
 2. **Validation and execution.** Code validates the whole graph against the
    capability manifest and resource policy, then executes admitted tool reads
    and typed Financial Query IR operators under a running deadline.
@@ -118,21 +120,24 @@ meaning and never sees or produces a current-turn financial value:
    to compatible references in that graph, and one renderer writes the sentence.
    Nothing inspects the finished sentence, because a model writes no digits into
    one.
-4. **The record.** Every exchange is kept verbatim with the prompt version and
-   model that produced it, which is what makes the honesty measurement
+4. **The record.** Every exchange, semantic request, and lowered program is kept
+   with its contract digests, prompt version, and model identity, which is what
+   makes the honesty measurement
    ([eval-harness-design.md](eval-harness-design.md)) possible at all. Each
    turn re-fetches every figure; an answer is never composed from what an
    earlier answer said.
 
 ```mermaid
 flowchart LR
-    q["A person's question"] --> compiler["Semantic compiler — complete data-blind AnswerProgram"]
+    q["A person's question"] --> select["Model — compact semantic request"]
+    select --> compiler["Code — deterministic complete AnswerProgram"]
     compiler --> validate["Static schema, capability, type, and resource validation"]
     validate --> tools["Bounded local reads and typed financial queries"]
     tools --> bind["One evidence graph and deterministic binding"]
     bind --> render["One renderer writes the sentence"]
     render --> answer["Cited answer — grade inherited from the weakest figure"]
     tools -. "nothing on record" .-> refuse["Refusal — first-class, with what would close the gap"]
+    select -. "unsupported meaning" .-> gap["Structured capability gap"]
 ```
 
 ## A merchant becomes a category

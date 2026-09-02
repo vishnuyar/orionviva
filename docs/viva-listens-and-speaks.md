@@ -169,12 +169,15 @@ which of its numeric tokens were claims, and after five cycles of new rules it
 was still refusing correct answers over bare years and account names.
 
 The first replacement was the committed shape mechanism described here. The
-current read path supersedes it with the versioned AnswerProgram architecture:
-one data-blind compilation commits the shape, complete bounded read/query graph,
-selectors and result policy before any local read. Deterministic validation,
-execution, evidence binding and rendering then produce the answer. The model
-still writes neither current-turn values nor a finished financial answer. The
-complete current design is [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md).
+current read path keeps that versioned AnswerProgram runtime but changes its
+front door: one data-blind model call selects reviewed financial meaning, typed
+parameters and requested claims, then code commits the shape, complete bounded
+read/query graph, selectors and result policy before any local read.
+Deterministic validation, execution, evidence binding and rendering then produce
+the answer. The model writes neither executable structure, current-turn values,
+nor a finished financial answer. The retained runtime record is
+[answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md);
+the current model boundary is [semantic requests and deterministic lowering](semantic-request-and-deterministic-lowering.md).
 
 **Risks, named.** A mis-parsed ruling scoped to a merchant is worse than a
 mis-categorized transaction: it is silent and it generalizes. The mitigations

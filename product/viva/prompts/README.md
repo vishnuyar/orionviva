@@ -39,3 +39,9 @@ set of tags is an interface. Adding, removing or renaming a tag is a new
 version file, because the code that names a tag and the file that answers it
 must agree — `test_every_repair_a_check_can_name_has_reviewed_words` fails when
 they do not.
+
+The runtime answer boundary uses `semantic-request-*.txt`. These prompts teach
+only the compact reviewed family catalog, typed request schema, and exact
+question/prior-turn provenance required for every semantic parameter. Executable
+AnswerProgram and financial-query prompts remain released historical artifacts,
+but are not loaded by the runtime semantic compiler.

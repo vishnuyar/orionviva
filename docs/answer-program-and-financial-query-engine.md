@@ -1,32 +1,38 @@
 # The Answer Program and Financial Query Engine
 
-**State:** built; release admission and Witness pending
+> **Historical built-design record.** The validator, executor, query engine,
+> evidence, binder, and renderer described here remain current. Direct runtime
+> model authorship of the executable AnswerProgram was tried and is superseded
+> by [semantic requests and deterministic lowering](semantic-request-and-deterministic-lowering.md)
+> under [ADR-014](decisions/ADR-014-financial-meaning-before-executable-programs.md).
+
+**State:** historical; retained runtime built, direct compiler superseded
 **Rules:** AP-1, AP-2, AP-3, AP-4, AP-5, AP-6, AP-7, AP-8
 
 **Audience:** product, backend, model orchestration, desktop, quality, and release teams
 
 **Decision owner:** product owner
 
-**Implementation status:** Phases 0–6 and the Phase 7 admission machinery are
-implemented. Model-profile publication and product release remain gated by the
-approved live-model thresholds and local real-vault Witness.
+**Implementation status:** This records the design that was built and tested.
+Its direct-program compiler did not pass the fresh Witness and is no longer a
+runtime entry. The retained lower runtime is used by the current design.
 
 ## Rules
 
 ### AP-1 — The complete answer contract precedes current-turn data
 **State:** enforced
 **Code:** product/viva/answer_program/compiler.py, product/viva/session.py
-**Test:** product/tests/test_answer_program_contracts.py::test_compiler_gets_one_targeted_repair_before_any_read
+**Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
-1. The compiler receives question context, capabilities, policy, and schemas, but no current financial result.
-2. Shape, graph, selectors, and result policy are validated before the first read.
+1. The semantic compiler receives data-blind question context, but no current financial result.
+2. Deterministic lowering authors shape, graph, selectors, and result policy; the whole result is validated before the first read.
 
 ### AP-2 — Compilation uses one attempt and at most one pre-read repair
 **State:** enforced
 **Code:** product/viva/answer_program/compiler.py
-**Test:** product/tests/test_answer_program_contracts.py::test_compiler_gets_one_targeted_repair_before_any_read
+**Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
-1. A valid program costs one model call; one repairable structural defect may cost one more.
+1. A valid semantic request costs one model call; one repairable compact-contract defect may cost one more.
 2. Execution never begins between those attempts.
 
 ### AP-3 — The executable wire contract is frozen and digested
@@ -64,7 +70,7 @@ approved live-model thresholds and local real-vault Witness.
 ### AP-7 — Admission measures and enforces one exact runtime profile
 **State:** enforced-with-exception
 **Code:** product/viva/answer_program/admission.py, product/viva/answer_program/release.py, product/viva/speak.py
-**Test:** product/tests/test_answer_program_contracts.py::test_release_gate_proves_one_path_and_publishes_exact_profile
+**Test:** product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
 
 1. The keyed and adversarial suites measure one provider route, requested model, provider-resolved model, modality, locale family, prompt, schema, and capability manifest.
 2. Runtime refuses a different build or model identity before reading the vault.
@@ -74,10 +80,10 @@ approved live-model thresholds and local real-vault Witness.
 ### AP-8 — Production has one AnswerProgram path
 **State:** enforced
 **Code:** product/viva/answer_program/release.py
-**Test:** product/tests/test_answer_program_contracts.py::test_release_gate_proves_one_path_and_publishes_exact_profile
+**Test:** product/tests/test_answer_program_contracts.py::test_single_path_gate_scans_non_python_runtime_sources
 
 1. The procedural planner and its loop protocol are absent from production code.
-2. Reviewed intents and open-ended programs enter the same validator, executor, evidence graph, binder, and renderer.
+2. Deterministically lowered semantic families enter the same validator, executor, evidence graph, binder, and renderer. Open-ended model-authored programs are not a runtime path.
 
 ## 1. Purpose
 
@@ -341,7 +347,7 @@ Each capability declares:
 ```json
 {
   "name": "query_ledger",
-  "version": "tools-v17",
+  "version": "tools-v22",
   "local_only": true,
   "read_only": true,
   "input_schema": {},

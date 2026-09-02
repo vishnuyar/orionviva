@@ -69,14 +69,19 @@ The current read-answer architecture and its release gates.
 
 | Rule | Name | State | Doc | Test |
 | --- | --- | --- | --- | --- |
-| **AP-1** | The complete answer contract precedes current-turn data | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_compiler_gets_one_targeted_repair_before_any_read` |
-| **AP-2** | Compilation uses one attempt and at most one pre-read repair | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_compiler_gets_one_targeted_repair_before_any_read` |
+| **AP-1** | The complete answer contract precedes current-turn data | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_compiler_repairs_a_malformed_semantic_request_before_any_read` |
+| **AP-2** | Compilation uses one attempt and at most one pre-read repair | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_compiler_repairs_a_malformed_semantic_request_before_any_read` |
 | **AP-3** | The executable wire contract is frozen and digested | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_packaged_program_schema_is_the_complete_executable_contract` |
 | **AP-4** | Financial queries preserve trusted quantity, currency, boundary, and provenance | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_joined_money_arithmetic_refuses_cross_currency_rows` |
 | **AP-5** | Admitted work is finite and bounded before and during execution | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_execution_deadline_bounds_a_running_local_read` |
 | **AP-6** | Required clauses and partial-answer policy are executable gates | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_result_policy_is_enforced_after_clause_binding` |
-| **AP-7** | Admission measures and enforces one exact runtime profile | enforced *(exception)* | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_release_gate_proves_one_path_and_publishes_exact_profile` |
-| **AP-8** | Production has one AnswerProgram path | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_release_gate_proves_one_path_and_publishes_exact_profile` |
+| **AP-7** | Admission measures and enforces one exact runtime profile | enforced *(exception)* | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_release_gate_rejects_a_profile_fabricated_from_passing_scores` |
+| **AP-8** | Production has one AnswerProgram path | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_single_path_gate_scans_non_python_runtime_sources` |
+| **AP-9** | The runtime model names meaning and cannot author execution | enforced | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_model_contract_cannot_author_executable_program_fields` |
+| **AP-10** | One registry owns admitted meaning and deterministic lowering | enforced | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_every_reviewed_family_lowers_and_validates_before_a_read` |
+| **AP-11** | Required claims are the requested financial meaning | enforced | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_net_worth_has_no_unrequested_staleness_clause` +2 |
+| **AP-12** | Unsupported meaning is a precise boundary | enforced | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_unsupported_meaning_is_a_structured_capability_gap` |
+| **AP-13** | Publication proves the compact boundary and its lowering | enforced *(exception)* | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_the_frozen_admission_corpus_has_35_exact_turns_and_paraphrases` +1 |
 
 ## Internationalization
 
@@ -150,6 +155,7 @@ One rule per decision record. An ADR states what was decided; the rule states wh
 | **ADR-011** | A hosted tier may store ciphertext and never compute on it | **unmet** | [decisions/ADR-011-blind-host-tier.md](decisions/ADR-011-blind-host-tier.md) | — |
 | **ADR-012** | Two enumerated outbound flows, a whitelisted envelope, and a model that selects and words but never decides | **unmet** | [decisions/ADR-012-the-interview-model-boundary.md](decisions/ADR-012-the-interview-model-boundary.md) | `test_a_jurisdiction_scoped_question_does_not_travel` |
 | **ADR-013** | A run holds a ledger of what it established, and an answer may say only what is in it | enforced *(exception)* | [decisions/ADR-013-the-shape-before-the-data.md](decisions/ADR-013-the-shape-before-the-data.md) | `test_a_figure_that_states_no_set_fills_no_hole_asking_for_one` |
+| **ADR-014** | The model names financial meaning and typed parameters; deterministic code authors the executable AnswerProgram | enforced *(exception)* | [decisions/ADR-014-financial-meaning-before-executable-programs.md](decisions/ADR-014-financial-meaning-before-executable-programs.md) | `test_model_contract_cannot_author_executable_program_fields` +1 |
 
 ## MON — money: nature, categories, transfers, net worth, identity
 
@@ -319,7 +325,7 @@ How a read is bounded, what a figure declares, and how a sentence is built from 
 | **PROJ-60** | a small core with view modules behind a facade | by-review | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | — |
 | **PROJ-61** | the registry holds only verbs the code can honestly serve | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_the_registered_tool_count_is_whatever_the_registry_holds` |
 | **PROJ-62** | a structured filter object, validated against the vault's own vocabulary | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_unknown_category_refusal_names_the_vocabulary` +4 |
-| **PROJ-63** | the registry contract is modality-neutral | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_text_compiler_uses_the_same_contract_and_one_call_on_success` |
+| **PROJ-63** | the registry contract is modality-neutral | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_text_compiler_uses_the_same_compact_contract_and_one_call_on_success` |
 | **PROJ-64** | one result envelope, refusal first-class | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_unknown_tool_is_a_refusal_not_an_exception` |
 | **PROJ-65** | a block of rows is one read's figures, each beside the slice it covers | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_a_shape_that_names_no_row_count_answers_whatever_the_count_turns_out_to_be` +2 |
 | **PROJ-66** | a hole nothing can fill costs its clause and not the turn | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn` +3 |

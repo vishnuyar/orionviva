@@ -55,10 +55,10 @@
 
 ### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
 **State:** enforced
-**Code:** product/viva/prompts/answer-program-retry-v1.txt
-**Test:** product/tests/test_answer_program_contracts.py::test_compiler_gets_one_targeted_repair_before_any_read
+**Code:** product/viva/prompts/semantic-request-retry-v2.txt
+**Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
-1. The repair prompt receives one structured validator defect and asks for one complete replacement program.
+1. The repair prompt receives every compact-contract defect and asks for one complete replacement semantic request.
 2. Repair happens before any financial read and the model never sees partial results.
 3. Changing the repair contract creates a new prompt version.
 

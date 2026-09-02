@@ -1,0 +1,10 @@
+The semantic output was rejected before any financial read. Return one complete
+corrected semantic output that fixes every listed defect. Do not return an
+executable program, financial query, tool name, binding, policy, limit, or
+financial value.
+
+All defects:
+{defects}
+
+Accepted compact schema:
+{accepted}

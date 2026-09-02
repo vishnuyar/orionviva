@@ -15,6 +15,7 @@ from .answer_program import (AnswerProgramRuntime, AnswerResourcePolicy,
                              BreadthFeedback, CapabilityManifest, DeterministicBinder,
                              ProgramExecutor, ProgramValidator, QuestionContext)
 from .answer_program.compiler import COMPILER_VERSION, REPAIR_VERSION
+from .answer_program.intents import SemanticFamilyRegistry
 from .answer_program.schema import ANSWER_PROGRAM_VERSION
 from .tools.registry import PROMPTS
 from .tools.runner import RunResult
@@ -27,6 +28,7 @@ class Turn:
     result: RunResult
     exchanges: list = field(default_factory=list)
     outcome: object | None = None
+    semantic_request: dict = field(default_factory=dict)
     program: dict = field(default_factory=dict)
     validation: dict = field(default_factory=dict)
     execution: dict = field(default_factory=dict)
@@ -50,8 +52,9 @@ class Turn:
 class Session:
     """A conversation: turns share context, figures never carry over.
 
-    Each turn compiles a fresh complete program from the prior questions and
-    answers as context. When a ledger is supplied, every model exchange is
+    Each turn selects fresh semantics from prior text and deterministically
+    lowers a complete program before reading current evidence. When a ledger is
+    supplied, every model exchange is
     appended as a ``ReadRecorded`` event, ``phase="speak"``, so the vault holds
     what left the machine and what came back, verbatim."""
 
@@ -99,6 +102,8 @@ class Session:
             question=question, result=answered.result,
             exchanges=list(answered.compilation.exchanges),
             outcome=answered.outcome,
+            semantic_request=(answered.compilation.semantic_outcome.to_dict()
+                              if answered.compilation.semantic_outcome else {}),
             program=(answered.compilation.program.to_dict()
                      if answered.compilation.program is not None else {}),
             validation={"defects": [item.to_dict() for item in validation.defects],
@@ -120,10 +125,16 @@ class Session:
         from .query.schema import FINANCIAL_QUERY_SCHEMA_VERSION
         from .tools.registry import PACKAGE
         persona_version = versions.active(PACKAGE, "persona_pack")
-        stamps = {"answer_program": f"{COMPILER_VERSION}@"
+        families = SemanticFamilyRegistry()
+        semantic_schema = versions.active(PACKAGE, "semantic_request_schema")
+        stamps = {"semantic_request": f"{COMPILER_VERSION}@"
                            f"{promptstore.digest(PROMPTS, COMPILER_VERSION)}",
-                  "answer_program_retry": f"{REPAIR_VERSION}@"
+                  "semantic_request_retry": f"{REPAIR_VERSION}@"
                            f"{promptstore.digest(PROMPTS, REPAIR_VERSION)}",
+                  "semantic_request_schema": f"{semantic_schema}@"
+                           f"{versions.fingerprint(versions.path_of(PACKAGE, semantic_schema))}",
+                  "semantic_family_registry": families.admission_digest(
+                      self._manifest),
                   "tools": f"{self._registry.descriptions_version}@"
                            f"{promptstore.digest(PROMPTS, self._registry.descriptions_version)}",
                   "answer_program_schema": f"{ANSWER_PROGRAM_VERSION}@"
@@ -134,6 +145,12 @@ class Session:
                   "persona": f"{persona_version}@"
                            f"{versions.fingerprint(versions.path_of(PACKAGE, persona_version))}"}
         n = len(self.turns)
+        semantic_digest = hashlib.sha256(json.dumps(
+            turn.semantic_request, sort_keys=True,
+            separators=(",", ":")).encode()).hexdigest()[:16]
+        program_digest = hashlib.sha256(json.dumps(
+            turn.program, sort_keys=True,
+            separators=(",", ":")).encode()).hexdigest()[:16]
         for i, ex in enumerate(turn.exchanges, 1):
             payload = {"prompt_versions": stamps,
                        "modality": ex.modality,
@@ -142,7 +159,10 @@ class Session:
                        "prior_context_digest": turn.prior_context_digest,
                        "defect": dict(ex.defect),
                        "request": ex.request, "response": ex.response,
+                       "semantic_request": dict(turn.semantic_request),
+                       "semantic_request_digest": semantic_digest,
                        "program": dict(turn.program),
+                       "lowered_program_digest": program_digest,
                        "validation": dict(turn.validation),
                        "execution": dict(turn.execution),
                        "shape": turn.result.shape,

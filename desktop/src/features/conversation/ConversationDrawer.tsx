@@ -5,7 +5,7 @@ import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChan
 import { conversationEvidenceFigure } from "../../surface/evidence";
 import { Questions } from "./Questions";
 import { outcomePresentation } from "./questionPresentation";
-import type { ActionOutcome, AskActionState, ConversationData, ConversationGoalDraft, ConversationTurn, DeclineReason, FeatureResult, QuestionActionState, TurnView } from "../../surface/types";
+import type { ActionOutcome, AskActionState, ConversationData, ConversationGoalDraft, ConversationTurn, DeclineReason, FeatureResult, MissingAnswerInput, QuestionActionState, TurnView } from "../../surface/types";
 
 export type AskControls = { state: AskActionState; onAsk: (question: string, mirrored: boolean, planRequest?: boolean) => void };
 export type ConversationControls = {
@@ -69,16 +69,28 @@ const outcomeLabels: Record<ActionOutcome, string> = {
   set_aside: "Set aside",
 };
 
+function CapabilityBoundary({ item }: { item: MissingAnswerInput }) {
+  return <section className="conversation-capability-boundary" aria-label="Available financial answers">
+    <p><strong>Requested</strong> {item.requestedLabel || "A financial answer that is not available yet"}</p>
+    <p><strong>Available now</strong></p>
+    <ul>{(item.supportedFamilies ?? []).map((family) => <li key={family.id}><strong>{family.label}</strong><span>{family.example}</span></li>)}</ul>
+  </section>;
+}
+
 function AnswerDetail({ answer, onOpenFigure, onReviewPlan }: { answer: TurnView; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void }) {
-  return <div className="conversation-answer">
-    <p className="conversation-answer-text">{answer.text || answer.refusal}</p>
+  const answerText = answer.text || answer.refusal;
+  const ordinaryMissing = answer.missing.filter((item) => item.tag !== "unsupported_family" && (item.question || item.label || item.tag).trim() !== answerText.trim());
+  const capability = answer.missing.find((item) => item.tag === "unsupported_family");
+  return <div className="conversation-answer" role={answer.status === "capability_gap" ? "status" : undefined} aria-live={answer.status === "capability_gap" ? "polite" : undefined} aria-atomic={answer.status === "capability_gap" ? "true" : undefined}>
+    <p className="conversation-answer-text">{answerText}</p>
     {answer.gradeSentence ? <p className="conversation-answer-grade">{answer.gradeSentence}</p> : null}
     {answer.figures.length ? <dl className="conversation-answer-figures">{answer.figures.map((figure) => <div key={figure.id}>
       <dt>{figure.evidenceId && figure.evidenceLinks.length ? <Figure figure={conversationEvidenceFigure(figure)} onOpenEvidence={onOpenFigure} className="conversation-figure-trigger" /> : figure.written || figure.what}</dt>
       <dd>{figure.what}{figure.recordIds.length ? ` · ${figure.recordIds.length === 1 ? "1 cited record" : `${figure.recordIds.length} cited records`}` : ""}</dd>
     </div>)}</dl> : null}
     {answer.options.length ? <ul className="conversation-answer-options">{answer.options.map((option) => <li key={option.id}>{option.label}</li>)}</ul> : null}
-    {answer.missing.length ? <ul className="conversation-answer-missing">{answer.missing.map((item, index) => <li key={`${item.tag}:${item.label}:${index}`}>{item.question || item.label || item.tag}</li>)}</ul> : null}
+    {capability ? <CapabilityBoundary item={capability} /> : null}
+    {ordinaryMissing.length ? <ul className="conversation-answer-missing">{ordinaryMissing.map((item, index) => <li key={`${item.tag}:${item.label}:${index}`}>{item.question || item.label || item.tag}</li>)}</ul> : null}
     {answer.spoken.withheld ? <p className="conversation-answer-withheld">{answer.spoken.withheld}</p> : null}
     {answer.spoken.citationSentence ? <p className="conversation-answer-citation">{answer.spoken.citationSentence}</p> : null}
     {answer.goalDraft?.reviewInPlans && onReviewPlan ? <button className="secondary-button" type="button" onClick={() => onReviewPlan(answer.goalDraft!)}>Review in Plans</button> : null}

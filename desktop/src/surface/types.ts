@@ -300,7 +300,8 @@ export type TurnFigure = { id: string; evidenceId: string; written: string; grad
 export type SpokenTurn = { maySpeak: boolean; withheld: string; parts: readonly string[]; text: string; gradeSentence: string; citationSentence: string; localOnly: string };
 export type AnswerStatus = "answered" | "partial" | "needs_clarification" | "needs_assumption" | "missing_data" | "capability_gap" | "outside_domain" | "failed";
 export type AnswerOption = { id: string; label: string };
-export type MissingAnswerInput = { tag: string; label: string; question: string };
+export type SupportedAnswerKind = { id: string; label: string; example: string };
+export type MissingAnswerInput = { tag: string; label: string; question: string; requestedFamily?: string; requestedLabel?: string; supportedFamilies?: readonly SupportedAnswerKind[] };
 // One whole turn. The grade sentence is a whole reviewed sentence rather than a
 // word in a frame, and it is the read's.
 export type TurnView = { question: string; text: string; answered: boolean; status: AnswerStatus; outcomeTag: string; refusal: string; grade: string; gradeSentence: string; figures: readonly TurnFigure[]; options: readonly AnswerOption[]; missing: readonly MissingAnswerInput[]; spoken: SpokenTurn; goalDraft?: ConversationGoalDraft | null };

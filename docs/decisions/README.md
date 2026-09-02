@@ -42,6 +42,7 @@ ADR numbers are serial ids in the order decisions were made, never a reading ord
 | [011](ADR-011-blind-host-tier.md) | Blind-host tier — encrypted hosting with client-held keys, client-side compute (Proposed, not adopted) | Two-way until publicly announced |
 | [012](ADR-012-the-interview-model-boundary.md) | The interview's model boundary — two enumerated outbound flows, a whitelisted envelope, no amounts or currency | One-way in trust (the whitelist); mechanism two-way |
 | [013](ADR-013-the-shape-before-the-data.md) | A sentence's shape is authored before its data, in both directions — a run holds a ledger of what it established, and an answer may say only what is in it | One-way in trust (the ordering); mechanism two-way |
+| [014](ADR-014-financial-meaning-before-executable-programs.md) | The model names financial meaning and typed parameters; deterministic code authors the executable AnswerProgram | Two-way mechanism under ADR-013's one-way ordering |
 
 ## Why
 

@@ -32,6 +32,35 @@ class AnswerProgramRuntime:
         compilation = self.compiler.compile(context)
         if not compilation.ok:
             tag = compilation.failure_tag or "invalid_program"
+            if tag == "unsupported_family":
+                from .intents import SemanticFamilyRegistry
+                requested = compilation.failure_detail
+                families = SemanticFamilyRegistry()
+                supported = [{"id": item["id"],
+                              "label": item["user_label"],
+                              "example": item["user_example"]}
+                             for item in families.supported_family_report()
+                             if item["runtime_selectable"]]
+                requested_family = families.get(requested)
+                requested_label = (
+                    requested_family.user_label if requested_family is not None
+                    else "a financial answer that is not available yet")
+                text = ("I cannot answer that financial question yet. "
+                        "The available financial answers are listed below.")
+                missing = [{"type": "unsupported_family",
+                            "tag": "unsupported_family",
+                            "label": "What is available",
+                            "requested_family": requested,
+                            "requested_label": requested_label,
+                            "supported_families": supported}]
+                result = RunResult(
+                    answered=False, text=text, refusal=tag,
+                    status="capability_gap", outcome_tag=tag, missing=missing)
+                outcome = AnswerOutcome(
+                    "capability_gap", tag=tag, text=text,
+                    missing=tuple(missing),
+                    trace={"model_attempts": len(compilation.exchanges)})
+                return RuntimeResult(result, outcome, compilation)
             refusal = ("model_unreachable" if tag == "model_unreachable"
                        else "bad_plan")
             result = RunResult(
@@ -52,9 +81,15 @@ class AnswerProgramRuntime:
         result.status = status
         result.outcome_tag = tag
         result.missing = [item.to_dict() for item in binding.unbound]
+        question = ""
+        if status == "needs_clarification":
+            question = next((item.text for item in execution.transcript
+                             if item.refusal == tag and item.text), result.text)
+            result.text = question
+            result.refusal = tag
         outcome = AnswerOutcome(
             status, tag=tag, text=result.text,
-            result=result, missing=tuple(result.missing),
+            result=result, question=question, missing=tuple(result.missing),
             trace={"model_attempts": len(compilation.exchanges),
                    **execution.to_dict()})
         return RuntimeResult(result, outcome, compilation, execution, binding)
@@ -110,6 +145,8 @@ class AnswerProgramRuntime:
                     if record.refusal}
         if "unsupported_operation" in refusals:
             return "capability_gap", "unsupported_operation"
+        if "ambiguous_movement_treatment" in refusals:
+            return "needs_clarification", "ambiguous_movement_treatment"
         if any(item.reason == "selector_not_unique" for item in binding.unbound):
             return "needs_clarification", "selector_not_unique"
         missing = {"missing_entity", "no_data", "not_found", "empty_result",

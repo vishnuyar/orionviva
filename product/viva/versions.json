@@ -8,17 +8,21 @@
       "in": "schemas",
       "active": "financial-query-schema-v1"
     },
-    "answer_program": {
-      "in": "prompts",
-      "active": "answer-program-v3"
+    "semantic_request_schema": {
+      "in": "schemas",
+      "active": "semantic-request-schema-v2"
     },
-    "answer_program_retry": {
+    "semantic_request": {
       "in": "prompts",
-      "active": "answer-program-retry-v1"
+      "active": "semantic-request-v2"
+    },
+    "semantic_request_retry": {
+      "in": "prompts",
+      "active": "semantic-request-retry-v2"
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v17"
+      "active": "tools-v22"
     },
     "goal_binding": {
       "in": "prompts",
@@ -60,6 +64,12 @@
     "answer-program-v2": "a36c73a5894f9243",
     "answer-program-v3": "27baad6a15777629",
     "answer-program-retry-v1": "a4571e2df3d40de7",
+    "semantic-request-v1": "6f73675a2c35cfbf",
+    "semantic-request-retry-v1": "48068beec5a1d8b6",
+    "semantic-request-schema-v1": "4ba7310b12d5a607",
+    "semantic-request-schema-v2": "b1e3e4d65b57e7aa",
+    "semantic-request-v2": "c636a0c4c62e2a2d",
+    "semantic-request-retry-v2": "e49055b3d70f8f79",
     "classify-v1": "78d4a6f76dda419c",
     "goal-binding-v1": "e28bad959309eebb",
     "classify-v2": "b0068911c228303a",
@@ -173,6 +183,11 @@
     "tools-v15": "4727c138392cce8e",
     "tools-v16": "5bfbb1f51cd27281",
     "tools-v17": "80b5ec44a10f824e",
+    "tools-v18": "76a64a2ac5e04c60",
+    "tools-v19": "b784103a31409b71",
+    "tools-v20": "7a2ed3808b3fcfeb",
+    "tools-v21": "03b572dd133d70e1",
+    "tools-v22": "7e8b48d959a22f5c",
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",

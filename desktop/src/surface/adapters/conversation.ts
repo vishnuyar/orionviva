@@ -76,10 +76,21 @@ export function adaptTurn(raw: unknown): TurnView | null {
   });
   const missing = (Array.isArray(raw.missing) ? raw.missing : []).flatMap((item) => {
     if (!isRecord(item)) return [];
-    const tag = textValue(item.tag) || textValue(item.reason);
+    const tag = textValue(item.tag) || textValue(item.reason) || textValue(item.type);
     const label = textValue(item.label) || textValue(item.source);
     const question = textValue(item.question);
-    return tag || label || question ? [{ tag, label, question }] : [];
+    const requestedFamily = textValue(item.requested_family);
+    const requestedLabel = textValue(item.requested_label);
+    const supportedFamilies = Array.isArray(item.supported_families)
+      ? item.supported_families.flatMap((family) => {
+        if (!isRecord(family)) return [];
+        const id = textValue(family.id), supportedLabel = textValue(family.label), example = textValue(family.example);
+        return id && supportedLabel && example ? [{ id, label: supportedLabel, example }] : [];
+      })
+      : [];
+    return tag || label || question || requestedFamily || requestedLabel || supportedFamilies.length
+      ? [{ tag, label, question, requestedFamily, requestedLabel, supportedFamilies }]
+      : [];
   });
   return {
     question: textValue(raw.question),

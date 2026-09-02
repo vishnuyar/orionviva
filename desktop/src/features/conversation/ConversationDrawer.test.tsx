@@ -119,4 +119,36 @@ describe("durable Viva conversation", () => {
 
     expect(onAsk).toHaveBeenCalledWith("Build a rainy-day fund", true, true);
   });
+
+  it("announces one plain capability boundary after Ask settles", () => {
+    const text = "I cannot answer that financial question yet. The available financial answers are listed below.";
+    const answer: TurnView = {
+      question: "Forecast next year", text, answered: false,
+      status: "capability_gap", outcomeTag: "unsupported_family",
+      refusal: "unsupported_family", grade: "", gradeSentence: "",
+      figures: [], options: [], spoken: { maySpeak: false, withheld: "", parts: [], text: "", gradeSentence: "", citationSentence: "", localOnly: "" },
+      missing: [{ tag: "unsupported_family", label: "What is available", question: "",
+        requestedFamily: "future_projection", requestedLabel: "a financial answer that is not available yet",
+        supportedFamilies: [
+          { id: "named_account_balance", label: "one account's balance", example: "the balance and date for one named account" },
+          { id: "net_worth", label: "net worth and exclusions", example: "net worth by currency and what is excluded" },
+        ] }],
+    };
+    const asked = turn({ answer, prompt: answer.question });
+    const ask = { state: { state: "settled", question: answer.question,
+      result: { state: "settled", outcome: { kind: "completed", message: "", reason: "" } }, turn: answer } as const, onAsk: vi.fn() };
+    const view = render(<ConversationDrawer result={ready({ turns: [asked], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={ask} controls={controls} />);
+
+    expect(view.getAllByText(text)).toHaveLength(1);
+    const announced = view.getAllByRole("status").find((node) => node.textContent?.includes(text));
+    expect(announced).toHaveAttribute("aria-live", "polite");
+    expect(announced).toHaveAttribute("aria-atomic", "true");
+    const detail = view.getByLabelText("Available financial answers");
+    expect(detail).toHaveTextContent("Requested a financial answer that is not available yet");
+    expect(detail).toHaveTextContent("Available now");
+    expect(detail).toHaveTextContent("one account's balance");
+    expect(detail).toHaveTextContent("the balance and date for one named account");
+    expect(view.container).not.toHaveTextContent("future_projection");
+    expect(view.container).not.toHaveTextContent("named_account_balance");
+  });
 });

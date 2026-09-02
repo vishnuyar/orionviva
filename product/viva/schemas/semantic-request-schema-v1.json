@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "semantic-request-schema-v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_version", "catalog_digest", "outcome", "family", "parameters", "requested_claims"],
+      "properties": {
+        "request_version": {"const": "semantic-request-v1"},
+        "catalog_digest": {"type": "string"},
+        "outcome": {"const": "request"},
+        "family": {"type": "string"},
+        "parameters": {"type": "object"},
+        "requested_claims": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_version", "outcome"],
+      "properties": {
+        "request_version": {"const": "semantic-request-v1"},
+        "outcome": {"enum": ["clarify", "needs_assumption", "outside_domain", "unsupported"]},
+        "tag": {"type": "string"},
+        "question": {"type": "string"},
+        "options": {"type": "array", "items": {"type": "object"}},
+        "label": {"type": "string"},
+        "type": {"const": "user_stipulation"},
+        "requested_family": {"type": "string"}
+      }
+    }
+  ]
+}

@@ -149,6 +149,40 @@ def test_an_exact_visible_account_name_narrows_without_a_lookup(registry):
                 if item["kind"] == "account"} == {"chk"}
 
 
+def test_account_entity_matching_uses_whole_tokens_not_arbitrary_substrings(
+        registry):
+    checking = registry.call(
+        "query_ledger", {"entity": "balances",
+                         "filters": {"account": "checking"}})
+    assert checking.ok
+    assert {figure["value"] for figure in checking.figures
+            if figure["quantity"] == "balance"} == {"600.00"}
+
+    for fragment in ("king", "age"):
+        result = registry.call(
+            "query_ledger", {"entity": "balances",
+                             "filters": {"account": fragment}})
+        assert not result.ok and result.refusal == "unknown_account"
+        assert not result.figures
+
+
+def test_an_exact_synthetic_institution_label_resolves_its_account():
+    projection = LedgerProjection([
+        account_opened("custody", "investment", "Long-term account", "USD",
+                       "2026-01-01", institution="Example Custodian"),
+        closing_balance_observed(
+            "custody", "321.00", "2026-01-31",
+            Provenance("custody-doc", 1, "balance")),
+    ])
+    result = ledger_tools.query_ledger(
+        projection, {"entity": "balances",
+                     "filters": {"account": "Example Custodian"}})
+
+    assert result.ok
+    assert [figure["value"] for figure in result.figures
+            if figure["quantity"] == "balance"] == ["321.00"]
+
+
 def test_an_ambiguous_visible_account_name_is_not_guessed():
     projection = LedgerProjection([
         account_opened("first", "depository", "Shared", "USD",

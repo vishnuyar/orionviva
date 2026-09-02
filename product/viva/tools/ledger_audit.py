@@ -6,7 +6,15 @@ from .ledger_common import *
 
 # ---------------------------------------------------------- check_completeness
 
+COMPLETENESS_PARAMS = {
+    "type": "object",
+    "properties": {"view": {"type": "string", "enum": ["attention"]}},
+    "additionalProperties": False,
+}
+
 def check_completeness(proj, args: dict) -> ToolResult:
+    if args.get("view") == "attention":
+        return _attention_summary(proj)
     captured = proj.captured_docs()
     posted_ids = proj.posted_doc_ids()
     held = [did for did in captured if did not in posted_ids]
@@ -76,15 +84,61 @@ def check_completeness(proj, args: dict) -> ToolResult:
               f"posted; {len(held)} awaiting review."))
 
 
+def _attention_summary(proj) -> ToolResult:
+    """Summarize the existing ordered queue."""
+    from ..questions import open_questions
+
+    payload = open_questions(proj, limit=3)
+    questions = list(payload["questions"])
+    def label(question):
+        refs = question.get("refs") or {}
+        subject = (refs.get("example") or refs.get("subject")
+                   or refs.get("document")
+                   or str(question["id"]).split(":", 1)[-1])
+        return f"{question.get('kind') or 'open'} — {subject}"
+    figures = [
+        # Figure labels describe the count; ranking stakes remain outside them.
+        figure(1, label(question),
+               quantity=quantity.COUNT, kind=ACTIVITY,
+               record_ids=[str(question["id"])],
+               boundary=bounded(whole=not payload["tail"]["count"]))
+        for question in questions
+    ]
+    if not figures:
+        figures = [figure(0, "open questions needing attention",
+                          quantity=quantity.COUNT, kind=ACTIVITY,
+                          boundary=bounded(whole=True))]
+    return ToolResult(
+        tool="check_completeness", ok=True, figures=figures,
+        data={"questions": questions, "total": payload["total"],
+              "tail": dict(payload["tail"]),
+              "pending": dict(payload["pending"])},
+        record_ids=[str(question["id"]) for question in questions],
+        caveats=(["More open questions remain below this consequence-ordered "
+                  "preview."] if payload["tail"]["count"] else []),
+        coverage="The highest-consequence open questions, in their existing order.",
+        text="The highest-consequence open questions are summarized by kind.")
+
+
 # ------------------------------------------------------------- get_provenance
 
-PROVENANCE_PARAMS = {"type": "object",
-                     "properties": {"record_id": {"type": "string"}},
-                     "required": ["record_id"]}
+PROVENANCE_PARAMS = {
+    "type": "object",
+    "properties": {"record_id": {"type": "string"},
+                   "movement_phrase": {"type": "string"},
+                   "from": {"type": "string"},
+                   "to": {"type": "string"}},
+    "additionalProperties": False,
+}
 
 
 def get_provenance(proj, args: dict) -> ToolResult:
-    rid = args["record_id"]
+    if args.get("movement_phrase"):
+        return _movement_treatment(proj, args)
+    rid = str(args.get("record_id") or "")
+    if not rid:
+        return refusal("get_provenance", "missing_record",
+                       "Name one record or one movement description to explain.")
     captured = proj.captured_docs()
     if rid in captured:
         # posted: its figures are in the ledger. held: read but set aside,
@@ -164,6 +218,62 @@ def get_provenance(proj, args: dict) -> ToolResult:
                              "an account id from query_ledger balances",
                              "a movement record_id from query_ledger "
                              "transactions"])
+
+
+def _movement_treatment(proj, args: dict) -> ToolResult:
+    phrase = _merchant_filter_key(str(args["movement_phrase"]))
+    start, end = str(args.get("from") or ""), str(args.get("to") or "")
+    if bool(start) != bool(end) or (start and (
+            not _is_iso_date(start) or not _is_iso_date(end) or start > end)):
+        return refusal("get_provenance", "bad_date",
+                       "A movement explanation period needs valid inclusive edges.")
+    reached = []
+    for movement in proj.movements():
+        if start and not start <= movement.date <= end:
+            continue
+        merchant = _merchant_key(proj, movement)
+        tier = max(_match_tier(phrase, merchant),
+                   _match_tier(phrase, _merchant_filter_key(
+                       movement.description)))
+        if tier:
+            reached.append((tier, movement))
+    if not reached:
+        return refusal("get_provenance", "not_found",
+                       "No movement uniquely matched that description.")
+    best = max(tier for tier, _movement in reached)
+    matches = [movement for tier, movement in reached if tier == best]
+    treatments = {(movement.nature, movement.nature_reason)
+                  for movement in matches}
+    if len(treatments) != 1:
+        return refusal(
+            "get_provenance", "ambiguous_movement_treatment",
+            "Matching movements have materially different treatments; name a "
+            "date or a more specific description.",
+            matching_records=[movement.key for movement in matches])
+    grades = movements_view.movement_grades(proj.core)
+    nature, reason = next(iter(treatments))
+    figures = []
+    ids = []
+    for movement in matches:
+        evidence = [movement.key] + ([movement.provenance.doc_id]
+                                    if movement.provenance.doc_id else [])
+        ids.extend(evidence)
+        figures.append(figure(
+            movements_view.money_effect(movement),
+            f"{movement.description} — treated as {nature} because {reason}",
+            quantity=quantity.MOVEMENT, grade=grades.get(movement.key, ""),
+            dated=movement.date, currency=movement.currency,
+            record_ids=evidence, boundary=bounded(whole=True)))
+    return ToolResult(
+        tool="get_provenance", ok=True, figures=figures,
+        identifiers=_identifiers(proj, [movement.account for movement in matches]),
+        record_ids=sorted(set(ids)),
+        provenance=[movement.provenance.to_dict() for movement in matches],
+        data={"kind": "movement_treatment", "nature": nature,
+              "nature_reason": reason,
+              "record_ids": [movement.key for movement in matches]},
+        coverage=f"{len(matches)} matching movement(s) share this treatment.",
+        text=f"The matching movement treatment is {nature}: {reason}.")
 
 
 # ----------------------------------------------------------- get_transparency
@@ -260,4 +370,6 @@ def get_transparency(proj, args: dict) -> ToolResult:
         text=f"{len(declined)} question(s) set aside.")
 
 
-__all__ = ['check_completeness', 'PROVENANCE_PARAMS', 'get_provenance', 'TRANSPARENCY_PARAMS', 'JOURNAL_FIELDS', '_event_ids', 'get_transparency']
+__all__ = ['COMPLETENESS_PARAMS', 'check_completeness', 'PROVENANCE_PARAMS',
+           'get_provenance', 'TRANSPARENCY_PARAMS', 'JOURNAL_FIELDS',
+           '_event_ids', 'get_transparency']

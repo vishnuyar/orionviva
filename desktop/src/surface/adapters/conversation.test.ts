@@ -86,4 +86,24 @@ describe("one turn, read", () => {
     expect(read.outcomeTag).toBe("ambiguous_account");
     expect(read.options).toEqual([{ id: "daily", label: "Daily account" }]);
   });
+
+  it("keeps a capability boundary visible and structured", () => {
+    const text = "I cannot answer that financial question yet.";
+    const read = adaptTurn({ ...reply, answered: false, status: "capability_gap",
+      outcome_tag: "unsupported_family", text, refusal: "unsupported_family",
+      missing: [{ type: "unsupported_family", label: "What is available",
+        requested_family: "future_projection",
+        requested_label: "a financial answer that is not available yet",
+        supported_families: [
+          { id: "net_worth", label: "net worth and exclusions", example: "net worth by currency" },
+          { id: "named_account_balance", label: "one account's balance", example: "one account balance and date" },
+        ] }] })!;
+    expect(read.missing).toEqual([{ tag: "unsupported_family", label: "What is available",
+      question: "", requestedFamily: "future_projection",
+      requestedLabel: "a financial answer that is not available yet",
+      supportedFamilies: [
+        { id: "net_worth", label: "net worth and exclusions", example: "net worth by currency" },
+        { id: "named_account_balance", label: "one account's balance", example: "one account balance and date" },
+      ] }]);
+  });
 });

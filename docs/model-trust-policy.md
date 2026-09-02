@@ -123,6 +123,26 @@ passing to keep its autonomy. Today's models merely happen to be the first
 candidates to sit it. That is why the harness is designed before any statement
 is gathered — it will outlive every model it ever grades.
 
+The answer model has a separate exact-profile admission role. Its exam is not
+executable-program authorship: it selects one compact reviewed semantic family,
+typed parameters and requested claims, while deterministic code authors and
+validates the AnswerProgram. Publication binds the exact provider route,
+requested and resolved model, modality, locale family, semantic prompt and
+schema, catalog, builder digest, retained runtime contracts, persona and frozen
+corpus. Each frozen case is keyed to an independent deterministic oracle for
+financial value, currency, subject and date, and publication retains complete
+per-attempt request, response, route, model and usage evidence. Provider doubles
+and reports assembled from fabricated passing scores are never publishable.
+The serialized report remains verifiable evidence, while the authority to mint
+a profile is a non-serializable capability held only by the live suite run that
+produced it. That capability is immutable and checks its bound canonical report
+snapshot and digest again at both publication paths; copying real adapter names
+and contract digests, replacing the report, or mutating nested fields is insufficient. The
+seven exact primitive questions must each complete cleanly five times, alongside
+reviewed paraphrases plus follow-up, ambiguity and forbidden-result coverage,
+before ordinary runtime use is available
+([semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md)).
+
 **Consequences for architecture.** Version pinning and per-call model
 identification are hard requirements of the model abstraction layer, not
 conveniences. Per-model scorecards are projections of the event log, not a

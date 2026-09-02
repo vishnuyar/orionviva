@@ -23,7 +23,13 @@ def _query_balances(proj, filters: dict) -> ToolResult:
     if "currency" in filters:
         infos = [i for i in infos if i.currency == filters["currency"]]
     if "kind" in filters:
-        infos = [i for i in infos if i.kind == filters["kind"]]
+        if filters["kind"] == "card_account":
+            from .. import schemas
+            infos = [i for i in infos if schemas.kind_of_account(
+                i.account, i.jurisdiction, ledger_kind=i.kind,
+                doc_types=proj.document_types_of(i.account)) == "card_account"]
+        else:
+            infos = [i for i in infos if i.kind == filters["kind"]]
     selected_infos = list(infos)
     # An asserted loan account exists, but until a balance or dated holding has
     # been observed its replay value of zero is only the additive identity. It
@@ -104,7 +110,10 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                                                     "value": r["record_id"]})))
                for r, value in values]
     # Kind-filtered balances include one total per currency beside account rows.
-    if "kind" in filters:
+    selected_type = filters.get("kind")
+    if selected_type:
+        selected_measure = (quantity.OWED if selected_type == "card_account"
+                            else _measure_of(selected_type))
         totals: dict[str, Decimal] = {}
         total_records: dict[str, set[str]] = {}
         total_grades: dict[str, list[str]] = {}
@@ -120,9 +129,9 @@ def _query_balances(proj, filters: dict) -> ToolResult:
         missing = [i.account for i in selected_infos if i not in infos]
         for currency, total in sorted(totals.items()):
             figures.append(figure(
-                total, f"total {_measure_of(filters['kind'])} across all "
-                       f"{filters['kind']} accounts",
-                quantity=_measure_of(filters["kind"]),
+                total, f"total {selected_measure} across all "
+                       f"{selected_type} accounts",
+                quantity=selected_measure,
                 grade=weakest(total_grades[currency]),
                 dated=min(total_dates.get(currency, []), default=""),
                 currency=currency,

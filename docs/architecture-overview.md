@@ -67,10 +67,12 @@ whose import direction is enforced by tests (the boundary rule is in
   which a person's reply becomes a recorded ruling.
 - `viva/listen.py`, `viva/reply.py`, `viva/speak.py`, `viva/render.py`,
   `viva/persona` — Viva's two directions: a sentence becoming double-entry,
-  and data-blind answer programs becoming sentences through reviewed phrasing.
+  and data-blind semantic requests becoming reviewed programs and then cited
+  sentences.
 - `viva/answer_program`, `viva/query`, and `viva/tools` — the one-shot semantic
-  compiler contract, static validator, bounded graph executor, typed financial
-  query engine, local read registry, evidence graph, binding laws, and renderer.
+  request contract and deterministic family registry, static validator, bounded
+  graph executor, typed financial query engine, local read registry, evidence
+  graph, binding laws, and renderer.
 - `viva/agent` — the maintenance agent's observe → plan → perform → record
   loop and its budget.
 - `viva/surface` — the contract with the interface: read models, closed
@@ -146,11 +148,12 @@ identity, and a model never certifies a figure
 ([extraction-and-confidence.md](extraction-and-confidence.md),
 [model-trust-policy.md](model-trust-policy.md),
 [decisions/ADR-010-verification-never-in-weights.md](decisions/ADR-010-verification-never-in-weights.md)).
-On the answering side the same stance is structural: a model commits a shape
-with typed holes before any data exists, code binds the holes to ledger
-references, and one renderer writes the sentence, so a model writes no digits
-into an answer
-([projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)).
+On the answering side the same stance is structural: a model selects reviewed
+financial meaning and typed parameters before any data exists. Deterministic
+code authors the complete shape and read program, code binds its holes to ledger
+references, and one renderer writes the sentence, so the model writes neither
+execution nor digits into an answer
+([semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md)).
 
 **The privacy boundary.** Raw descriptors and everything personal stay inside
 the vault. Only impersonal, linted hints cross to merchantcore, and only a

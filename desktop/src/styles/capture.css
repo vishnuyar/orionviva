@@ -152,6 +152,11 @@
 .conversation-answer-grade, .conversation-answer-citation, .conversation-answer-withheld { color: var(--muted); font-size: var(--text-fine); }
 .conversation-answer-figures { margin: 0; display: grid; gap: var(--space-xs); font-size: var(--text-caption); }
 .conversation-answer-figures div { display: flex; justify-content: space-between; gap: var(--space-sm); }
+.conversation-capability-boundary { display: grid; gap: var(--space-xs); }
+.conversation-capability-boundary p, .conversation-capability-boundary ul { margin: 0; }
+.conversation-capability-boundary ul { display: grid; gap: var(--space-sm); padding-left: var(--space-lg); }
+.conversation-capability-boundary li { display: grid; gap: var(--space-xs); }
+.conversation-capability-boundary li span { color: var(--muted); }
 
 /* What moved, on the live path. Direction is a word beside the amount rather
    than a colour or a sign: a colour is not readable by everyone and a sign is a

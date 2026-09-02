@@ -57,8 +57,8 @@ class CapabilityManifest:
             query_operators = operator_manifest(installed)
         else:
             query_operators = ()
-        from .intents import KnownIntentRegistry
-        known_intents = KnownIntentRegistry().manifest()
+        from .intents import SemanticFamilyRegistry
+        known_intents = SemanticFamilyRegistry().manifest()
         return cls(tuple(capabilities), query_sources, query_operators,
                    known_intents)
 

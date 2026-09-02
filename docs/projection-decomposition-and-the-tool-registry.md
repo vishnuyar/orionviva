@@ -39,10 +39,10 @@
 ### PROJ-63 — the registry contract is modality-neutral
 **State:** enforced
 **Code:** product/viva/tools/registry.py:136 (`Registry`)
-**Test:** product/tests/test_answer_program_contracts.py::test_text_compiler_uses_the_same_contract_and_one_call_on_success
+**Test:** product/tests/test_answer_program_contracts.py::test_text_compiler_uses_the_same_compact_contract_and_one_call_on_success
 
 1. The registry defines typed schemas, the result envelope and refusal semantics, and chooses no wire format.
-2. Native structured output is the primary compiler modality and strict text JSON is the degradation modality; both produce the same versioned program.
+2. Native structured output is the primary compiler modality and strict text JSON is the degradation modality; both produce the same versioned semantic request.
 3. Every check that decides what may be said runs in code, outside the modality.
 
 ### PROJ-64 — one result envelope, refusal first-class
@@ -93,8 +93,11 @@
 1. A refused turn speaks a reviewed persona-pack sentence selected by tag; nothing is composed, nothing is bound, and no model call is spent.
 2. Every tag the runner can refuse with has exactly one reviewed sentence, and the bijection is enforced at build time.
 3. Structured non-answer outcomes distinguish validation failure, missing data, missing capability, clarification, assumptions and outside-domain requests.
-4. A tag the machine does not know is not spoken as one.
-5. The compiler has at most two model attempts; deterministic execution never asks the model what to do next.
+4. Account phrases resolve only through complete normalized word sequences in
+   visible account names or institutions. Partial-word substrings never select
+   an account, and multiple matches refuse rather than choosing a figure.
+5. A tag the machine does not know is not spoken as one.
+6. The compiler has at most two model attempts; deterministic execution never asks the model what to do next.
 
 ### PROJ-5 — a property of a figure the machine holds is placed by the machine
 **State:** enforced

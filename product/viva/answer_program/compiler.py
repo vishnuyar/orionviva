@@ -1,4 +1,4 @@
-"""One-call semantic compilation, with one pre-read structural repair."""
+"""One-call meaning selection, then deterministic pre-read program lowering."""
 
 from __future__ import annotations
 
@@ -9,15 +9,13 @@ from dataclasses import dataclass, field
 from vivacore import promptstore, versions
 
 from ..tools.registry import PACKAGE, PROMPTS
-from .intents import (KNOWN_INTENT_REQUEST_VERSION, KnownIntentRegistry,
-                      intent_request_json_schema)
-from .schema import AnswerProgram, ContractError, QuestionContext, program_json_schema
+from .intents import (SEMANTIC_REQUEST_VERSION, SemanticFamilyRegistry,
+                      SemanticOutcome)
+from .schema import AnswerProgram, ContractError, QuestionContext
 from .validate import ValidationDefect, ValidationResult
 
-COMPILER_VERSION = versions.active(PACKAGE, "answer_program")
-REPAIR_VERSION = versions.active(PACKAGE, "answer_program_retry")
-COMPILE_TOOL = "compile_answer_program"
-INTENT_TOOL_PREFIX = "compile_intent_"
+COMPILER_VERSION = versions.active(PACKAGE, "semantic_request")
+REPAIR_VERSION = versions.active(PACKAGE, "semantic_request_retry")
 _FENCED = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 
@@ -35,6 +33,8 @@ class CompileExchange:
     parse_error: str = ""
     defect: dict = field(default_factory=dict)
     usage_reported: bool = False
+    provider_adapter: str = ""
+    live_provider: bool = False
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,7 @@ class CompilationResult:
     program: AnswerProgram | None
     validation: ValidationResult | None
     exchanges: tuple[CompileExchange, ...]
+    semantic_outcome: SemanticOutcome | None = None
     failure_tag: str = ""
     failure_detail: str = ""
 
@@ -78,7 +79,7 @@ def _exchange(modality: str, result) -> CompileExchange:
 
 
 class AnswerProgramCompiler:
-    """Compile against one manifest; never holds a registry or projection."""
+    """Select meaning once and lower it against one data-blind manifest."""
 
     def __init__(self, adapter, validator, manifest, policy, *, modality="",
                  expected_resolved_model=""):
@@ -90,23 +91,34 @@ class AnswerProgramCompiler:
             "native-structured" if hasattr(adapter, "converse") else "text-json")
         self.expected_resolved_model = str(expected_resolved_model or "")
         self.exchanges: list[CompileExchange] = []
-        self._intents = KnownIntentRegistry()
+        self._families = SemanticFamilyRegistry()
+
+    def _provider_exchange(self, exchange):
+        from vivacore.models import AnthropicAdapter, OpenAICompatAdapter
+        adapter_type = type(self._adapter)
+        exchange.provider_adapter = (
+            f"{adapter_type.__module__}.{adapter_type.__qualname__}")
+        exchange.live_provider = adapter_type in {
+            AnthropicAdapter, OpenAICompatAdapter}
+        return exchange
 
     def compile(self, context: QuestionContext) -> CompilationResult:
         self.exchanges = []
-        defect = None
+        defects = ()
         previous = None
         last_validation = None
+        semantic = None
         for attempt in range(self._policy.max_model_attempts):
             try:
-                raw, exchange = self._call(context, defect, previous)
+                raw, exchange = self._call(context, defects, previous)
             except _ReplyError as error:
                 self.exchanges.append(error.exchange)
                 previous = error.raw
-                defect = ValidationDefect("invalid_contract", "$", str(error))
+                defects = (ValidationDefect("invalid_semantic_contract", "$",
+                                            str(error)),)
                 error.exchange.parse_ok = False
                 error.exchange.parse_error = str(error)
-                error.exchange.defect = defect.to_dict()
+                error.exchange.defect = defects[0].to_dict()
                 continue
             except Exception as error:
                 from vivacore.models import AdapterError
@@ -117,8 +129,9 @@ class AnswerProgramCompiler:
                     parse_ok=False, parse_error=str(error),
                     defect={"tag": "model_unreachable", "path": "$",
                             "message": str(error), "repairable": False}))
-                return CompilationResult(None, None, tuple(self.exchanges),
-                                         "model_unreachable", str(error))
+                return CompilationResult(
+                    None, None, tuple(self.exchanges), None,
+                    "model_unreachable", str(error))
             if (self.expected_resolved_model
                     and exchange.resolved_model != self.expected_resolved_model):
                 exchange.parse_ok = False
@@ -127,46 +140,59 @@ class AnswerProgramCompiler:
                     "tag": "model_profile_mismatch", "path": "$",
                     "message": exchange.parse_error, "repairable": False}
                 self.exchanges.append(exchange)
-                return CompilationResult(None, None, tuple(self.exchanges),
-                                         "model_profile_mismatch",
-                                         exchange.parse_error)
+                return CompilationResult(
+                    None, None, tuple(self.exchanges), None,
+                    "model_profile_mismatch", exchange.parse_error)
             self.exchanges.append(exchange)
             previous = raw
             try:
-                program = self._program(raw)
+                semantic = self._families.parse(raw, context)
             except (ContractError, TypeError, ValueError) as error:
-                defect = ValidationDefect("invalid_contract", "$", str(error))
+                defects = (ValidationDefect("invalid_semantic_contract", "$",
+                                            str(error)),)
                 exchange.parse_ok = False
                 exchange.parse_error = str(error)
-                exchange.defect = defect.to_dict()
+                exchange.defect = defects[0].to_dict()
                 continue
+            if semantic.kind == "unsupported":
+                return CompilationResult(
+                    None, None, tuple(self.exchanges), semantic,
+                    "unsupported_family",
+                    str((semantic.detail or {}).get("requested_family") or ""))
+            program = self._families.lower(semantic, self._manifest)
             checked = self._validator.validate(program)
             last_validation = checked
             if checked.ok:
-                return CompilationResult(program, checked, tuple(self.exchanges))
-            defect = next((item for item in checked.defects if item.repairable),
-                          checked.defects[0] if checked.defects else None)
+                return CompilationResult(program, checked, tuple(self.exchanges),
+                                         semantic)
+            defects = tuple(checked.defects)
             exchange.parse_ok = False
-            exchange.parse_error = defect.message if defect else ""
-            exchange.defect = defect.to_dict() if defect else {}
-            if defect is None or not defect.repairable:
-                return CompilationResult(None, checked, tuple(self.exchanges),
-                                         "invalid_program",
-                                         defect.message if defect else "")
-        return CompilationResult(None, last_validation, tuple(self.exchanges),
-                                 "invalid_program",
-                                 defect.message if defect else "")
+            exchange.parse_error = "; ".join(item.message for item in defects)
+            exchange.defect = {"tag": "invalid_lowered_program",
+                               "defects": [item.to_dict() for item in defects]}
+            return CompilationResult(
+                None, checked, tuple(self.exchanges), semantic,
+                "invalid_lowered_program", exchange.parse_error)
+        detail = "; ".join(item.message for item in defects)
+        return CompilationResult(
+            None, last_validation, tuple(self.exchanges), semantic,
+            "invalid_semantic_request", detail)
 
-    def _call(self, context, defect, previous):
+    def _call(self, context, defects, previous):
         if self.modality == "native-structured":
-            return self._native(context, defect, previous)
-        return self._text(context, defect, previous)
+            return self._native(context, defects, previous)
+        return self._text(context, defects, previous)
 
     def _inputs(self, context) -> dict:
-        return {"context": context.to_dict(),
-                "manifest": self._manifest.to_dict(),
-                "policy": self._policy.to_dict(),
-                "schema": compiler_output_json_schema(self._intents)}
+        sent = {name: getattr(context, name) for name in
+                ("question", "prior_turns", "today", "locale",
+                 "currency_convention")}
+        sent["prior_turns"] = [{"question": q, "answer": a}
+                               for q, a in context.prior_turns]
+        return {"context": sent,
+                "catalog": self._families.model_catalog(),
+                "catalog_digest": self._families.catalog_digest,
+                "schema": self._families.output_schema()}
 
     def _prompt(self, context) -> str:
         inputs = self._inputs(context)
@@ -174,39 +200,35 @@ class AnswerProgramCompiler:
             **{key: json.dumps(value, sort_keys=True, separators=(",", ":"))
                for key, value in inputs.items()})
 
-    @staticmethod
-    def _repair(defect) -> str:
+    def _repair(self, defects) -> str:
         return promptstore.load(PROMPTS, REPAIR_VERSION).format(
-            tag=defect.tag, path=defect.path, message=defect.message,
-            accepted=json.dumps(compiler_output_json_schema(), sort_keys=True,
+            defects=json.dumps([item.to_dict() for item in defects], sort_keys=True,
+                               separators=(",", ":")),
+            accepted=json.dumps(self._families.output_schema(), sort_keys=True,
                                 separators=(",", ":")))
 
-    def _native(self, context, defect, previous):
+    def _native(self, context, defects, previous):
         messages = [{"role": "system", "content": self._prompt(context)},
-                    {"role": "user", "content": json.dumps(context.to_dict(),
+                    {"role": "user", "content": json.dumps(
+                        self._inputs(context)["context"],
                                                              sort_keys=True)}]
-        if defect is not None:
+        if defects:
             messages.extend([
                 {"role": "assistant", "content": json.dumps(previous,
                                                                sort_keys=True)},
-                {"role": "user", "content": self._repair(defect)},
+                {"role": "user", "content": self._repair(defects)},
             ])
-        tools = [{"name": COMPILE_TOOL,
-                  "description": "Compile one complete open-ended AnswerProgram.",
-                  "parameters": program_json_schema()}]
-        tools.extend({"name": INTENT_TOOL_PREFIX + intent_id,
-                      "description": self._intents.get(intent_id).description,
-                      "parameters": self._intents.get(intent_id).parameter_schema}
-                     for intent_id in self._intents.ids)
+        tools = list(self._families.model_tools())
         turn = self._adapter.converse(messages, tools)
-        exchange = _exchange(self.modality, turn)
+        exchange = self._provider_exchange(_exchange(self.modality, turn))
         calls = list(getattr(turn, "tool_calls", ()) or ())
         if len(calls) != 1:
-            raise _ReplyError(
-                "compiler reply must call compile_answer_program once", exchange)
+            raise _ReplyError("semantic reply must call one selection tool",
+                              exchange)
         fn = (calls[0] or {}).get("function") or {}
         name = str(fn.get("name") or "")
-        if name != COMPILE_TOOL and not name.startswith(INTENT_TOOL_PREFIX):
+        known = {tool["name"] for tool in tools}
+        if name not in known:
             raise _ReplyError("compiler reply called an unknown function", exchange)
         try:
             raw = json.loads(fn.get("arguments") or "")
@@ -214,37 +236,30 @@ class AnswerProgramCompiler:
             raise _ReplyError(f"compiler arguments are not JSON: {error}",
                               exchange) from None
         if not isinstance(raw, dict):
-            raise _ReplyError("compiled AnswerProgram must be an object", exchange,
+            raise _ReplyError("semantic selection must be an object", exchange,
                               raw)
-        if name.startswith(INTENT_TOOL_PREFIX):
-            intent_id = name[len(INTENT_TOOL_PREFIX):]
-            if intent_id not in self._intents.ids:
-                raise _ReplyError("compiler reply called an unknown intent", exchange,
-                                  raw)
-            raw = {"request_version": KNOWN_INTENT_REQUEST_VERSION,
-                   "capability_manifest_digest": self._manifest.digest,
-                   "intent_id": intent_id, "parameters": raw}
+        if name.startswith("select_"):
+            family_id = name[len("select_"):]
+            raw = {"request_version": SEMANTIC_REQUEST_VERSION,
+                   "catalog_digest": self._families.catalog_digest,
+                   "outcome": "request", "family": family_id, **raw}
+        else:
+            outcome = {"semantic_clarification": "clarify",
+                       "semantic_assumption": "needs_assumption",
+                       "semantic_outside_domain": "outside_domain",
+                       "semantic_unsupported": "unsupported"}[name]
+            raw = {"request_version": SEMANTIC_REQUEST_VERSION,
+                   "outcome": outcome, **raw}
         return raw, exchange
 
-    def _program(self, raw):
-        if raw.get("request_version") != KNOWN_INTENT_REQUEST_VERSION:
-            return AnswerProgram.from_dict(raw)
-        if set(raw) != {"request_version", "capability_manifest_digest",
-                       "intent_id", "parameters"}:
-            raise ContractError("known intent request has unknown or missing fields")
-        if raw["capability_manifest_digest"] != self._manifest.digest:
-            raise ContractError("known intent request used a different manifest")
-        return self._intents.instantiate(str(raw["intent_id"]),
-                                         raw["parameters"], self._manifest)
-
-    def _text(self, context, defect, previous):
+    def _text(self, context, defects, previous):
         prompt = self._prompt(context)
-        if defect is not None:
-            prompt += "\n\n" + self._repair(defect)
-            prompt += "\n\nRejected program:\n" + json.dumps(previous,
-                                                                  sort_keys=True)
+        if defects:
+            prompt += "\n\n" + self._repair(defects)
+            prompt += "\n\nRejected semantic output:\n" + json.dumps(
+                previous, sort_keys=True)
         result = self._adapter.extract([], prompt)
-        exchange = _exchange(self.modality, result)
+        exchange = self._provider_exchange(_exchange(self.modality, result))
         text = str(getattr(result, "text", "") or "").strip()
         blocks = _FENCED.findall(text)
         if len(blocks) > 1:
@@ -256,16 +271,15 @@ class AnswerProgramCompiler:
             raise _ReplyError(f"compiler reply is not JSON: {error}", exchange,
                               text) from None
         if not isinstance(raw, dict):
-            raise _ReplyError("compiled AnswerProgram must be an object", exchange,
+            raise _ReplyError("semantic selection must be an object", exchange,
                               raw)
         return raw, exchange
 
 
 def compiler_output_json_schema(registry=None):
-    return {"oneOf": [program_json_schema(),
-                      intent_request_json_schema(registry)]}
+    return (registry or SemanticFamilyRegistry()).output_schema()
 
 
 __all__ = ["AnswerProgramCompiler", "CompilationResult", "CompileExchange",
-           "COMPILER_VERSION", "REPAIR_VERSION", "COMPILE_TOOL",
-           "INTENT_TOOL_PREFIX"]
+           "COMPILER_VERSION", "REPAIR_VERSION",
+           "compiler_output_json_schema"]

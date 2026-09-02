@@ -7,7 +7,9 @@ from .evidence import EvidenceGraph
 from .execute import ExecutionResult, NodeExecution, ProgramExecutor
 from .runtime import AnswerProgramRuntime, RuntimeResult
 from .outcomes import AnswerOutcome
-from .intents import KnownIntent, KnownIntentRegistry
+from .intents import (SEMANTIC_REQUEST_VERSION, SemanticFamily,
+                      SemanticFamilyRegistry, SemanticOutcome,
+                      SemanticRequest)
 from .feedback import BreadthFeedback
 from .eval import (AdversarialCase, AdversarialScore, evaluate_adversarial,
                    load_adversarial_cases, load_cases)
@@ -36,7 +38,8 @@ __all__ = [
     "BindingResult", "DeterministicBinder", "UnboundSelector", "EvidenceGraph",
     "ExecutionResult", "NodeExecution", "ProgramExecutor",
     "AnswerProgramRuntime", "RuntimeResult",
-    "KnownIntent", "KnownIntentRegistry",
+    "SEMANTIC_REQUEST_VERSION", "SemanticFamily", "SemanticFamilyRegistry",
+    "SemanticOutcome", "SemanticRequest",
     "BreadthFeedback",
     "AdversarialCase", "AdversarialScore", "evaluate_adversarial",
     "load_adversarial_cases", "load_cases",

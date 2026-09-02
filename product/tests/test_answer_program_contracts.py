@@ -2,20 +2,23 @@
 
 import copy
 import json
+import pickle
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 from vivacore import versions
 
-from _tool_test_support import _events
+from _tool_test_support import (_events, Provenance, account_opened,
+                                closing_balance_observed)
 from viva.answer_program import (AnswerProgram, AnswerResourcePolicy,
                                  AdmissionReport,
                                  AdmissionThresholds, AnswerProgramCompiler,
                                  BreadthFeedback, CapabilityManifest,
                                  DeterministicBinder, ProgramExecutor,
                                  ProgramValidator, QuestionContext,
-                                 KnownIntentRegistry, admitted_profile,
+                                 admitted_profile,
                                  check_profile, check_single_path,
                                  current_contract_digests,
                                  evaluate_admission, replay_capture,
@@ -23,11 +26,14 @@ from viva.answer_program import (AnswerProgram, AnswerResourcePolicy,
                                  run_live_suite, write_release_bundle)
 from viva.answer_program import validate_admission_report
 from viva.answer_program.compiler import COMPILER_VERSION, compiler_output_json_schema
-from viva.answer_program.eval import CaseScore
-from viva.answer_program.intents import KNOWN_INTENT_REQUEST_VERSION
+from viva.answer_program.eval import CaseScore, SemanticEvalCase
+from viva.answer_program.intents import (SEMANTIC_REQUEST_VERSION,
+                                         SemanticFamilyRegistry,
+                                         SemanticOutcome, SemanticRequest)
 from viva.answer_program.schema import ANSWER_PROGRAM_VERSION, ContractError
 from viva.answer_program.schema import _generated_program_json_schema, program_json_schema
-from viva.answer_program.eval import (EvalCase, evaluate_adversarial,
+from viva.answer_program.eval import (EvalCase, derive_semantic_oracle,
+                                      evaluate_adversarial,
                                       load_adversarial_cases, load_cases, score)
 from viva.ledger import LedgerProjection
 from viva.session import Session
@@ -37,6 +43,34 @@ from viva.tools.registry import PACKAGE
 
 def _registry():
     return default_registry(LedgerProjection(_events()), today="2026-03-01")
+
+
+def _fully_validated_forged_report(manifest):
+    from vivacore.models import AnthropicAdapter
+
+    cases = load_cases()
+    base = evaluate_admission(
+        [CaseScore(case.id, True, True, (), 0, 0) for case in cases],
+        attempts=[1] * len(cases), first_attempt_valid=[True] * len(cases),
+        thresholds=AdmissionThresholds(1, 1, 1),
+        identity={"provider": "anthropic", "requested_model": "copied",
+                  "resolved_model": "copied", "endpoint": "copied",
+                  "modality": "native-structured", "locale_family": "en"},
+        contract_digests=current_contract_digests(
+            manifest, AnswerResourcePolicy()),
+        adversarial_passed=True)
+    adapter_name = f"{AnthropicAdapter.__module__}.{AnthropicAdapter.__qualname__}"
+    measurements = [{"case_id": case.id, "attempts": 1}
+                    for case in cases]
+    evidence = tuple({
+        "case_id": case.id, "attempt": 1, "oracle_key": case.oracle_key,
+        "oracle_digest": "copied-oracle", "request_digest": "copied-request",
+        "response_digest": "copied-response", "resolved_model": "copied",
+        "modality": "native-structured", "provider_adapter": adapter_name,
+        "usage_reported": True} for case in cases)
+    return replace(
+        base, metrics={**base.metrics, "turn_measurements": measurements},
+        attempt_evidence=evidence, publication_source="live_provider_suite")
 
 
 def _program(manifest):
@@ -211,35 +245,46 @@ def test_non_answer_modes_cannot_smuggle_reads():
     assert "clarification_has_execution" in {d.tag for d in checked.defects}
 
 
-def _turn(raw):
+def _turn(raw, name="compile_answer_program"):
+    raw = dict(raw)
+    if name.startswith("select_") and "parameter_sources" not in raw:
+        raw["parameter_sources"] = {
+            key: {"source": "question", "quote": value,
+                  "derivation": "verbatim"}
+            for key, value in dict(raw.get("parameters") or {}).items()}
     return SimpleNamespace(
         request={"sent": True}, response={"usage": {"prompt_tokens": 4}},
         input_tokens=4, output_tokens=2, cost_usd=0.001, latency_s=0.1,
         resolved_model="synthetic-compiler", message={"role": "assistant"},
         tool_calls=[{"id": "compile-1", "function": {
-            "name": "compile_answer_program", "arguments": json.dumps(raw)}}])
+            "name": name, "arguments": json.dumps(raw)}}])
 
 
 def _context(manifest):
-    return QuestionContext(question="what is my balance?", today="2026-03-01",
+    return QuestionContext(
+                           question=("what is my Everyday Checking balance and "
+                                     "groceries from 2026-01-01 to 2026-01-31?"),
+                           today="2026-03-01",
                            locale="en-US", currency_convention="locale",
                            capability_manifest_digest=manifest.digest,
                            shape_version="speak-shape-v13")
 
 
-def test_compiler_gets_one_targeted_repair_before_any_read():
+def test_compiler_repairs_a_malformed_semantic_request_before_any_read():
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
-    invalid = copy.deepcopy(_program(manifest))
-    invalid["bindings"][0]["selector"]["quantity"] = "spending"
-    valid = _program(manifest)
+    invalid = {"parameters": {},
+               "requested_claims": ["balance", "measurement_date"]}
+    valid = {"parameters": {"account_phrase": "Everyday Checking"},
+             "requested_claims": ["balance", "measurement_date"]}
 
     class Adapter:
         def __init__(self):
             self.seen = []
         def converse(self, messages, tools):
             self.seen.append((messages, tools))
-            return _turn(invalid if len(self.seen) == 1 else valid)
+            return _turn(invalid if len(self.seen) == 1 else valid,
+                         "select_named_account_balance")
 
     adapter = Adapter()
     policy = AnswerResourcePolicy()
@@ -249,13 +294,13 @@ def test_compiler_gets_one_targeted_repair_before_any_read():
 
     assert compiled.ok
     assert len(compiled.exchanges) == 2
-    assert compiled.exchanges[0].defect["tag"] == "selector_quantity_mismatch"
-    assert "selector_quantity_mismatch" in adapter.seen[1][0][-1]["content"]
+    assert compiled.exchanges[0].defect["tag"] == "invalid_semantic_contract"
+    assert "account_phrase" in adapter.seen[1][0][-1]["content"]
     assert all('"results":' not in json.dumps(messages)
                for messages, _ in adapter.seen)
 
 
-def test_text_compiler_uses_the_same_contract_and_one_call_on_success():
+def test_text_compiler_uses_the_same_compact_contract_and_one_call_on_success():
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
 
@@ -265,7 +310,16 @@ def test_text_compiler_uses_the_same_contract_and_one_call_on_success():
         def extract(self, pages, prompt):
             self.prompts.append(prompt)
             return SimpleNamespace(
-                text=json.dumps(_program(manifest)), request={"prompt": True},
+                text=json.dumps({
+                    "request_version": SEMANTIC_REQUEST_VERSION,
+                    "catalog_digest": SemanticFamilyRegistry().catalog_digest,
+                    "outcome": "request", "family": "named_account_balance",
+                    "parameters": {"account_phrase": "Everyday Checking"},
+                    "parameter_sources": {"account_phrase": {
+                        "source": "question", "quote": "Everyday Checking",
+                        "derivation": "verbatim"}},
+                    "requested_claims": ["balance", "measurement_date"]}),
+                request={"prompt": True},
                 response={}, input_tokens=3, output_tokens=2, cost_usd=0.0,
                 latency_s=0.1, resolved_model="synthetic-text")
 
@@ -275,7 +329,8 @@ def test_text_compiler_uses_the_same_contract_and_one_call_on_success():
         adapter, ProgramValidator(manifest, policy), manifest, policy
     ).compile(_context(manifest))
     assert compiled.ok and len(compiled.exchanges) == 1
-    assert "CapabilityManifest" in adapter.prompts[0]
+    assert "Reviewed semantic catalog" in adapter.prompts[0]
+    assert "financial-query-v1" not in adapter.prompts[0]
 
 
 def test_compiler_rejects_a_provider_resolved_model_outside_the_profile():
@@ -284,7 +339,10 @@ def test_compiler_rejects_a_provider_resolved_model_outside_the_profile():
 
     class Adapter:
         def converse(self, messages, tools):
-            return _turn(_program(manifest))
+            return _turn({
+                "parameters": {"account_phrase": "Everyday Checking"},
+                "requested_claims": ["balance", "measurement_date"]},
+                "select_named_account_balance")
 
     policy = AnswerResourcePolicy()
     compiled = AnswerProgramCompiler(
@@ -437,8 +495,17 @@ def test_session_carries_text_context_but_reestablishes_current_evidence():
 
     def converse(messages, tools):
         adapter.seen.append((messages, tools))
-        manifest = CapabilityManifest.from_registry(registry)
-        return _turn(_executable_program(manifest).to_dict())
+        payload = {
+            "parameters": {"account_phrase": "checking"},
+            "parameter_sources": {"account_phrase": {
+                "source": "question" if len(adapter.seen) == 1 else "prior_turn",
+                "turn": 0,
+                "quote": "checking", "derivation": "verbatim"}},
+            "requested_claims": ["balance", "measurement_date"]}
+        if len(adapter.seen) == 1:
+            del payload["parameter_sources"]["account_phrase"]["turn"]
+        return _turn(payload,
+            "select_named_account_balance")
 
     adapter.converse = converse
 
@@ -464,7 +531,10 @@ def test_session_capture_records_program_validation_execution_and_outcome():
 
     class Adapter:
         def converse(self, messages, tools):
-            return _turn(_executable_program(manifest).to_dict())
+            return _turn({
+                "parameters": {"account_phrase": "checking"},
+                "requested_claims": ["balance", "measurement_date"]},
+                "select_named_account_balance")
 
     class Log:
         def __init__(self):
@@ -490,15 +560,72 @@ def test_session_capture_records_program_validation_execution_and_outcome():
     assert payload["verdict"]["status"] == "answered"
     assert payload["verdict"]["figures"]
     assert payload["prior_context_digest"]
-    assert {"answer_program_schema", "financial_query_schema",
-            "capability_manifest", "persona"} <= set(payload["prompt_versions"])
+    assert payload["semantic_request"]["family"] == "named_account_balance"
+    assert payload["semantic_request_digest"]
+    assert payload["lowered_program_digest"]
+    assert {"semantic_request", "semantic_request_schema",
+            "semantic_family_registry", "answer_program_schema",
+            "financial_query_schema", "capability_manifest", "persona"} <= set(
+                payload["prompt_versions"])
 
 
-def test_the_frozen_admission_corpus_has_ten_fully_keyed_questions():
+def test_the_frozen_admission_corpus_has_35_exact_turns_and_paraphrases():
     cases = load_cases()
-    assert len(cases) == 10
-    assert all(case.required_nodes and case.required_semantic_claims for case in cases)
-    assert all(case.max_model_attempts <= 2 for case in cases)
+    exact = [case for case in cases if case.exact]
+    assert len(exact) == 35
+    assert len({case.exact_group for case in exact}) == 7
+    assert all(sum(item.exact_group == case.exact_group and item.exact
+                   for item in cases) == 5 for case in exact)
+    answered = [case for case in cases
+                if case.answerability_status == "answered"]
+    assert all(case.expected_family and case.expected_claims for case in answered)
+    assert any(case.prior_turns for case in cases)
+    assert any(case.answerability_status == "needs_clarification"
+               for case in cases)
+    assert all(case.oracle_key for case in cases)
+    assert all(case.max_model_attempts == 1 for case in cases)
+
+
+def test_all_45_frozen_cases_remain_scorable_under_a_bad_result_mutation():
+    cases = load_cases()
+    reached = SimpleNamespace(defect={})
+    bad = SimpleNamespace(
+        result=SimpleNamespace(status="failed", outcome_tag="bad_mutation",
+                               figures=[], text=""),
+        compilation=SimpleNamespace(
+            exchanges=[reached], semantic_outcome=None, program=None))
+
+    measured = [score(replace(case, oracle={
+        "oracle_key": case.oracle_key, "figures": [],
+        "exact_figures": False}), bad) for case in cases]
+
+    assert len(measured) == 45
+    assert all(item.measured for item in measured)
+    assert all(not item.passed for item in measured)
+
+
+def test_an_exact_ambiguous_account_clarification_passes_semantic_scoring():
+    case = next(item for item in load_cases() if item.id == "ambiguous-account")
+    families = SemanticFamilyRegistry()
+    detail = {"tag": "ambiguous_account", "question": "Which account?",
+              "options": [{"id": "one", "label": "First account"},
+                          {"id": "two", "label": "Second account"}]}
+    semantic = SemanticOutcome("clarify", detail=detail)
+    program = families.lower(
+        semantic, CapabilityManifest.from_registry(_registry()))
+    runtime = SimpleNamespace(
+        result=SimpleNamespace(
+            status="needs_clarification", outcome_tag="ambiguous_account",
+            figures=[], text="Which account?"),
+        compilation=SimpleNamespace(
+            exchanges=[SimpleNamespace(defect={})],
+            semantic_outcome=semantic, program=program))
+
+    measured = score(replace(case, oracle={
+        "oracle_key": case.oracle_key, "figures": [],
+        "exact_figures": True}), runtime)
+
+    assert measured.measured and measured.passed, measured.defects
 
 
 def test_the_frozen_adversarial_corpus_is_rejected_before_execution():
@@ -510,38 +637,39 @@ def test_the_frozen_adversarial_corpus_is_rejected_before_execution():
     assert all(item.passed for item in scores), scores
 
 
-def test_keyed_scoring_detects_a_wrong_but_cited_figure():
-    case = EvalCase(
-        id="wrong-cited", question="balance?", prior_turns=(),
-        answerability_status="answered", accepted_intents=("balance_read",),
-        required_semantic_claims=("balance",),
-        required_nodes=({"tool": "query_ledger", "args": {"entity": "balances"}},),
-        permitted_supporting_nodes=(),
-        expected_figures=({"value": "600.00", "currency": "USD",
-                           "quantity": "balance", "grade": "corroborated"},),
-        expected={}, expected_outcome_tag="", forbidden_claims=(),
-        max_model_attempts=2)
-    program = SimpleNamespace(
-        question_kind="balance_read",
-        nodes=[SimpleNamespace(tool="query_ledger", kind="tool_read",
-                               args={"entity": "balances"},
-                               importance="required")])
+def test_semantic_scoring_detects_a_wrong_family_even_with_cited_evidence():
+    case = SemanticEvalCase(
+        id="wrong-family", exact_group="checking", exact=True,
+        question="balance?", prior_turns=(), answerability_status="answered",
+        expected_family="named_account_balance",
+        expected_parameters={"account_phrase": "checking"},
+        expected_claims=("balance", "measurement_date"),
+        oracle_key="wrong-family",
+        oracle={"figures": [], "exact_figures": False})
+    families = SemanticFamilyRegistry()
+    request = SemanticRequest(
+        "net_worth", {}, families.get("net_worth").claims,
+        families.catalog_digest)
     wrong = SimpleNamespace(
         result=SimpleNamespace(
             status="answered", outcome_tag="",
-            figures=[{"value": "601.00", "currency": "USD",
-                      "quantity": "balance", "grade": "corroborated",
+            figures=[{"value": "1.00", "currency": "USD",
+                      "quantity": "net_worth", "grade": "corroborated",
                       "kind": "financial", "record_ids": ["synthetic-record"]}]),
-        compilation=SimpleNamespace(exchanges=[object()], program=program))
+        compilation=SimpleNamespace(
+            exchanges=[object()], semantic_outcome=SemanticOutcome(
+                "request", request),
+            program=SimpleNamespace(question_kind="net_worth", nodes=[])))
 
     measured = score(case, wrong)
     assert measured.measured and not measured.passed
-    assert measured.confidently_wrong == 1
+    assert "wrong_family" in measured.defects
     assert measured.unsupported_figures == 0
 
 
 def test_keyed_scoring_never_grades_a_transport_failure_as_a_model_answer():
-    case = load_cases()[0]
+    case = replace(load_cases()[0], oracle={
+        "figures": [], "exact_figures": False})
     unreachable = SimpleNamespace(
         result=SimpleNamespace(status="failed", outcome_tag="model_unreachable",
                                figures=[]),
@@ -554,33 +682,43 @@ def test_keyed_scoring_never_grades_a_transport_failure_as_a_model_answer():
     assert measured.confidently_wrong == 0
 
 
-def test_keyed_scoring_enforces_semantics_caveats_and_forbidden_claims():
-    case = load_cases()[0]
+def test_semantic_scoring_rejects_an_unsupported_financial_figure():
+    case = replace(load_cases()[0], oracle={
+        "figures": [{"value": "600.00", "currency": "USD",
+                     "quantity": "balance", "dated": "2026-01-31",
+                     "subject_record_id": "chk"}]})
     manifest = CapabilityManifest.from_registry(_registry())
-    program = KnownIntentRegistry().instantiate("net_worth", {}, manifest)
+    families = SemanticFamilyRegistry()
+    request = SemanticRequest(
+        case.expected_family, dict(case.expected_parameters),
+        tuple(case.expected_claims), families.catalog_digest)
+    semantic = SemanticOutcome("request", request)
+    program = families.lower(semantic, manifest)
     result = SimpleNamespace(
-        status="answered", outcome_tag="", text="Converted currency total.",
-        figures=[{"value": "2100.00", "currency": "USD",
-                  "quantity": "net_worth", "grade": "corroborated",
-                  "kind": "financial", "record_ids": ["synthetic-record"],
-                  "boundary": {"whole": True}}])
+        status="answered", outcome_tag="", text="Unsupported balance.",
+        figures=[{"value": "1.00", "currency": "USD",
+                  "quantity": "balance", "grade": "corroborated",
+                  "kind": "financial", "record_ids": [],
+                  "dated": "2024-01-01", "boundary": {"whole": False}}])
     measured = score(case, SimpleNamespace(
         result=result, compilation=SimpleNamespace(
-            exchanges=[SimpleNamespace(defect={})], program=program)))
+            exchanges=[SimpleNamespace(defect={})], semantic_outcome=semantic,
+            program=program)))
     assert not measured.passed
-    assert {"missing_caveat", "forbidden_claim"} <= set(measured.defects)
-    assert measured.keyed_semantic_errors >= 2
+    assert "unsupported_figure" in measured.defects
+    assert measured.unsupported_figures == 1
 
 
-def test_live_admission_report_is_bound_to_measured_identity_and_contracts():
+def test_live_admission_report_is_bound_to_measured_identity_and_contracts(
+        tmp_path):
     case = load_cases()[0]
 
     class Adapter:
         def converse(self, messages, tools):
-            registry = _registry()
-            manifest = CapabilityManifest.from_registry(registry)
-            program = KnownIntentRegistry().instantiate("net_worth", {}, manifest)
-            return _turn(program.to_dict())
+            return _turn({
+                "parameters": dict(case.expected_parameters),
+                "requested_claims": list(case.expected_claims)},
+                "select_" + case.expected_family)
 
     def factory(validator, manifest, policy):
         return AnswerProgramCompiler(Adapter(), validator, manifest, policy)
@@ -588,56 +726,106 @@ def test_live_admission_report_is_bound_to_measured_identity_and_contracts():
     factory.admission_identity = {
         "provider": "synthetic", "requested_model": "compiler-route",
         "endpoint": "local", "modality": "native-structured"}
-    report, scores, _turns = run_live_suite(
+    measured_run, scores, _turns = run_live_suite(
         cases=(case,), registry_factory=_registry, compiler_factory=factory,
         thresholds=AdmissionThresholds(0, 0, 0), today="2026-03-01",
         locale="en-US")
+    report = measured_run.report
 
     assert not report.admitted and scores[0].passed
     assert "incomplete_keyed_corpus" in report.hard_failures
+    assert "provider_double_not_admissible" in report.hard_failures
+    assert len(report.attempt_evidence) == 1
+    assert report.attempt_evidence[0]["request_digest"]
+    assert report.attempt_evidence[0]["response_digest"]
+    assert report.attempt_evidence[0]["oracle_key"] == case.oracle_key
+    assert report.attempt_evidence[0]["oracle_digest"]
+    with pytest.raises(TypeError, match="non-serializable"):
+        pickle.dumps(measured_run)
+    forged = _fully_validated_forged_report(
+        CapabilityManifest.from_registry(_registry()))
+    assert not validate_admission_report(forged)
+    with pytest.raises(TypeError, match="immutable"):
+        measured_run.report = forged
     with pytest.raises(ValueError, match="cannot be published"):
-        admitted_profile(report, manifest=CapabilityManifest.from_registry(_registry()))
+        admitted_profile(
+            measured_run,
+            manifest=CapabilityManifest.from_registry(_registry()))
     assert report.identity["resolved_model"] == "synthetic-compiler"
     assert report.identity["locale_family"] == "en"
     assert report.contract_digests["program_schema"]
     assert report.adversarial_passed
 
+    report.metrics["cases"] = 45
+    with pytest.raises(ValueError, match="report was mutated"):
+        admitted_profile(
+            measured_run,
+            manifest=CapabilityManifest.from_registry(_registry()))
+    with pytest.raises(ValueError, match="report was mutated"):
+        write_release_bundle(
+            tmp_path / "mutated.json", profile=None,
+            manifest=CapabilityManifest.from_registry(_registry()),
+            measured_run=measured_run)
 
-def test_all_ten_known_intents_instantiate_reviewed_programs_on_the_one_runtime():
+
+def test_admission_oracle_is_derived_from_the_fresh_fixture_not_a_score():
+    case = load_cases()[0]
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
-    intents = KnownIntentRegistry()
-    cases = {case.accepted_intents[0]: case for case in load_cases()}
-    assert len(intents.ids) == 10
-    assert {item["id"] for item in manifest.known_intents} == set(intents.ids)
-    for intent_id in intents.ids:
-        parameters = ({"from": "2026-01-01", "to": "2026-01-31"}
-                      if intent_id == "largest_spending_movements" else {})
-        program = intents.instantiate(intent_id, parameters, manifest)
+
+    oracle = derive_semantic_oracle(
+        case, registry, manifest, AnswerResourcePolicy(), locale="en-US")
+
+    assert oracle["oracle_key"] == "checking-balance"
+    assert oracle["figures"] == [{
+        "value": "600.00", "currency": "USD", "quantity": "balance",
+        "dated": "2026-01-31", "record_ids_exact": ["chk", "doc-jan"]}]
+
+
+def test_all_six_families_and_separate_inventory_use_the_one_runtime():
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry()
+    samples = {
+        "named_account_balance": {"account_phrase": "Everyday Checking"},
+        "needs_attention": {},
+        "category_spending_period": {
+            "category": "groceries", "from": "2026-01-01",
+            "to": "2026-01-31"},
+        "net_worth": {}, "credit_card_debt": {},
+        "classification_explanation": {
+            "movement_phrase": "greenfield market", "from": "2026-01-01",
+            "to": "2026-01-31"},
+        "account_inventory": {},
+    }
+    assert len(families.supported_ids) == 6
+    assert {item["id"] for item in manifest.known_intents} == set(families.ids)
+    for family_id, parameters in samples.items():
+        family_registry = registry
+        if family_id == "credit_card_debt":
+            account = "Liabilities:Cards:Household"
+            family_registry = default_registry(LedgerProjection([
+                account_opened(account, "liability", "Household Card", "USD",
+                               "2026-01-01"),
+                closing_balance_observed(
+                    account, "125.00", "2026-01-31",
+                    Provenance("card-doc", 1, "balance")),
+            ]), today="2026-03-01")
+        family = families.get(family_id)
+        semantic = SemanticOutcome("request", SemanticRequest(
+            family_id, parameters, family.claims, families.catalog_digest))
+        program = families.lower(semantic, manifest)
         checked = ProgramValidator(manifest, AnswerResourcePolicy()).validate(program)
-        assert checked.ok, (intent_id, checked.defects)
-        assert program.question_kind == intent_id
-        assert all(binding.reference_kind == "read_figures"
-                   for binding in program.bindings)
+        assert checked.ok, (family_id, checked.defects)
+        assert program.question_kind == family_id
         execution = ProgramExecutor(
-            registry, AnswerResourcePolicy(),
-            query_executor=registry.query_executor).execute(program, intent_id)
-        delivery = DeterministicBinder(registry).bind(program, execution)
-        if intent_id == "recurring_spending":
-            assert not delivery.result.answered
-            assert execution.nodes["recurring"].refusal == "insufficient_history"
-            delivery.result.status = "missing_data"
-            delivery.result.outcome_tag = "insufficient_history"
-        else:
-            assert delivery.result.answered, (intent_id, delivery.unbound)
-            delivery.result.status = cases[intent_id].answerability_status
-            assert delivery.result.figures
-            assert all(figure["record_ids"] for figure in delivery.result.figures)
-        measured = score(cases[intent_id], SimpleNamespace(
-            result=delivery.result,
-            compilation=SimpleNamespace(
-                exchanges=[SimpleNamespace(defect={})], program=program)))
-        assert measured.passed, (intent_id, measured.defects)
+            family_registry, AnswerResourcePolicy(),
+            query_executor=family_registry.query_executor).execute(
+                program, family_id)
+        delivery = DeterministicBinder(family_registry).bind(program, execution)
+        assert delivery.result.answered, (family_id, delivery.unbound)
+        assert delivery.result.figures
+        assert all(figure["record_ids"] for figure in delivery.result.figures)
 
 
 def test_installed_fqir_sources_statically_admit_category_share_of_income():
@@ -687,43 +875,30 @@ def test_installed_fqir_sources_statically_admit_category_share_of_income():
     assert checked.ok, checked.defects
 
 
-def test_keyed_scoring_rejects_extra_figures_and_wrong_runtime_boundaries():
+def test_semantic_scoring_rejects_a_broadened_lowered_program():
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
-    intents = KnownIntentRegistry()
-    cases = {case.accepted_intents[0]: case for case in load_cases()}
-
-    spending_program = intents.instantiate(
-        "monthly_spending_by_category", {}, manifest)
-    spending_execution = ProgramExecutor(
-        registry, AnswerResourcePolicy(),
-        query_executor=registry.query_executor).execute(spending_program, "case")
-    spending = DeterministicBinder(registry).bind(
-        spending_program, spending_execution).result
-    spending.figures.append({
-        "value": "25.00", "currency": "USD", "quantity": "spending",
-        "grade": "verified", "what": "transfer counted as spending",
-        "kind": "financial", "record_ids": ["transfer-record"],
-        "boundary": {"whole": False, "selected": [{
-            "kind": "period", "value": "2026-01-01", "to": "2026-01-31"}],
-            "cut": [{"kind": "nature", "value": "transfer"}]}})
-    measured = score(cases["monthly_spending_by_category"], SimpleNamespace(
-        result=spending, compilation=SimpleNamespace(
-            exchanges=[SimpleNamespace(defect={})], program=spending_program)))
-    assert "unexpected_keyed_figure" in measured.defects
-
-    balances_program = intents.instantiate("account_balances", {}, manifest)
-    balances_execution = ProgramExecutor(
-        registry, AnswerResourcePolicy(),
-        query_executor=registry.query_executor).execute(balances_program, "case")
-    balances = DeterministicBinder(registry).bind(
-        balances_program, balances_execution).result
-    for item in balances.figures:
-        item["boundary"] = {"whole": True}
-    measured = score(cases["account_balances"], SimpleNamespace(
-        result=balances, compilation=SimpleNamespace(
-            exchanges=[SimpleNamespace(defect={})], program=balances_program)))
-    assert not measured.passed and "wrong_keyed_figure" in measured.defects
+    families = SemanticFamilyRegistry()
+    case = replace(load_cases()[0], oracle={
+        "figures": [], "exact_figures": False})
+    semantic = SemanticOutcome("request", SemanticRequest(
+        case.expected_family, dict(case.expected_parameters),
+        tuple(case.expected_claims), families.catalog_digest))
+    inventory = families.get("account_inventory")
+    broadened = families.lower(SemanticOutcome("request", SemanticRequest(
+        "account_inventory", {}, inventory.claims, families.catalog_digest)),
+        manifest)
+    result = SimpleNamespace(
+        status="answered", outcome_tag="", figures=[{
+            "value": "1.00", "currency": "USD", "quantity": "balance",
+            "dated": "2024-01-01", "kind": "financial",
+            "record_ids": ["synthetic-record"], "boundary": {"whole": False}}])
+    measured = score(case, SimpleNamespace(
+        result=result, compilation=SimpleNamespace(
+            exchanges=[SimpleNamespace(defect={})], semantic_outcome=semantic,
+            program=broadened)))
+    assert not measured.passed
+    assert "wrong_lowered_family" in measured.defects
 
 
 def test_admission_report_recomputes_hard_metrics_instead_of_trusting_flags():
@@ -743,63 +918,63 @@ def test_admission_report_recomputes_hard_metrics_instead_of_trusting_flags():
     assert "admission_metric_failed:model_attempt_bound" in failures
 
 
-def test_compiler_can_choose_a_typed_known_intent_without_a_second_path():
+def test_compiler_can_choose_typed_semantics_without_a_second_path():
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
-    requested = {
-        "request_version": KNOWN_INTENT_REQUEST_VERSION,
-        "capability_manifest_digest": manifest.digest,
-        "intent_id": "largest_spending_movements",
-        "parameters": {"from": "2026-01-01", "to": "2026-01-31"},
-    }
+    requested = {"parameters": {
+        "category": "groceries", "from": "2026-01-01", "to": "2026-01-31"},
+        "requested_claims": ["spending", "period", "exclusions"]}
 
     class Adapter:
         def converse(self, messages, tools):
-            assert len(tools) == 11
-            turn = _turn(requested)
-            turn.tool_calls[0]["function"] = {
-                "name": "compile_intent_largest_spending_movements",
-                "arguments": json.dumps(requested["parameters"])}
-            return turn
+            assert len(tools) == 10
+            return _turn(requested, "select_category_spending_period")
 
     policy = AnswerResourcePolicy()
     compiled = AnswerProgramCompiler(
         Adapter(), ProgramValidator(manifest, policy), manifest, policy
     ).compile(_context(manifest))
-    assert compiled.ok and compiled.program.question_kind == requested["intent_id"]
+    assert compiled.ok
+    assert compiled.program.question_kind == "category_spending_period"
     assert compiled.program.nodes[0].args == {
-        "filters": {"window": {"from": "2026-01-01", "to": "2026-01-31"}}}
+        "entity": "aggregate", "metric": "spending", "group_by": "category",
+        "filters": {"category": "groceries", "window": {
+            "from": "2026-01-01", "to": "2026-01-31"}}}
     assert "oneOf" in compiler_output_json_schema()
 
 
-def test_known_intent_parameters_are_closed_and_preserve_required_scope():
-    manifest = CapabilityManifest.from_registry(_registry())
-    intents = KnownIntentRegistry()
-    with pytest.raises(ValueError, match="missing"):
-        intents.instantiate("largest_spending_movements", {}, manifest)
-    with pytest.raises(ValueError, match="unknown"):
-        intents.instantiate("net_worth", {"private_amount": "100"}, manifest)
+def test_semantic_parameters_are_closed_and_preserve_required_scope():
+    families = SemanticFamilyRegistry()
+    common = {"request_version": SEMANTIC_REQUEST_VERSION,
+              "catalog_digest": families.catalog_digest,
+              "outcome": "request"}
+    with pytest.raises(ContractError, match="missing"):
+        families.parse({**common, "family": "named_account_balance",
+                        "parameters": {}, "requested_claims": [
+                            "balance", "measurement_date"]})
+    with pytest.raises(ContractError, match="unknown"):
+        families.parse({**common, "family": "net_worth",
+                        "parameters": {"private_amount": "100"},
+                        "requested_claims": ["net_worth", "exclusions"]})
 
 
 def test_clarification_and_user_stipulation_remain_conversation_not_ledger_facts():
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
-    clarification = _program(manifest)
-    clarification.update(
-        mode="clarify", question_kind="ambiguous_period", shape=None, nodes=[],
-        bindings=[], clarification={"tag": "ambiguous_period",
-                                    "question": "Which month did you mean?",
-                                    "options": [{"id": "january",
-                                                 "label": "January"}]},
-        result_policy={})
-    answer = _executable_program(manifest).to_dict()
+    clarification = {"tag": "ambiguous_period",
+                     "question": "Which month did you mean?",
+                     "options": [{"id": "january", "label": "January"}]}
+    answer = {"parameters": {"account_phrase": "checking"},
+              "requested_claims": ["balance", "measurement_date"]}
 
     class Adapter:
         def __init__(self):
             self.calls = []
         def converse(self, messages, tools):
             self.calls.append(messages)
-            return _turn(clarification if len(self.calls) == 1 else answer)
+            if len(self.calls) == 1:
+                return _turn(clarification, "semantic_clarification")
+            return _turn(answer, "select_named_account_balance")
 
     adapter = Adapter()
     session = Session(
@@ -807,7 +982,8 @@ def test_clarification_and_user_stipulation_remain_conversation_not_ledger_facts
             adapter, validator, built, policy),
         today=lambda: "2026-03-01")
     first = session.ask("Was that month safe?")
-    second = session.ask("I mean January, and safe means a positive surplus.")
+    second = session.ask(
+        "I mean January, safe means a positive surplus, and check checking.")
     assert first.result.status == "needs_clarification"
     assert second.result.answered
     sent = json.dumps(adapter.calls[1])
@@ -850,16 +1026,17 @@ def test_admission_is_absolute_and_profiles_cannot_publish_unmeasured_models():
     passed = tuple(CaseScore(case.id, True, True, (), 0, 0)
                    for case in load_cases())
     manifest = CapabilityManifest.from_registry(_registry())
+    count = len(passed)
     report = evaluate_admission(
-        passed, attempts=[1] * 10, first_attempt_valid=[True] * 10,
+        passed, attempts=[1] * count, first_attempt_valid=[True] * count,
         thresholds=thresholds, latency_p95_ms=20,
         evidence_payload_p95_bytes=100, latency_ceiling_ms=100,
         evidence_ceiling_bytes=1000)
     assert report.admitted
-    with pytest.raises(ValueError, match="identity measured"):
+    with pytest.raises(ValueError, match="sealed measured live run"):
         admitted_profile(report, manifest=manifest)
     report = evaluate_admission(
-        passed, attempts=[1] * 10, first_attempt_valid=[True] * 10,
+        passed, attempts=[1] * count, first_attempt_valid=[True] * count,
         thresholds=thresholds,
         identity={"provider": "synthetic", "requested_model": "compiler-exact",
                   "resolved_model": "compiler-exact", "endpoint": "local",
@@ -867,10 +1044,8 @@ def test_admission_is_absolute_and_profiles_cannot_publish_unmeasured_models():
         contract_digests=current_contract_digests(
             manifest, AnswerResourcePolicy()),
         adversarial_passed=True)
-    profile = admitted_profile(
-        report, manifest=manifest)
-    assert profile.capability_manifest_digest == manifest.digest
-    assert profile.prompt_digest
+    with pytest.raises(ValueError, match="cannot be published"):
+        admitted_profile(report, manifest=manifest)
 
     failed = evaluate_admission(
         [CaseScore("bad", True, False, ("wrong_keyed_figure",), 0, 1)],
@@ -879,6 +1054,18 @@ def test_admission_is_absolute_and_profiles_cannot_publish_unmeasured_models():
     with pytest.raises(ValueError, match="cannot be published"):
         admitted_profile(
             failed, manifest=manifest)
+
+
+def test_admission_rejects_incomplete_per_case_attempt_evidence():
+    cases = load_cases()
+    scores = [CaseScore(case.id, True, True, (), 0, 0) for case in cases]
+    report = evaluate_admission(
+        scores, attempts=[1] * (len(scores) - 1),
+        first_attempt_valid=[True] * len(scores),
+        thresholds=AdmissionThresholds(1, 1, 1))
+
+    assert not report.admitted
+    assert "incomplete_attempt_evidence" in report.hard_failures
 
 
 def test_captured_program_can_replay_without_calling_the_model():
@@ -892,13 +1079,14 @@ def test_captured_program_can_replay_without_calling_the_model():
     assert replayed["result"].figures[0]["record_ids"]
 
 
-def test_release_gate_proves_one_path_and_publishes_exact_profile(tmp_path):
+def test_release_gate_rejects_a_profile_fabricated_from_passing_scores(tmp_path):
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
     thresholds = AdmissionThresholds(1, 1, 1)
     report = evaluate_admission(
         [CaseScore(case.id, True, True, (), 0, 0) for case in load_cases()],
-        attempts=[1] * 10, first_attempt_valid=[True] * 10,
+        attempts=[1] * len(load_cases()),
+        first_attempt_valid=[True] * len(load_cases()),
         thresholds=thresholds,
         identity={"provider": "synthetic", "requested_model": "compiler-exact",
                   "resolved_model": "compiler-exact", "endpoint": "local",
@@ -906,13 +1094,62 @@ def test_release_gate_proves_one_path_and_publishes_exact_profile(tmp_path):
         contract_digests=current_contract_digests(
             manifest, AnswerResourcePolicy()),
         adversarial_passed=True)
-    profile = admitted_profile(
-        report, manifest=manifest)
     assert check_single_path().passed
-    assert check_profile(profile, manifest, report).passed
-    target = write_release_bundle(tmp_path / "admission.json",
-                                  profile=profile, manifest=manifest,
-                                  report=report)
-    payload = json.loads(target.read_text())
-    assert payload["profile"]["resolved_model"] == "compiler-exact"
-    assert payload["capability_manifest"]["digest"] == manifest.digest
+    with pytest.raises(ValueError, match="cannot be published"):
+        admitted_profile(report, manifest=manifest)
+
+
+def test_copied_live_adapter_names_and_digests_cannot_forge_a_measured_run(
+        tmp_path):
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    forged = _fully_validated_forged_report(manifest)
+
+    assert not validate_admission_report(forged)
+    with pytest.raises(ValueError, match="sealed measured live run"):
+        admitted_profile(forged, manifest=manifest)
+    with pytest.raises(ValueError, match="sealed measured live run"):
+        write_release_bundle(
+            tmp_path / "forged.json", profile=None, manifest=manifest,
+            measured_run=forged)
+
+
+@pytest.mark.parametrize(("field", "wrong"), [
+    ("value", "599.00"), ("currency", "EUR"),
+    ("dated", "2026-01-30"), ("subject_record_id", "brk")])
+def test_semantic_admission_oracle_rejects_wrong_financial_identity(field, wrong):
+    case = load_cases()[0]
+    expected = {"value": "600.00", "currency": "USD",
+                "quantity": "balance", "dated": "2026-01-31",
+                "subject_record_id": "chk"}
+    expected[field] = wrong
+    case = replace(case, oracle={"figures": [expected]})
+    families = SemanticFamilyRegistry()
+    request = SemanticRequest(
+        case.expected_family, case.expected_parameters, case.expected_claims,
+        families.catalog_digest)
+    semantic = SemanticOutcome("request", request)
+    program = families.lower(
+        semantic, CapabilityManifest.from_registry(_registry()))
+    result = SimpleNamespace(
+        status="answered", outcome_tag="", text="supported result",
+        figures=[{"value": "600.00", "currency": "USD",
+                  "quantity": "balance", "dated": "2026-01-31",
+                  "kind": "financial", "record_ids": ["chk"]}])
+    measured = score(case, SimpleNamespace(
+        result=result, compilation=SimpleNamespace(
+            exchanges=[SimpleNamespace(defect={})], semantic_outcome=semantic,
+            program=program)))
+
+    assert not measured.passed
+    assert "wrong_keyed_figure" in measured.defects
+
+
+def test_single_path_gate_scans_non_python_runtime_sources(tmp_path):
+    source = tmp_path / "surface.ts"
+    source.write_text("const route = 'compile_answer_program';")
+
+    checked = check_single_path(tmp_path)
+
+    assert not checked.passed
+    assert any("compile_answer_program" in item for item in checked.failures)
