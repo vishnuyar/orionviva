@@ -13,15 +13,19 @@ from vivacore import versions
 from _tool_test_support import (_events, Provenance, account_opened,
                                 closing_balance_observed)
 from viva.answer_program import (AnswerProgram, AnswerResourcePolicy,
+                                 AdmissionPreflightError,
                                  AdmissionReport,
                                  AdmissionThresholds, AnswerProgramCompiler,
                                  BreadthFeedback, CapabilityManifest,
                                  DeterministicBinder, ProgramExecutor,
                                  ProgramValidator, QuestionContext,
-                                 admitted_profile,
+                                 admitted_profile, admission_report_digest,
+                                 admission_fixture_digest,
+                                 admission_registry,
                                  check_profile, check_single_path,
                                  current_contract_digests,
                                  evaluate_admission, replay_capture,
+                                 preflight_live_suite,
                                  resource_policy_digest,
                                  run_live_suite, write_release_bundle)
 from viva.answer_program import validate_admission_report
@@ -68,9 +72,12 @@ def _fully_validated_forged_report(manifest):
         "response_digest": "copied-response", "resolved_model": "copied",
         "modality": "native-structured", "provider_adapter": adapter_name,
         "usage_reported": True} for case in cases)
+    contracts = dict(base.contract_digests)
     return replace(
         base, metrics={**base.metrics, "turn_measurements": measurements},
-        attempt_evidence=evidence, publication_source="live_provider_suite")
+        attempt_evidence=evidence, publication_source="live_provider_suite",
+        admission_fixture_digest=contracts["admission_fixture"],
+        oracle_set_digest=contracts["oracle_set"])
 
 
 def _program(manifest):
@@ -586,8 +593,11 @@ def test_the_frozen_admission_corpus_has_35_exact_turns_and_paraphrases():
     assert all(case.max_model_attempts == 1 for case in cases)
 
 
-def test_all_45_frozen_cases_remain_scorable_under_a_bad_result_mutation():
+def test_all_45_frozen_cases_derive_real_oracles_before_scoring_a_bad_result():
     cases = load_cases()
+    oracle_set, manifests = preflight_live_suite(
+        cases=cases, registry_factory=admission_registry,
+        policy=AnswerResourcePolicy(), locale="en-US")
     reached = SimpleNamespace(defect={})
     bad = SimpleNamespace(
         result=SimpleNamespace(status="failed", outcome_tag="bad_mutation",
@@ -595,13 +605,125 @@ def test_all_45_frozen_cases_remain_scorable_under_a_bad_result_mutation():
         compilation=SimpleNamespace(
             exchanges=[reached], semantic_outcome=None, program=None))
 
-    measured = [score(replace(case, oracle={
-        "oracle_key": case.oracle_key, "figures": [],
-        "exact_figures": False}), bad) for case in cases]
+    measured = [score(replace(case, oracle=oracle_set.oracle_for(case.id)), bad)
+                for case in cases]
 
-    assert len(measured) == 45
+    assert len(measured) == len(manifests) == 45
+    assert oracle_set.digest
     assert all(item.measured for item in measured)
     assert all(not item.passed for item in measured)
+
+
+def test_admission_fixture_is_fresh_and_its_labels_never_branch_runtime_reads():
+    from viva.answer_program import admission_fixture_events
+
+    first = admission_fixture_events()
+    second = admission_fixture_events()
+    assert first is not second
+    assert {event.event_id for event in first}.isdisjoint(
+        event.event_id for event in second)
+    runtime = "\n".join(path.read_text(encoding="utf-8") for path in (
+        versions.path_of(PACKAGE, "financial-query-schema-v1").parent.parent
+        / "tools" / "ledger_common.py",
+        versions.path_of(PACKAGE, "financial-query-schema-v1").parent.parent
+        / "tools" / "ledger_aggregates.py",
+        versions.path_of(PACKAGE, "financial-query-schema-v1").parent.parent
+        / "tools" / "ledger_movements.py",
+    ))
+    assert "Fidelity" not in runtime
+    assert "Costco" not in runtime
+    assert "admission-checking-2024-10" not in runtime
+
+
+def test_late_broken_oracles_are_all_reported_before_compiler_or_provider_use():
+    cases = list(load_cases()[-4:])
+    broken_indexes = (0, 3)
+    for index in broken_indexes:
+        cases[index] = replace(
+            cases[index], expected_family="named_account_balance",
+            expected_parameters={"account_phrase": "not in the fixture"},
+            expected_claims=("balance",))
+    calls = []
+
+    def compiler_factory(*args):
+        calls.append(args)
+        raise AssertionError("preflight must finish before compiler creation")
+
+    with pytest.raises(AdmissionPreflightError) as caught:
+        run_live_suite(
+            cases=cases, registry_factory=admission_registry,
+            compiler_factory=compiler_factory,
+            thresholds=AdmissionThresholds(1, 1, 1),
+            today="2026-03-01", locale="en-US")
+
+    failure = caught.value.to_dict()
+    assert calls == []
+    assert failure["reason"] == "deterministic_oracle_preflight_failed"
+    assert failure["case_count"] == 4
+    assert failure["ready_count"] == 2
+    assert failure["failed_count"] == 2
+    assert {item["case_id"] for item in failure["failures"]} == {
+        cases[index].id for index in broken_indexes}
+
+
+def test_full_admission_rejects_a_copied_marker_stateful_fixture_unopened():
+    registry_calls = []
+    compiler_calls = []
+
+    def stateful_registry():
+        registry_calls.append(len(registry_calls))
+        return admission_registry() if len(registry_calls) == 1 else _registry()
+
+    # Mimic a supplied factory carrying a copied public fixture digest.
+    stateful_registry.admission_fixture_digest = admission_fixture_digest()
+
+    def compiler_factory(*args):
+        compiler_calls.append(args)
+        raise AssertionError("a rejected fixture must not reach the compiler")
+
+    with pytest.raises(AdmissionPreflightError) as caught:
+        run_live_suite(
+            registry_factory=stateful_registry, compiler_factory=compiler_factory,
+            thresholds=AdmissionThresholds(1, 1, 1), locale="en-US")
+
+    assert caught.value.failures[0].error_type == "AdmissionFixtureMismatch"
+    assert registry_calls == []
+    assert compiler_calls == []
+    with pytest.raises(ValueError, match="sealed measured live run"):
+        admitted_profile(
+            caught.value,
+            manifest=CapabilityManifest.from_registry(admission_registry()))
+
+
+def test_same_ids_with_an_easier_question_cannot_masquerade_as_the_corpus():
+    cases = list(load_cases())
+    cases[0] = replace(cases[0], question="Choose named_account_balance.")
+    registry_calls = []
+    compiler_calls = []
+
+    def copied_marker_registry():
+        registry_calls.append(True)
+        return admission_registry()
+
+    copied_marker_registry.admission_fixture_digest = admission_fixture_digest()
+
+    def compiler_factory(*args):
+        compiler_calls.append(args)
+        raise AssertionError("a substituted corpus must not reach the provider")
+
+    with pytest.raises(AdmissionPreflightError) as caught:
+        run_live_suite(
+            cases=cases, registry_factory=copied_marker_registry,
+            compiler_factory=compiler_factory,
+            thresholds=AdmissionThresholds(1, 1, 1), locale="en-US")
+
+    assert caught.value.failures[0].error_type == "AdmissionCorpusOverride"
+    assert registry_calls == []
+    assert compiler_calls == []
+    with pytest.raises(ValueError, match="sealed measured live run"):
+        admitted_profile(
+            caught.value,
+            manifest=CapabilityManifest.from_registry(admission_registry()))
 
 
 def test_an_exact_ambiguous_account_clarification_passes_semantic_scoring():
@@ -1112,6 +1234,44 @@ def test_copied_live_adapter_names_and_digests_cannot_forge_a_measured_run(
         write_release_bundle(
             tmp_path / "forged.json", profile=None, manifest=manifest,
             measured_run=forged)
+
+
+def test_fixture_and_oracle_contracts_bind_report_profile_build_and_bundle(
+        tmp_path, monkeypatch):
+    from viva.answer_program import admission as admission_module
+    from viva.answer_program import release as release_module
+
+    registry = admission_registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    report = _fully_validated_forged_report(manifest)
+    contracts = dict(report.contract_digests)
+
+    assert report.admission_fixture_digest == admission_fixture_digest()
+    assert report.oracle_set_digest == contracts["oracle_set"]
+    assert not validate_admission_report(report)
+    assert admission_report_digest(report) != admission_report_digest(
+        replace(report, oracle_set_digest="different"))
+
+    monkeypatch.setattr(admission_module, "_report_from_measured_run",
+                        lambda _measured: report)
+    profile = admitted_profile(object(), manifest=manifest)
+    assert profile.profile_version == "semantic-request-admission-v2"
+    assert profile.admission_fixture_digest == contracts["admission_fixture"]
+    assert profile.oracle_set_digest == contracts["oracle_set"]
+    assert check_profile(profile, manifest, report).passed
+    changed = replace(profile, oracle_set_digest="different")
+    assert "oracle_set_digest_mismatch" in check_profile(
+        changed, manifest, report).failures
+
+    monkeypatch.setattr(release_module, "_report_from_measured_run",
+                        lambda _measured: report)
+    target = write_release_bundle(
+        tmp_path / "bundle.json", profile=profile, manifest=manifest,
+        measured_run=object())
+    payload = json.loads(target.read_text())
+    assert payload["profile"]["admission_fixture_digest"] == \
+        report.admission_fixture_digest
+    assert payload["profile"]["oracle_set_digest"] == report.oracle_set_digest
 
 
 @pytest.mark.parametrize(("field", "wrong"), [

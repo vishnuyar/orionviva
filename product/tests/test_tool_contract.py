@@ -236,6 +236,156 @@ def test_aggregate_spending_matches_the_projection(proj, registry):
     assert "doc-jan" in result.record_ids
 
 
+def _empty_period_events(opening_date="2026-01-01",
+                         closing_date="2026-01-31"):
+    account = "Assets:Synthetic:Quiet"
+    doc = "synthetic-quiet-statement"
+    events = [
+        account_opened(account, "depository", "Quiet Account", "USD",
+                       opening_date),
+        document_captured(doc, "quiet.pdf", 10, "bank_statement", 1.0,
+                          closing_date),
+        read_recorded(doc, "fixture", "fixture-v1", "text",
+                      _statement_reply("100.00", opening_date,
+                                       "100.00", closing_date),
+                      0.0, 0, 0, True, None, closing_date,
+                      usage_reported=True),
+        opening_balance_observed(account, "100.00", opening_date, _p(doc)),
+        closing_balance_observed(account, "100.00", closing_date, _p(doc)),
+        merchant_enriched("synthetic grocer", "groceries",
+                          occurred_at=closing_date),
+    ]
+    return events
+
+
+def _empty_period_registry(opening_date="2026-01-01",
+                           closing_date="2026-01-31"):
+    return default_registry(LedgerProjection(
+        _empty_period_events(opening_date, closing_date)))
+
+
+def _quiet_spending(registry, start, end):
+    return registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending", "group_by": "category",
+        "filters": {"category": "groceries",
+                    "window": {"from": start, "to": end}}})
+
+
+def _quiet_metric(registry, metric, start, end):
+    return registry.call("query_ledger", {
+        "entity": "aggregate", "metric": metric,
+        "filters": {"window": {"from": start, "to": end}}})
+
+
+def test_an_attested_empty_period_is_exact_zero_supported_by_statement_docs():
+    result = _quiet_spending(
+        _empty_period_registry(), "2026-01-01", "2026-01-31")
+
+    assert result.ok
+    assert result.data["total"] == "0"
+    assert result.covers == [{
+        "account": "Assets:Synthetic:Quiet",
+        "from": "2026-01-01", "to": "2026-01-31"}]
+    assert result.record_ids == ["synthetic-quiet-statement"]
+    assert result.grade == CORROBORATED
+    assert all(figure["record_ids"] == ["synthetic-quiet-statement"]
+               for figure in result.figures)
+    assert not any("Assets:Synthetic" in record
+                   for figure in result.figures
+                   for record in figure["record_ids"])
+
+
+def test_an_uncovered_empty_period_refuses_instead_of_claiming_zero():
+    result = _quiet_spending(
+        _empty_period_registry(), "2025-12-01", "2025-12-31")
+
+    assert not result.ok
+    assert result.refusal == "unsupported_empty_scope"
+    assert not result.figures
+
+
+def test_a_partially_covered_empty_period_refuses_instead_of_claiming_zero():
+    result = _quiet_spending(
+        _empty_period_registry(closing_date="2026-01-15"),
+        "2026-01-01", "2026-01-31")
+
+    assert not result.ok
+    assert result.refusal == "partial_empty_scope"
+    assert not result.figures
+
+
+def test_a_silent_uncovered_account_prevents_an_all_account_zero():
+    # Build through the public event contract: the second account is real and
+    # in scope, but has neither movements nor a posted statement.
+    second = account_opened(
+        "Assets:Synthetic:Silent", "depository", "Silent Account", "USD",
+        "2026-01-01")
+    silent_projection = LedgerProjection([*_empty_period_events(), second])
+    result = _quiet_spending(
+        default_registry(silent_projection), "2026-01-01", "2026-01-31")
+
+    assert not result.ok
+    assert result.refusal == "partial_empty_scope"
+    assert not result.figures
+
+
+def test_attested_empty_income_and_surplus_are_document_supported_zeros():
+    registry = _empty_period_registry()
+    for metric in ("income", "surplus"):
+        result = _quiet_metric(
+            registry, metric, "2026-01-01", "2026-01-31")
+        assert result.ok, (metric, result.text)
+        money = [figure for figure in result.figures if figure["currency"]]
+        assert money and all(figure["value"] == "0" for figure in money)
+        assert all(figure["record_ids"] == ["synthetic-quiet-statement"]
+                   for figure in money)
+        assert result.record_ids == ["synthetic-quiet-statement"]
+        assert result.grade == CORROBORATED
+
+
+@pytest.mark.parametrize(("closing,expected"), [
+    ("2025-12-31", "unsupported_empty_scope"),
+    ("2026-01-15", "partial_empty_scope"),
+])
+@pytest.mark.parametrize("metric", ["income", "surplus"])
+def test_uncovered_or_partial_empty_income_and_surplus_refuse_without_money(
+        closing, expected, metric):
+    registry = _empty_period_registry(
+        opening_date=("2025-12-01" if closing == "2025-12-31"
+                      else "2026-01-01"),
+        closing_date=closing)
+    result = _quiet_metric(
+        registry, metric, "2026-01-01", "2026-01-31")
+
+    assert not result.ok
+    assert result.refusal == expected
+    assert not result.figures
+    if metric == "surplus":
+        assert result.data["component"] == "income"
+        assert result.data["component_refusal"] == expected
+
+
+def test_surplus_propagates_an_unsupported_empty_spending_component():
+    events = _empty_period_events()
+    events.insert(4, transaction_recorded([
+        Posting("Assets:Synthetic:Quiet", "50.00", VERIFIED),
+        Posting("Income:Salary", "-50.00", VERIFIED),
+    ], "SYNTHETIC PAY", "2026-01-10",
+        provenance=_p("synthetic-quiet-statement")))
+    events.append(account_opened(
+        "Assets:Synthetic:Silent", "depository", "Silent Account", "USD",
+        "2026-01-01"))
+    result = _quiet_metric(
+        default_registry(LedgerProjection(events)), "surplus",
+        "2026-01-01", "2026-01-31")
+
+    assert not result.ok
+    assert result.refusal == "partial_empty_scope"
+    assert result.data["component"] == "spending"
+    assert result.data["component_refusal"] == "partial_empty_scope"
+    assert not result.figures
+
+
 def test_aggregate_needs_a_metric(registry):
     result = registry.call("query_ledger", {"entity": "aggregate"})
     assert not result.ok and result.refusal == "missing_metric"
@@ -317,15 +467,13 @@ def test_a_total_across_currencies_refuses_rather_than_adding_them():
         assert any(f["currency"] == "USD" for f in one.figures)
 
 
-def test_income_honours_a_window_instead_of_returning_lifetime(registry):
-    """A dated question gets a dated zero, not a lifetime figure."""
+def test_income_does_not_turn_an_open_ended_uncovered_window_into_zero(registry):
     result = registry.call("query_ledger",
                            {"entity": "aggregate", "metric": "income",
                             "filters": {"window": {"from": "2027-01-01"}}})
-    assert result.ok
-    assert result.data["window"] == {"from": "2027-01-01"}
-    assert result.data["by_currency"] == {"USD": "0"}
-    assert any("2027-01-01" in fig["what"] for fig in result.figures)
+    assert not result.ok
+    assert result.refusal == "unsupported_empty_scope"
+    assert not result.figures
 
 
 def test_income_names_its_sources_and_says_it_is_lifetime(proj, registry):
@@ -399,6 +547,10 @@ def test_income_and_surplus_never_add_or_relabel_different_currencies():
             Posting("eur", "200.00", VERIFIED),
             Posting("Income:Salary", "-200.00", VERIFIED),
         ], "EUR PAY", "2026-01-10", provenance=_p("doc-eur")),
+        transaction_recorded([
+            Posting("usd", "-10.00", VERIFIED),
+            Posting("Expenses:Supplies", "10.00", VERIFIED),
+        ], "USD PURCHASE", "2026-01-11", provenance=_p("doc-usd")),
     ])
     registry = default_registry(projection, today="2026-02-01")
 
@@ -422,7 +574,7 @@ def test_income_and_surplus_never_add_or_relabel_different_currencies():
                          "filters": {"currency": "USD"}})
     assert usd_surplus.ok
     assert usd_surplus.data["attributed_income"] == "100.00"
-    assert usd_surplus.data["surplus"] == "100.00"
+    assert usd_surplus.data["surplus"] == "90.00"
 
     unexplained = LedgerProjection([
         account_opened("usd", "depository", "USD account", "USD",

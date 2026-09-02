@@ -1064,6 +1064,13 @@ def test_every_filter_a_read_honours_can_be_said_in_the_answer():
                     # cadence. That honest refusal has no figure whose
                     # boundary could record the filter.
                     continue
+                if (kind in ("transactions", "aggregate:spending",
+                             "aggregate:income", "aggregate:surplus")
+                        and result.refusal in {
+                            "unsupported_empty_scope", "partial_empty_scope"}):
+                    # An empty monetary read with insufficient statement
+                    # coverage has no figure on which to assert narrowing.
+                    continue
                 assert result.ok, (where, result.refusal, result.text)
                 assert result.figures, where
                 said = [f for f in result.figures
@@ -1080,6 +1087,11 @@ def test_every_filter_a_read_honours_can_be_said_in_the_answer():
             where = (accounts, kind, "every filter at once")
             if (kind == "aggregate:recurring_spending"
                     and result.refusal == "insufficient_history"):
+                continue
+            if (kind in ("transactions", "aggregate:spending",
+                         "aggregate:income", "aggregate:surplus")
+                    and result.refusal in {
+                        "unsupported_empty_scope", "partial_empty_scope"}):
                 continue
             assert result.ok, (where, result.refusal, result.text)
             assert result.figures, where
@@ -1372,7 +1384,10 @@ def test_every_read_says_what_set_each_of_its_figures_was_taken_over(registry,
         result = registry.call(tool, args)
         called.add(tool)
         assert (result.ok or (args.get("metric") == "recurring_spending"
-                              and result.refusal == "insufficient_history")), (
+                              and result.refusal == "insufficient_history")
+                or (args.get("metric") in ("income", "spending", "surplus")
+                    and result.refusal in {
+                        "unsupported_empty_scope", "partial_empty_scope"})), (
                                   tool, args, result.text)
         for fig in result.figures:
             assert fig["boundary"] != {}, (tool, args, fig["what"])
@@ -1803,6 +1818,10 @@ def test_no_read_names_one_slice_of_what_it_cuts_more_than_once(registry):
         result = called.call(tool, args)
         if (args.get("metric") == "recurring_spending"
                 and result.refusal == "insufficient_history"):
+            continue
+        if (args.get("metric") in ("income", "spending", "surplus")
+                and result.refusal in {
+                    "unsupported_empty_scope", "partial_empty_scope"}):
             continue
         assert result.ok, (tool, args, result.text)
         cuts = [cut for cut in (runner._line_of(f) for f in result.figures)

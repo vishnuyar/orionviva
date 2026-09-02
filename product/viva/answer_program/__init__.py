@@ -13,12 +13,19 @@ from .intents import (SEMANTIC_REQUEST_VERSION, SemanticFamily,
 from .feedback import BreadthFeedback
 from .eval import (AdversarialCase, AdversarialScore, evaluate_adversarial,
                    load_adversarial_cases, load_cases)
-from .admission import (AdmissionProfile, AdmissionReport, AdmissionThresholds,
+from .admission import (AdmissionOracleSet, AdmissionPreflightError,
+                        AdmissionPreflightFailure, AdmissionProfile,
+                        AdmissionReport, AdmissionThresholds,
                         admission_report_digest, admitted_profile,
                         current_contract_digests,
                         evaluate as evaluate_admission,
+                        oracle_set_digest, preflight_live_suite,
                         resource_policy_digest, run_live_suite,
                         validate_admission_report)
+from .admission_fixture import (ADMISSION_FIXTURE_VERSION, ADMISSION_TODAY,
+                                admission_fixture_digest,
+                                admission_fixture_events,
+                                admission_registry)
 from .replay import replay_capture
 from .release import (ReleaseCheck, check_profile, check_single_path,
                       write_release_bundle)
@@ -43,9 +50,13 @@ __all__ = [
     "BreadthFeedback",
     "AdversarialCase", "AdversarialScore", "evaluate_adversarial",
     "load_adversarial_cases", "load_cases",
-    "AdmissionProfile", "AdmissionReport", "AdmissionThresholds",
+    "AdmissionOracleSet", "AdmissionPreflightError",
+    "AdmissionPreflightFailure", "AdmissionProfile", "AdmissionReport",
+    "AdmissionThresholds", "ADMISSION_FIXTURE_VERSION", "ADMISSION_TODAY",
     "admission_report_digest", "admitted_profile", "evaluate_admission",
-    "current_contract_digests",
+    "admission_fixture_digest", "admission_fixture_events",
+    "admission_registry", "current_contract_digests", "oracle_set_digest",
+    "preflight_live_suite",
     "resource_policy_digest", "validate_admission_report",
     "replay_capture",
     "run_live_suite",

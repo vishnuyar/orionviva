@@ -90,12 +90,13 @@ the same one grounded path.
 
 ### AP-13 — Publication proves the compact boundary and its lowering
 **State:** enforced-with-exception
-**Code:** product/viva/answer_program/admission.py, product/viva/answer_program/release.py, product/viva/session.py, product/viva/answer_program/replay.py
-**Test:** product/tests/test_answer_program_contracts.py::test_the_frozen_admission_corpus_has_35_exact_turns_and_paraphrases, product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
+**Code:** product/viva/answer_program/admission.py, product/viva/answer_program/admission_fixture.py, product/viva/answer_program/release.py, product/viva/session.py, product/viva/answer_program/replay.py
+**Test:** product/tests/test_answer_program_contracts.py::test_all_45_frozen_cases_derive_real_oracles_before_scoring_a_bad_result, product/tests/test_answer_program_contracts.py::test_late_broken_oracles_are_all_reported_before_compiler_or_provider_use, product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
 
 1. Admission binds one exact provider route, requested and resolved model,
    modality, locale family, semantic prompt, compact schema, catalog, builder
-   digest, retained runtime contracts, persona, and frozen corpus.
+   digest, retained runtime contracts, persona, frozen corpus, canonical
+   admission-only synthetic fixture, and the oracle set derived from it.
 2. The corpus contains seven exact questions repeated exactly five times,
    reviewed paraphrases, and follow-up, ambiguity, and forbidden-result cases.
    Every routine supported turn must select the correct family and grounded
@@ -107,12 +108,22 @@ the same one grounded path.
    the exact canonical report snapshot and digest; replacing its report or
    mutating any nested report field invalidates publication. A reconstructed
    serialized report is valid replay evidence but cannot confer publication authority.
-4. Publication additionally requires a deterministic oracle keyed to every
-   case, all case/attempt evidence, reported usage, and a real supported provider
-   adapter. Wrong amount, currency, subject, date, or forbidden zero/completeness
-   claim fails admission; provider doubles and fabricated score reports cannot
-   publish a profile.
-5. Captures retain raw exchanges, semantic request and digest, lowered program
+4. Before constructing the compiler or making any paid provider call, admission
+   derives every case's oracle from a fresh copy of the canonical synthetic
+   fixture. It collects every failure in a structured preflight result. The
+   measured phase consumes immutable snapshots of that complete oracle set.
+   A full-corpus run constructs fresh canonical registries internally and
+   loads the frozen cases internally. It rejects caller-supplied full-corpus
+   cases or registry factories, even ones carrying the same ids or a copied
+   fixture digest.
+   Publication binds both the fixture and canonical sorted
+   `{case_id: oracle_digest}` set; provider doubles, alternate fixtures, and
+   fabricated score reports cannot publish a profile.
+5. An empty financial period is exactly zero only when posted statement
+   documents attest the complete requested interval for every eligible account.
+   Partial or absent coverage refuses, and a supported zero cites those statement
+   document ids rather than account ids.
+6. Captures retain raw exchanges, semantic request and digest, lowered program
    and digest, validation, execution, bindings, outcome, prompts, schemas,
    manifest, persona, and resolved model identity. Replay re-lowers semantics
    and refuses either digest mismatch.

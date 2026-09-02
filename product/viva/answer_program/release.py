@@ -10,6 +10,7 @@ from vivacore import promptstore, versions
 
 from ..tools.registry import PACKAGE, PROMPTS
 from .admission import (_report_from_measured_run, admission_report_digest,
+                        ADMISSION_PROFILE_VERSION,
                         current_contract_digests, validate_admission_report)
 from .schema import ANSWER_PROGRAM_VERSION, AnswerResourcePolicy
 
@@ -55,6 +56,8 @@ def check_single_path(package_root=None):
 
 def check_profile(profile, manifest, report=None, policy=None):
     failures = []
+    if profile.profile_version != ADMISSION_PROFILE_VERSION:
+        failures.append("admission_profile_version_mismatch")
     if profile.capability_manifest_digest != manifest.digest:
         failures.append("capability_manifest_digest_mismatch")
     if promptstore.digest(PROMPTS, profile.prompt_version) != profile.prompt_digest:
@@ -81,6 +84,8 @@ def check_profile(profile, manifest, report=None, policy=None):
         "keyed_corpus": profile.keyed_corpus_digest,
         "adversarial_corpus": profile.adversarial_corpus_digest,
         "persona_pack": profile.persona_pack_digest,
+        "admission_fixture": profile.admission_fixture_digest,
+        "oracle_set": profile.oracle_set_digest,
     }
     for name, expected in current.items():
         if profile_contracts.get(name) != expected:

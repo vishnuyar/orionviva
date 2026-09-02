@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .ledger_common import *
+from ..ledger.events import CORROBORATED
 
 def _query_balances(proj, filters: dict) -> ToolResult:
     infos = _real_accounts(proj)
@@ -217,9 +218,34 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
     record_ids = sorted({r["doc_id"] for r in rows if r["doc_id"]}
                         | {r["account"] for r in rows})
     currency = held or str(filters.get("currency") or "")
+    eligible_accounts = _eligible_period_accounts(proj, filters)
+    covers, caveats = [], []
     if not rows:
-        currency, record_ids = _of_an_empty_read(proj, filters)
-    covers, caveats = _attested_coverage(proj, filters)
+        currencies = {info.currency for info in _real_accounts(proj)
+                      if info.account in eligible_accounts and info.currency}
+        held = _shared_currency(currencies)
+        if held is None:
+            return _mixed_currencies(TOOL, currencies)
+        currency = held or currency
+        evidence = _empty_period_evidence(proj, filters, eligible_accounts)
+        if evidence["status"] != "covered":
+            reason = ("partial_empty_scope" if evidence["status"] == "partial"
+                      else "unsupported_empty_scope")
+            explanation = (
+                "Posted statements cover only part of the requested period, "
+                "so the absence of matching movements cannot be reported as zero."
+                if evidence["status"] == "partial" else
+                "Posted statements do not attest the requested period, so an "
+                "empty result cannot be reported as zero.")
+            return refusal(
+                TOOL, reason, explanation,
+                requested_window=dict(filters.get("window") or {}),
+                eligible_accounts=sorted(eligible_accounts))
+        record_ids = evidence["record_ids"]
+        covers = evidence["covers"]
+    else:
+        covers, caveats = _attested_coverage(
+            proj, filters, accounts=eligible_accounts)
     money_in = sum((Decimal(r["effect"]) for r in rows
                     if Decimal(r["effect"]) > 0), Decimal("0"))
     money_out = sum((-Decimal(r["effect"]) for r in rows
@@ -235,7 +261,8 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
         by_month[month] = by_month.get(month, Decimal("0")) + amount
         if r["doc_id"]:
             month_docs.setdefault(month, set()).add(r["doc_id"])
-    grade = weakest(r["grade"] for r in rows)
+    grade = (weakest(r["grade"] for r in rows)
+             or (CORROBORATED if not rows and record_ids else ""))
     # What these figures were taken over. Whole is read off the same list the
     # narrowing is written from, because `bounded` refuses a figure that
     # declares it covers everything and also names what narrowed it. Each of

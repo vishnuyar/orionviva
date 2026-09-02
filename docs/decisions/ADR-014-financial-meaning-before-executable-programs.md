@@ -74,7 +74,9 @@ internal graph.
 Captures now keep both sides of the boundary: the semantic request and the
 lowered program, each with a digest. The exact admission profile binds the
 semantic prompt, schema, catalog, deterministic builders, retained runtime
-contracts, and resolved model identity.
+contracts, canonical synthetic admission fixture, fully derived oracle set,
+and resolved model identity. Every oracle is derived before the compiler or
+provider is constructed, so an invalid case contract spends no live calls.
 
 ## Would reverse this
 

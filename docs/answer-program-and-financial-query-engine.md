@@ -69,11 +69,13 @@ runtime entry. The retained lower runtime is used by the current design.
 
 ### AP-7 — Admission measures and enforces one exact runtime profile
 **State:** enforced-with-exception
-**Code:** product/viva/answer_program/admission.py, product/viva/answer_program/release.py, product/viva/speak.py
-**Test:** product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
+**Code:** product/viva/answer_program/admission.py, product/viva/answer_program/admission_fixture.py, product/viva/answer_program/release.py, product/viva/speak.py
+**Test:** product/tests/test_answer_program_contracts.py::test_all_45_frozen_cases_derive_real_oracles_before_scoring_a_bad_result, product/tests/test_answer_program_contracts.py::test_late_broken_oracles_are_all_reported_before_compiler_or_provider_use, product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
 
-1. The keyed and adversarial suites measure one provider route, requested model, provider-resolved model, modality, locale family, prompt, schema, and capability manifest.
+1. The keyed and adversarial suites measure one provider route, requested model, provider-resolved model, modality, locale family, prompt, schema, capability manifest, canonical admission fixture, and fully derived oracle set.
 2. Runtime refuses a different build or model identity before reading the vault.
+3. All keyed oracles preflight from fresh synthetic fixtures before the compiler
+   or provider is constructed; a late broken case therefore spends no calls.
 
 **Exception:** no profile is published yet. Threshold approval and the explicitly deferred local real-vault Witness remain release gates.
 
@@ -347,7 +349,7 @@ Each capability declares:
 ```json
 {
   "name": "query_ledger",
-  "version": "tools-v22",
+  "version": "tools-v23",
   "local_only": true,
   "read_only": true,
   "input_schema": {},
@@ -913,6 +915,16 @@ An answer compiler model is admitted for one exact combination of:
 - `AnswerProgram` schema version;
 - capability manifest version;
 - locale family where relevant.
+- canonical synthetic admission fixture and its fully derived oracle set.
+
+The runner derives every oracle before constructing the compiler or contacting
+the provider. Preflight collects all failures in a serializable blocked result;
+the measured phase uses immutable oracle snapshots. A canonical full-corpus run
+constructs its fixture internally and rejects caller-supplied registry factories.
+It also loads the frozen corpus internally; a supplied same-id copy is not an
+admission corpus and cannot reach the provider. An empty monetary period is zero
+only when posted statement documents cover the full requested interval for every
+eligible account. Otherwise the read refuses as unsupported or partial.
 
 Admission measures:
 
@@ -1317,13 +1329,16 @@ profile.
 ### Release checks
 
 1. run all unit, property, mutation, keyed, and recorded-turn evaluations;
-2. run controlled real-model evaluation on synthetic vaults;
-3. run the local real-vault witness;
-4. verify that only the new answer path is packaged;
-5. verify that a clean installation can compile, validate, execute, bind, render,
+2. derive all keyed oracles from fresh canonical synthetic fixtures and stop
+   before provider construction if any fail; canonical runs load both corpus
+   and fixture internally rather than accepting caller substitutes;
+3. run controlled real-model evaluation against those immutable oracles;
+4. run the local real-vault witness;
+5. verify that only the new answer path is packaged;
+6. verify that a clean installation can compile, validate, execute, bind, render,
    capture, and diagnose one question from every supported family;
-6. publish the admitted model profile and the exact capability manifest;
-7. release only when every safety and admission gate above passes.
+7. publish the admitted model profile and the exact capability manifest;
+8. release only when every safety and admission gate above passes.
 
 Any unsupported or confidently wrong keyed answer, capture or provenance loss,
 missing-data-as-zero behavior, or model-attempt bound violation blocks the release.

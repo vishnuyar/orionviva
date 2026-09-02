@@ -814,27 +814,15 @@ def test_every_money_figure_a_tool_emits_stands_on_a_record():
                 f"{what!r} is an amount of money standing on no record")
 
 
-def test_a_quiet_window_is_still_an_amount_and_still_stands_on_something(
+def test_an_unattested_quiet_window_is_not_a_zero_available_to_arithmetic(
         registry):
-    """A window in which nothing moved has a total, and that total is zero of a
-    currency, resting on the accounts whose statements answer for the period.
-    Saying neither would make the zero read as a plain number, which no balance
-    can be put together with at all."""
+    """An empty window outside statement coverage has no monetary operand."""
     quiet = {"entity": "transactions",
              "filters": {"window": {"from": "2026-06-01", "to": "2026-06-30"}}}
     summary = registry.call("query_ledger", quiet)
-    assert summary.ok and summary.data["count"] == 0
-    net = next(f for f in summary.figures
-               if f["what"] == "net movement over this set")
-    assert net["currency"] == "USD" and net["record_ids"]
-    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
-    book.update(_shift(_one_figure(registry, "query_ledger", quiet), len(book)))
-    balance = next(f["id"] for f in book.values()
-                   if "Everyday Checking" in f["what"])
-    still = next(f["id"] for f in book.values()
-                 if f["what"] == "net movement over this set")
-    combined = _computed(registry, book, "a - b", a=balance, b=still)
-    assert combined["currency"] == "USD" and combined["grade"]
+    assert not summary.ok
+    assert summary.refusal == "unsupported_empty_scope"
+    assert not summary.figures
 
 
 def test_a_refusal_to_add_says_what_it_actually_saw(registry):

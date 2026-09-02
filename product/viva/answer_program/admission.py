@@ -16,7 +16,7 @@ from .compiler import COMPILER_VERSION
 from .schema import (ANSWER_PROGRAM_VERSION, CAPABILITY_MANIFEST_VERSION,
                      AnswerProgram)
 
-ADMISSION_PROFILE_VERSION = "semantic-request-admission-v1"
+ADMISSION_PROFILE_VERSION = "semantic-request-admission-v2"
 
 
 @dataclass(frozen=True)
@@ -45,6 +45,52 @@ class AdmissionReport:
     case_ids: tuple[str, ...] = ()
     attempt_evidence: tuple[dict, ...] = ()
     publication_source: str = ""
+    admission_fixture_digest: str = ""
+    oracle_set_digest: str = ""
+
+
+@dataclass(frozen=True)
+class AdmissionPreflightFailure:
+    case_id: str
+    oracle_key: str
+    error_type: str
+    message: str
+
+
+class AdmissionPreflightError(ValueError):
+    """All deterministic oracle failures, safe for a tester to serialize."""
+
+    def __init__(self, failures, *, case_count: int, ready_count: int):
+        self.failures = tuple(failures)
+        self.case_count = int(case_count)
+        self.ready_count = int(ready_count)
+        super().__init__(
+            f"deterministic oracle preflight failed for {len(self.failures)} "
+            f"of {self.case_count} cases")
+
+    def to_dict(self) -> dict:
+        return {
+            "status": "blocked",
+            "reason": "deterministic_oracle_preflight_failed",
+            "case_count": self.case_count,
+            "ready_count": self.ready_count,
+            "failed_count": len(self.failures),
+            "failures": [asdict(item) for item in self.failures],
+        }
+
+
+@dataclass(frozen=True)
+class AdmissionOracleSet:
+    """Immutable canonical JSON snapshots of every prederived oracle."""
+
+    entries: tuple[tuple[str, str], ...]
+    digest: str
+
+    def oracle_for(self, case_id: str) -> dict:
+        for candidate, snapshot in self.entries:
+            if candidate == case_id:
+                return json.loads(snapshot)
+        raise KeyError(case_id)
 
 
 _MEASURED_RUN_SEAL = object()
@@ -115,12 +161,17 @@ class AdmissionProfile:
     keyed_corpus_digest: str = ""
     adversarial_corpus_digest: str = ""
     persona_pack_digest: str = ""
+    admission_fixture_digest: str = ""
+    oracle_set_digest: str = ""
     program_schema_version: str = ANSWER_PROGRAM_VERSION
     capability_manifest_version: str = CAPABILITY_MANIFEST_VERSION
     profile_version: str = ADMISSION_PROFILE_VERSION
     admitted_at: str = ""
 
     def __post_init__(self):
+        if self.profile_version != ADMISSION_PROFILE_VERSION:
+            raise ValueError(
+                f"unsupported admission profile version {self.profile_version!r}")
         if not all((self.provider, self.requested_model, self.resolved_model,
                     self.model_version, self.endpoint, self.modality,
                     self.capability_manifest_digest,
@@ -130,7 +181,8 @@ class AdmissionProfile:
                     self.semantic_catalog_digest,
                     self.deterministic_builder_digest,
                     self.keyed_corpus_digest, self.adversarial_corpus_digest,
-                    self.persona_pack_digest,
+                    self.persona_pack_digest, self.admission_fixture_digest,
+                    self.oracle_set_digest,
                     self.admission_report_digest)):
             raise ValueError("an admission profile needs exact model and contract ids")
         if not self.prompt_digest:
@@ -212,7 +264,7 @@ def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
                            tuple(str(item.case_id) for item in scores))
 
 
-def admitted_profile(measured_run, *, manifest):
+def admitted_profile(measured_run, *, manifest, policy=None):
     report = _report_from_measured_run(measured_run)
     if not report.admitted:
         raise ValueError("a model profile cannot be published before every gate passes")
@@ -242,10 +294,19 @@ def admitted_profile(measured_run, *, manifest):
     required_contracts = {
         "resource_policy", "financial_query_schema", "semantic_request_schema",
         "semantic_catalog", "deterministic_builders", "keyed_corpus",
-        "adversarial_corpus", "persona_pack"}
+        "adversarial_corpus", "persona_pack", "admission_fixture",
+        "oracle_set"}
     if not required_contracts <= set(contracts) or any(
             not contracts[name] for name in required_contracts):
         raise ValueError("a model profile needs every measured build contract")
+    from .schema import AnswerResourcePolicy
+    current = current_contract_digests(
+        manifest, policy or AnswerResourcePolicy())
+    changed = [name for name, digest in current.items()
+               if contracts.get(name) != digest]
+    if changed:
+        raise ValueError("the measured contracts differ from this build: "
+                         + ", ".join(changed))
     return AdmissionProfile(
         provider=identity["provider"], requested_model=identity["requested_model"],
         resolved_model=identity["resolved_model"],
@@ -261,6 +322,8 @@ def admitted_profile(measured_run, *, manifest):
         keyed_corpus_digest=contracts["keyed_corpus"],
         adversarial_corpus_digest=contracts["adversarial_corpus"],
         persona_pack_digest=contracts["persona_pack"],
+        admission_fixture_digest=contracts["admission_fixture"],
+        oracle_set_digest=contracts["oracle_set"],
         thresholds=AdmissionThresholds(**dict(report.thresholds)),
         metrics=dict(report.metrics),
         admission_report_digest=admission_report_digest(report))
@@ -278,8 +341,61 @@ def resource_policy_digest(policy) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
+def _digest(value) -> str:
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def oracle_set_digest(oracles) -> str:
+    """Digest canonical ``{case_id: oracle_digest}`` admission evidence."""
+    mapping = {
+        str(case_id): _digest(oracle)
+        for case_id, oracle in (oracles.items() if hasattr(oracles, "items")
+                                else oracles)
+    }
+    return _digest(mapping)
+
+
+def preflight_live_suite(*, cases, registry_factory=None, policy=None,
+                         locale="") -> tuple[AdmissionOracleSet, tuple]:
+    """Derive every oracle before a compiler or provider can be constructed."""
+    from .admission_fixture import admission_registry
+    from .eval import derive_semantic_oracle
+    from .schema import AnswerResourcePolicy
+
+    factory = registry_factory or admission_registry
+    selected = tuple(cases)
+    policy = policy or AnswerResourcePolicy()
+    snapshots = []
+    manifests = []
+    failures = []
+    for case in selected:
+        try:
+            registry = factory()
+            manifest = CapabilityManifest.from_registry(registry)
+            oracle = derive_semantic_oracle(
+                case, registry, manifest, policy, locale=locale)
+            snapshots.append((str(case.id), json.dumps(
+                oracle, sort_keys=True, separators=(",", ":"))))
+            manifests.append(manifest)
+        except Exception as error:
+            failures.append(AdmissionPreflightFailure(
+                str(getattr(case, "id", "")),
+                str(getattr(case, "oracle_key", "")),
+                type(error).__name__, str(error)))
+    if failures:
+        raise AdmissionPreflightError(
+            failures, case_count=len(selected), ready_count=len(snapshots))
+    immutable = tuple(sorted(snapshots))
+    digest = oracle_set_digest(
+        (case_id, json.loads(snapshot)) for case_id, snapshot in immutable)
+    return AdmissionOracleSet(immutable, digest), tuple(manifests)
+
+
 def current_contract_digests(manifest, policy) -> dict[str, str]:
-    from .eval import ADVERSARIAL_CASES, CASES, corpus_digest
+    from .admission_fixture import (admission_fixture_digest,
+                                    admission_registry)
+    from .eval import (ADVERSARIAL_CASES, CASES, corpus_digest, load_cases)
     from .intents import SemanticFamilyRegistry
     from ..query.schema import FINANCIAL_QUERY_SCHEMA_VERSION
 
@@ -287,6 +403,9 @@ def current_contract_digests(manifest, policy) -> dict[str, str]:
     semantic_schema_version = versions.active(PACKAGE,
                                               "semantic_request_schema")
     families = SemanticFamilyRegistry()
+    canonical_oracles, _manifests = preflight_live_suite(
+        cases=load_cases(), registry_factory=admission_registry,
+        policy=policy, locale="en-US")
     return {
         "program_schema": versions.fingerprint(
             versions.path_of(PACKAGE, ANSWER_PROGRAM_VERSION)),
@@ -304,6 +423,8 @@ def current_contract_digests(manifest, policy) -> dict[str, str]:
         "adversarial_corpus": corpus_digest(ADVERSARIAL_CASES),
         "persona_pack": versions.fingerprint(
             versions.path_of(PACKAGE, persona_version)),
+        "admission_fixture": admission_fixture_digest(),
+        "oracle_set": canonical_oracles.digest,
     }
 
 
@@ -323,6 +444,12 @@ def validate_admission_report(report, profile=None) -> tuple[str, ...]:
         failures.append("adversarial_contract_failure")
     metrics = dict(raw.get("metrics") or {})
     thresholds = dict(raw.get("thresholds") or {})
+    contracts = dict(raw.get("contract_digests") or {})
+    for field, contract in (("admission_fixture_digest", "admission_fixture"),
+                            ("oracle_set_digest", "oracle_set")):
+        if (not raw.get(field)
+                or str(raw.get(field)) != str(contracts.get(contract) or "")):
+            failures.append(f"admission_contract_mismatch:{contract}")
     from .eval import load_cases
     expected_cases = load_cases()
     expected_case_ids = tuple(item.id for item in expected_cases)
@@ -393,7 +520,6 @@ def validate_admission_report(report, profile=None) -> tuple[str, ...]:
                      "modality", "locale_family"):
             if str(identity.get(name) or "") != str(getattr(profile, name)):
                 failures.append(f"admission_identity_mismatch:{name}")
-        contracts = dict(raw.get("contract_digests") or {})
         expected_contracts = {
             "capability_manifest": profile.capability_manifest_digest,
             "compiler_prompt": profile.prompt_digest,
@@ -406,6 +532,8 @@ def validate_admission_report(report, profile=None) -> tuple[str, ...]:
             "keyed_corpus": profile.keyed_corpus_digest,
             "adversarial_corpus": profile.adversarial_corpus_digest,
             "persona_pack": profile.persona_pack_digest,
+            "admission_fixture": profile.admission_fixture_digest,
+            "oracle_set": profile.oracle_set_digest,
         }
         for name, expected in expected_contracts.items():
             if str(contracts.get(name) or "") != str(expected):
@@ -417,27 +545,55 @@ def validate_admission_report(report, profile=None) -> tuple[str, ...]:
     return tuple(failures)
 
 
-def run_live_suite(*, cases, registry_factory, compiler_factory, thresholds,
+def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thresholds,
                    policy=None, today="", locale="", latency_ceiling_ms=None,
                    evidence_ceiling_bytes=None):
-    """Run the frozen suite through a real compiler adapter and fresh fixtures."""
-    from .eval import derive_semantic_oracle, evaluate_adversarial, score
+    """Run the internally loaded frozen suite, or a non-publishing partial test.
+
+    Omit ``cases`` and ``registry_factory`` for canonical admission. Supplying
+    either full-corpus input is rejected before deterministic or provider work.
+    """
+    from .admission_fixture import (admission_fixture_digest,
+                                    admission_registry)
+    from .eval import evaluate_adversarial, load_cases, score
     from .schema import AnswerResourcePolicy
     from .validate import ProgramValidator
     from ..session import Session
 
     policy = policy or AnswerResourcePolicy()
+    canonical_cases = load_cases()
+    canonical_ids = tuple(case.id for case in canonical_cases)
+    expected_fixture = admission_fixture_digest()
+    if cases is None:
+        cases = canonical_cases
+        if registry_factory is not None:
+            raise AdmissionPreflightError((AdmissionPreflightFailure(
+                "", "", "AdmissionFixtureMismatch",
+                "the full provider suite constructs the canonical admission "
+                "fixture internally; do not pass registry_factory"),),
+                case_count=len(cases), ready_count=0)
+        registry_factory = admission_registry
+        observed_fixture = expected_fixture
+    else:
+        cases = tuple(cases)
+        if tuple(case.id for case in cases) == canonical_ids:
+            raise AdmissionPreflightError((AdmissionPreflightFailure(
+                "", "", "AdmissionCorpusOverride",
+                "the full provider suite loads the canonical corpus "
+                "internally; omit cases instead of supplying a copy"),),
+                case_count=len(cases), ready_count=0)
+        registry_factory = registry_factory or admission_registry
+        observed_fixture = ""
+    oracle_set, manifests = preflight_live_suite(
+        cases=cases, registry_factory=registry_factory, policy=policy,
+        locale=locale)
     scores, attempts, first_valid, repaired_valid = [], [], [], []
     latencies, evidence_sizes, turn_metrics = [], [], []
     turns = []
-    manifests = []
     oracles = {}
-    for case in cases:
+    for case, manifest in zip(cases, manifests):
         registry = registry_factory()
-        manifest = CapabilityManifest.from_registry(registry)
-        manifests.append(manifest)
-        oracle = derive_semantic_oracle(
-            case, registry, manifest, policy, locale=locale)
+        oracle = oracle_set.oracle_for(case.id)
         oracles[case.id] = oracle
         session = Session(
             registry, compiler_factory, resource_policy=policy,
@@ -445,8 +601,7 @@ def run_live_suite(*, cases, registry_factory, compiler_factory, thresholds,
             prior_turns=case.prior_turns)
         turn = session.ask(case.question)
         turns.append(turn)
-        # Session intentionally exposes serializable turn data, so reconstruct
-        # only the scoring facade here rather than retaining a live runtime.
+        # Reconstruct the scoring facade from the serializable turn record.
         from .intents import SemanticFamilyRegistry
         semantic = (SemanticFamilyRegistry().parse(
                     turn.semantic_request,
@@ -496,7 +651,6 @@ def run_live_suite(*, cases, registry_factory, compiler_factory, thresholds,
     identity["locale_family"] = (locale.split("-", 1)[0].casefold()
                                  if locale else "und")
     identity_failures = []
-    from .eval import load_cases
     if tuple(case.id for case in cases) != tuple(
             case.id for case in load_cases()):
         identity_failures.append("incomplete_keyed_corpus")
@@ -519,10 +673,17 @@ def run_live_suite(*, cases, registry_factory, compiler_factory, thresholds,
         adversarial = evaluate_adversarial(
             first_program, ProgramValidator(manifests[0], policy))
     adversarial_passed = bool(adversarial) and all(item.passed for item in adversarial)
-    contracts = current_contract_digests(
+    current_contracts = current_contract_digests(
         manifests[0] if manifests else None, policy)
+    contracts = dict(current_contracts)
+    contracts["admission_fixture"] = observed_fixture
+    contracts["oracle_set"] = oracle_set.digest
     if len(manifest_digests) != 1:
         contracts["capability_manifest"] = ""
+    if observed_fixture != current_contracts["admission_fixture"]:
+        identity_failures.append("admission_fixture_differs_from_current_build")
+    if oracle_set.digest != current_contracts["oracle_set"]:
+        identity_failures.append("oracle_set_differs_from_current_build")
     report = evaluate(
         scores, attempts=attempts, first_attempt_valid=first_valid,
         within_repair_valid=repaired_valid,
@@ -553,20 +714,19 @@ def run_live_suite(*, cases, registry_factory, compiler_factory, thresholds,
         report.measured, report.admitted, measured_metrics,
         report.hard_failures, report.threshold_failures, report.identity,
         report.contract_digests, report.adversarial_passed, report.thresholds,
-        report.case_ids, report.attempt_evidence, report.publication_source)
+        report.case_ids, report.attempt_evidence, report.publication_source,
+        observed_fixture, oracle_set.digest)
     attempt_evidence = []
     live_provider = True
     for case, turn in zip(cases, turns):
         for number, exchange in enumerate(turn.exchanges, 1):
             live_provider = live_provider and bool(exchange.live_provider)
-            digest = lambda value: hashlib.sha256(json.dumps(
-                value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
             attempt_evidence.append({
                 "case_id": case.id, "attempt": number,
                 "oracle_key": case.oracle_key,
-                "oracle_digest": digest(oracles[case.id]),
-                "request_digest": digest(exchange.request),
-                "response_digest": digest(exchange.response),
+                "oracle_digest": _digest(oracles[case.id]),
+                "request_digest": _digest(exchange.request),
+                "response_digest": _digest(exchange.response),
                 "resolved_model": exchange.resolved_model,
                 "modality": exchange.modality,
                 "provider_adapter": exchange.provider_adapter,
@@ -584,12 +744,16 @@ def run_live_suite(*, cases, registry_factory, compiler_factory, thresholds,
         tuple(dict.fromkeys(hard)), report.threshold_failures,
         report.identity, report.contract_digests, report.adversarial_passed,
         report.thresholds, report.case_ids, tuple(attempt_evidence),
-        "live_provider_suite" if live_provider else "")
+        "live_provider_suite" if live_provider else "",
+        report.admission_fixture_digest, report.oracle_set_digest)
     return _MeasuredAdmissionRun(report, _MEASURED_RUN_SEAL), tuple(scores), tuple(turns)
 
 
-__all__ = ["ADMISSION_PROFILE_VERSION", "AdmissionProfile",
-           "AdmissionReport", "AdmissionThresholds", "admitted_profile",
-           "admission_report_digest", "resource_policy_digest",
+__all__ = ["ADMISSION_PROFILE_VERSION", "AdmissionOracleSet",
+           "AdmissionPreflightError", "AdmissionPreflightFailure",
+           "AdmissionProfile", "AdmissionReport", "AdmissionThresholds",
+           "admitted_profile", "admission_report_digest",
+           "oracle_set_digest", "preflight_live_suite",
+           "resource_policy_digest",
            "current_contract_digests",
            "validate_admission_report", "evaluate", "run_live_suite"]

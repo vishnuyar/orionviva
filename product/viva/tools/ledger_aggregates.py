@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 
 from .ledger_common import *
+from ..ledger.events import CORROBORATED
 
 def _query_holdings(proj, filters: dict) -> ToolResult:
     rows = [p.to_dict() for p in proj.positions(filters.get("account"))]
@@ -147,26 +148,46 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
                         locale: str = "") -> ToolResult:
     grouped, extras = _spending_rows(proj, filters, group_by)
     named, tail = _largest_groups(grouped)
-    held = _shared_currency(extras["currencies"])
+    # The spending population includes every in-scope depository or liability
+    # account before category and window matching.
+    eligible_accounts = _eligible_period_accounts(
+        proj, filters, kinds={"depository", "liability"})
+    eligible_currencies = {
+        info.currency for info in _real_accounts(proj)
+        if info.account in eligible_accounts and info.currency}
+    held = _shared_currency(
+        extras["currencies"] if extras["count"] else eligible_currencies)
     if held is None:
-        return _mixed_currencies(TOOL, extras["currencies"])
+        return _mixed_currencies(
+            TOOL, extras["currencies"] if extras["count"]
+            else eligible_currencies)
     # The currency the counted movements are in, which is what the totals are
     # amounts of. The filter is what narrowed the read, and answers for the
     # caveats' own scope.
     currency = held or str(filters.get("currency") or "")
     record_ids = extras["record_ids"]
+    covers = []
+    span_caveats = []
     if not extras["count"]:
-        currency, record_ids = _of_an_empty_read(proj, filters)
-    scoped_accounts = None
-    if filters.get("account"):
-        scoped_accounts = {filters["account"]}
-    elif filters:
-        # Coverage ranges over accounts with eligible movements in this read.
-        scoped_accounts = {m.account for m in proj.movements()
-                           if proj._counts_as_spending(m)
-                           and _movement_passes(proj, m, filters)}
-    covers, span_caveats = _attested_coverage(
-        proj, filters, accounts=scoped_accounts)
+        evidence = _empty_period_evidence(proj, filters, eligible_accounts)
+        if evidence["status"] != "covered":
+            reason = ("partial_empty_scope" if evidence["status"] == "partial"
+                      else "unsupported_empty_scope")
+            explanation = (
+                "Posted statements cover only part of the requested period, "
+                "so the absence of matching movements cannot be reported as zero."
+                if evidence["status"] == "partial" else
+                "Posted statements do not attest the requested period, so an "
+                "empty result cannot be reported as zero.")
+            return refusal(
+                TOOL, reason, explanation,
+                requested_window=dict(filters.get("window") or {}),
+                eligible_accounts=sorted(eligible_accounts))
+        record_ids = evidence["record_ids"]
+        covers = evidence["covers"]
+    else:
+        covers, span_caveats = _attested_coverage(
+            proj, filters, accounts=eligible_accounts)
     data = {"metric": "spending", "group_by": group_by,
             "by_group": {k: str(v) for k, v in sorted(named.items())},
             "groups": {"named": len(named), "total": len(grouped)},
@@ -242,7 +263,8 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
                        f"{group_by} group(s) are named here, plus "
                        f"{tail['count']} smaller group(s) worth "
                        f"{amount(tail['total'])} in total.")
-    grade = weakest(extras["grades"])
+    grade = (weakest(extras["grades"])
+             or (CORROBORATED if not extras["count"] and record_ids else ""))
     # What each of these figures was taken over. The total and the count were
     # taken over whatever the filters left — so they name exactly what the
     # filters named, and a sentence asking what was spent at one counterparty,
@@ -365,11 +387,6 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
         currency: -sum((line.amount for line in lines), Decimal("0"))
         for currency, lines in currency_lines.items()
     }
-    # Preserve the empty lifetime result. A bounded zero is different: it is
-    # an observed absence inside a requested period and needs a currency.
-    zero_currency = requested_currency or inferred_currency
-    if not by_currency and window and zero_currency != "?":
-        by_currency = {zero_currency: Decimal("0")}
     unexplained_lines = (selected(unexplained_source)
                          if unexplained_source in proj.accounts() else [])
     unexplained_currency_lines: dict[str, list] = {}
@@ -386,8 +403,43 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
     record_ids = sorted({line.provenance.doc_id
                          for lines in source_lines.values()
                          for line in lines if line.provenance.doc_id})
-    if not record_ids and window:
-        _empty_currency, record_ids = _of_an_empty_read(proj, filters)
+    eligible_accounts = _eligible_period_accounts(proj, filters)
+    covers, span_caveats = [], []
+    empty_grade = ""
+    if not by_currency and window:
+        evidence = _empty_period_evidence(proj, filters, eligible_accounts)
+        if evidence["status"] != "covered":
+            reason = ("partial_empty_scope" if evidence["status"] == "partial"
+                      else "unsupported_empty_scope")
+            explanation = (
+                "Posted statements cover only part of the requested period, "
+                "so the absence of attributed income cannot be reported as zero."
+                if evidence["status"] == "partial" else
+                "Posted statements do not attest the requested period, so an "
+                "empty attributed-income result cannot be reported as zero.")
+            return refusal(
+                TOOL, reason, explanation,
+                requested_window=dict(window),
+                eligible_accounts=sorted(eligible_accounts))
+        zero_currencies = ({requested_currency} if requested_currency else
+                           {info.currency for info in _real_accounts(proj)
+                            if info.account in eligible_accounts
+                            and info.currency})
+        if not zero_currencies:
+            return refusal(
+                TOOL, "unsupported_empty_scope",
+                "No eligible account currency establishes what an empty "
+                "attributed-income result would be zero of.",
+                requested_window=dict(window),
+                eligible_accounts=sorted(eligible_accounts))
+        by_currency = {currency: Decimal("0")
+                       for currency in sorted(zero_currencies)}
+        record_ids = evidence["record_ids"]
+        covers = evidence["covers"]
+        empty_grade = CORROBORATED
+    else:
+        covers, span_caveats = _attested_coverage(
+            proj, filters, accounts=eligible_accounts)
     narrowed = _narrowed_to(proj, filters)
     whole = not narrowed and len(by_currency) == 1
     # This read cuts by currency, so each figure names the currency its income
@@ -403,8 +455,9 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
                    if window else "over everything ingested")
     figures = [figure(v, f"attributed income in {k}, {income_span}",
                       quantity=quantity.INCOME,
-                      grade=weakest(line.grade for line in
-                                    currency_lines.get(k, [])), currency=k,
+                      grade=(weakest(line.grade for line in
+                                     currency_lines.get(k, [])) or empty_grade),
+                      currency=k,
                       record_ids=(sorted({line.provenance.doc_id for line in
                                           currency_lines.get(k, [])
                                           if line.provenance.doc_id})
@@ -426,7 +479,6 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
             currency=currency, record_ids=unexplained_ids,
             boundary=bounded(whole=not narrowed, selected=narrowed,
                              cut=cut_set(narrowed))))
-    covers, span_caveats = _attested_coverage(proj, filters)
     period = (f", from {window.get('from')} to {window.get('to')}"
               if window else ", over everything ingested")
     return ToolResult(
@@ -440,7 +492,7 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
                   k: str(v) for k, v in sorted(unexplained_by_currency.items())},
               "window": dict(window)},
         identifiers=_identifiers(proj, source_lines),
-        grade=weakest(line_grades),
+        grade=weakest(line_grades) or empty_grade,
         record_ids=record_ids,
         covers=covers,
         caveats=(["Attributed income only; inflows nothing has attributed are "
@@ -547,23 +599,51 @@ def _aggregate_recurring_spending(proj, filters: dict) -> ToolResult:
 def _aggregate_surplus(proj, filters: dict) -> ToolResult:
     """Attributed income less counted spending over the same period."""
     income = _aggregate_income(proj, filters)
-    grouped, spent = _spending_rows(proj, filters, "category")
+    if not income.ok:
+        return refusal(
+            TOOL, income.refusal,
+            "Surplus is unavailable because its attributed-income component "
+            f"refused: {income.text}",
+            component="income", component_refusal=income.refusal,
+            component_data=dict(income.data or {}))
+    income_currencies = (
+        set(income.data.get("by_currency") or {})
+        | set(income.data.get("unexplained_inflows_by_currency") or {}))
+    if len(income_currencies - {"?", ""}) > 1:
+        return _mixed_currencies(TOOL, income_currencies - {"?", ""})
+    if not (income.data.get("by_currency") or {}):
+        return refusal(
+            TOOL, "unsupported_empty_scope",
+            "Surplus is unavailable because no supported attributed-income "
+            "total exists for the requested scope.",
+            component="income",
+            component_refusal="unsupported_empty_scope")
+    spending_result = _aggregate_spending(proj, filters, "category")
+    if not spending_result.ok:
+        return refusal(
+            TOOL, spending_result.refusal,
+            "Surplus is unavailable because its counted-spending component "
+            f"refused: {spending_result.text}",
+            component="spending", component_refusal=spending_result.refusal,
+            component_data=dict(spending_result.data or {}))
     currencies = (set(income.data.get("by_currency") or {})
                   | set(income.data.get("unexplained_inflows_by_currency") or {})
-                  | set(spent["currencies"])) - {"?", ""}
+                  | {str(figure.get("currency") or "")
+                     for figure in spending_result.figures
+                     if figure.get("quantity") == quantity.SPENDING}) - {"?", ""}
     if len(currencies) > 1:
         return _mixed_currencies(TOOL, currencies)
     currency = next(iter(currencies), str(filters.get("currency") or ""))
     attributed = sum((Decimal(value) for value in
                       (income.data.get("by_currency") or {}).values()),
                      Decimal("0"))
-    spending = spent["total"]
+    spending = Decimal(str(spending_result.data["total"]))
     surplus = attributed - spending
     narrowed = _narrowed_to(proj, filters)
-    income_records = (list(income.record_ids)
-                      or sorted(info.account for info in _real_accounts(proj)))
-    records = sorted(set(income_records) | set(spent["record_ids"]))
-    grade = weakest([income.grade, *spent["grades"]])
+    income_records = list(income.record_ids)
+    spending_records = list(spending_result.record_ids)
+    records = sorted(set(income_records) | set(spending_records))
+    grade = weakest([income.grade, spending_result.grade])
     figures = [
         figure(attributed, "attributed income used in the period comparison",
                quantity=quantity.INCOME, grade=income.grade,
@@ -571,8 +651,8 @@ def _aggregate_surplus(proj, filters: dict) -> ToolResult:
                boundary=bounded(whole=False, selected=narrowed,
                                 cut=cut_set(narrowed))),
         figure(spending, "counted spending used in the period comparison",
-               quantity=quantity.SPENDING, grade=weakest(spent["grades"]),
-               currency=currency, record_ids=spent["record_ids"],
+               quantity=quantity.SPENDING, grade=spending_result.grade,
+               currency=currency, record_ids=spending_records,
                boundary=bounded(whole=False, selected=narrowed,
                                 cut=cut_set(narrowed))),
         figure(surplus, "supported surplus (negative means shortfall)",
@@ -585,7 +665,8 @@ def _aggregate_surplus(proj, filters: dict) -> ToolResult:
     if unexplained:
         figures.extend(fig for fig in income.figures
                        if fig.get("quantity") == quantity.GROSS_FLOW)
-    covers, span_caveats = _attested_coverage(proj, filters)
+    covers, span_caveats = _attested_coverage(
+        proj, filters, accounts=_eligible_period_accounts(proj, filters))
     return ToolResult(
         tool=TOOL, ok=True,
         data={"metric": "surplus", "window": dict(filters.get("window") or {}),

@@ -233,7 +233,9 @@ def test_what_a_spending_total_counts_is_said_only_where_it_counted_something():
         LedgerProjection(evs),
         {"entity": "aggregate", "metric": "spending",
          "filters": {"window": {"from": "2027-01-01"}}})
-    assert empty.ok, empty.text
+    assert not empty.ok
+    assert empty.refusal == "unsupported_empty_scope"
+    assert not empty.figures
     assert not any("left your life" in c for c in empty.caveats)
 
 

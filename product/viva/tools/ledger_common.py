@@ -626,6 +626,59 @@ def _attested_coverage(proj, filters: dict,
     return covers, caveats
 
 
+def _eligible_period_accounts(proj, filters: dict, *, kinds=None) -> set[str]:
+    """Return real accounts eligible for a period metric before row matching.
+
+    Account and currency filters narrow the population. Silent eligible
+    accounts remain included.
+    """
+    named = str(filters.get("account") or "")
+    currency = str(filters.get("currency") or "")
+    infos = [info for info in _real_accounts(proj)
+             if (not named or info.account == named)
+             and (not currency or info.currency == currency)
+             and (kinds is None or info.kind in kinds)]
+    return {info.account for info in infos}
+
+
+def _empty_period_evidence(proj, filters: dict,
+                           accounts: set[str]) -> dict:
+    """Whether an empty monetary period is an attested exact zero.
+
+    ``covered`` includes only when every eligible account has one continuous
+    attested run spanning the full requested interval.  Its evidence is the
+    statement document ids that cover that interval, never account ids.
+    Otherwise the status distinguishes no supporting overlap from partial
+    support so callers can refuse precisely.
+    """
+    window = dict(filters.get("window") or {})
+    asked_from = str(window.get("from") or "")[:10]
+    asked_to = str(window.get("to") or "")[:10]
+    if not asked_from or not asked_to or not accounts:
+        return {"status": "unsupported", "record_ids": [], "covers": []}
+
+    covered, overlapping, record_ids, covers = set(), set(), set(), []
+    for account in sorted(accounts):
+        statements = proj.statements(account)
+        runs = list(statements.runs) if statements is not None else []
+        if any(start <= asked_from and end >= asked_to for start, end in runs):
+            covered.add(account)
+            covers.append({"account": account, "from": asked_from,
+                           "to": asked_to})
+            for record in statements.records:
+                if (record.opening_date <= asked_to
+                        and record.closing_date >= asked_from):
+                    record_ids.add(record.doc_id)
+        elif any(start <= asked_to and end >= asked_from
+                 for start, end in runs):
+            overlapping.add(account)
+    if covered == accounts and record_ids:
+        return {"status": "covered", "record_ids": sorted(record_ids),
+                "covers": covers}
+    return {"status": ("partial" if covered or overlapping else "unsupported"),
+            "record_ids": [], "covers": []}
+
+
 def _shared_currency(currencies) -> str | None:
     """The one currency a set of amounts is in, "" when none of them says, and
     None when they disagree — which is a read that cannot be summed."""
@@ -641,21 +694,6 @@ def _scope(proj, filters: dict) -> list:
     named = filters.get("account")
     return [i for i in _real_accounts(proj)
             if not named or i.account == named]
-
-
-def _of_an_empty_read(proj, filters: dict) -> tuple[str, list]:
-    """What a total of nothing is an amount of, and what it rests on, as
-    `(currency, record ids)`.
-
-    A window in which nothing moved still has a total, and that total is zero
-    of a currency rather than a bare number. The accounts the read ranged over
-    say which currency, and their statements are what answer for the zero being
-    real rather than merely unobserved. Saying neither leaves the same zero
-    reading as a count, which no balance adds to."""
-    scope = _scope(proj, filters)
-    return (str(filters.get("currency") or "")
-            or _shared_currency(i.currency for i in scope) or "",
-            sorted(i.account for i in scope))
 
 
 def _mixed_currencies(tool: str, held) -> ToolResult:
@@ -785,4 +823,4 @@ def _month_slice(month: str, narrowed) -> dict | None:
 
 
 
-__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_KIND', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'FILTER_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', '_resolve_account_filter', 'MANY_BAD_FILTERS', '_check_filters', '_resolve_window_preset', '_in_window', '_movement_passes', '_attested_coverage', '_shared_currency', '_scope', '_of_an_empty_read', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']
+__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_KIND', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'FILTER_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', '_resolve_account_filter', 'MANY_BAD_FILTERS', '_check_filters', '_resolve_window_preset', '_in_window', '_movement_passes', '_attested_coverage', '_eligible_period_accounts', '_empty_period_evidence', '_shared_currency', '_scope', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']

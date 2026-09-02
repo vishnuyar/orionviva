@@ -22,7 +22,7 @@
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v22"
+      "active": "tools-v23"
     },
     "goal_binding": {
       "in": "prompts",
@@ -188,6 +188,7 @@
     "tools-v20": "7a2ed3808b3fcfeb",
     "tools-v21": "03b572dd133d70e1",
     "tools-v22": "7e8b48d959a22f5c",
+    "tools-v23": "85c9b19a428c54ad",
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",

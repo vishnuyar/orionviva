@@ -128,11 +128,15 @@ executable-program authorship: it selects one compact reviewed semantic family,
 typed parameters and requested claims, while deterministic code authors and
 validates the AnswerProgram. Publication binds the exact provider route,
 requested and resolved model, modality, locale family, semantic prompt and
-schema, catalog, builder digest, retained runtime contracts, persona and frozen
-corpus. Each frozen case is keyed to an independent deterministic oracle for
-financial value, currency, subject and date, and publication retains complete
-per-attempt request, response, route, model and usage evidence. Provider doubles
-and reports assembled from fabricated passing scores are never publishable.
+schema, catalog, builder digest, retained runtime contracts, persona, frozen
+corpus, canonical synthetic fixture and its derived oracle set. Before a
+compiler or provider is constructed, the product loads its own corpus and
+derives every oracle from a fresh fixture; caller-supplied full-corpus cases or
+registries cannot become admission evidence. Each frozen case is keyed to an
+independent deterministic oracle for financial value, currency, subject and
+date, and publication retains complete per-attempt request, response, route,
+model and usage evidence. Provider doubles and reports assembled from fabricated
+passing scores are never publishable.
 The serialized report remains verifiable evidence, while the authority to mint
 a profile is a non-serializable capability held only by the live suite run that
 produced it. That capability is immutable and checks its bound canonical report
