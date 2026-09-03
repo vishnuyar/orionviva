@@ -16,7 +16,7 @@ from .compiler import COMPILER_VERSION
 from .schema import (ANSWER_PROGRAM_VERSION, CAPABILITY_MANIFEST_VERSION,
                      AnswerProgram)
 
-ADMISSION_PROFILE_VERSION = "semantic-request-admission-v7"
+ADMISSION_PROFILE_VERSION = "semantic-request-admission-v8"
 
 
 def _semantic_observation(raw) -> dict:
@@ -58,6 +58,12 @@ class AdmissionThresholds:
         for value in asdict(self).values():
             if not 0 <= value <= 1:
                 raise ValueError("admission thresholds must be between zero and one")
+
+
+# Availability is statistical; financial integrity is not. Reports may elect
+# stricter thresholds, never weaker ones, and every financial-integrity counter
+# remains an absolute gate below.
+MINIMUM_ADMISSION_THRESHOLDS = AdmissionThresholds(.95, .95, .95)
 
 
 @dataclass(frozen=True)
@@ -220,6 +226,10 @@ class AdmissionProfile:
         if not self.admitted_at:
             object.__setattr__(self, "admitted_at",
                                datetime.datetime.now(datetime.timezone.utc).isoformat())
+        for name, minimum in asdict(MINIMUM_ADMISSION_THRESHOLDS).items():
+            if getattr(self.thresholds, name) < minimum:
+                raise ValueError(
+                    f"admission profile threshold {name!r} is below policy")
 
     def to_dict(self):
         out = asdict(self)
@@ -227,6 +237,7 @@ class AdmissionProfile:
 
 
 def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
+             exact_first_attempt_clean=None,
              within_repair_valid=None,
              keyed_semantic_errors=0, missing_data_as_zero=0,
              hypothetical_as_measured=0, resource_exhaustions=0,
@@ -236,6 +247,8 @@ def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
     scores = tuple(case_scores)
     attempts = tuple(int(value) for value in attempts)
     first = tuple(bool(value) for value in first_attempt_valid)
+    exact_first = (tuple(bool(value) for value in exact_first_attempt_clean)
+                   if exact_first_attempt_clean is not None else first)
     repaired = (tuple(bool(value) for value in within_repair_valid)
                 if within_repair_valid is not None
                 else tuple(item.passed for item in scores))
@@ -249,11 +262,15 @@ def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
     metrics = {
         "cases": len(scores),
         "first_attempt_validity": sum(first) / max(1, len(first)),
+        "exact_first_attempt_clean": (
+            sum(exact_first) / max(1, len(exact_first))),
         "repaired_validity": sum(repaired) / max(1, len(repaired)),
         "answerable_completion": sum(item.passed for item in scores) / total,
         "unsupported_figures": sum(item.unsupported_figures for item in scores),
         "confidently_wrong": sum(item.confidently_wrong for item in scores),
         "keyed_semantic_errors": int(keyed_semantic_errors),
+        "financial_integrity_errors": sum(
+            item.financial_integrity_errors for item in scores),
         "missing_data_as_zero": int(missing_data_as_zero),
         "hypothetical_as_measured": int(hypothetical_as_measured),
         "resource_exhaustions": int(resource_exhaustions),
@@ -263,12 +280,10 @@ def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
     }
     hard = []
     for name in ("unsupported_figures", "confidently_wrong",
-                 "keyed_semantic_errors", "missing_data_as_zero",
+                 "financial_integrity_errors", "missing_data_as_zero",
                  "hypothetical_as_measured", "resource_exhaustions"):
         if metrics[name]:
             hard.append(name)
-    if any(not item.passed for item in scores):
-        hard.append("keyed_case_failure")
     if p95_attempts > 2:
         hard.append("model_attempt_bound")
     if latency_ceiling_ms is not None and latency_p95_ms > latency_ceiling_ms:
@@ -281,6 +296,9 @@ def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
                  "answerable_completion"):
         if metrics[name] < getattr(thresholds, name):
             threshold_failures.append(name)
+    if metrics["exact_first_attempt_clean"] < \
+            thresholds.first_attempt_validity:
+        threshold_failures.append("exact_first_attempt_clean")
     if not measured:
         hard.append("unmeasured_model")
     if not complete_attempts:
@@ -529,20 +547,31 @@ def validate_admission_report(report, profile=None) -> tuple[str, ...]:
         failures.append("attempt_measurements_mismatch")
     if raw.get("publication_source") != "live_provider_suite":
         failures.append("non_live_publication_source")
+    if "keyed_semantic_errors" not in metrics:
+        failures.append("admission_metric_missing:keyed_semantic_errors")
     for name in ("unsupported_figures", "confidently_wrong",
-                 "keyed_semantic_errors", "missing_data_as_zero",
+                 "financial_integrity_errors", "missing_data_as_zero",
                  "hypothetical_as_measured", "resource_exhaustions"):
-        if int(metrics.get(name) or 0) != 0:
+        if name not in metrics:
+            failures.append(f"admission_metric_missing:{name}")
+        elif int(metrics.get(name) or 0) != 0:
             failures.append(f"admission_metric_failed:{name}")
     if int(metrics.get("p95_model_attempts") or 0) > 2:
         failures.append("admission_metric_failed:model_attempt_bound")
-    if float(metrics.get("answerable_completion") or 0) < 1:
-        failures.append("admission_metric_failed:keyed_case_failure")
-    for name in ("first_attempt_validity", "repaired_validity",
-                 "answerable_completion"):
-        if name not in metrics or name not in thresholds:
+    minimums = asdict(MINIMUM_ADMISSION_THRESHOLDS)
+    threshold_metrics = {
+        "first_attempt_validity": "first_attempt_validity",
+        "exact_first_attempt_clean": "first_attempt_validity",
+        "repaired_validity": "repaired_validity",
+        "answerable_completion": "answerable_completion",
+    }
+    for name, minimum in minimums.items():
+        if name in thresholds and float(thresholds[name]) < minimum:
+            failures.append(f"admission_policy_threshold_below_minimum:{name}")
+    for name, threshold_name in threshold_metrics.items():
+        if name not in metrics or threshold_name not in thresholds:
             failures.append(f"admission_metric_missing:{name}")
-        elif float(metrics[name]) < float(thresholds[name]):
+        elif float(metrics[name]) < float(thresholds[threshold_name]):
             failures.append(f"admission_threshold_failed:{name}")
     if profile is not None:
         identity = dict(raw.get("identity") or {})
@@ -722,6 +751,10 @@ def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thres
         identity_failures.append("oracle_set_differs_from_current_build")
     report = evaluate(
         scores, attempts=attempts, first_attempt_valid=first_valid,
+        exact_first_attempt_clean=[
+            bool(len(turn.exchanges) == 1 and turn.exchanges[0].parse_ok
+                 and scored.passed)
+            for case, turn, scored in zip(cases, turns, scores) if case.exact],
         within_repair_valid=repaired_valid,
         thresholds=thresholds,
         keyed_semantic_errors=sum(item.keyed_semantic_errors for item in scores),
@@ -786,7 +819,8 @@ def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thres
     return _MeasuredAdmissionRun(report, _MEASURED_RUN_SEAL), tuple(scores), tuple(turns)
 
 
-__all__ = ["ADMISSION_PROFILE_VERSION", "AdmissionOracleSet",
+__all__ = ["ADMISSION_PROFILE_VERSION", "MINIMUM_ADMISSION_THRESHOLDS",
+           "AdmissionOracleSet",
            "AdmissionPreflightError", "AdmissionPreflightFailure",
            "AdmissionProfile", "AdmissionReport", "AdmissionThresholds",
            "admitted_profile", "admission_report_digest",

@@ -19,7 +19,8 @@ the same one grounded path.
 
 The active compact artifacts are `semantic-request-v7`,
 `semantic-request-retry-v7`, and `semantic-request-schema-v7`; exact-model
-publication uses `semantic-request-admission-v7`.
+publication uses `semantic-request-admission-v8`. The profile version changed
+because the admission policy changed; the semantic contract itself did not.
 
 ## Rules
 
@@ -128,12 +129,18 @@ publication uses `semantic-request-admission-v7`.
 2. The corpus contains seven exact questions repeated exactly five times,
    thirty-five varied paraphrases, and follow-up, ambiguity, and
    forbidden-result cases.
-   Every routine supported turn must select the correct family and grounded
-   typed meaning on its first attempt. Entity surface strings are not golden
-   answers: admission grades the resolved ledger identity, exact record set,
-   figures, currency, dates, status, and evidence. Objective period edges stay
-   exact. Required answer effects must be present and effects outside the
-   reviewed allowed set fail.
+   At least 95% of the complete corpus must produce a valid semantic request on
+   the first attempt, and at least 95% of the repeated exact questions must also
+   pass their oracle cleanly on that attempt. At least 95% of the complete corpus
+   must produce a valid program within the single repair and complete the answer
+   expected by its oracle. These are
+   availability thresholds approved by the product owner. Entity
+   surface strings are not golden answers: admission grades the resolved ledger
+   identity, exact record set, figures, currency, dates, status, and evidence.
+   An emitted wrong figure, identity, scope, period, completeness claim,
+   unsupported figure, false zero, or hypothetical presented as measured remains
+   an absolute failure. Safe refusals, missing answers, and repair use count
+   against the statistical availability thresholds.
 3. Runtime answering is unavailable without a published profile and the
    measured report it came from. Profile creation and release-bundle writing
    additionally require the process-local, non-serializable measured-run
@@ -206,11 +213,13 @@ evidence that would justify a later composable semantic language.
 ## Release boundary
 
 The code and model-free tests do not publish a runtime profile. Publication
-requires all 73 version-4 cases (the same seven exact Witness questions and
+requires measuring all 73 version-4 cases (the same seven exact Witness questions and
 their 35 repetitions, 35 varied paraphrases, and three focused coverage
 cases), the malformed-request recovery cases, the
 retained adversarial runtime suite, exact keyed financial oracles, complete
-provider attempt evidence, zero unsafe-figure or semantic errors, and the exact
-build digests. The later private-vault Witness also waits
+provider attempt evidence, at least 95% first-attempt validity overall and in
+the exact-question cohort, at least 95% validity within one repair and
+answerable completion, zero financial-integrity errors, and the
+exact build digests. The later private-vault Witness also waits
 for the separately governed account-identity, question-intelligence, and
 desktop-progress workstreams.

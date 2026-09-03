@@ -257,6 +257,22 @@ class CaseScore:
     missing_data_as_zero: int = 0
     hypothetical_as_measured: int = 0
     resource_exhaustions: int = 0
+    financial_integrity_errors: int = 0
+
+
+FINANCIAL_INTEGRITY_DEFECTS = frozenset({
+    "wrong_family", "wrong_period_parameters", "unrequested_answer_effect",
+    "wrong_lowered_family", "wrong_named_account_result",
+    "wrong_attention_result", "wrong_period_or_quantity",
+    "wrong_net_worth_claim", "incomplete_card_population",
+    "wrong_classification_explanation", "wrong_keyed_figure",
+    "missing_data_as_zero", "unclear_completeness_language",
+    "forbidden_claim", "wrong_intent", "unexpected_required_node",
+    "unpermitted_supporting_node", "reviewed_intent_mismatch",
+    "unreviewed_semantic_contract", "wrong_scope", "wrong_subject",
+    "wrong_period_semantics", "wrong_period", "records_missing",
+    "missing_caveat", "unexpected_keyed_figure",
+})
 
 
 def derive_semantic_oracle(case: SemanticEvalCase, registry, manifest, policy,
@@ -488,8 +504,11 @@ def _score_semantic(case: SemanticEvalCase, runtime_result) -> CaseScore:
         "wrong_non_answer_semantics", "wrong_non_answer_tag",
         "wrong_non_answer_shape", "wrong_non_answer_program"}
     semantic_errors = sum(item in semantic_tags for item in defects)
+    integrity_errors = sum(
+        item in FINANCIAL_INTEGRITY_DEFECTS for item in defects)
     return CaseScore(case.id, True, not defects, tuple(defects), unsupported,
-                     wrong, semantic_errors, missing_zero, 0, exhausted)
+                     wrong, semantic_errors, missing_zero, 0, exhausted,
+                     integrity_errors)
 
 
 def score(case: EvalCase, runtime_result) -> CaseScore:
@@ -646,8 +665,11 @@ def score(case: EvalCase, runtime_result) -> CaseScore:
         "records_missing", "missing_caveat", "forbidden_claim",
         "unexpected_keyed_figure"}
     semantic_errors = sum(1 for defect in defects if defect in semantic_tags)
+    integrity_errors = sum(
+        defect in FINANCIAL_INTEGRITY_DEFECTS for defect in defects)
     return CaseScore(case.id, True, not defects, tuple(defects), unsupported, wrong,
-                     semantic_errors, missing_zero, hypothetical, exhausted)
+                     semantic_errors, missing_zero, hypothetical, exhausted,
+                     integrity_errors)
 
 
 __all__ = ["CASES", "LEGACY_CASES", "ADVERSARIAL_CASES", "EvalCase",

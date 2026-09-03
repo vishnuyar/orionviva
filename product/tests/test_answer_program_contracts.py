@@ -25,6 +25,7 @@ from viva.answer_program import (AnswerProgram, AnswerResourcePolicy,
                                  check_profile, check_single_path,
                                  current_contract_digests,
                                  evaluate_admission, replay_capture,
+                                 MINIMUM_ADMISSION_THRESHOLDS,
                                  preflight_live_suite,
                                  resource_policy_digest,
                                  run_live_suite, write_release_bundle)
@@ -939,6 +940,7 @@ def test_a_refusal_is_missing_not_confidently_wrong():
     assert "missing_keyed_figure" in measured.defects
     assert "wrong_keyed_figure" not in measured.defects
     assert measured.confidently_wrong == 0
+    assert measured.financial_integrity_errors == 0
 
 
 def test_live_admission_report_is_bound_to_measured_identity_and_contracts(
@@ -1047,6 +1049,7 @@ def test_admission_reports_sanitized_repair_causes_without_raw_text():
 
     assert not scores[0].passed
     assert scores[0].defects == ("routine_question_needed_repair",)
+    assert scores[0].financial_integrity_errors == 0
     assert diagnostics == [
         {"attempt": 1, "parse_ok": False,
          "failure_code": "parameter_field_set_mismatch"},
@@ -1189,6 +1192,7 @@ def test_semantic_scoring_rejects_a_broadened_lowered_program():
             program=broadened)))
     assert not measured.passed
     assert "wrong_lowered_family" in measured.defects
+    assert measured.financial_integrity_errors == 1
 
 
 def test_admission_report_recomputes_hard_metrics_instead_of_trusting_flags():
@@ -1198,6 +1202,7 @@ def test_admission_report_recomputes_hard_metrics_instead_of_trusting_flags():
                  "repaired_validity": 1, "answerable_completion": 1,
                  "unsupported_figures": 7, "confidently_wrong": 3,
                  "keyed_semantic_errors": 5, "missing_data_as_zero": 2,
+                 "financial_integrity_errors": 6,
                  "hypothetical_as_measured": 1, "resource_exhaustions": 4,
                  "p95_model_attempts": 9},
         hard_failures=(), threshold_failures=(), adversarial_passed=True,
@@ -1205,6 +1210,7 @@ def test_admission_report_recomputes_hard_metrics_instead_of_trusting_flags():
                     "answerable_completion": 1})
     failures = validate_admission_report(report)
     assert "admission_metric_failed:unsupported_figures" in failures
+    assert "admission_metric_failed:financial_integrity_errors" in failures
     assert "admission_metric_failed:model_attempt_bound" in failures
 
 
@@ -1346,6 +1352,82 @@ def test_admission_is_absolute_and_profiles_cannot_publish_unmeasured_models():
             failed, manifest=manifest)
 
 
+def test_admission_thresholds_safe_availability_misses_at_ninety_five_percent():
+    cases = load_cases()
+    scores = [CaseScore(case.id, True, True, (), 0, 0) for case in cases]
+    scores[0] = CaseScore(
+        cases[0].id, True, False,
+        ("routine_question_needed_repair", "missing_keyed_figure"),
+        0, 0, keyed_semantic_errors=2)
+    scores[1] = CaseScore(
+        cases[1].id, True, False, ("routine_question_needed_repair",),
+        0, 0, keyed_semantic_errors=1)
+    first_attempt = [False, False, *([True] * (len(cases) - 2))]
+    within_repair = [False, True, *([True] * (len(cases) - 2))]
+
+    report = evaluate_admission(
+        scores, attempts=[2, 2, *([1] * (len(cases) - 2))],
+        first_attempt_valid=first_attempt,
+        exact_first_attempt_clean=[False, *([True] * 34)],
+        within_repair_valid=within_repair,
+        thresholds=MINIMUM_ADMISSION_THRESHOLDS,
+        keyed_semantic_errors=3)
+
+    assert report.admitted
+    assert report.metrics["first_attempt_validity"] == 71 / 73
+    assert report.metrics["exact_first_attempt_clean"] == 34 / 35
+    assert report.metrics["repaired_validity"] == 72 / 73
+    assert report.metrics["answerable_completion"] == 71 / 73
+    assert report.metrics["keyed_semantic_errors"] == 3
+    assert not report.hard_failures
+
+
+def test_admission_keeps_financial_integrity_at_zero_tolerance():
+    cases = load_cases()
+    scores = [CaseScore(case.id, True, True, (), 0, 0) for case in cases]
+    scores[0] = CaseScore(
+        cases[0].id, True, False, ("wrong_period_or_quantity",),
+        0, 0, keyed_semantic_errors=1, financial_integrity_errors=1)
+
+    report = evaluate_admission(
+        scores, attempts=[1] * len(cases),
+        first_attempt_valid=[True] * len(cases),
+        thresholds=MINIMUM_ADMISSION_THRESHOLDS,
+        keyed_semantic_errors=1)
+
+    assert not report.admitted
+    assert "financial_integrity_errors" in report.hard_failures
+
+
+def test_admission_rejects_an_exact_cohort_below_the_availability_floor():
+    cases = load_cases()
+    scores = [CaseScore(case.id, True, True, (), 0, 0) for case in cases]
+
+    report = evaluate_admission(
+        scores, attempts=[1] * len(cases),
+        first_attempt_valid=[True] * len(cases),
+        exact_first_attempt_clean=[False, False, *([True] * 33)],
+        thresholds=MINIMUM_ADMISSION_THRESHOLDS)
+
+    assert not report.admitted
+    assert "exact_first_attempt_clean" in report.threshold_failures
+
+
+def test_report_validation_rejects_thresholds_below_owner_policy():
+    manifest = CapabilityManifest.from_registry(_registry())
+    report = _fully_validated_forged_report(manifest)
+    report = replace(report, thresholds={
+        "first_attempt_validity": .94,
+        "repaired_validity": .95,
+        "answerable_completion": .95,
+    })
+
+    failures = validate_admission_report(report)
+
+    assert "admission_policy_threshold_below_minimum:first_attempt_validity" \
+        in failures
+
+
 def test_admission_rejects_incomplete_per_case_attempt_evidence():
     cases = load_cases()
     scores = [CaseScore(case.id, True, True, (), 0, 0) for case in cases]
@@ -1423,7 +1505,7 @@ def test_fixture_and_oracle_contracts_bind_report_profile_build_and_bundle(
     monkeypatch.setattr(admission_module, "_report_from_measured_run",
                         lambda _measured: report)
     profile = admitted_profile(object(), manifest=manifest)
-    assert profile.profile_version == "semantic-request-admission-v7"
+    assert profile.profile_version == "semantic-request-admission-v8"
     assert profile.admission_fixture_digest == contracts["admission_fixture"]
     assert profile.oracle_set_digest == contracts["oracle_set"]
     assert check_profile(profile, manifest, report).passed

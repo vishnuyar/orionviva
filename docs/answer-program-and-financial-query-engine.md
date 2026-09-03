@@ -1314,20 +1314,23 @@ useful rather than generic.
 ### Admission gates
 
 - zero unsupported figures on the frozen and adversarial suites;
-- zero keyed quantity, scope, subject, currency, date, and period errors;
+- zero emitted keyed quantity, scope, subject, currency, date, and period errors;
 - zero missing-data-as-zero errors;
 - zero measured-versus-hypothetical classification errors;
-- all current acceptance questions complete;
+- all current acceptance questions measured;
 - first-attempt program validity meets the approved model threshold;
+- first-attempt validity for the repeated exact-question cohort meets the same threshold;
 - validity after one repair meets the approved model threshold;
 - answerable completion rate meets the approved target established from Phase 0;
 - P95 model attempts do not exceed two;
 - no keyed case exhausts a resource policy that was admitted at validation;
 - latency and evidence-payload ceilings pass on the reference vault scale.
 
-Safety gates are absolute and may not be traded against helpfulness. Statistical
-model thresholds are approved after Phase 0 baseline and stored with the admission
-profile.
+Safety gates are absolute and may not be traded against helpfulness. The product
+owner approved a 95% floor for first-attempt validity, validity
+within one repair, and answerable completion. Safe refusals, missing answers, and
+repair use spend that availability allowance; wrong or unsupported financial
+output never does. The thresholds are stored with the admission profile.
 
 ### Release checks
 
