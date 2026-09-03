@@ -16,7 +16,7 @@ from .compiler import COMPILER_VERSION
 from .schema import (ANSWER_PROGRAM_VERSION, CAPABILITY_MANIFEST_VERSION,
                      AnswerProgram)
 
-ADMISSION_PROFILE_VERSION = "semantic-request-admission-v4"
+ADMISSION_PROFILE_VERSION = "semantic-request-admission-v5"
 
 
 def _semantic_observation(raw) -> dict:
@@ -36,6 +36,16 @@ def _semantic_observation(raw) -> dict:
     elif held.get("tag"):
         out["tag"] = str(held["tag"])[:80]
     return out
+
+
+def _attempt_diagnostics(exchanges) -> list[dict]:
+    """Keep repair causes useful without persisting provider or user text."""
+    return [
+        {"attempt": number,
+         "parse_ok": bool(getattr(exchange, "parse_ok", False)),
+         "failure_code": str(getattr(exchange, "failure_code", "") or "")}
+        for number, exchange in enumerate(exchanges, 1)
+    ]
 
 
 @dataclass(frozen=True)
@@ -492,7 +502,8 @@ def validate_admission_report(report, profile=None) -> tuple[str, ...]:
         by_case[case_id].append(int(item.get("attempt") or 0))
         required = {"case_id", "attempt", "oracle_key", "oracle_digest",
                     "request_digest", "response_digest", "resolved_model",
-                    "modality", "provider_adapter", "usage_reported"}
+                    "modality", "provider_adapter", "usage_reported",
+                    "failure_code"}
         if (not required <= set(item) or not item["request_digest"]
                 or not item["response_digest"] or not item["resolved_model"]
                 or not item["oracle_key"] or not item["oracle_digest"]
@@ -655,6 +666,7 @@ def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thres
             "latency_ms": latency_ms,
             "semantic_observation": _semantic_observation(
                 turn.semantic_request),
+            "attempt_diagnostics": _attempt_diagnostics(turn.exchanges),
             "result_status": str(turn.result.status or ""),
             "result_outcome_tag": str(turn.result.outcome_tag or ""),
         })
@@ -754,6 +766,7 @@ def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thres
                 "resolved_model": exchange.resolved_model,
                 "modality": exchange.modality,
                 "provider_adapter": exchange.provider_adapter,
+                "failure_code": str(getattr(exchange, "failure_code", "") or ""),
                 "usage_reported": exchange.usage_reported})
     hard = list(report.hard_failures)
     hard.extend(identity_failures)

@@ -31,6 +31,7 @@ class CompileExchange:
     resolved_model: str = ""
     parse_ok: bool = True
     parse_error: str = ""
+    failure_code: str = ""
     defect: dict = field(default_factory=dict)
     usage_reported: bool = False
     provider_adapter: str = ""
@@ -52,10 +53,39 @@ class CompilationResult:
 
 
 class _ReplyError(ContractError):
-    def __init__(self, message: str, exchange: CompileExchange, raw=None):
+    def __init__(self, message: str, exchange: CompileExchange, raw=None, *,
+                 failure_code="semantic_reply_invalid"):
         super().__init__(message)
         self.exchange = exchange
         self.raw = raw
+        self.failure_code = failure_code
+
+
+def _contract_failure_code(error: Exception) -> str:
+    """Classify a rejected semantic object without retaining its contents."""
+    message = str(error)
+    rules = (
+        ("unsupported semantic request version", "request_version_mismatch"),
+        ("semantic request fields differ", "request_field_set_mismatch"),
+        ("semantic output fields differ", "outcome_field_set_mismatch"),
+        ("semantic output has an unknown outcome", "unknown_outcome"),
+        ("semantic request used a different entity catalog",
+         "entity_catalog_digest_mismatch"),
+        ("semantic request used a different catalog",
+         "semantic_catalog_digest_mismatch"),
+        ("semantic parameters differ", "parameter_field_set_mismatch"),
+        ("semantic parameters must be an object", "parameters_not_object"),
+        ("parameter_sources must prove", "parameter_source_set_mismatch"),
+        ("has invalid source", "invalid_parameter_source"),
+        ("quotes text not in its source", "ungrounded_parameter_quote"),
+        ("was not selected from its catalog", "unknown_catalog_selection"),
+        ("differs from its source quote", "parameter_quote_mismatch"),
+        ("requested_claims must be", "invalid_answer_effects"),
+        ("invalid semantic clarification", "invalid_clarification"),
+        ("invalid semantic assumption", "invalid_assumption"),
+    )
+    return next((code for fragment, code in rules if fragment in message),
+                "semantic_contract_invalid")
 
 
 def _usage_reported(response: object) -> bool:
@@ -122,6 +152,7 @@ class AnswerProgramCompiler:
                                             str(error)),)
                 error.exchange.parse_ok = False
                 error.exchange.parse_error = str(error)
+                error.exchange.failure_code = error.failure_code
                 error.exchange.defect = defects[0].to_dict()
                 continue
             except Exception as error:
@@ -131,6 +162,7 @@ class AnswerProgramCompiler:
                 self.exchanges.append(CompileExchange(
                     modality=self.modality, request={}, response={},
                     parse_ok=False, parse_error=str(error),
+                    failure_code="model_unreachable",
                     defect={"tag": "model_unreachable", "path": "$",
                             "message": str(error), "repairable": False}))
                 return CompilationResult(
@@ -140,6 +172,7 @@ class AnswerProgramCompiler:
                     and exchange.resolved_model != self.expected_resolved_model):
                 exchange.parse_ok = False
                 exchange.parse_error = "provider returned a different model profile"
+                exchange.failure_code = "model_profile_mismatch"
                 exchange.defect = {
                     "tag": "model_profile_mismatch", "path": "$",
                     "message": exchange.parse_error, "repairable": False}
@@ -156,6 +189,7 @@ class AnswerProgramCompiler:
                                             str(error)),)
                 exchange.parse_ok = False
                 exchange.parse_error = str(error)
+                exchange.failure_code = _contract_failure_code(error)
                 exchange.defect = defects[0].to_dict()
                 continue
             if semantic.kind == "unsupported":
@@ -172,6 +206,7 @@ class AnswerProgramCompiler:
             defects = tuple(checked.defects)
             exchange.parse_ok = False
             exchange.parse_error = "; ".join(item.message for item in defects)
+            exchange.failure_code = "invalid_lowered_program"
             exchange.defect = {"tag": "invalid_lowered_program",
                                "defects": [item.to_dict() for item in defects]}
             return CompilationResult(
@@ -230,20 +265,22 @@ class AnswerProgramCompiler:
         calls = list(getattr(turn, "tool_calls", ()) or ())
         if len(calls) != 1:
             raise _ReplyError("semantic reply must call one selection tool",
-                              exchange)
+                              exchange, failure_code="selection_tool_count")
         fn = (calls[0] or {}).get("function") or {}
         name = str(fn.get("name") or "")
         known = {tool["name"] for tool in tools}
         if name not in known:
-            raise _ReplyError("compiler reply called an unknown function", exchange)
+            raise _ReplyError("compiler reply called an unknown function", exchange,
+                              failure_code="unknown_selection_tool")
         try:
             raw = json.loads(fn.get("arguments") or "")
         except json.JSONDecodeError as error:
             raise _ReplyError(f"compiler arguments are not JSON: {error}",
-                              exchange) from None
+                              exchange,
+                              failure_code="selection_arguments_not_json") from None
         if not isinstance(raw, dict):
             raise _ReplyError("semantic selection must be an object", exchange,
-                              raw)
+                              raw, failure_code="selection_arguments_not_object")
         if name.startswith("select_"):
             family_id = name[len("select_"):]
             raw = {"request_version": SEMANTIC_REQUEST_VERSION,
@@ -272,15 +309,16 @@ class AnswerProgramCompiler:
         blocks = _FENCED.findall(text)
         if len(blocks) > 1:
             raise _ReplyError("compiler reply carried more than one JSON block",
-                              exchange, text)
+                              exchange, text,
+                              failure_code="multiple_json_blocks")
         try:
             raw = json.loads(blocks[0] if blocks else text)
         except json.JSONDecodeError as error:
             raise _ReplyError(f"compiler reply is not JSON: {error}", exchange,
-                              text) from None
+                              text, failure_code="reply_not_json") from None
         if not isinstance(raw, dict):
             raise _ReplyError("semantic selection must be an object", exchange,
-                              raw)
+                              raw, failure_code="selection_arguments_not_object")
         return raw, exchange
 
 

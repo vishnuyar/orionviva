@@ -55,7 +55,7 @@
 
 ### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
 **State:** enforced
-**Code:** product/viva/prompts/semantic-request-retry-v4.txt
+**Code:** product/viva/prompts/semantic-request-retry-v5.txt
 **Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
 1. The repair prompt receives every compact-contract defect and asks for one complete replacement semantic request.
@@ -64,6 +64,8 @@
 4. Version 3 kept grounded user wording for entities while restricting
    clarification tags to the reviewed ambiguity vocabulary. Version 4 adds a
    bounded user-specific entity catalog and locally verifies catalog selection.
+   Version 5 collapses labels with the same deterministic answer effect and
+   records a sanitized failure code when a response needs repair.
 
 ## Why
 

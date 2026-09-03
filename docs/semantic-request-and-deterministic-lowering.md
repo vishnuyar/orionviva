@@ -12,10 +12,14 @@ runtime model author the executable program is superseded here.
 
 The boundary now has two different contracts. A model returns a compact
 semantic request: one reviewed financial family, its typed parameters, and its
-reviewed requested claims. Deterministic code lowers that request into the
+reviewed canonical answer effects. Deterministic code lowers that request into the
 complete AnswerProgram. The already-built runtime then validates the whole
 program before any financial read and executes, binds, and renders it through
 the same one grounded path.
+
+The active compact artifacts are `semantic-request-v5`,
+`semantic-request-retry-v5`, and `semantic-request-schema-v5`; exact-model
+publication uses `semantic-request-admission-v5`.
 
 ## Rules
 
@@ -25,7 +29,8 @@ the same one grounded path.
 **Test:** product/tests/test_semantic_answering.py::test_model_contract_cannot_author_executable_program_fields
 
 1. Model output contains only a version, catalog digest, semantic family,
-   typed parameters, grounded parameter sources, and requested claims, or one
+   typed parameters, grounded parameter sources, and canonical answer effects,
+   or one
    structured non-answer outcome.
 2. Model-visible tools and text schema contain no AnswerProgram node, tool,
    financial query, answer clause, binding, importance, result-policy, or
@@ -55,7 +60,7 @@ the same one grounded path.
 **Test:** product/tests/test_semantic_answering.py::test_every_reviewed_family_lowers_and_validates_before_a_read
 
 1. One registry owns the six runtime-selectable family definitions, their
-   parameter and claim schemas, native tool catalog, text schema, builder
+   parameter and answer-effect schemas, native tool catalog, text schema, builder
    lookup, supported-family report, catalog digest, and admission digest.
 2. The first scope is named-account balance, needs-attention, explicit-period
    category spending, net worth, card debt, and classification explanation.
@@ -68,12 +73,12 @@ the same one grounded path.
    fixture or runtime branching. Different users contribute different candidate
    data through the same contract.
 
-### AP-11 — Required claims are the requested financial meaning
+### AP-11 — Canonical answer effects are the requested financial meaning
 **State:** enforced
 **Code:** product/viva/answer_program/intents.py, product/viva/tools/ledger_audit.py
 **Test:** product/tests/test_semantic_answering.py::test_net_worth_has_no_unrequested_staleness_clause, product/tests/test_semantic_answering.py::test_named_account_scope_and_date_survive_lowering_and_delivery, product/tests/test_semantic_answering.py::test_materially_different_classification_matches_request_clarification
 
-1. Named-account answers bind only the claims requested. A requested date stays
+1. Named-account answers bind only the answer effects requested. A requested date stays
    attached to its supporting account figure; a balance-only request does not
    acquire a date clause.
 2. Net worth reads the authoritative per-currency net-worth view. Unrequested
@@ -85,10 +90,15 @@ the same one grounded path.
    it does not create, regroup, or rerank questions.
 5. Classification explanations expose the deterministic nature reason and its
    evidence; materially different matching treatments refuse as ambiguous.
-6. Admission distinguishes claims the question requires from reviewed claims
-   it permits. Deterministic safety, evidence, exclusion, and completeness
-   language may be added to an answer without pretending the person requested
-   it.
+6. A model-visible claim is a canonical answer effect, not every concept in the
+   question. Two labels that lower to the same deterministic clause are one
+   effect. Category/date scope stays in typed parameters; classification
+   treatment/reason/evidence, net-worth limitations, and card completeness are
+   deterministic parts of their fixed answer shapes.
+7. Admission requires the answer effects the question needs and rejects effects
+   outside the reviewed set. Deterministic safety, evidence, exclusion, and
+   completeness language may be added without pretending it is a separately
+   selected output.
 
 ### AP-12 — Unsupported meaning is a precise boundary
 **State:** enforced
@@ -122,8 +132,8 @@ the same one grounded path.
    typed meaning on its first attempt. Entity surface strings are not golden
    answers: admission grades the resolved ledger identity, exact record set,
    figures, currency, dates, status, and evidence. Objective period edges stay
-   exact. Required claims must be present and claims outside the reviewed
-   allowed set fail.
+   exact. Required answer effects must be present and effects outside the
+   reviewed allowed set fail.
 3. Runtime answering is unavailable without a published profile and the
    measured report it came from. Profile creation and release-bundle writing
    additionally require the process-local, non-serializable measured-run
@@ -150,8 +160,9 @@ the same one grounded path.
    and digest, validation, execution, bindings, outcome, prompts, schemas,
    manifest, persona, and resolved model identity. Replay re-lowers semantics
    and refuses either digest mismatch.
-7. Admission reports keep a bounded interpretation observation per turn so a
-   failure says what the model selected without copying source excerpts. A
+7. Admission reports keep a bounded interpretation observation and sanitized
+   per-attempt failure code so a failure says what the model selected and why
+   repair was needed without copying source excerpts or provider output. A
    refusal or absent answer is scored as missing, never confidently wrong;
    confidently wrong is reserved for an emitted incompatible keyed figure.
 8. The exact-provider run uses the canonical fixture's own entity catalog, so
@@ -162,7 +173,9 @@ the same one grounded path.
    three-account happy path.
 
 **Exception:** the deterministic gate exists, but no exact live-model profile
-has been published for this contract and no new private-vault Witness has run.
+has been published for version 5 and no new private-vault Witness has run. The
+version-4 live run safely rejected redundant claim-label scoring and motivated
+the canonical-effect contract.
 Runtime availability remains intentionally closed until both are true.
 
 ## Why this boundary
@@ -184,7 +197,7 @@ evidence that would justify a later composable semantic language.
 ## Release boundary
 
 The code and model-free tests do not publish a runtime profile. Publication
-requires all 73 version-3 cases (the same seven exact Witness questions and
+requires all 73 version-4 cases (the same seven exact Witness questions and
 their 35 repetitions, 35 varied paraphrases, and three focused coverage
 cases), the malformed-request recovery cases, the
 retained adversarial runtime suite, exact keyed financial oracles, complete

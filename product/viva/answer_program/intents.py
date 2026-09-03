@@ -1,4 +1,9 @@
-"""Reviewed semantic families lowered to data-blind AnswerPrograms."""
+"""Reviewed semantic families lowered to data-blind AnswerPrograms.
+
+Model-visible requested claims are canonical answer effects.  Two labels may
+not describe the same deterministic clause: if lowering cannot distinguish
+them, they are one effect here and safety disclosures remain code-owned.
+"""
 
 from __future__ import annotations
 
@@ -182,8 +187,7 @@ def _category_period(request, manifest):
                             "order": "largest", "cardinality": "one"}}
     return _program(manifest, request.family, clauses, [node], [binding],
                     required=_required(request, {
-                        "spending": "category_total", "period": "category_total",
-                        "exclusions": "category_total"}))
+                        "spending": "category_total"}))
 
 
 def _net_worth(request, manifest):
@@ -196,8 +200,7 @@ def _net_worth(request, manifest):
     return _program(
         manifest, request.family, clauses, nodes,
         [_rows_binding("totals", "net_worth", quantity="net_worth")],
-        required=_required(request, {
-            "net_worth": "net_worth", "exclusions": "net_worth"}))
+        required=_required(request, {"net_worth": "net_worth"}))
 
 
 def _card_debt(request, manifest):
@@ -209,9 +212,7 @@ def _card_debt(request, manifest):
         "entity": "balances", "filters": {"kind": "card_account"}})]
     bindings = [_rows_binding("debt", "card_debt", quantity="owed")]
     return _program(manifest, request.family, clauses, nodes, bindings,
-                    required=_required(request, {
-                        "total_debt": "card_debt", "per_card_rows": "card_debt",
-                        "completeness": "card_debt"}))
+                    required=_required(request, {"card_debt": "card_debt"}))
 
 
 def _classification(request, manifest):
@@ -228,9 +229,7 @@ def _classification(request, manifest):
     return _program(
         manifest, request.family, clauses, nodes,
         [_rows_binding("rows", "treatment", quantity="movement")],
-        required=_required(request, {
-            "treatment": "treatment", "reason": "treatment",
-            "evidence": "treatment"}))
+        required=_required(request, {"explanation": "treatment"}))
 
 
 def _account_inventory(request, manifest):
@@ -284,23 +283,23 @@ class SemanticFamilyRegistry:
                 "category_spending_period",
                 _object({"category": _STRING, "from": _DATE, "to": _DATE},
                         ("category", "from", "to")),
-                ("spending", "period", "exclusions"), _category_period,
+                ("spending",), _category_period,
                 user_label="spending for a category and date range",
                 user_example="grocery spending in one calendar month"),
             "net_worth": SemanticFamily(
-                "net_worth", _object(), ("net_worth", "exclusions"), _net_worth,
+                "net_worth", _object(), ("net_worth",), _net_worth,
                 user_label="net worth and exclusions",
                 user_example="net worth by currency and what is excluded"),
             "credit_card_debt": SemanticFamily(
                 "credit_card_debt", _object(),
-                ("total_debt", "per_card_rows", "completeness"), _card_debt,
+                ("card_debt",), _card_debt,
                 user_label="credit-card debt by card",
                 user_example="card totals and the amount on every card"),
             "classification_explanation": SemanticFamily(
                 "classification_explanation",
                 _object({"movement_phrase": _STRING, "from": _DATE, "to": _DATE},
                         ("movement_phrase",)),
-                ("treatment", "reason", "evidence"), _classification,
+                ("explanation",), _classification,
                 user_label="transaction classification explanations",
                 user_example="why a purchase was treated a certain way"),
             "account_inventory": SemanticFamily(

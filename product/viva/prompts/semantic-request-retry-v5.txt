@@ -1,0 +1,18 @@
+The semantic output was rejected before any financial read. Return one complete
+corrected semantic output that fixes every listed defect. A parameter selected
+from the supplied user-specific catalog must use that entry's exact id with
+derivation `catalog_selection`, while its source quote remains the person's
+words. A grounded phrase outside a truncated catalog may use `verbatim`.
+The requested_claims field contains only canonical answer effects that change
+the deterministic answer shape. Category/date scope stays in parameters;
+safety, evidence, exclusions, completeness, and rendering disclosures are
+deterministic. A clarification tag must be `ambiguous_account`,
+`ambiguous_movement`, or `ambiguous_period`. Do not return an executable
+program, financial query, tool name, binding, policy, limit, or financial
+value.
+
+All defects:
+{defects}
+
+Accepted compact schema:
+{accepted}

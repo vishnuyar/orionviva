@@ -8,7 +8,7 @@ import json
 import pathlib
 from dataclasses import dataclass
 
-CASES = pathlib.Path(__file__).resolve().parent.parent / "evals" / "semantic-request-cases-v3.json"
+CASES = pathlib.Path(__file__).resolve().parent.parent / "evals" / "semantic-request-cases-v4.json"
 LEGACY_CASES = (pathlib.Path(__file__).resolve().parent.parent / "evals"
                 / "answer-program-cases-v1.json")
 ADVERSARIAL_CASES = (pathlib.Path(__file__).resolve().parent.parent / "evals"
@@ -79,7 +79,7 @@ class SemanticEvalCase:
 
 def load_cases(path=CASES) -> tuple[SemanticEvalCase, ...]:
     raw = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-    if raw.get("version") != "semantic-request-cases-v3":
+    if raw.get("version") != "semantic-request-cases-v4":
         raise ValueError("unsupported semantic-request case version")
     repetitions = int(raw.get("exact_repetitions") or 0)
     if repetitions != 5:
@@ -373,10 +373,10 @@ def _score_semantic(case: SemanticEvalCase, runtime_result) -> CaseScore:
                     break
             actual_claims = set(request.requested_claims)
             if not set(case.required_claims) <= actual_claims:
-                defects.append("missing_requested_claim")
+                defects.append("missing_answer_effect")
             if not actual_claims <= set(case.allowed_claims or
                                          case.required_claims):
-                defects.append("unrequested_claim")
+                defects.append("unrequested_answer_effect")
         if program is None:
             defects.append("no_lowered_program")
         elif program.question_kind != case.expected_family:
@@ -477,8 +477,8 @@ def _score_semantic(case: SemanticEvalCase, runtime_result) -> CaseScore:
         "execution_deadline", "evidence_limit", "figure_limit",
         "program_too_large"})
     semantic_tags = {
-        "wrong_family", "wrong_period_parameters", "missing_requested_claim",
-        "unrequested_claim",
+        "wrong_family", "wrong_period_parameters", "missing_answer_effect",
+        "unrequested_answer_effect",
         "wrong_lowered_family", "wrong_named_account_result",
         "wrong_attention_result", "wrong_period_or_quantity",
         "wrong_net_worth_claim", "incomplete_card_population",

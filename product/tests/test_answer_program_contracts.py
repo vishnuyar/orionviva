@@ -4,7 +4,7 @@ import copy
 import json
 import pickle
 import time
-from dataclasses import replace
+from dataclasses import asdict, replace
 from types import SimpleNamespace
 
 import pytest
@@ -36,7 +36,7 @@ from viva.answer_program.intents import (SEMANTIC_REQUEST_VERSION,
                                          SemanticOutcome, SemanticRequest)
 from viva.answer_program.schema import ANSWER_PROGRAM_VERSION, ContractError
 from viva.answer_program.schema import _generated_program_json_schema, program_json_schema
-from viva.answer_program.eval import (EvalCase, derive_semantic_oracle,
+from viva.answer_program.eval import (CASES, EvalCase, derive_semantic_oracle,
                                       evaluate_adversarial,
                                       load_adversarial_cases, load_cases, score)
 from viva.ledger import LedgerProjection
@@ -71,7 +71,7 @@ def _fully_validated_forged_report(manifest):
         "oracle_digest": "copied-oracle", "request_digest": "copied-request",
         "response_digest": "copied-response", "resolved_model": "copied",
         "modality": "native-structured", "provider_adapter": adapter_name,
-        "usage_reported": True} for case in cases)
+        "failure_code": "", "usage_reported": True} for case in cases)
     contracts = dict(base.contract_digests)
     return replace(
         base, metrics={**base.metrics, "turn_measurements": measurements},
@@ -302,6 +302,8 @@ def test_compiler_repairs_a_malformed_semantic_request_before_any_read():
     assert compiled.ok
     assert len(compiled.exchanges) == 2
     assert compiled.exchanges[0].defect["tag"] == "invalid_semantic_contract"
+    assert compiled.exchanges[0].failure_code == "parameter_field_set_mismatch"
+    assert compiled.exchanges[1].failure_code == ""
     assert "account_phrase" in adapter.seen[1][0][-1]["content"]
     assert all('"results":' not in json.dumps(messages)
                for messages, _ in adapter.seen)
@@ -595,6 +597,27 @@ def test_the_frozen_admission_corpus_has_35_exact_turns_and_paraphrases():
     assert all(case.max_model_attempts == 1 for case in cases)
 
 
+def test_canonical_answer_effects_have_no_same_clause_aliases():
+    families = SemanticFamilyRegistry()
+
+    assert families.get("category_spending_period").claims == ("spending",)
+    assert families.get("net_worth").claims == ("net_worth",)
+    assert families.get("credit_card_debt").claims == ("card_debt",)
+    assert families.get("classification_explanation").claims == (
+        "explanation",)
+
+
+def test_version_4_corpus_keeps_every_version_3_question_unchanged():
+    current = json.loads(CASES.read_text(encoding="utf-8"))
+    previous = json.loads(CASES.with_name(
+        "semantic-request-cases-v3.json").read_text(encoding="utf-8"))
+
+    assert [item["exact_question"] for item in current["cases"]] == [
+        item["exact_question"] for item in previous["cases"]]
+    assert [item["paraphrases"] for item in current["cases"]] == [
+        item["paraphrases"] for item in previous["cases"]]
+
+
 def test_all_73_frozen_cases_derive_real_oracles_before_scoring_a_bad_result():
     cases = load_cases()
     oracle_set, manifests = preflight_live_suite(
@@ -861,8 +884,11 @@ def _score_fixture_interpretation(exact_group, parameters, claims):
 @pytest.mark.parametrize(("group", "parameters", "claims"), [
     ("checking-balance", {"account_phrase": "Assets:Admission:Checking"},
      ("balance", "measurement_date")),
+    ("october-groceries", {
+        "category": "groceries", "from": "2024-10-01", "to": "2024-10-31"},
+     ("spending",)),
     ("classification-explanation", {"movement_phrase": "costco"},
-     ("treatment", "reason", "evidence")),
+     ("explanation",)),
 ])
 def test_catalog_selected_identities_pass_keyed_scoring(
         group, parameters, claims):
@@ -874,7 +900,7 @@ def test_objective_period_edges_remain_exact_even_when_words_may_vary():
     measured = _score_fixture_interpretation(
         "october-groceries",
         {"category": "groceries", "from": "2024-10-02", "to": "2024-10-31"},
-        ("spending", "period"))
+        ("spending",))
     assert not measured.passed
     assert "wrong_period_parameters" in measured.defects
 
@@ -935,6 +961,7 @@ def test_live_admission_report_is_bound_to_measured_identity_and_contracts(
     assert report.attempt_evidence[0]["response_digest"]
     assert report.attempt_evidence[0]["oracle_key"] == case.oracle_key
     assert report.attempt_evidence[0]["oracle_digest"]
+    assert report.attempt_evidence[0]["failure_code"] == ""
     observation = report.metrics["turn_measurements"][0][
         "semantic_observation"]
     assert observation == {
@@ -944,6 +971,8 @@ def test_live_admission_report_is_bound_to_measured_identity_and_contracts(
         "parameters": case.expected_parameters,
         "requested_claims": list(case.expected_claims)}
     assert "parameter_sources" not in observation
+    assert report.metrics["turn_measurements"][0]["attempt_diagnostics"] == [{
+        "attempt": 1, "parse_ok": True, "failure_code": ""}]
     with pytest.raises(TypeError, match="non-serializable"):
         pickle.dumps(measured_run)
     forged = _fully_validated_forged_report(
@@ -970,6 +999,52 @@ def test_live_admission_report_is_bound_to_measured_identity_and_contracts(
             tmp_path / "mutated.json", profile=None,
             manifest=CapabilityManifest.from_registry(_registry()),
             measured_run=measured_run)
+
+
+def test_admission_reports_sanitized_repair_causes_without_raw_text():
+    case = load_cases()[0]
+
+    class Adapter:
+        def __init__(self):
+            self.calls = 0
+
+        def converse(self, messages, tools):
+            self.calls += 1
+            if self.calls == 1:
+                return _turn({
+                    "parameters": {},
+                    "requested_claims": ["private-sentinel"]},
+                    "select_named_account_balance")
+            return _turn({
+                "parameters": dict(case.expected_parameters),
+                "requested_claims": list(case.expected_claims)},
+                "select_named_account_balance")
+
+    def factory(validator, manifest, policy):
+        return AnswerProgramCompiler(Adapter(), validator, manifest, policy)
+
+    factory.admission_identity = {
+        "provider": "synthetic", "requested_model": "compiler-route",
+        "endpoint": "local", "modality": "native-structured"}
+    measured_run, scores, _turns = run_live_suite(
+        cases=(case,), registry_factory=_registry, compiler_factory=factory,
+        thresholds=AdmissionThresholds(0, 0, 0), today="2026-03-01",
+        locale="en-US")
+    report = measured_run.report
+    diagnostics = report.metrics["turn_measurements"][0][
+        "attempt_diagnostics"]
+
+    assert not scores[0].passed
+    assert scores[0].defects == ("routine_question_needed_repair",)
+    assert diagnostics == [
+        {"attempt": 1, "parse_ok": False,
+         "failure_code": "parameter_field_set_mismatch"},
+        {"attempt": 2, "parse_ok": True, "failure_code": ""},
+    ]
+    assert [item["failure_code"] for item in report.attempt_evidence] == [
+        "parameter_field_set_mismatch", ""]
+    assert "private-sentinel" not in json.dumps(asdict(report), sort_keys=True)
+    assert "parse_error" not in json.dumps(asdict(report), sort_keys=True)
 
 
 def test_admission_oracle_is_derived_from_the_fresh_fixture_not_a_score():
@@ -1127,7 +1202,7 @@ def test_compiler_can_choose_typed_semantics_without_a_second_path():
     manifest = CapabilityManifest.from_registry(registry)
     requested = {"parameters": {
         "category": "groceries", "from": "2026-01-01", "to": "2026-01-31"},
-        "requested_claims": ["spending", "period", "exclusions"]}
+        "requested_claims": ["spending"]}
 
     class Adapter:
         def converse(self, messages, tools):
@@ -1159,7 +1234,7 @@ def test_semantic_parameters_are_closed_and_preserve_required_scope():
     with pytest.raises(ContractError, match="unknown"):
         families.parse({**common, "family": "net_worth",
                         "parameters": {"private_amount": "100"},
-                        "requested_claims": ["net_worth", "exclusions"]})
+                        "requested_claims": ["net_worth"]})
 
 
 def test_clarification_and_user_stipulation_remain_conversation_not_ledger_facts():
@@ -1337,7 +1412,7 @@ def test_fixture_and_oracle_contracts_bind_report_profile_build_and_bundle(
     monkeypatch.setattr(admission_module, "_report_from_measured_run",
                         lambda _measured: report)
     profile = admitted_profile(object(), manifest=manifest)
-    assert profile.profile_version == "semantic-request-admission-v4"
+    assert profile.profile_version == "semantic-request-admission-v5"
     assert profile.admission_fixture_digest == contracts["admission_fixture"]
     assert profile.oracle_set_digest == contracts["oracle_set"]
     assert check_profile(profile, manifest, report).passed

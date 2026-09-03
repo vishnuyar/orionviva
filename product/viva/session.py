@@ -160,6 +160,7 @@ class Session:
                        "question": turn.question,
                        "prior_context_digest": turn.prior_context_digest,
                        "defect": dict(ex.defect),
+                       "failure_code": ex.failure_code,
                        "request": ex.request, "response": ex.response,
                        "semantic_request": dict(turn.semantic_request),
                        "semantic_request_digest": semantic_digest,

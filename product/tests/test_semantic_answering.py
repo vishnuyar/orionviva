@@ -450,7 +450,7 @@ def test_materially_different_classification_matches_request_clarification():
         def converse(self, messages, tools):
             return _turn("select_classification_explanation", {
                 "parameters": {"movement_phrase": "greenfield market"},
-                "requested_claims": ["treatment", "reason", "evidence"]})
+                "requested_claims": ["explanation"]})
 
     runtime = AnswerProgramRuntime(
         AnswerProgramCompiler(

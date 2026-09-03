@@ -16,7 +16,9 @@ _This records reasoning, not current behaviour._
 **Test:** product/tests/test_semantic_answering.py::test_model_contract_cannot_author_executable_program_fields, product/tests/test_semantic_answering.py::test_every_reviewed_family_lowers_and_validates_before_a_read
 
 1. A runtime model may select only reviewed financial meaning, typed parameters,
-   requested claims, or a structured non-answer outcome.
+   canonical answer effects, or a structured non-answer outcome. Labels that
+   lower to the same deterministic answer clause are one effect; scope and
+   mandatory safety disclosures are not model-selected output labels.
 2. Deterministic code owns answer clauses, reads, financial queries, bindings,
    selectors, required-clause policy, and resource bounds.
 3. The complete lowered program exists and passes the retained validator before
