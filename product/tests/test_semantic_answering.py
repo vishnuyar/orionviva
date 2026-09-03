@@ -273,6 +273,54 @@ def test_model_entity_parameters_separate_catalog_ids_from_grounded_phrases():
     ids = branches[0]["properties"]["catalog_id"]["enum"]
     assert "costco" in ids
     assert branches[1]["properties"]["grounded_phrase"]["enum"] == [True]
+    assert "indirect description" in reference["description"]
+    assert "shares no words" in branches[0]["properties"]["catalog_id"][
+        "description"]
+    assert "only when no catalog entry" in branches[1]["properties"][
+        "grounded_phrase"]["description"]
+
+
+def test_indirect_counterparty_description_can_select_catalog_identity():
+    registry = admission_registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+    question = (
+        "Which rule caused that warehouse-club purchase to be classified as "
+        "a transfer?")
+
+    class Adapter:
+        def __init__(self):
+            self.tool_description = ""
+
+        def converse(self, messages, tools):
+            selected = next(tool for tool in tools
+                            if tool["name"] ==
+                            "select_classification_explanation")
+            self.tool_description = selected["description"]
+            return _turn("select_classification_explanation", {
+                "parameters": {"movement_phrase": "costco"},
+                "parameter_sources": {"movement_phrase": {
+                    "source": "question",
+                    "quote": "that warehouse-club purchase",
+                    "derivation": "catalog_selection"}},
+                "requested_claims": ["explanation"]})
+
+    adapter = Adapter()
+    compiler = AnswerProgramCompiler(
+        adapter, ProgramValidator(manifest, policy), manifest, policy)
+    compiler.set_entity_catalog(registry.semantic_entities())
+    answered = AnswerProgramRuntime(
+        compiler, ProgramExecutor(registry, policy,
+                                  query_executor=registry.query_executor),
+        DeterministicBinder(registry)).answer(QuestionContext(
+            question=question, capability_manifest_digest=manifest.digest))
+
+    assert answered.result.status == "answered"
+    assert answered.compilation.semantic_outcome.request.parameters == {
+        "movement_phrase": "costco"}
+    assert answered.result.text.startswith(
+        "I interpreted ‘that warehouse-club purchase’ as costco.")
+    assert "indirect descriptions" in adapter.tool_description
 
 
 def test_unique_grounded_entity_match_is_answered_and_disclosed():
@@ -343,7 +391,7 @@ def test_model_catalog_id_requires_a_string_even_when_digits_match():
     families = SemanticFamilyRegistry({
         "counterparties": [{"id": "123", "label": "Numeric Shop"}]})
     raw = {
-        "request_version": "semantic-request-v6",
+        "request_version": "semantic-request-v7",
         "catalog_digest": families.catalog_digest,
         "entity_catalog_digest": families.entity_catalog_digest,
         "outcome": "request",

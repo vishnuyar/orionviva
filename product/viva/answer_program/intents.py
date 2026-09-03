@@ -365,8 +365,14 @@ class SemanticFamilyRegistry:
                     "uniqueItems": True, "minItems": 1,
                     "maxItems": len(family.claims)},
             }, ("parameters", "parameter_sources", "requested_claims"))
+            description = family.user_example
+            if set(family.parameter_schema.get("properties", {})) & set(
+                    _ENTITY_PARAMETER_GROUPS):
+                description += (
+                    ". Resolve direct names and indirect descriptions against "
+                    "the entity catalog before using a grounded phrase")
             tools.append({"name": "select_" + family_id,
-                          "description": family.user_example,
+                          "description": description,
                           "parameters": schema})
         tools.extend([
             {"name": "semantic_clarification", "description": "clarify",
@@ -733,12 +739,27 @@ class SemanticFamilyRegistry:
             choices = []
             if ids:
                 choices.append(_object({
-                    "catalog_id": {"type": "string", "enum": ids}},
+                    "catalog_id": {
+                        "type": "string", "enum": ids,
+                        "description": (
+                            "Use when exactly one catalog entry expresses the "
+                            "referent, including an indirect description that "
+                            "shares no words with its label.")}},
                     ("catalog_id",)))
             choices.append(_object({
-                "grounded_phrase": {"type": "boolean", "enum": [True]}},
+                "grounded_phrase": {
+                    "type": "boolean", "enum": [True],
+                    "description": (
+                        "Use only when no catalog entry semantically fits; do "
+                        "not echo an indirect description of a listed entry.")}},
                 ("grounded_phrase",)))
-            properties[name] = {"oneOf": choices}
+            properties[name] = {
+                "oneOf": choices,
+                "description": (
+                    "Resolve the quoted referent by meaning before choosing "
+                    "its representation. Prefer catalog_id whenever a direct "
+                    "name or indirect description fits one listed entry, even "
+                    "without a lexical match.")}
         return schema
 
     def _catalog_candidates(self, name, phrase):

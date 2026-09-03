@@ -1,0 +1,22 @@
+The semantic output was rejected before any financial read. Return one complete
+corrected semantic output that fixes every listed defect. Resolve every entity
+reference by its whole meaning before choosing a representation. When exactly
+one shown catalog entry fits a direct name or indirect description, select
+`catalog_id` with that entry's exact id and derivation `catalog_selection`, even
+if the source quote shares no words with the label. The quote remains the
+person's words. Select `grounded_phrase: true` with derivation `verbatim` only
+when no shown entry semantically fits; do not use it to echo a paraphrase of a
+listed entry. Code replaces that marker with the exact quote before any read.
+The requested_claims field contains only canonical answer effects that change
+the deterministic answer shape. Category/date scope stays in parameters;
+safety, evidence, exclusions, completeness, and rendering disclosures are
+deterministic. A clarification tag must be `ambiguous_account`,
+`ambiguous_movement`, or `ambiguous_period`. Do not return an executable
+program, financial query, tool name, binding, policy, limit, or financial
+value.
+
+All defects:
+{defects}
+
+Accepted compact schema:
+{accepted}

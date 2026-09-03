@@ -55,7 +55,7 @@
 
 ### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
 **State:** enforced
-**Code:** product/viva/prompts/semantic-request-retry-v6.txt
+**Code:** product/viva/prompts/semantic-request-retry-v7.txt
 **Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
 1. The repair prompt receives every compact-contract defect and asks for one complete replacement semantic request.
@@ -68,6 +68,9 @@
    records a sanitized failure code when a response needs repair. Version 6
    separates catalog ids from unresolved grounded phrases in the model-facing
    schema and makes transparent entity interpretation part of delivery.
+   Version 7 makes the representation decision meaning-first in both the
+   prompt and native tool schema: a uniquely fitting catalog entry wins even
+   when an indirect description shares no words with its label.
 
 ## Why
 

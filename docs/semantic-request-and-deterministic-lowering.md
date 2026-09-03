@@ -17,9 +17,9 @@ complete AnswerProgram. The already-built runtime then validates the whole
 program before any financial read and executes, binds, and renders it through
 the same one grounded path.
 
-The active compact artifacts are `semantic-request-v6`,
-`semantic-request-retry-v6`, and `semantic-request-schema-v6`; exact-model
-publication uses `semantic-request-admission-v6`.
+The active compact artifacts are `semantic-request-v7`,
+`semantic-request-retry-v7`, and `semantic-request-schema-v7`; exact-model
+publication uses `semantic-request-admission-v7`.
 
 ## Rules
 
@@ -176,10 +176,12 @@ publication uses `semantic-request-admission-v6`.
    resolved by code; other semantic matches remain the model's selection. When
    the selected catalog label differs from the person's wording, the answer
    states that interpretation. Multiple deterministic candidates ask rather
-   than guess.
+   than guess. Native tool schemas direct the model to resolve both direct names
+   and indirect descriptions by meaning before choosing a representation;
+   grounded phrases are reserved for referents with no fitting catalog entry.
 
 **Exception:** the deterministic gate exists, but no exact live-model profile
-has been published for version 6 and no new private-vault Witness has run. The
+has been published for version 7 and no new private-vault Witness has run. The
 version-4 live run safely rejected redundant claim-label scoring and motivated
 the canonical-effect contract; the failed version-5 run motivated explicit
 entity references and transport-enforced single selection.
