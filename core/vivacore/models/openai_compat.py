@@ -154,6 +154,8 @@ class OpenAICompatAdapter:
                                            "description": t["description"],
                                            "parameters": t["parameters"]}}
                              for t in tools]
+            body["tool_choice"] = "required"
+            body["parallel_tool_calls"] = False
 
         is_openrouter = "openrouter.ai" in (c.base_url or "")
         headers = {}

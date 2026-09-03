@@ -78,18 +78,37 @@ class AnswerProgramRuntime:
         binding = self.binder.bind(program, execution)
         result = binding.result
         status, tag = self._status(program, execution, binding)
+        interpretations = tuple(self.compiler.interpretations(
+            compilation.semantic_outcome)) if hasattr(
+                self.compiler, "interpretations") else ()
+        candidates = tuple(self.compiler.clarification_candidates(
+            compilation.semantic_outcome)) if hasattr(
+                self.compiler, "clarification_candidates") else ()
+        if status == "missing_data" and tag == "not_found" and candidates:
+            status, tag = "needs_clarification", "ambiguous_movement"
+            result.options = [dict(item) for item in candidates]
         result.status = status
         result.outcome_tag = tag
         result.missing = [item.to_dict() for item in binding.unbound]
         question = ""
         if status == "needs_clarification":
-            question = next((item.text for item in execution.transcript
-                             if item.refusal == tag and item.text), result.text)
+            if candidates:
+                question = moment("answer_interpretation_question")
+            else:
+                question = next((item.text for item in execution.transcript
+                                 if item.refusal == tag and item.text), result.text)
             result.text = question
             result.refusal = tag
+        elif status in ("answered", "partial") and interpretations:
+            disclosures = [moment("answer_interpretation",
+                                  asked=item["asked"], matched=item["matched"])
+                           for item in interpretations]
+            result.text = " ".join([*disclosures, result.text])
         outcome = AnswerOutcome(
             status, tag=tag, text=result.text,
-            result=result, question=question, missing=tuple(result.missing),
+            result=result, question=question,
+            options=tuple(dict(item) for item in result.options),
+            missing=tuple(result.missing),
             trace={"model_attempts": len(compilation.exchanges),
                    **execution.to_dict()})
         return RuntimeResult(result, outcome, compilation, execution, binding)

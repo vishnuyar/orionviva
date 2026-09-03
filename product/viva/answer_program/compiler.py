@@ -80,6 +80,11 @@ def _contract_failure_code(error: Exception) -> str:
         ("quotes text not in its source", "ungrounded_parameter_quote"),
         ("was not selected from its catalog", "unknown_catalog_selection"),
         ("differs from its source quote", "parameter_quote_mismatch"),
+        ("must select a catalog id or a grounded phrase",
+         "entity_reference_shape_mismatch"),
+        ("without catalog_selection grounding",
+         "entity_reference_grounding_mismatch"),
+        ("without verbatim grounding", "entity_reference_grounding_mismatch"),
         ("requested_claims must be", "invalid_answer_effects"),
         ("invalid semantic clarification", "invalid_clarification"),
         ("invalid semantic assumption", "invalid_assumption"),
@@ -144,7 +149,7 @@ class AnswerProgramCompiler:
         semantic = None
         for attempt in range(self._policy.max_model_attempts):
             try:
-                raw, exchange = self._call(context, defects, previous)
+                provider_raw, exchange = self._call(context, defects, previous)
             except _ReplyError as error:
                 self.exchanges.append(error.exchange)
                 previous = error.raw
@@ -181,8 +186,9 @@ class AnswerProgramCompiler:
                     None, None, tuple(self.exchanges), None,
                     "model_profile_mismatch", exchange.parse_error)
             self.exchanges.append(exchange)
-            previous = raw
+            previous = provider_raw
             try:
+                raw = self._families.materialize_model_output(provider_raw)
                 semantic = self._families.parse(raw, context)
             except (ContractError, TypeError, ValueError) as error:
                 defects = (ValidationDefect("invalid_semantic_contract", "$",
@@ -233,7 +239,7 @@ class AnswerProgramCompiler:
                 "catalog_digest": self._families.catalog_digest,
                 "entity_catalog": self._families.entity_catalog,
                 "entity_catalog_digest": self._families.entity_catalog_digest,
-                "schema": self._families.output_schema()}
+                "schema": self._families.model_output_schema()}
 
     def _prompt(self, context) -> str:
         inputs = self._inputs(context)
@@ -245,8 +251,14 @@ class AnswerProgramCompiler:
         return promptstore.load(PROMPTS, REPAIR_VERSION).format(
             defects=json.dumps([item.to_dict() for item in defects], sort_keys=True,
                                separators=(",", ":")),
-            accepted=json.dumps(self._families.output_schema(), sort_keys=True,
+            accepted=json.dumps(self._families.model_output_schema(), sort_keys=True,
                                 separators=(",", ":")))
+
+    def interpretations(self, outcome):
+        return self._families.interpretations(outcome)
+
+    def clarification_candidates(self, outcome):
+        return self._families.clarification_candidates(outcome)
 
     def _native(self, context, defects, previous):
         messages = [{"role": "system", "content": self._prompt(context)},

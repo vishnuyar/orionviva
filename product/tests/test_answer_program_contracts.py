@@ -259,6 +259,17 @@ def _turn(raw, name="compile_answer_program"):
             key: {"source": "question", "quote": value,
                   "derivation": "verbatim"}
             for key, value in dict(raw.get("parameters") or {}).items()}
+    if name.startswith("select_"):
+        parameters = dict(raw.get("parameters") or {})
+        sources = dict(raw.get("parameter_sources") or {})
+        for key in set(parameters) & {
+                "account_phrase", "category", "movement_phrase"}:
+            derivation = dict(sources.get(key) or {}).get("derivation")
+            parameters[key] = (
+                {"catalog_id": parameters[key]}
+                if derivation == "catalog_selection"
+                else {"grounded_phrase": True})
+        raw["parameters"] = parameters
     return SimpleNamespace(
         request={"sent": True}, response={"usage": {"prompt_tokens": 4}},
         input_tokens=4, output_tokens=2, cost_usd=0.001, latency_s=0.1,
@@ -325,7 +336,7 @@ def test_text_compiler_uses_the_same_compact_contract_and_one_call_on_success():
                     "entity_catalog_digest": SemanticFamilyRegistry()
                     .entity_catalog_digest,
                     "outcome": "request", "family": "named_account_balance",
-                    "parameters": {"account_phrase": "Everyday Checking"},
+                    "parameters": {"account_phrase": {"grounded_phrase": True}},
                     "parameter_sources": {"account_phrase": {
                         "source": "question", "quote": "Everyday Checking",
                         "derivation": "verbatim"}},
@@ -1412,7 +1423,7 @@ def test_fixture_and_oracle_contracts_bind_report_profile_build_and_bundle(
     monkeypatch.setattr(admission_module, "_report_from_measured_run",
                         lambda _measured: report)
     profile = admitted_profile(object(), manifest=manifest)
-    assert profile.profile_version == "semantic-request-admission-v5"
+    assert profile.profile_version == "semantic-request-admission-v6"
     assert profile.admission_fixture_digest == contracts["admission_fixture"]
     assert profile.oracle_set_digest == contracts["oracle_set"]
     assert check_profile(profile, manifest, report).passed
@@ -1429,6 +1440,26 @@ def test_fixture_and_oracle_contracts_bind_report_profile_build_and_bundle(
     assert payload["profile"]["admission_fixture_digest"] == \
         report.admission_fixture_digest
     assert payload["profile"]["oracle_set_digest"] == report.oracle_set_digest
+
+
+def test_admission_digest_binds_model_schema_and_entity_matching(monkeypatch):
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry()
+    baseline = families.admission_digest(manifest)
+
+    original_schema = SemanticFamilyRegistry.model_output_schema
+    monkeypatch.setattr(
+        SemanticFamilyRegistry, "model_output_schema",
+        lambda self: {"oneOf": [{"type": "object"}]})
+    assert families.admission_digest(manifest) != baseline
+    monkeypatch.setattr(
+        SemanticFamilyRegistry, "model_output_schema", original_schema)
+
+    monkeypatch.setattr(
+        SemanticFamilyRegistry, "_catalog_candidates",
+        lambda self, name, phrase: ({"id": "forged", "label": "Forged"},))
+    assert families.admission_digest(manifest) != baseline
 
 
 @pytest.mark.parametrize(("field", "wrong"), [

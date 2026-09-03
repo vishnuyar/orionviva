@@ -18,7 +18,7 @@ from viva.answer_program.schema import ContractError
 from viva.answer_program.runtime import AnswerProgramRuntime
 from viva.ledger import LedgerProjection
 from viva.ledger.events import (MAJOR_ASSET, SCOPE_MOVEMENT,
-                                ruling_recorded)
+                                merchant_enriched, ruling_recorded)
 from viva.tools import default_registry
 
 
@@ -39,6 +39,17 @@ def _turn(name, arguments):
             key: {"source": "question", "quote": value,
                   "derivation": "verbatim"}
             for key, value in dict(arguments.get("parameters") or {}).items()}
+    if name.startswith("select_"):
+        parameters = dict(arguments.get("parameters") or {})
+        sources = dict(arguments.get("parameter_sources") or {})
+        for key in set(parameters) & {
+                "account_phrase", "category", "movement_phrase"}:
+            derivation = dict(sources.get(key) or {}).get("derivation")
+            parameters[key] = (
+                {"catalog_id": parameters[key]}
+                if derivation == "catalog_selection"
+                else {"grounded_phrase": True})
+        arguments["parameters"] = parameters
     return SimpleNamespace(
         request={"messages": True}, response={"usage": {"input_tokens": 3}},
         input_tokens=3, output_tokens=2, cost_usd=0, latency_s=.01,
@@ -249,6 +260,141 @@ def test_user_specific_catalog_selects_identity_without_word_matching():
     assert checking_id in adapter.system_prompt
     assert any(checking_id in figure["record_ids"]
                for figure in answered.result.figures)
+
+
+def test_model_entity_parameters_separate_catalog_ids_from_grounded_phrases():
+    families = SemanticFamilyRegistry(admission_registry().semantic_entities())
+    schema = next(tool["parameters"] for tool in families.model_tools()
+                  if tool["name"] == "select_classification_explanation")
+    reference = schema["properties"]["parameters"]["properties"][
+        "movement_phrase"]
+
+    branches = reference["oneOf"]
+    ids = branches[0]["properties"]["catalog_id"]["enum"]
+    assert "costco" in ids
+    assert branches[1]["properties"]["grounded_phrase"]["enum"] == [True]
+
+
+def test_unique_grounded_entity_match_is_answered_and_disclosed():
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+
+    class Adapter:
+        def converse(self, messages, tools):
+            return _turn("select_classification_explanation", {
+                "parameters": {"movement_phrase": "Greenfield Market purchase"},
+                "parameter_sources": {"movement_phrase": {
+                    "source": "question", "quote": "Greenfield Market purchase",
+                    "derivation": "verbatim"}},
+                "requested_claims": ["explanation"]})
+
+    compiler = AnswerProgramCompiler(
+        Adapter(), ProgramValidator(manifest, policy), manifest, policy)
+    compiler.set_entity_catalog(registry.semantic_entities())
+    answered = AnswerProgramRuntime(
+        compiler, ProgramExecutor(registry, policy,
+                                  query_executor=registry.query_executor),
+        DeterministicBinder(registry)).answer(QuestionContext(
+            question="Why was my Greenfield Market purchase treated that way?",
+            capability_manifest_digest=manifest.digest))
+
+    assert answered.result.status == "answered"
+    assert answered.compilation.semantic_outcome.request.parameters == {
+        "movement_phrase": "greenfield market"}
+    assert answered.result.text.startswith(
+        "I interpreted ‘Greenfield Market purchase’ as greenfield market.")
+
+
+def test_reordered_catalog_words_are_not_canonicalized_or_answered():
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+
+    class Adapter:
+        def converse(self, messages, tools):
+            return _turn("select_classification_explanation", {
+                "parameters": {
+                    "movement_phrase": "Market near Greenfield purchase"},
+                "parameter_sources": {"movement_phrase": {
+                    "source": "question",
+                    "quote": "Market near Greenfield purchase",
+                    "derivation": "verbatim"}},
+                "requested_claims": ["explanation"]})
+
+    compiler = AnswerProgramCompiler(
+        Adapter(), ProgramValidator(manifest, policy), manifest, policy)
+    compiler.set_entity_catalog(registry.semantic_entities())
+    answered = AnswerProgramRuntime(
+        compiler, ProgramExecutor(registry, policy,
+                                  query_executor=registry.query_executor),
+        DeterministicBinder(registry)).answer(QuestionContext(
+            question="Why was my Market near Greenfield purchase treated that way?",
+            capability_manifest_digest=manifest.digest))
+
+    assert answered.compilation.semantic_outcome.request.parameters == {
+        "movement_phrase": "Market near Greenfield purchase"}
+    assert answered.result.status == "missing_data"
+    assert answered.result.outcome_tag == "not_found"
+    assert answered.result.figures == []
+
+
+def test_model_catalog_id_requires_a_string_even_when_digits_match():
+    families = SemanticFamilyRegistry({
+        "counterparties": [{"id": "123", "label": "Numeric Shop"}]})
+    raw = {
+        "request_version": "semantic-request-v6",
+        "catalog_digest": families.catalog_digest,
+        "entity_catalog_digest": families.entity_catalog_digest,
+        "outcome": "request",
+        "family": "classification_explanation",
+        "parameters": {"movement_phrase": {"catalog_id": 123}},
+        "parameter_sources": {"movement_phrase": {
+            "source": "question", "quote": "Numeric Shop",
+            "derivation": "catalog_selection"}},
+        "requested_claims": ["explanation"],
+    }
+
+    with pytest.raises(ContractError, match="catalog_id must be"):
+        families.materialize_model_output(raw)
+
+
+def test_multiple_grounded_entity_matches_ask_instead_of_guessing():
+    events = _events() + [
+        merchant_enriched("alpha", "other", occurred_at="2026-02-06"),
+        merchant_enriched("beta", "other", occurred_at="2026-02-06"),
+    ]
+    registry = default_registry(LedgerProjection(events), today="2026-03-01")
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+
+    class Adapter:
+        def converse(self, messages, tools):
+            return _turn("select_classification_explanation", {
+                "parameters": {"movement_phrase": "alpha beta purchase"},
+                "parameter_sources": {"movement_phrase": {
+                    "source": "question", "quote": "alpha beta purchase",
+                    "derivation": "verbatim"}},
+                "requested_claims": ["explanation"]})
+
+    compiler = AnswerProgramCompiler(
+        Adapter(), ProgramValidator(manifest, policy), manifest, policy)
+    compiler.set_entity_catalog(registry.semantic_entities())
+    answered = AnswerProgramRuntime(
+        compiler, ProgramExecutor(registry, policy,
+                                  query_executor=registry.query_executor),
+        DeterministicBinder(registry)).answer(QuestionContext(
+            question="Why was my alpha beta purchase treated that way?",
+            capability_manifest_digest=manifest.digest))
+
+    assert answered.result.status == "needs_clarification"
+    assert answered.result.outcome_tag == "ambiguous_movement"
+    assert answered.result.text == (
+        "I could not match that exactly. Which of these did you mean?")
+    assert answered.result.options == [
+        {"id": "alpha", "label": "alpha"},
+        {"id": "beta", "label": "beta"},
+    ]
 
 
 def test_catalog_selection_cannot_invent_an_identity():

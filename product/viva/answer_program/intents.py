@@ -12,8 +12,10 @@ import copy
 import datetime
 import calendar
 import hashlib
+import inspect
 import json
 import pathlib
+import re
 
 from vivacore import versions
 
@@ -26,6 +28,11 @@ SEMANTIC_OUTCOMES = ("request", "clarify", "needs_assumption",
                      "outside_domain", "unsupported")
 CLARIFICATION_TAGS = ("ambiguous_account", "ambiguous_movement",
                       "ambiguous_period")
+_ENTITY_PARAMETER_GROUPS = {
+    "account_phrase": "accounts",
+    "category": "categories",
+    "movement_phrase": "counterparties",
+}
 
 
 def _object(properties=None, required=()):
@@ -268,6 +275,12 @@ class SemanticFamilyRegistry:
             "movement_phrase": {str(item.get("id") or "") for item in
                                 self.entity_catalog.get("counterparties", ())},
         }
+        self._entity_rows = {
+            name: {str(item.get("id") or ""): dict(item)
+                   for item in self.entity_catalog.get(group, ())
+                   if str(item.get("id") or "")}
+            for name, group in _ENTITY_PARAMETER_GROUPS.items()
+        }
         self._families = {
             "named_account_balance": SemanticFamily(
                 "named_account_balance",
@@ -377,7 +390,7 @@ class SemanticFamilyRegistry:
         ])
         return tuple(tools)
 
-    def output_schema(self):
+    def model_output_schema(self):
         branches = []
         for tool in self.model_tools():
             name = tool["name"]
@@ -394,6 +407,34 @@ class SemanticFamilyRegistry:
                 "outcome": {"type": "string", "enum": ["request"]},
                 "family": {"type": "string", "enum": [family]},
                 **tool["parameters"]["properties"],
+            }, ("request_version", "catalog_digest", "entity_catalog_digest",
+                "outcome", "family", "parameters", "parameter_sources",
+                "requested_claims")))
+        for branch in self.output_schema()["oneOf"]:
+            if branch["properties"]["outcome"]["enum"][0] != "request":
+                branches.append(copy.deepcopy(branch))
+        return {"oneOf": branches}
+
+    def output_schema(self):
+        branches = []
+        for family in self.supported_ids:
+            definition = self._families[family]
+            branches.append(_object({
+                "request_version": {"type": "string",
+                                    "enum": [SEMANTIC_REQUEST_VERSION]},
+                "catalog_digest": {"type": "string",
+                                   "enum": [self.catalog_digest]},
+                "entity_catalog_digest": {"type": "string",
+                                           "enum": [self.entity_catalog_digest]},
+                "outcome": {"type": "string", "enum": ["request"]},
+                "family": {"type": "string", "enum": [family]},
+                "parameters": copy.deepcopy(definition.parameter_schema),
+                "parameter_sources": self._parameter_sources_schema(definition),
+                "requested_claims": {
+                    "type": "array", "items": {"type": "string",
+                                                  "enum": list(definition.claims)},
+                    "uniqueItems": True, "minItems": 1,
+                    "maxItems": len(definition.claims)},
             }, ("request_version", "catalog_digest", "entity_catalog_digest",
                 "outcome", "family",
                 "parameters", "parameter_sources", "requested_claims")))
@@ -420,6 +461,84 @@ class SemanticFamilyRegistry:
                 **fields}, ("request_version", "outcome", *required)))
         return {"oneOf": branches}
 
+    def materialize_model_output(self, raw):
+        """Turn an explicit model entity reference into the canonical request."""
+        held = copy.deepcopy(raw)
+        if not isinstance(held, dict) or held.get("outcome") != "request":
+            return held
+        parameters = held.get("parameters")
+        sources = held.get("parameter_sources")
+        if not isinstance(parameters, dict) or not isinstance(sources, dict):
+            return held
+        for name, selection in tuple(parameters.items()):
+            if name not in _ENTITY_PARAMETER_GROUPS:
+                continue
+            proof = sources.get(name)
+            if not isinstance(selection, dict) or not isinstance(proof, dict):
+                raise ContractError(
+                    f"model entity parameter {name!r} must select a catalog id "
+                    "or a grounded phrase")
+            if set(selection) == {"catalog_id"}:
+                if (not isinstance(selection["catalog_id"], str)
+                        or not selection["catalog_id"].strip()):
+                    raise ContractError(
+                        f"model entity parameter {name!r} catalog_id must be "
+                        "a non-empty string")
+                if proof.get("derivation") != "catalog_selection":
+                    raise ContractError(
+                        f"model entity parameter {name!r} selected a catalog id "
+                        "without catalog_selection grounding")
+                parameters[name] = selection["catalog_id"]
+                continue
+            if (set(selection) == {"grounded_phrase"}
+                    and selection.get("grounded_phrase") is True):
+                if proof.get("derivation") != "verbatim":
+                    raise ContractError(
+                        f"model entity parameter {name!r} selected a grounded "
+                        "phrase without verbatim grounding")
+                quote = str(proof.get("quote") or "")
+                candidates = self._catalog_candidates(name, quote)
+                if len(candidates) == 1:
+                    parameters[name] = candidates[0]["id"]
+                    proof["derivation"] = "catalog_selection"
+                else:
+                    parameters[name] = quote
+                continue
+            raise ContractError(
+                f"model entity parameter {name!r} must select a catalog id "
+                "or a grounded phrase")
+        return held
+
+    def interpretations(self, outcome: SemanticOutcome) -> tuple[dict, ...]:
+        request = outcome.request if outcome is not None else None
+        if request is None:
+            return ()
+        found = []
+        for name, value in request.parameters.items():
+            proof = dict((request.parameter_sources or {}).get(name) or {})
+            if proof.get("derivation") != "catalog_selection":
+                continue
+            row = self._entity_rows.get(name, {}).get(str(value))
+            if row is None:
+                continue
+            label = self._display_label(name, row)
+            quote = " ".join(str(proof.get("quote") or "").split())
+            if quote and label and self._normalized(quote) != self._normalized(label):
+                found.append({"parameter": name, "asked": quote[:160],
+                              "matched": label[:160]})
+        return tuple(found)
+
+    def clarification_candidates(self, outcome: SemanticOutcome) -> tuple[dict, ...]:
+        request = outcome.request if outcome is not None else None
+        if request is None:
+            return ()
+        for name, value in request.parameters.items():
+            proof = dict((request.parameter_sources or {}).get(name) or {})
+            if (name in _ENTITY_PARAMETER_GROUPS
+                    and proof.get("derivation") == "verbatim"):
+                return tuple(self._catalog_candidates(name, str(value))[:3])
+        return ()
+
     def parse(self, raw, context=None, *, require_grounding=True) -> SemanticOutcome:
         if not isinstance(raw, dict):
             raise ContractError("semantic output must be an object")
@@ -443,8 +562,7 @@ class SemanticFamilyRegistry:
             if family is None or not family.runtime_selectable:
                 return SemanticOutcome("unsupported",
                                        detail={"requested_family": family_id})
-            self._validate_parameters(
-                self._model_parameter_schema(family), raw["parameters"])
+            self._validate_parameters(family.parameter_schema, raw["parameters"])
             self._validate_parameter_sources(
                 raw["parameters"], raw["parameter_sources"], context,
                 require_grounding=require_grounding)
@@ -508,10 +626,96 @@ class SemanticFamilyRegistry:
                                       self.catalog_digest)
             programs.append(self.lower(SemanticOutcome("request", request),
                                        manifest).to_dict())
-        payload = {"catalog": self.supported_family_report(),
-                   "output_schema": self.output_schema(), "programs": programs}
+        payload = {
+            "catalog": self.supported_family_report(),
+            "output_schema": self.output_schema(),
+            "model_reference_contract": self._model_reference_contract(),
+            "implementation": self._admitted_implementation_digests(),
+            "programs": programs,
+        }
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+    @classmethod
+    def _model_reference_contract(cls):
+        """Stable probes bind provider schema and entity matching to admission."""
+        probe = cls({
+            "accounts": [{"id": "account-alpha", "name": "Primary Reserve",
+                          "institution": "Example Bank", "kind": "checking"}],
+            "categories": [{"id": "daily-goods", "label": "Daily Goods"}],
+            "counterparties": [
+                {"id": "alpha", "label": "Alpha"},
+                {"id": "alpha-beta", "label": "Alpha Beta"},
+                {"id": "beta", "label": "Beta"},
+            ],
+        })
+
+        def materialized(selection, quote, derivation):
+            raw = {
+                "request_version": SEMANTIC_REQUEST_VERSION,
+                "catalog_digest": probe.catalog_digest,
+                "entity_catalog_digest": probe.entity_catalog_digest,
+                "outcome": "request",
+                "family": "classification_explanation",
+                "parameters": {"movement_phrase": selection},
+                "parameter_sources": {"movement_phrase": {
+                    "source": "question", "quote": quote,
+                    "derivation": derivation}},
+                "requested_claims": ["explanation"],
+            }
+            try:
+                held = probe.materialize_model_output(raw)
+            except ContractError as error:
+                return {"error": str(error)}
+            return {
+                "parameter": held["parameters"]["movement_phrase"],
+                "derivation": held["parameter_sources"]["movement_phrase"][
+                    "derivation"],
+            }
+
+        phrases = (
+            "Alpha Beta purchase",
+            "Alpha-Beta purchase",
+            "Beta near Alpha purchase",
+            "Alpha nearby Beta purchase",
+            "Alpha Beta",
+            "unlisted merchant",
+        )
+        return {
+            "model_output_schema": probe.model_output_schema(),
+            "candidates": {
+                phrase: probe._catalog_candidates("movement_phrase", phrase)
+                for phrase in phrases
+            },
+            "materialized": {
+                "catalog": materialized(
+                    {"catalog_id": "alpha-beta"}, "warehouse purchase",
+                    "catalog_selection"),
+                "grounded_contiguous": materialized(
+                    {"grounded_phrase": True}, "Alpha Beta purchase", "verbatim"),
+                "grounded_reordered": materialized(
+                    {"grounded_phrase": True}, "Beta near Alpha purchase", "verbatim"),
+                "wrong_type": materialized(
+                    {"catalog_id": 123}, "Alpha Beta", "catalog_selection"),
+            },
+        }
+
+    @staticmethod
+    def _admitted_implementation_digests():
+        """Bind executable selection, materialization and disclosure code."""
+        from vivacore.models import openai_compat
+        from . import compiler, runtime
+
+        modules = {
+            "intents": inspect.getmodule(SemanticFamilyRegistry),
+            "compiler": compiler,
+            "runtime": runtime,
+            "openai_compat": openai_compat,
+        }
+        return {
+            name: hashlib.sha256(inspect.getsource(module).encode()).hexdigest()[:16]
+            for name, module in modules.items()
+        }
 
     @staticmethod
     def _fields(raw, allowed, required, where):
@@ -522,10 +726,63 @@ class SemanticFamilyRegistry:
                                 f"missing={missing}")
 
     def _model_parameter_schema(self, family):
-        # A catalog selection is verified through its source derivation. The
-        # string schema remains open so a grounded phrase can fall back safely
-        # when a very large catalog was explicitly truncated.
-        return copy.deepcopy(family.parameter_schema)
+        schema = copy.deepcopy(family.parameter_schema)
+        properties = schema.get("properties", {})
+        for name in set(properties) & set(_ENTITY_PARAMETER_GROUPS):
+            ids = sorted(self._entity_rows.get(name, {}))
+            choices = []
+            if ids:
+                choices.append(_object({
+                    "catalog_id": {"type": "string", "enum": ids}},
+                    ("catalog_id",)))
+            choices.append(_object({
+                "grounded_phrase": {"type": "boolean", "enum": [True]}},
+                ("grounded_phrase",)))
+            properties[name] = {"oneOf": choices}
+        return schema
+
+    def _catalog_candidates(self, name, phrase):
+        wanted = self._normalized(phrase)
+        wanted_tokens = self._tokens(phrase)
+        candidates = []
+        for identity, row in self._entity_rows.get(name, {}).items():
+            surfaces = self._row_surfaces(name, row)
+            exact = any(self._normalized(surface) == wanted for surface in surfaces)
+            contained = any(
+                tokens and self._contains_token_sequence(wanted_tokens, tokens)
+                for tokens in (self._tokens(surface) for surface in surfaces))
+            if wanted and (exact or contained):
+                candidates.append({"id": identity,
+                                   "label": self._display_label(name, row)})
+        return sorted(candidates, key=lambda item: (item["label"], item["id"]))
+
+    @staticmethod
+    def _contains_token_sequence(haystack, needle):
+        """Require catalog words to occur contiguously and in catalog order."""
+        width = len(needle)
+        return any(haystack[index:index + width] == needle
+                   for index in range(len(haystack) - width + 1))
+
+    @staticmethod
+    def _normalized(value):
+        return " ".join(str(value).casefold().split())
+
+    @staticmethod
+    def _tokens(value):
+        return tuple(re.findall(r"[^\W_]+", str(value).casefold()))
+
+    @staticmethod
+    def _row_surfaces(name, row):
+        if name == "account_phrase":
+            return tuple(value for value in (
+                row.get("id"), row.get("name"), row.get("institution")) if value)
+        return tuple(value for value in (row.get("id"), row.get("label")) if value)
+
+    @staticmethod
+    def _display_label(name, row):
+        if name == "account_phrase":
+            return str(row.get("name") or row.get("institution") or row.get("id") or "")
+        return str(row.get("label") or row.get("id") or "")
 
     @staticmethod
     def _validate_parameters(schema, parameters):

@@ -101,3 +101,18 @@ def test_the_other_spelling_of_the_reasoning_channel_is_read(monkeypatch):
     r = oc.OpenAICompatAdapter(_spec()).extract([], "P")
 
     assert r.reasoning_text == "still thinking" and r.reasoning_tokens == 0
+
+
+def test_conversation_requires_exactly_one_tool_call(monkeypatch):
+    calls = _stub(monkeypatch, [_payload(
+        "", "tool_calls", message={"tool_calls": [{"id": "one",
+            "function": {"name": "select", "arguments": "{}"}}]})])
+
+    turn = oc.OpenAICompatAdapter(_spec()).converse(
+        [{"role": "user", "content": "choose"}],
+        [{"name": "select", "description": "choose",
+          "parameters": {"type": "object", "properties": {}}}])
+
+    assert len(turn.tool_calls) == 1
+    assert calls[0]["tool_choice"] == "required"
+    assert calls[0]["parallel_tool_calls"] is False
