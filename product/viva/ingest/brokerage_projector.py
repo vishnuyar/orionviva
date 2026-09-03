@@ -36,7 +36,9 @@ log = logging.getLogger(__name__)
 
 from .pipeline_models import *
 
-from .statement_projector import account_id_for, _period_already_posted
+from .statement_projector import (_period_already_posted,
+                                  _account_for_resolution,
+                                  _record_stronger_identity)
 
 def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     """Verify a brokerage statement's internal tally and, only if it holds,
@@ -91,7 +93,26 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     # cash held for this account from the previous statement is carried forward
     # — the forward-stitching rule applied to brokerage cash.
     proj0 = ledger.projection()
-    account0 = account_id_for(facts)
+    identity = proj0.resolve(
+        facts.institution, facts.account_number, facts.account_ref,
+        facts.account_names, kind=INVESTMENT, doc_id=facts.doc_id)
+    if identity.verdict == "ambiguous":
+        ledger.append(statement_held(
+            facts.doc_id, facts.to_dict(),
+            {"kind": "identity", "candidate": identity.candidate,
+             "candidate_name": identity.candidate_name,
+             "candidates": list(identity.candidates), "key": identity.key,
+             "message": identity.reason},
+            "identity", when, Provenance(doc_id=facts.doc_id)))
+        return IngestResult(
+            doc_id=facts.doc_id, action=IDENTITY, doc_type=facts.doc_type,
+            account=identity.candidate or None, grade="conflicted",
+            reconciliation=recon,
+            message=("I read this statement, but whose account it is is "
+                     f"unclear: {identity.reason}. Held for you to confirm."))
+    account0 = _account_for_resolution(proj0, identity, INVESTMENT)
+    _record_stronger_identity(ledger, proj0, account0, facts, when)
+    proj0 = ledger.projection()
 
     # A snapshot has no balance chain to fall foul of, so a second copy of one
     # posts its whole activity again with nothing to stop it. This is that stop.
@@ -133,7 +154,7 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
         activity_issue = activity_finding.message
 
     proj = ledger.projection()
-    account = account_id_for(facts)
+    account = account0
     seeding = not proj.seen_account(account)
     if seeding:
         log.info("post_brokerage: opening investment account %s (%s) at %s",
@@ -241,7 +262,13 @@ def apply_brokerage_activity_correction(
                 doc_id, corrected.to_dict(), finding.to_dict(), corrected.as_of,
                 Provenance(doc_id=doc_id)),)
 
-        account = account_id_for(corrected)
+        identity = projection.resolve(
+            corrected.institution, corrected.account_number,
+            corrected.account_ref, corrected.account_names, kind=INVESTMENT,
+            doc_id=corrected.doc_id)
+        if identity.verdict == "ambiguous":
+            raise ValueError("corrected brokerage statement has ambiguous account identity")
+        account = identity.account_id
         events = [brokerage_activity_transaction(
             account, item.kind, item.amount, item.description,
             item.date or corrected.as_of, instrument=item.instrument,

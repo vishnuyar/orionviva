@@ -16,16 +16,18 @@
 2. Jurisdiction defaults to empty — *nobody has said* — never to a country nothing attested.
 3. Per-format specifics live in a registry as data, so no code branches per country (I5).
 
-### MON-69 — the account key is the anchor, and a readable number decides
+### MON-69 — account ids are opaque when signals collide, and a readable number decides
 **State:** enforced
-**Code:** product/viva/ledger/identity.py (`account_key`, `identity_number_key`); product/viva/ledger/projection/accounts.py (`resolve`)
-**Test:** product/tests/test_pipeline.py::test_two_readable_numbers_are_two_accounts_and_nobody_is_asked; product/tests/test_projection.py::test_issuer_legal_aliases_and_full_numbers_do_not_split_an_account; ::test_last_four_and_a_shared_issuer_word_do_not_merge_distinct_people_or_products; ::test_a_damaged_short_number_yields_to_an_explicit_printed_last_four
+**Code:** product/viva/ledger/identity.py (`account_key`, `identity_number_key`, `usable_full_number`, `opaque_account_key`); product/viva/ledger/projection/accounts.py (`resolve`)
+**Test:** product/tests/test_pipeline.py::test_different_full_numbers_with_matching_last_four_both_post_and_replay; ::test_masked_value_with_more_than_four_digits_is_not_treated_as_full; product/tests/test_projection.py::test_issuer_legal_aliases_and_full_numbers_do_not_split_an_account; ::test_last_four_and_a_shared_issuer_word_do_not_merge_distinct_people_or_products; ::test_a_damaged_short_number_yields_to_an_explicit_printed_last_four
 
-1. A usable full number, or an explicitly printed last four where that is all the statement supplies, anchors identity. One to three trailing digits are not promoted into an account number.
+1. A usable full number is an unmasked field containing more than four digits; mask characters never become full-number evidence merely because more than four trailing digits remain visible. An explicitly printed last four is a partial signal. One to three trailing digits are not promoted into an account number.
 2. Two readable, different account numbers are two accounts, with no question asked.
 3. A full number survives issuer display-name variation. A shared last four is weaker: it resolves only when account kind, holder, issuer legal core and product are compatible, and conflicting number signals never merge.
 4. Where neither statement shows a usable number, different product labels are separate accounts, compared as slugs.
 5. The comparison is scoped to one account kind, so a card and a checking account sharing a holder are two accounts (product/tests/test_pipeline.py::test_card_and_checking_same_holder_are_two_accounts).
+6. The historical institution-plus-last-four key is retained when unoccupied. A collision receives a persisted random, kind-scoped id; no digest of the full account number appears in an id or surface response.
+7. The event log, not re-derivation from source files, is the identity authority. Replay and encrypted reopen preserve opaque ids exactly. A destructive from-source rebuild can assign the historical key and random collision id in a different arrival order, so anything exported outside a vault must treat account ids as vault-local references and carry an explicit remapping if a vault is rebuilt.
 
 ### MON-70 — one case is ambiguous, and only that one is asked about
 **State:** enforced
@@ -39,20 +41,24 @@
 ### MON-71 — an ambiguous statement is held, and the ruling teaches the map
 **State:** enforced
 **Code:** product/viva/ingest/statement_projector.py:287 (the `identity` hold); product/viva/ingest/review.py:111 (`apply_identity_ruling`)
-**Test:** product/tests/test_pipeline.py::test_ambiguous_identity_merge_learns_the_alias
+**Test:** product/tests/test_pipeline.py::test_ambiguous_identity_merge_learns_the_alias; ::test_masked_multi_candidate_can_be_assigned_to_a_specific_account; product/tests/test_questions.py::test_zero_candidate_identity_hold_can_be_confirmed_as_new
 
-1. The statement is held under an `identity` reason carrying the candidate account, its name and the reason — never posted on a guess.
-2. The person's ruling is an append-only correction event that updates the identity map.
-3. The next matching statement resolves automatically, with no re-ask.
+1. The statement is held under an `identity` reason carrying every compatible candidate and the reason — never posted on a guess.
+2. The person's ruling is an append-only correction event that settles that exact document. A single-candidate ruling may also teach the signal map together with the ruled holder, product and account-kind signature; it generalizes only when those facts remain compatible. A multi-candidate last-four ruling may not teach the signal map, because the same lossy signal can name several accounts.
+3. A safe single-candidate signal ruling resolves the next matching statement
+   automatically. A multi-candidate ruling deliberately settles only its exact
+   document, so a later lossy statement is reviewed independently.
 4. An identity-held statement exactly adjacent to the observed coverage edge suppresses the duplicate gap question; a nonadjacent hold does not hide a real gap.
 
 ### MON-72 — an account carries an identity set
 **State:** enforced
-**Code:** product/viva/ledger/projection/core.py:126 (the learned `signal-key → account_id` map), :243 (its replay)
+**Code:** product/viva/ledger/projection/core.py (the learned signal and document maps and their replay)
 **Test:** product/tests/test_pipeline.py::test_ambiguous_identity_merge_learns_the_alias
 
-1. Confirmation events replay into a `signal → account` map, and `account_id_for` consults it rather than a raw label.
-2. Known signals resolve automatically; only new or ambiguous ones ask.
+1. Confirmation events replay into both a signature-scoped learned `signal → account` map and an exact `document → account` ruling map. Legacy events without a signature retain their historical replay behavior.
+2. `account_id_for` remains the historical pure signal-key helper for compatibility. Any caller with a projection uses `resolve`, because only the projection can know learned, legacy, opaque, or document-specific identities.
+3. Known signals resolve automatically; only new or ambiguous ones ask.
+4. `AccountIdentityObserved` strengthens a masked account with later compatible full-number evidence without changing its persisted account id.
 
 ### MON-73 — a person and their accounts
 **State:** unmet
@@ -82,8 +88,8 @@ The bundled fix came from the same finding: the ledger is bitemporal, so a backf
 
 ## Open
 
-- **Party is unbuilt** (MON-73). Holder names are a flat list of strings on the account and they do not accumulate: the list is *replaced* by the statement that opened the account, and the opening event is emitted at most once per account, so a second statement that first reveals a joint holder never records that name. "Joint" survives only as the reason the list is a list.
+- **Party is unbuilt** (MON-73). Holder names remain a flat, incomplete list of strings on the account. `AccountIdentityObserved` can add names when a compatible masked account first gains full-number evidence, but an ordinary later statement that first reveals a joint holder still records no identity event. "Joint" survives only as the reason the list is a list.
 - Three questions this block was designed to ask are not asked: *matches your name but a different number*, *same number different name*, and *two names — a joint account?*. The first two are settled by rule instead, and the third has nothing to record an answer into until Party exists.
-- The identity hold carries no reconciliation `Finding`; the same held-statement path and event carry it under an `identity` reason.
-- The **graded** match in the shape above is not built. `Resolution` (product/viva/ledger/projection/accounts.py:31) carries `account_id`, `key`, `verdict`, `candidate`, `candidate_name` and `reason`, and no grade; the deterministic rules in MON-69 settle the cases a score was to have graded.
+- The identity hold carries no reconciliation `Finding`; the same held-document path and event carry it under an `identity` reason for balance and brokerage statements.
+- The **graded** match in the shape above is not built. `Resolution` (product/viva/ledger/projection/accounts.py) carries `account_id`, `key`, `verdict`, one candidate or a candidate set, names and a reason, but no grade; the deterministic rules in MON-69 settle the cases a score was to have graded.
 - Jurisdiction is a plain field with no source and no grade. Making it a graded attribute, with the country tag derived, is designed and unbuilt.

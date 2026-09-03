@@ -130,9 +130,10 @@ class LedgerProjection:
         return _accounts.document_types_of(self._core, account)
 
     def resolve(self, institution: str, account_number: str, account_ref: str,
-                names: list[str], kind: str = "depository") -> Resolution:
+                names: list[str], kind: str = "depository",
+                doc_id: str = "") -> Resolution:
         return _accounts.resolve(self._core, institution, account_number,
-                                 account_ref, names, kind)
+                                 account_ref, names, kind, doc_id)
 
     def _own_account_tokens(self) -> dict[str, set[str]]:
         return _accounts.own_account_tokens(self._core)

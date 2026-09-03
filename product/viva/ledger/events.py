@@ -7,9 +7,11 @@ here is mutated: a correction is a new event.
 Money is always ``Decimal``, carried as a string in the serialised form; a float
 is rejected at construction.
 
-Four event types carry the core story:
+Five event types carry the core story:
 
   - ``AccountOpened``            — registers a value-holding relationship.
+  - ``AccountIdentityObserved``  — strengthens an existing account's identity
+                                   without opening or duplicating it.
   - ``OpeningBalanceObserved``   — the statement's opening figure; the projection
                                    seeds it as an Opening Balance Equity pair.
   - ``TransactionRecorded``      — money moved: a list of postings that sum to
@@ -187,6 +189,20 @@ def account_opened(account_id: str, kind: str, name: str, currency: str,
     )
 
 
+def account_identity_observed(account_id: str, occurred_at: str,
+                              institution: str = "", account_number: str = "",
+                              account_names: list[str] | None = None,
+                              provenance: Provenance | None = None) -> Event:
+    """Record stronger issuer identity evidence for an existing account."""
+    return Event(
+        "AccountIdentityObserved", occurred_at,
+        body={"account_id": account_id, "institution": institution,
+              "account_number": account_number,
+              "account_names": list(account_names or [])},
+        provenance=provenance or Provenance(),
+    )
+
+
 def opening_balance_observed(account_id: str, amount: Decimal | str,
                              occurred_at: str,
                              provenance: Provenance | None = None) -> Event:
@@ -278,15 +294,27 @@ def document_captured(doc_id: str, filename: str, byte_len: int,
 
 def account_alias_confirmed(alias_key: str, account_id: str, doc_id: str,
                             occurred_at: str, by: str = "human",
-                            provenance: Provenance | None = None) -> Event:
-    """A ruling on an ambiguous account identity: the signal ``alias_key``
-    resolves to ``account_id``, which may be an existing account (a merge) or
-    the key's own account (a confirmed 'new'). The projection's identity map
-    reads these, so the same pattern is not asked about again."""
+                            provenance: Provenance | None = None,
+                            learn_signal: bool = True,
+                            match_names: list[str] | None = None,
+                            match_label: str | None = None,
+                            kind: str | None = None) -> Event:
+    """A ruling on an ambiguous account identity.
+
+    Every ruling settles ``doc_id`` to ``account_id``. When ``learn_signal`` is
+    true it also teaches the reusable ``alias_key`` mapping; multi-candidate
+    partial signals set it false because one last-four key can name several
+    real accounts. New writers include the holder/product signature that made
+    a reusable ruling safe; legacy events without it retain their old replay.
+    """
+    body = {"alias_key": alias_key, "account_id": account_id,
+            "doc_id": doc_id, "by": by, "learn_signal": learn_signal}
+    if match_names is not None or match_label is not None or kind is not None:
+        body.update({"match_names": list(match_names or []),
+                     "match_label": match_label or "", "kind": kind or ""})
     return Event(
         "AccountAliasConfirmed", occurred_at,
-        body={"alias_key": alias_key, "account_id": account_id,
-              "doc_id": doc_id, "by": by},
+        body=body,
         provenance=provenance or Provenance(doc_id=doc_id),
     )
 

@@ -113,6 +113,99 @@ def test_an_old_identity_hold_does_not_hide_a_real_later_gap(tmp_path):
     assert sorted(kinds) == sorted([IDENTITY, RECONCILIATION])
 
 
+def test_multi_account_identity_choice_posts_to_the_selected_account(
+        tmp_path, monkeypatch):
+    """A lossy last four can name several accounts; the answer must carry the
+    exact selection through the language-only question path."""
+    from viva import engine
+    from viva.ledger import account_opened, opening_balance_observed
+    from viva.ledger.events import Provenance, statement_held
+    from viva.questions import IDENTITY
+    from viva.vault import Vault
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    checking = "acct:northbank:1234"
+    savings = "acct:depository:opaque"
+    for account, name, number, opening in (
+            (checking, "Everyday Account 000000001234",
+             "000000001234", "1000"),
+            (savings, "Everyday Account 999999991234",
+             "999999991234", "2500")):
+        ledger.append(account_opened(
+            account, "depository", name, "USD", "2026-01-01",
+            institution="Northbank", account_number=number))
+        ledger.append(opening_balance_observed(
+            account, opening, "2026-01-01"))
+    facts = StatementFacts(
+        doc_id="masked-doc", doc_type="checking_statement",
+        doc_type_confidence=1, account_ref="Everyday Account", currency="USD",
+        opening_amount=Decimal("2500"), opening_date="2026-02-01",
+        closing_amount=Decimal("2600"), closing_date="2026-02-28",
+        transactions=[TxnFact("2026-02-10", "Deposit", Decimal("100"))],
+        account_number="••••1234", institution="Northbank")
+    ledger.append(statement_held(
+        facts.doc_id, facts.to_dict(),
+        {"kind": "identity", "candidates": [checking, savings],
+         "key": checking, "message": "Two accounts share these digits."},
+        "identity", facts.closing_date, Provenance(doc_id=facts.doc_id)))
+
+    (question,) = [q for q in open_questions(
+        ledger, as_of="2026-03-01")["questions"] if q["kind"] == IDENTITY]
+    slot = question["slots"][0]
+    assert slot["name"] == "account_choice"
+    assert slot["choices"] == [
+        "Everyday Account ••••1234 — balance USD 1,000.00 (option 1)",
+        "Everyday Account ••••1234 — balance USD 2,500.00 (option 2)",
+        "a new account"]
+    assert "Which account" in question["text"]
+    assert "000000001234" not in repr(question)
+    assert "999999991234" not in repr(question)
+    vault = Vault(ledger=ledger, raw=RawStore.open(tmp_path / "raw", "pw"),
+                  directory=tmp_path)
+    monkeypatch.setattr(engine, "_interpreter", lambda: None)
+
+    outcome = engine.answer_question(
+        vault, question["id"], slot["choices"][1])
+
+    assert outcome["ok"] is True and outcome["account"] == savings
+    assert ledger.projection().balance(savings).amount == Decimal("2600")
+    assert ledger.projection().open_holds() == []
+
+
+def test_zero_candidate_identity_hold_can_be_confirmed_as_new(
+        tmp_path, monkeypatch):
+    from viva import engine
+    from viva.questions import IDENTITY
+    from viva.vault import Vault
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    facts = StatementFacts(
+        doc_id="", doc_type="checking_statement",
+        doc_type_confidence=1, account_ref="Checking ending 9999",
+        currency="USD", opening_amount=Decimal("100"),
+        opening_date="2026-02-01", closing_amount=Decimal("150"),
+        closing_date="2026-02-28",
+        transactions=[TxnFact("2026-02-10", "Deposit", Decimal("50"))],
+        account_number="••••1234", institution="Northbank")
+    held = capture_and_ingest(
+        raw, ledger, b"contradictory-account-signals",
+        lambda data, doc_id: _stamp(facts, doc_id), captured_at="2026-03-01")
+    assert held.action == "identity"
+    (question,) = [q for q in open_questions(
+        ledger, as_of="2026-03-01")["questions"] if q["kind"] == IDENTITY]
+    assert question["slots"][0]["choices"] == ["a new account"]
+    vault = Vault(ledger=ledger, raw=raw, directory=tmp_path)
+    monkeypatch.setattr(engine, "_interpreter", lambda: None)
+
+    outcome = engine.answer_question(
+        vault, question["id"], "a new account")
+
+    assert outcome["ok"] is True
+    assert outcome["account"].startswith("acct:depository:")
+    assert ledger.projection().open_holds() == []
+
+
 def test_questions_are_ranked_by_what_answering_moves(tmp_path):
     ledger = _checking(tmp_path, [
         ("2026-03-05", "TINY SHOP", "-12.00"),

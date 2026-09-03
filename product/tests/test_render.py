@@ -184,3 +184,15 @@ def test_no_module_that_speaks_to_a_person_formats_money_itself():
                 f"{path.name} formats a figure itself ({pattern.pattern!r}) — an "
                 "amount is written by the one renderer, under the locale's own "
                 "conventions")
+
+
+@pytest.mark.parametrize("name", [
+    "Checking 000000001234",
+    "Checking 0000 0000 1234",
+    "Checking 0000-0000-1234",
+])
+def test_an_account_name_cannot_bypass_number_masking(name):
+    written = render.account({"name": name, "number_masked": "••••1234"})
+
+    assert written == "Checking ••••1234"
+    assert "0000" not in written

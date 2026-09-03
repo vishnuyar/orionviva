@@ -18,6 +18,7 @@ from merchantcore.taxonomy import subcategory_identity
 from ..events import (SCOPE_ACCOUNT, SCOPE_ATTRIBUTE, SCOPE_CATEGORY,
                       SCOPE_MERCHANT, SCOPE_TAG, CORROBORATED, ISSUED,
                       UNVERIFIED, VERIFIED, Event, Provenance, postings_of)
+from ..identity import usable_full_number
 from ..postings import EQUITY_OPENING
 
 
@@ -154,6 +155,10 @@ class ProjectionCore:
         # gates. A valid snapshot can post while these movements stay held.
         self._activity_held: dict[str, dict] = {}
         self._aliases: dict[str, str] = {}       # learned: signal-key -> account_id
+        self._alias_evidence: dict[str, dict] = {}  # safe scope of new aliases
+        # A person's ruling for one exact document. Unlike a lossy signal alias,
+        # this can safely choose among several accounts sharing the same last four.
+        self._document_account_aliases: dict[str, str] = {}
         # Transfer overlay: links between two movement keys, and unresolved
         # suggestions awaiting a ruling. Links are ledger-wide rather than
         # per-account, because a transfer spans two accounts.
@@ -246,6 +251,24 @@ class ProjectionCore:
             # institution and kind, so learning either re-keys its merchants.
             self._mkeys, self._mkeys_of = None, {}
 
+        elif et == "AccountIdentityObserved":
+            account = event.body["account_id"]
+            st = self._state(account)
+            observed_number = event.body.get("account_number", "")
+            # Only genuine full-number evidence can strengthen the stored
+            # identity. A mask exposing many digits is still partial evidence.
+            if (usable_full_number(observed_number)
+                    and not usable_full_number(st.number)):
+                st.number = observed_number
+            st.institution = st.institution or event.body.get("institution", "")
+            for name in event.body.get("account_names", []):
+                if name and name not in st.names:
+                    st.names.append(name)
+            if did:
+                st.doc_ids.add(did)
+            self._own_tokens_cache = None
+            self._mkeys, self._mkeys_of = None, {}
+
         elif et == "OpeningBalanceObserved":
             acct = event.body["account_id"]
             amount = Decimal(event.body["amount"])
@@ -298,7 +321,23 @@ class ProjectionCore:
             self._activity_held.pop(event.body["doc_id"], None)
 
         elif et == "AccountAliasConfirmed":
-            self._aliases[event.body["alias_key"]] = event.body["account_id"]
+            if event.body.get("learn_signal", True):
+                alias = event.body["alias_key"]
+                self._aliases[alias] = event.body["account_id"]
+                # Absence means a legacy event whose historical broad replay
+                # must remain readable. New events carry all three keys.
+                if any(key in event.body for key in
+                       ("match_names", "match_label", "kind")):
+                    self._alias_evidence[alias] = {
+                        "names": list(event.body.get("match_names") or []),
+                        "label": event.body.get("match_label", ""),
+                        "kind": event.body.get("kind", ""),
+                    }
+                else:
+                    self._alias_evidence.pop(alias, None)
+            doc = event.body.get("doc_id", "")
+            if doc:
+                self._document_account_aliases[doc] = event.body["account_id"]
 
         elif et == "TransferLinked":
             pair = frozenset({event.body["a"], event.body["b"]})

@@ -11,7 +11,8 @@ from vivacore.verify.arithmetic import (CheckResult, check_balance_identity,
                                         check_brokerage_identity,
                                         check_paystub_identity)
 
-from ..ledger.events import (CORROBORATED, VERIFIED, Provenance, account_opened,
+from ..ledger.events import (CORROBORATED, VERIFIED, Provenance,
+                             account_identity_observed, account_opened,
                              closing_balance_observed, document_captured,
                              opening_balance_observed, position_observed,
                              read_recorded, statement_held)
@@ -21,7 +22,9 @@ from ..ledger.postings import (brokerage_activity_transaction,
                                simple_transaction)
 from .brokerage import BrokerageFacts
 from .diagnose import FORCED, SUGGESTED, UNLOCALIZED, ReconciliationFinding, diagnose
-from ..ledger.identity import account_key
+from ..ledger.identity import (opaque_account_key, preferred_account_key,
+                               usable_full_number)
+from ..ledger.projection import UnknownAccountError
 from .paystub import PayStubFacts
 from .raw_store import RawStore
 from .registry import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, INVESTMENT,
@@ -35,11 +38,15 @@ log = logging.getLogger(__name__)
 from .pipeline_models import *
 
 def account_id_for(facts: StatementFacts) -> str:
-    """A stable account id anchored to the account number (institution + last-4).
+    """Return the historical signal key for ``facts``.
 
-    Falls back to the label only when no number was extracted, so every month of
-    one account maps to one ledger account however the statement labels it."""
-    return account_key(facts.institution, facts.account_number, facts.account_ref)
+    Kept as a pure compatibility helper for callers that create or inspect an
+    ordinary first account. When a projection already exists, callers must use
+    ``_resolve``: a signal may resolve to a legacy id, a learned identity, or a
+    persisted opaque id that cannot be reconstructed from facts alone.
+    """
+    return preferred_account_key(facts.institution, facts.account_number,
+                                 facts.account_ref)
 
 
 def _resolve(proj, facts: StatementFacts):
@@ -47,7 +54,33 @@ def _resolve(proj, facts: StatementFacts):
     # with the same holder are different accounts, not an ambiguity.
     return proj.resolve(facts.institution, facts.account_number,
                         facts.account_ref, facts.account_names,
-                        kind=account_kind_for(facts.doc_type))
+                        kind=account_kind_for(facts.doc_type),
+                        doc_id=facts.doc_id)
+
+
+def _record_stronger_identity(ledger: Ledger, proj, account: str,
+                              facts, occurred_at: str | None = None) -> None:
+    """Persist a full number learned after an account was opened masked."""
+    if not usable_full_number(facts.account_number):
+        return
+    try:
+        known = proj.account_info(account)
+    except UnknownAccountError:                         # a new account
+        return
+    if usable_full_number(known.number):
+        return
+    ledger.append(account_identity_observed(
+        account, occurred_at or facts.closing_date, institution=facts.institution,
+        account_number=facts.account_number, account_names=facts.account_names,
+        provenance=Provenance(doc_id=facts.doc_id)))
+
+
+def _account_for_resolution(proj, resolution, kind: str) -> str:
+    """Choose a writable id, minting an opaque one for an occupied key."""
+    account = resolution.account_id
+    if resolution.verdict == "new" and proj.seen_account(account):
+        return opaque_account_key(kind)
+    return account
 
 
 def _connects(facts: StatementFacts, proj, account: str) -> str:
@@ -81,7 +114,9 @@ def heal_gaps(ledger: Ledger) -> int:
                     or identity_of_facts(body.get("facts")) != BALANCE_IDENTITY):
                 continue
             facts = StatementFacts.from_dict(body["facts"])
-            if _connects(facts, proj, _resolve(proj, facts).account_id):
+            resolution = _resolve(proj, facts)
+            if (resolution.verdict != "ambiguous"
+                    and _connects(facts, proj, resolution.account_id)):
                 candidate = facts
                 attempted.add(doc_id)
                 break
@@ -128,10 +163,11 @@ def heal_corroboration(ledger: Ledger) -> int:
             facts = StatementFacts.from_dict(body["facts"])
             toks = account_tokens_from(facts.institution, facts.account_number,
                                        facts.account_ref)
-            if find_corroborating_legs(
-                    proj, account_id_for(facts), account_kind_for(facts.doc_type),
+            resolution = _resolve(proj, facts)
+            if (resolution.verdict != "ambiguous" and find_corroborating_legs(
+                    proj, resolution.account_id, account_kind_for(facts.doc_type),
                     _gap_delta(facts), facts.currency, facts.opening_date,
-                    facts.closing_date, own_tokens=toks):
+                    facts.closing_date, own_tokens=toks)):
                 candidate = facts
                 attempted.add(doc_id)
                 break
@@ -210,9 +246,14 @@ def post_statement(ledger: Ledger, facts: StatementFacts,
     ledger.append(statement_held(
         facts.doc_id, facts.to_dict(), finding.to_dict(), "conflict",
         facts.closing_date, Provenance(doc_id=facts.doc_id)))
+    held_identity = _resolve(ledger.projection(), facts)
     return IngestResult(
         doc_id=facts.doc_id, action=CONFLICT, doc_type=facts.doc_type,
-        account=account_id_for(facts), grade="conflicted",
+        # A new colliding identity has no persisted account id until it posts.
+        # Reporting its occupied preferred key would point at another account.
+        account=(held_identity.account_id
+                 if held_identity.verdict == "same" else None),
+        grade="conflicted",
         reconciliation=recon, finding=finding,
         message=f"Not posted; held for your review. {finding.message}")
 
@@ -231,7 +272,10 @@ def _try_corroboration(ledger: Ledger, facts: StatementFacts) -> IngestResult | 
     from .transfers import account_tokens_from, find_corroborating_legs, link_transfers
 
     proj = ledger.projection()
-    account = account_id_for(facts)
+    resolution = _resolve(proj, facts)
+    if resolution.verdict == "ambiguous":
+        return None
+    account = resolution.account_id
     kind = account_kind_for(facts.doc_type)
     delta = _gap_delta(facts)
     # Tokens come from the facts, not the projection: this account may not be
@@ -361,15 +405,19 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
         ledger.append(statement_held(
             facts.doc_id, facts.to_dict(),
             {"kind": "identity", "candidate": res.candidate,
-             "candidate_name": res.candidate_name, "key": res.key,
+             "candidate_name": res.candidate_name,
+             "candidates": list(res.candidates), "key": res.key,
              "message": res.reason}, "identity",
             facts.closing_date, Provenance(doc_id=facts.doc_id)))
         return IngestResult(
             doc_id=facts.doc_id, action=IDENTITY, doc_type=facts.doc_type,
-            account=res.candidate, grade="conflicted",
+            account=res.candidate or None, grade="conflicted",
             message=(f"I read this statement, but whose account it is is unclear: "
                      f"{res.reason}. Held for you to confirm."))
-    account = res.account_id
+    kind = account_kind_for(facts.doc_type)
+    account = _account_for_resolution(proj, res, kind)
+
+    _record_stronger_identity(ledger, proj, account, facts)
 
     # Whose account and which period are both known only here, which is why the
     # duplicate guard lives at the post gate rather than at capture.
@@ -378,7 +426,6 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
         return already
 
     if not proj.is_seeded(account):
-        kind = account_kind_for(facts.doc_type)   # depository | liability, from the registry
         log.info("_post_reconciled: opening new %s account %s (%s %s) seeded at %s",
                  kind, account, facts.account_ref, facts.currency,
                  facts.opening_amount)
@@ -419,7 +466,7 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
                          "A statement between them looks missing — held, so I don't "
                          "invent the gap; it will slot in when the connector arrives."))
 
-    kind = account_kind_for(facts.doc_type)   # picks the kind-aware counter-leg
+    # The account kind picks the kind-aware counter-leg.
     for t in facts.transactions:
         # A corroboration-supplied leg carries its own provenance (the
         # counterparty document) and grade; an ordinary line defaults to this

@@ -33,6 +33,7 @@ from decimal import Decimal
 from vivacore.verify.normalize import separators_for
 
 from . import quantity
+from .ledger.identity import masked_label
 from .quantity import PER_HUNDRED
 
 # What a slot holds — what kind of thing in the world it is, never what a
@@ -262,7 +263,9 @@ def _account_label(fields: dict) -> str:
                    or "").rpartition(":")[2].strip()
     if not name:
         name = str(fields.get("number_masked") or "").strip()
-    return name
+    # Account names originate in issuer text and sometimes repeat the full
+    # number. A display name must not become a side door around number masking.
+    return masked_label(name)
 
 
 def account(entity, *, among=()) -> Account:
@@ -284,7 +287,7 @@ def account(entity, *, among=()) -> Account:
     twins = [other for other in among
              if other is not entity and _account_label(dict(other or {})) == name]
     mask = str(fields.get("number_masked") or "").strip()
-    if twins and mask and mask != name:
+    if twins and mask and mask not in name:
         return Account(f"{name} {mask}")
     return Account(name)
 

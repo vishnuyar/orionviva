@@ -56,11 +56,13 @@ from merchantcore.enrich import BILLING_PERIODS, BILLING_STANDING
 
 from .ingest import held_items, other_holds
 from .ledger.merchants import is_shareable
+from .ledger.identity import masked
 from .ledger.events import (ASSERTED, PERIOD_ANNUAL, PERIOD_IRREGULAR,
                             PERIOD_MONTHLY, PERIOD_ONE_TIME, PERIODICITIES)
 from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
                                 TIER_SETTLED, TIER_STRUCTURAL,
-                                TIER_UNENRICHED, TIER_UNKNOWN)
+                                TIER_UNENRICHED, TIER_UNKNOWN,
+                                UnknownAccountError)
 from .ledger.projection.rhythm import IN
 from .listen import (category_vocabulary, ruling_slots,
                      shareable_categories)
@@ -137,20 +139,27 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
     held = held_items(proj)
     identity_bridges = []
     for item in held:
-        if item.reason != "identity":
+        if (item.reason != "identity"
+                or not hasattr(item.facts, "opening_amount")):
             continue
         candidate = (item.finding or {}).get("candidate", "")
         held_balance = proj.running_balance(candidate) if candidate else None
         if (candidate and held_balance is not None
                 and item.facts.opening_amount == held_balance):
             identity_bridges.append((candidate, item.facts))
-    from .ingest.statement_projector import account_id_for
+    from .ingest.registry import account_kind_for
     for h in held:
         f = h.facts
-        amount = abs(f.closing_amount)
+        amount = abs(getattr(f, "closing_amount", getattr(f, "total", 0)))
+        identity_slots = ()
+        identity_refs = {"doc_id": h.doc_id}
         if h.reason == "gap":
             # Suppress a gap already spanned by an adjacent identity-held statement.
-            gap_account = account_id_for(f)
+            resolution = proj.resolve(
+                f.institution, f.account_number, f.account_ref,
+                f.account_names, kind=account_kind_for(f.doc_type),
+                doc_id=f.doc_id)
+            gap_account = resolution.account_id
             if any(candidate == gap_account
                    and bridge.closing_amount == f.opening_amount
                    and _adjacent(bridge.closing_date, f.opening_date)
@@ -171,9 +180,60 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
                        account_ref=render_account({"name": f.account_ref}))
             why = (h.finding or {}).get("message", "")
         elif h.reason == "identity":
-            text = say("identity",
-                       account_ref=render_account({"name": f.account_ref}))
             why = (h.finding or {}).get("message", "")
+            candidates = tuple((h.finding or {}).get("candidates") or ())
+            candidate = (h.finding or {}).get("candidate", "")
+            if not candidates and candidate:
+                candidates = (candidate,)
+            if len(candidates) == 1:
+                text = say("identity",
+                           account_ref=render_account({"name": f.account_ref}))
+                identity_slots = IDENTITY_SLOTS
+            elif len(candidates) > 1:
+                entities, infos = [], []
+                for account in candidates:
+                    try:
+                        info = proj.account_info(account)
+                    except UnknownAccountError:             # stale candidate
+                        continue
+                    infos.append(info)
+                    entities.append({
+                        "name": info.name or info.institution,
+                        "account": info.account,
+                        "number_masked": masked(info.number),
+                    })
+                labels = [str(render_account(entity, among=entities))
+                          for entity in entities]
+                choices, targets = [], {}
+                for index, (info, label) in enumerate(zip(infos, labels), 1):
+                    # When names and visible digits collide, the current value
+                    # gives the person evidence they can actually recognize.
+                    detail = label
+                    if labels.count(label) > 1:
+                        value = render_money(
+                            proj.account_value(info.account), info.currency,
+                            locale=locale)
+                        detail = f"{label} — balance {value}"
+                    choice = f"{detail} (option {index})"
+                    choices.append(choice)
+                    targets[choice] = info.account
+                choices.append("a new account")
+                targets["a new account"] = "new"
+                text = say(
+                    "identity_choice",
+                    account_ref=render_account({"name": f.account_ref}))
+                identity_slots = (
+                    Slot(name="account_choice", type=ANSWER_CHOICE,
+                         choices=tuple(choices), required=True),)
+                identity_refs["identity_choices"] = targets
+            else:
+                text = say(
+                    "identity_new",
+                    account_ref=render_account({"name": f.account_ref}))
+                identity_slots = (
+                    Slot(name="account_choice", type=ANSWER_CHOICE,
+                         choices=("a new account",), required=True),)
+                identity_refs["identity_choices"] = {"a new account": "new"}
         else:
             text = say("reconciliation_flagged",
                        account_ref=render_account({"name": f.account_ref}))
@@ -183,13 +243,14 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
         out.append(Question(
             id=f"{kind}:{h.doc_id[:12]}", kind=kind, text=text, why=why,
             amount=amount, currency=f.currency, count=1, scope="one",
-            # An identity doubt is settled by saying whether it is the account
-            # already held. A reconciliation is settled by a document, so
-            # nothing said in words answers it.
-            slots=IDENTITY_SLOTS if identity else (),
-            refs={"doc_id": h.doc_id}))
-    # Held documents with no fix-it flow yet (pay stub, brokerage) are still
-    # asked about, with no option beyond showing the document.
+            # An identity doubt is settled by confirming one candidate,
+            # choosing among several, or naming a new account. A reconciliation
+            # is settled by a document, so nothing said in words answers it.
+            slots=identity_slots if identity else (),
+            refs=identity_refs))
+    # Held documents with no fix-it flow yet (for example, a pay stub or a
+    # brokerage tally conflict) are still asked about, with no option beyond
+    # showing the document.
     for b in other_holds(proj):
         out.append(Question(
             id=f"{RECONCILIATION}:{b['doc_id'][:12]}", kind=RECONCILIATION,

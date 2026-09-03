@@ -12,17 +12,18 @@ Deterministic and offline: the person supplies the value, the gate decides.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from decimal import Decimal
 
 from ..ledger.events import (Provenance, account_alias_confirmed,
                              correction_applied)
-from ..ledger.identity import account_key
+from ..ledger.identity import account_key, masked_label, opaque_account_key
 from ..ledger.ledger import Ledger
 from ..ledger.projection import LedgerProjection
-from .pipeline import (IngestResult, account_id_for, heal_gaps, post_statement)
-from .registry import BALANCE_IDENTITY, identity_of_facts
+from .brokerage import BrokerageFacts
+from .pipeline import (IngestResult, heal_gaps, post_brokerage, post_statement)
+from .registry import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, account_kind_for,
+                       identity_of_facts)
 from .statement import StatementFacts
 
 log = logging.getLogger(__name__)
@@ -30,20 +31,31 @@ log = logging.getLogger(__name__)
 
 def _mask(account_ref: str) -> str:
     """Mask a long account number in a label: keep the last 4 digits."""
-    return re.sub(r"\d{5,}", lambda m: "····" + m.group(0)[-4:], account_ref)
+    return masked_label(account_ref).replace("••••", "····")
 
 
 @dataclass
 class HeldItem:
     doc_id: str
-    reason: str                 # "conflict" | "gap"
+    reason: str                 # "conflict" | "gap" | "identity"
     account_ref: str
-    facts: StatementFacts
+    facts: StatementFacts | BrokerageFacts
     finding: dict | None
     held_balance: str | None = None    # for a gap: the balance the chain left off at
 
     def to_dict(self) -> dict:
         f = self.facts
+        if isinstance(f, BrokerageFacts):
+            return {
+                "doc_id": self.doc_id, "reason": self.reason,
+                "account_ref": self.account_ref,
+                "account_label": _mask(self.account_ref),
+                "currency": f.currency, "opening_amount": "",
+                "opening_date": "", "closing_amount": str(f.total),
+                "closing_date": f.as_of, "period": f.as_of,
+                "held_balance": self.held_balance, "transactions": [],
+                "finding": self.finding,
+            }
         return {
             "doc_id": self.doc_id, "reason": self.reason,
             "account_ref": self.account_ref,
@@ -69,12 +81,22 @@ def held_items(source) -> list[HeldItem]:
     items: list[HeldItem] = []
     for body in proj.open_holds():
         fdict = body.get("facts", {})
-        # Route on the registry, not on the shape of the dict: a pay stub or a
-        # brokerage statement is held with different facts.
-        if identity_of_facts(fdict) != BALANCE_IDENTITY:
+        identity = identity_of_facts(fdict)
+        if identity == BALANCE_IDENTITY:
+            facts = StatementFacts.from_dict(fdict)
+        elif (identity == BROKERAGE_IDENTITY
+              and body.get("reason") == "identity"):
+            facts = BrokerageFacts.from_dict(fdict)
+        else:
             continue                      # reported by other_holds() instead
-        facts = StatementFacts.from_dict(fdict)
-        held_bal = proj.running_balance(account_id_for(facts))
+        resolution = proj.resolve(
+            facts.institution, facts.account_number, facts.account_ref,
+            facts.account_names, kind=account_kind_for(facts.doc_type),
+            doc_id=facts.doc_id)
+        held_bal = None
+        if (identity == BALANCE_IDENTITY
+                and resolution.verdict == "same"):
+            held_bal = proj.running_balance(resolution.account_id)
         items.append(HeldItem(
             doc_id=body["doc_id"], reason=body.get("reason", ""),
             account_ref=facts.account_ref, facts=facts,
@@ -94,7 +116,10 @@ def other_holds(source) -> list[dict]:
     out: list[dict] = []
     for body in proj.open_holds():
         fdict = body.get("facts", {})
-        if identity_of_facts(fdict) == BALANCE_IDENTITY:
+        identity = identity_of_facts(fdict)
+        if (identity == BALANCE_IDENTITY
+                or (identity == BROKERAGE_IDENTITY
+                    and body.get("reason") == "identity")):
             continue
         finding = body.get("finding") or {}
         out.append({
@@ -119,35 +144,55 @@ def other_holds(source) -> list[dict]:
 
 
 def apply_identity_ruling(ledger: Ledger, doc_id: str, decision: str) -> IngestResult:
-    """Apply a person's ruling on an ambiguous account identity, and learn it.
+    """Apply ``same``, ``new``, or a listed-account identity ruling.
 
-    ``decision='same'`` merges the statement into the candidate account it
-    matched by name; ``decision='new'`` confirms it is its own account. Either
-    is recorded as an `AccountAliasConfirmed`, so the same pattern is not asked
-    about again, and the statement is then re-posted. Raises ValueError when the
-    document is not identity-held or the decision is not one of the two."""
+    Every ruling settles this exact document. A ruling on one candidate may
+    also teach the reusable signal map; choosing among several accounts cannot,
+    because their shared trailing digits are inherently lossy.
+    """
     body = next((b for b in ledger.projection().open_holds()
                  if b["doc_id"] == doc_id and b.get("reason") == "identity"), None)
     if body is None:
         raise ValueError(f"no identity-held statement for {doc_id}")
-    facts = StatementFacts.from_dict(body["facts"])
+    identity = identity_of_facts(body["facts"])
+    if identity == BALANCE_IDENTITY:
+        facts = StatementFacts.from_dict(body["facts"])
+        occurred_at = facts.closing_date
+        post = post_statement
+    elif identity == BROKERAGE_IDENTITY:
+        facts = BrokerageFacts.from_dict(body["facts"])
+        occurred_at = facts.as_of
+        post = post_brokerage
+    else:
+        raise ValueError(f"identity review is unsupported for {identity!r}")
+    account_kind = account_kind_for(facts.doc_type)
     fnd = body.get("finding") or {}
     key = fnd.get("key") or account_key(facts.institution, facts.account_number,
                                         facts.account_ref)
+    candidates = tuple(fnd.get("candidates") or ())
+    if not candidates and fnd.get("candidate"):
+        candidates = (fnd["candidate"],)
     if decision == "same":
-        target = fnd.get("candidate")
-        if not target:
-            raise ValueError("no candidate account to merge into")
+        if len(candidates) != 1:
+            raise ValueError("'same' requires exactly one candidate account")
+        target = candidates[0]
     elif decision == "new":
-        target = key
+        target = opaque_account_key(account_kind)
+    elif decision in candidates:
+        target = decision
     else:
-        raise ValueError("decision must be 'same' or 'new'")
+        raise ValueError("decision must be 'same', 'new', or a listed candidate")
 
     log.info("identity ruling: doc_id=%s key=%s -> %s (%s)",
              doc_id[:12], key, target, decision)
-    ledger.append(account_alias_confirmed(key, target, doc_id, facts.closing_date,
-                                          by="human"))
-    res = post_statement(ledger, facts)     # resolves cleanly now: alias learned
+    ledger.append(account_alias_confirmed(
+        key, target, doc_id, occurred_at, by="human",
+        # A multi-candidate last-four signal is lossy. The ruling settles this
+        # document only and must not silently choose for later documents.
+        learn_signal=len(candidates) == 1,
+        match_names=facts.account_names, match_label=facts.account_ref,
+        kind=account_kind))
+    res = post(ledger, facts)     # resolves cleanly from the document ruling
     if res.action == "posted":
         heal_gaps(ledger)
     return res

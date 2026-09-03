@@ -11,6 +11,8 @@ from ..render import (ACCOUNT, CATEGORY, COUNT, DATE, DOCUMENT, MERCHANT,
 
 INTENT_FIELDS: dict[str, dict[str, str]] = {
     "identity":                    {"account_ref": ACCOUNT},
+    "identity_choice":             {"account_ref": ACCOUNT},
+    "identity_new":                {"account_ref": ACCOUNT},
     "reconciliation_gap":          {"account_ref": ACCOUNT,
                                     "opening_date": DATE,
                                     "closing_date": DATE},

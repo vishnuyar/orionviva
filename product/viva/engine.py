@@ -86,6 +86,13 @@ def _write_answer(vault: Vault, q, parsed, spoken: str) -> dict:
     refs = q.refs
 
     if q.kind == IDENTITY:
+        if "account_choice" in parsed.values:
+            choice = parsed.value("account_choice")
+            decision = refs.get("identity_choices", {}).get(choice, "")
+            if not decision:
+                return {"ok": False, "why": "invalid_identity_choice",
+                        "message": moment("reply_question_closed")}
+            return confirm_identity(vault, refs["doc_id"], decision)
         # Yes means the statement belongs to an account already held; no means
         # it opens one of its own. Which word stands for which ruling is decided
         # here, in code, rather than offered to a person as a machine value.
@@ -692,11 +699,11 @@ def confirm_correction(vault: Vault, doc_id: str, field: str, value: str,
 
 
 def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
-    """Apply a person's ruling on an ambiguous account identity ('same' / 'new')."""
+    """Apply a person's account-identity ruling."""
     posted_before = vault.ledger.projection().posted_doc_ids()
     res = apply_identity_ruling(vault.ledger, doc_id, decision)
     _categorize_new_balance_statements(vault, posted_before)
-    return {"ok": True, "action": res.action, "grade": res.grade,
+    return {"ok": res.action == POSTED, "action": res.action, "grade": res.grade,
             "account": res.account, "message": res.message}
 
 

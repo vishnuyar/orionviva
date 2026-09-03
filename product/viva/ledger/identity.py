@@ -3,11 +3,27 @@
 from __future__ import annotations
 
 import re
+import secrets
 
 
 def normalize_number(account_number: str) -> str:
     """Just the digits of an account number (drops masking chars, spaces, dashes)."""
     return re.sub(r"\D", "", account_number or "")
+
+
+_FULL_NUMBER = re.compile(r"^[\d\s-]+$")
+
+
+def usable_full_number(account_number: str) -> str:
+    """Return the digits only when the field is genuinely unmasked and full.
+
+    A masked value can expose more than four trailing digits. Length alone is
+    therefore not evidence that the omitted prefix is known; full numbers may
+    contain only digits and ordinary spacing or dash separators.
+    """
+    printed = (account_number or "").strip()
+    digits = normalize_number(printed)
+    return digits if len(digits) > 4 and _FULL_NUMBER.fullmatch(printed) else ""
 
 
 def number_key(account_number: str) -> str:
@@ -45,6 +61,18 @@ def masked(account_number: str) -> str:
     """A display-safe form of an account number: ••••last4 (or '' if none)."""
     key = number_key(account_number)
     return f"••••{key}" if key else ""
+
+
+_ACCOUNT_LABEL_NUMBER = re.compile(r"(?<!\d)\d(?:[\d\s./:-]*\d)?(?!\d)")
+
+
+def masked_label(text: str) -> str:
+    """Mask number-like runs in an issuer-supplied account label."""
+    def safe(match) -> str:
+        digits = normalize_number(match.group(0))
+        return match.group(0) if len(digits) <= 4 else f"••••{digits[-4:]}"
+
+    return _ACCOUNT_LABEL_NUMBER.sub(safe, text or "")
 
 
 def slug(text: str) -> str:
@@ -87,6 +115,23 @@ def account_key(institution: str, account_number: str, account_ref: str) -> str:
         inst = canonical_institution(institution)
         return f"acct:{inst + ':' if inst else ''}{key}"
     return f"acct:{slug(account_ref) or 'unknown'}"
+
+
+def preferred_account_key(institution: str, account_number: str,
+                          account_ref: str) -> str:
+    """The historical signal key preferred when it is not already occupied."""
+    return account_key(institution, account_number, account_ref)
+
+
+def opaque_account_key(kind: str) -> str:
+    """Mint an unlinkable id when a signal key is already occupied.
+
+    The random token is persisted in the opening/ruling event, so replay is
+    stable without exposing an enumerable fingerprint of the account number.
+    The kind prefix prevents different account families sharing an id.
+    """
+    family = slug(kind) or "account"
+    return f"acct:{family}:{secrets.token_hex(16)}"
 
 
 # Words that are not distinctive account tokens — shared across institutions or

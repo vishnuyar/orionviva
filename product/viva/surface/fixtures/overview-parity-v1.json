@@ -1082,7 +1082,7 @@
               "currency": "USD",
               "doc_id": "954c491baddd113b6e4a8a74de8ec41913eba9ca823eaa6d9b9f0ef1145dc071",
               "finding": null,
-              "held_balance": null,
+              "held_balance": "2206.45",
               "opening_amount": "3081.45",
               "opening_date": "2026-08-01",
               "period": "2026-08-01 \u2013 2026-08-31",

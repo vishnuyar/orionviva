@@ -11,6 +11,8 @@ import pytest
 
 from viva.ingest import (BrokerageActivity, BrokerageFacts, PositionFact,
                         ReadResult, RawStore, StatementFacts, TxnFact,
+                        account_id_for,
+                        apply_identity_ruling,
                         apply_brokerage_activity_correction,
                         capture_and_ingest)
 from viva.ledger import EventStore, Ledger, LedgerProjection
@@ -65,6 +67,105 @@ def test_brokerage_reconciles_and_records_positions_as_measurements(tmp_path):
     # The measurements are self-contained on replay (no live objects needed).
     replayed = LedgerProjection(ledger.events())
     assert replayed.account_value(acct) == Decimal("26000.00")
+
+
+def test_brokerage_full_number_collisions_remain_distinct(tmp_path):
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+
+    def facts(number, label, cash):
+        return BrokerageFacts(
+            doc_id="", doc_type="brokerage_statement",
+            doc_type_confidence=0.97, account_ref=label, currency="USD",
+            as_of="2026-03-31", cash=Decimal(cash), total=Decimal(cash),
+            positions=[], account_number=number, institution="Fidelity",
+            account_names=["Jane Public"])
+
+    ira = facts("000000003311", "Traditional IRA", "1000.00")
+    roth = facts("999999993311", "Roth IRA", "2500.00")
+    first = capture_and_ingest(
+        raw, ledger, b"ira", lambda data, did: _stamp(ira, did),
+        captured_at="2026-04-02")
+    second = capture_and_ingest(
+        raw, ledger, b"roth", lambda data, did: _stamp(roth, did),
+        captured_at="2026-04-02")
+
+    assert first.action == "posted" and second.action == "posted"
+    assert first.account == account_id_for(ira)
+    assert first.account != second.account
+    assert roth.account_number not in second.account
+    projection = Ledger.open(tmp_path / "events.jsonl", "pw").projection()
+    assert len(projection.account_infos()) == 2
+    assert sorted(projection.account_value(account) for account in
+                  projection.accounts()) == [Decimal("1000.00"),
+                                             Decimal("2500.00")]
+
+
+def test_brokerage_identity_hold_can_be_resolved_and_posted(tmp_path):
+    from viva.questions import IDENTITY, open_questions
+
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    known = BrokerageFacts(
+        doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
+        account_ref="Fidelity IRA", currency="USD", as_of="2026-03-31",
+        cash=Decimal("1000.00"), total=Decimal("1000.00"), positions=[],
+        account_number="000000003311", institution="Fidelity",
+        account_names=["Jane Public"])
+    first = capture_and_ingest(
+        raw, ledger, b"known-brokerage", lambda data, did: _stamp(known, did),
+        captured_at="2026-04-02")
+    uncertain = BrokerageFacts(
+        doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
+        account_ref="Different Product", currency="USD", as_of="2026-04-30",
+        cash=Decimal("1100.00"), total=Decimal("1100.00"), positions=[],
+        account_number="••••3311", institution="Fidelity",
+        account_names=["Different Holder"])
+    held = capture_and_ingest(
+        raw, ledger, b"uncertain-brokerage",
+        lambda data, did: _stamp(uncertain, did), captured_at="2026-05-02")
+
+    assert held.action == "identity"
+    (question,) = [question for question in open_questions(
+        ledger, as_of="2026-05-03")["questions"]
+        if question["kind"] == IDENTITY]
+    assert question["refs"]["doc_id"] == held.doc_id
+    assert question["slots"][0]["name"] == "same_account"
+    resolved = apply_identity_ruling(ledger, held.doc_id, "same")
+
+    assert resolved.action == "posted"
+    assert resolved.account == first.account
+    assert ledger.projection().open_holds() == []
+
+
+def test_account_kind_collision_receives_a_distinct_physical_id(tmp_path):
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    checking = StatementFacts(
+        doc_id="", doc_type="checking_statement", doc_type_confidence=0.98,
+        account_ref="Shared Number Checking", currency="USD",
+        opening_amount=Decimal("1000.00"), opening_date="2026-03-01",
+        closing_amount=Decimal("1000.00"), closing_date="2026-03-31",
+        transactions=[], account_number="000000003311",
+        institution="Fidelity", account_names=["Jane Public"])
+    checking_result = capture_and_ingest(
+        raw, ledger, b"same-number-checking",
+        lambda data, did: _stamp(checking, did), captured_at="2026-04-01")
+    brokerage = BrokerageFacts(
+        doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
+        account_ref="Shared Number Brokerage", currency="USD",
+        as_of="2026-03-31", cash=Decimal("2500.00"),
+        total=Decimal("2500.00"), positions=[],
+        account_number="000000003311", institution="Fidelity",
+        account_names=["Jane Public"])
+    brokerage_result = capture_and_ingest(
+        raw, ledger, b"same-number-brokerage",
+        lambda data, did: _stamp(brokerage, did), captured_at="2026-04-02")
+
+    assert checking_result.action == brokerage_result.action == "posted"
+    assert checking_result.account != brokerage_result.account
+    assert {info.kind for info in ledger.projection().account_infos()} == {
+        "depository", "investment"}
 
 
 def test_unrealized_gain_is_a_derived_as_of_view_not_a_ledger_fact(tmp_path):

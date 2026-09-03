@@ -14,6 +14,7 @@ from viva.ingest import (CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED, POSTED,
                          capture_and_ingest, held_items)
 from viva.ledger import (EventStore, Ledger, LedgerProjection,
                          UnknownAccountError)
+from viva.ledger.networth import net_worth
 
 PW = "pipeline passphrase"
 
@@ -361,15 +362,235 @@ def test_same_number_different_labels_are_one_account(tmp_path):
     jan = _facts("1000.00", [("2026-01-10", "Pay", "500.00")], "1500.00",
                  o_date="2026-01-01", c_date="2026-01-31", ref="Chase Total Checking")
     jan.account_number, jan.institution = "000000000001234", "Northwind"
+    jan.account_names = ["Jane Q Public"]
     feb = _facts("1500.00", [("2026-02-10", "Pay", "100.00")], "1600.00",
-                 o_date="2026-02-01", c_date="2026-02-28", ref="Jane Q Public")
+                 o_date="2026-02-01", c_date="2026-02-28",
+                 ref="Jane Q Public Checking")
     feb.account_number, feb.institution = "xxxxxxxxx1234", "Northwind"   # masked, same last-4
+    feb.account_names = ["Jane Q Public"]
     _up(raw, ledger, b"jan", jan)
     _up(raw, ledger, b"feb", feb)
-    assert account_id_for(jan) == account_id_for(feb)               # one identity
     proj = ledger.projection()
+    assert len([i for i in proj.account_infos()
+                if i.kind == "depository"]) == 1                   # one identity
     assert proj.balance(account_id_for(jan)).amount == Decimal("1600.00")
     assert held_items(proj) == []                                   # stitched, nothing stranded
+
+
+def test_different_full_numbers_with_matching_last_four_both_post_and_replay(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    checking = _acct_facts(
+        "000000001234", ["Jane Public"], "1000.00", [], "1000.00",
+        inst="Northwind", ref="Everyday Checking")
+    savings = _acct_facts(
+        "999999991234", ["Jane Public"], "2500.00", [], "2500.00",
+        inst="Northwind", ref="Everyday Checking")
+
+    first = _up(raw, ledger, b"checking", checking)
+    second = _up(raw, ledger, b"savings", savings)
+
+    assert first.action == POSTED and second.action == POSTED
+    assert first.account != second.account
+    assert len(ledger.projection().account_infos()) == 2
+    assert sorted(a.amount for a in (
+        ledger.projection().balance(first.account),
+        ledger.projection().balance(second.account))) == [
+            Decimal("1000.00"), Decimal("2500.00")]
+
+    replayed = ledger.fresh_projection()
+    assert len(replayed.account_infos()) == 2
+    assert sorted(replayed.balance(a).amount for a in replayed.accounts()) == [
+        Decimal("1000.00"), Decimal("2500.00")]
+
+    reopened = Ledger.open(tmp_path / "events.jsonl", PW).projection()
+    assert len(reopened.account_infos()) == 2
+    point = net_worth(reopened, "2026-01-31")
+    assert len(point.lines) == 2
+    assert point.by_currency()["USD"]["net"] == Decimal("3500.00")
+
+
+def test_full_number_collision_ids_are_opaque_in_either_ingest_order(tmp_path):
+    def ingest(path, order):
+        raw, ledger = _stores(path)
+        facts = {
+            "checking": _acct_facts(
+                "000000001234", ["Jane Public"], "1000.00", [], "1000.00",
+                inst="Northwind", ref="Everyday Checking"),
+            "savings": _acct_facts(
+                "999999991234", ["Jane Public"], "2500.00", [], "2500.00",
+                inst="Northwind", ref="High-Yield Savings"),
+        }
+        for label in order:
+            assert _up(raw, ledger, label.encode(), facts[label]).action == POSTED
+        return {info.number: info.account for info in ledger.projection().account_infos()}
+
+    forward = ingest(tmp_path / "forward", ("checking", "savings"))
+    reverse = ingest(tmp_path / "reverse", ("savings", "checking"))
+
+    assert set(forward) == set(reverse)
+    assert len(set(forward.values())) == len(set(reverse.values())) == 2
+    assert all(number not in account for number, account in forward.items())
+    assert all(number not in account for number, account in reverse.items())
+
+
+def test_masked_followup_asks_when_two_accounts_share_every_visible_signal(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    for blob, number, balance in (
+            (b"one", "000000001234", "1000.00"),
+            (b"two", "999999991234", "2500.00")):
+        facts = _acct_facts(
+            number, ["Jane Public"], balance, [], balance,
+            inst="Northwind", ref="Everyday Account")
+        assert _up(raw, ledger, blob, facts).action == POSTED
+
+    masked = _acct_facts(
+        "••••1234", ["Jane Public"], "2500.00", [], "2500.00",
+        o="2026-02-01", c="2026-02-28", inst="Northwind",
+        ref="Everyday Account")
+    result = _up(raw, ledger, b"masked", masked)
+
+    assert result.action == IDENTITY
+    assert result.account is None
+    (held,) = held_items(ledger.projection())
+    assert held.reason == "identity" and held.held_balance is None
+    assert len(ledger.projection().account_infos()) == 2
+
+    resolved = apply_identity_ruling(ledger, result.doc_id, "new")
+    assert resolved.action == POSTED
+    assert resolved.account not in {info.account for info in
+                                    ledger.fresh_projection().account_infos()
+                                    if info.number != "••••1234"}
+    assert held_items(ledger.projection()) == []
+    assert len(ledger.fresh_projection().account_infos()) == 3
+
+
+def test_masked_multi_candidate_can_be_assigned_to_a_specific_account(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    first = _acct_facts(
+        "000000001234", ["Jane Public"], "1000.00", [], "1000.00",
+        inst="Northwind", ref="Everyday Account")
+    second = _acct_facts(
+        "999999991234", ["Jane Public"], "2500.00", [], "2500.00",
+        inst="Northwind", ref="Everyday Account")
+    _up(raw, ledger, b"one", first)
+    second_result = _up(raw, ledger, b"two", second)
+    masked = _acct_facts(
+        "••••1234", ["Jane Public"], "2500.00", [], "2500.00",
+        o="2026-02-01", c="2026-02-28", inst="Northwind",
+        ref="Everyday Account")
+    held = _up(raw, ledger, b"masked-choice", masked)
+
+    resolved = apply_identity_ruling(
+        ledger, held.doc_id, second_result.account)
+
+    assert resolved.action == POSTED
+    assert resolved.account == second_result.account
+    assert held_items(ledger.projection()) == []
+
+    # The exact document is settled, but the shared last-four signal is not
+    # globally taught to choose this account for every future statement.
+    later = _acct_facts(
+        "••••1234", ["Jane Public"], "2500.00", [], "2500.00",
+        o="2026-03-01", c="2026-03-31", inst="Northwind",
+        ref="Everyday Account")
+    assert _up(raw, ledger, b"masked-choice-later", later).action == IDENTITY
+
+
+def test_masked_value_with_more_than_four_digits_is_not_treated_as_full(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    masked = _acct_facts(
+        "XXXXXX123456", ["Jane Public"], "1000.00", [], "1000.00",
+        inst="Northwind", ref="Checking")
+    full = _acct_facts(
+        "000000123456", ["Jane Public"], "1000.00", [], "1000.00",
+        o="2026-02-01", c="2026-02-28", inst="Northwind", ref="Checking")
+
+    assert _up(raw, ledger, b"long-mask", masked).action == POSTED
+    assert _up(raw, ledger, b"real-full", full).action == POSTED
+
+    projection = Ledger.open(tmp_path / "events.jsonl", PW).projection()
+    assert len(projection.account_infos()) == 1
+    assert projection.account_infos()[0].number == "000000123456"
+
+
+def test_full_number_does_not_upgrade_an_incompatible_masked_account(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    masked = _acct_facts(
+        "••••1234", ["Holder One"], "1000.00", [], "1000.00",
+        inst="Northwind", ref="Checking")
+    different = _acct_facts(
+        "999999991234", ["Holder Two"], "2500.00", [], "2500.00",
+        o="2026-02-01", c="2026-02-28", inst="Northwind", ref="Savings")
+
+    assert _up(raw, ledger, b"masked-existing", masked).action == POSTED
+    result = _up(raw, ledger, b"different-full", different)
+
+    assert result.action == IDENTITY
+    assert ledger.projection().account_infos()[0].number == "••••1234"
+
+
+def test_conflict_on_second_colliding_account_reports_its_own_balance(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    first = _acct_facts(
+        "000000001234", ["Jane Public"], "1000.00", [], "1000.00",
+        inst="Northwind", ref="Checking")
+    second = _acct_facts(
+        "999999991234", ["Jane Public"], "2500.00", [], "2500.00",
+        inst="Northwind", ref="Savings")
+    _up(raw, ledger, b"first", first)
+    second_result = _up(raw, ledger, b"second", second)
+    bad = _acct_facts(
+        "999999991234", ["Jane Public"], "2500.00",
+        [("2026-02-10", "Deposit", "100.00")], "9999.00",
+        o="2026-02-01", c="2026-02-28", inst="Northwind", ref="Savings")
+
+    result = _up(raw, ledger, b"bad-second", bad)
+
+    assert result.action == CONFLICT
+    assert result.account == second_result.account
+    (held,) = held_items(ledger.projection())
+    assert held.held_balance == "2500.00"
+
+
+def test_unposted_colliding_account_does_not_report_the_existing_account(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    first = _acct_facts(
+        "000000001234", ["Jane Public"], "1000.00", [], "1000.00",
+        inst="Northwind", ref="Checking")
+    bad_second = _acct_facts(
+        "999999991234", ["Jane Public"], "2500.00",
+        [("2026-02-10", "Deposit", "100.00")], "9999.00",
+        o="2026-02-01", c="2026-02-28", inst="Northwind", ref="Savings")
+    _up(raw, ledger, b"first", first)
+
+    result = _up(raw, ledger, b"bad-new-collision", bad_second)
+
+    assert result.action == CONFLICT and result.account is None
+    (held,) = held_items(ledger.projection())
+    assert held.held_balance is None
+
+
+def test_masked_account_learns_full_number_before_a_later_collision(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    masked = _acct_facts(
+        "••••1234", ["Jane Public"], "1000.00", [], "1000.00",
+        inst="Northwind", ref="Checking")
+    full = _acct_facts(
+        "000000001234", ["Jane Public"], "1000.00", [], "1000.00",
+        o="2026-02-01", c="2026-02-28", inst="Northwind", ref="Checking")
+    other = _acct_facts(
+        "999999991234", ["Jane Public"], "2500.00", [], "2500.00",
+        inst="Northwind", ref="Savings")
+
+    assert _up(raw, ledger, b"masked-first", masked).action == POSTED
+    assert _up(raw, ledger, b"full-later", full).action == POSTED
+    assert _up(raw, ledger, b"other-full", other).action == POSTED
+
+    projection = Ledger.open(tmp_path / "events.jsonl", PW).projection()
+    assert len(projection.account_infos()) == 2
+    learned = next(info for info in projection.account_infos()
+                   if info.name == "Checking")
+    assert learned.number == "000000001234"
 
 
 def _acct_facts(number, names, opening, txns, closing, o="2026-01-01",

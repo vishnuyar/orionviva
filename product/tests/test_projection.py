@@ -5,10 +5,12 @@ from decimal import Decimal
 import pytest
 
 from viva.ledger import (BalanceAnswer, LedgerProjection, Provenance,
-                         UnknownAccountError, account_opened,
+                         UnknownAccountError, account_identity_observed,
+                         account_opened,
                          closing_balance_observed, opening_balance_observed,
                          simple_transaction, split_transaction)
-from viva.ledger.events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED)
+from viva.ledger.events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
+                                account_alias_confirmed)
 
 
 def _statement(closing="1457.58", extra=None):
@@ -159,6 +161,146 @@ def test_issuer_legal_aliases_and_full_numbers_do_not_split_an_account(tmp_path)
                         ["ROWAN E VANCE"]).verdict == "same"
     assert proj.resolve("Issuer Display Name Changed", "000000002468", "Checking",
                         []).account_id == "acct:northwind:2468"
+
+
+def test_different_full_numbers_with_same_issuer_and_last_four_stay_separate(tmp_path):
+    proj = _known(tmp_path, account="acct:northwind:2468",
+                  name="Checking", institution="Northwind",
+                  number="000000002468")
+
+    resolved = proj.resolve("Northwind", "999999992468", "Checking",
+                            ["ROWAN E VANCE"])
+
+    assert resolved.verdict == "new"
+    assert resolved.account_id == "acct:northwind:2468"
+
+
+def test_a_lossy_learned_alias_cannot_override_conflicting_full_numbers(tmp_path):
+    from viva.ledger import EventStore, Ledger
+    ledger = Ledger(EventStore.open(tmp_path / "e.jsonl", "pw"))
+    ledger.append(account_opened(
+        "acct:northwind:2468", "depository", "Checking", "USD",
+        "2026-01-01", institution="Northwind",
+        account_number="000000002468", account_names=["ROWAN E VANCE"]))
+    ledger.append(account_alias_confirmed(
+        "acct:northwind:2468", "acct:northwind:2468", "prior-doc",
+        "2026-01-31"))
+
+    resolved = ledger.projection().resolve(
+        "Northwind", "999999992468", "Checking", ["ROWAN E VANCE"])
+
+    assert resolved.verdict == "new"
+    assert resolved.account_id == "acct:northwind:2468"
+
+
+def test_a_single_candidate_number_ruling_generalizes_safely(tmp_path):
+    from viva.ledger import EventStore, Ledger
+
+    account = "acct:northwind:2468"
+    ledger = Ledger(EventStore.open(tmp_path / "e.jsonl", "pw"))
+    ledger.append(account_opened(
+        account, "depository", "Checking 000000002468", "USD", "2026-01-01",
+        institution="Northwind", account_number="••••2468",
+        account_names=["Holder One"]))
+    first = ledger.projection().resolve(
+        "Northwind", "••••2468", "Savings", ["Holder Two"])
+    assert first.verdict == "ambiguous" and first.candidates == (account,)
+    assert "000000002468" not in first.reason
+    ledger.append(account_alias_confirmed(
+        first.key, account, "ruled-doc", "2026-02-01",
+        match_names=["Holder Two"], match_label="Savings",
+        kind="depository"))
+
+    repeated = ledger.projection().resolve(
+        "Northwind", "••••2468", "Savings", ["Holder Two"],
+        doc_id="later-doc")
+
+    assert repeated.verdict == "same" and repeated.account_id == account
+    unrelated = ledger.projection().resolve(
+        "Northwind", "••••2468", "Brokerage Cash", ["Unrelated Holder"],
+        doc_id="unrelated-doc")
+    assert unrelated.verdict == "ambiguous"
+
+
+def test_a_legacy_single_candidate_alias_retains_its_replay(tmp_path):
+    from viva.ledger import EventStore, Ledger
+
+    account = "acct:northwind:2468"
+    ledger = Ledger(EventStore.open(tmp_path / "e.jsonl", "pw"))
+    ledger.append(account_opened(
+        account, "depository", "Checking", "USD", "2026-01-01",
+        institution="Northwind", account_number="••••2468",
+        account_names=["Holder One"]))
+    # No match_* fields: this is the shape already persisted by older vaults.
+    ledger.append(account_alias_confirmed(
+        account, account, "legacy-ruled-doc", "2026-02-01"))
+
+    resolved = ledger.projection().resolve(
+        "Northwind", "••••2468", "Savings", ["Holder Two"])
+
+    assert resolved.verdict == "same" and resolved.account_id == account
+
+
+def test_a_generic_but_exact_ruled_label_repeats_without_reasking(tmp_path):
+    from viva.ledger import EventStore, Ledger
+
+    account = "acct:northwind:2468"
+    ledger = Ledger(EventStore.open(tmp_path / "e.jsonl", "pw"))
+    ledger.append(account_opened(
+        account, "depository", "Checking", "USD", "2026-01-01",
+        institution="Northwind", account_number="••••2468",
+        account_names=["Holder One"]))
+    ledger.append(account_alias_confirmed(
+        account, account, "ruled-doc", "2026-02-01",
+        match_names=["Holder Two"], match_label="Statement of Account",
+        kind="depository"))
+
+    resolved = ledger.projection().resolve(
+        "Northwind", "••••2468", "Statement of Account", ["Holder Two"])
+
+    assert resolved.verdict == "same" and resolved.account_id == account
+
+
+def test_document_identity_ruling_cannot_cross_account_kinds(tmp_path):
+    from viva.ledger import EventStore, Ledger
+
+    account = "acct:northwind:2468"
+    ledger = Ledger(EventStore.open(tmp_path / "e.jsonl", "pw"))
+    ledger.append(account_opened(
+        account, "depository", "Checking", "USD", "2026-01-01",
+        institution="Northwind", account_number="000000002468"))
+    ledger.append(account_alias_confirmed(
+        account, account, "reclassified-doc", "2026-02-01"))
+
+    resolved = ledger.projection().resolve(
+        "Northwind", "000000002468", "Brokerage", [], kind="investment",
+        doc_id="reclassified-doc")
+
+    assert resolved.verdict == "new"
+
+
+def test_masked_identity_observation_cannot_overwrite_a_full_number():
+    account = "acct:northwind:2468"
+    projection = LedgerProjection([
+        account_opened(
+            account, "depository", "Checking", "USD", "2026-01-01",
+            institution="Northwind", account_number="000000002468"),
+        account_identity_observed(
+            account, "2026-02-01", account_number="XXXXXXXX000000002468"),
+    ])
+
+    assert projection.account_info(account).number == "000000002468"
+
+
+def test_exact_number_key_works_when_both_institutions_are_absent(tmp_path):
+    proj = _known(tmp_path, account="acct:2468", name="Checking",
+                  institution="", number="••••2468")
+
+    resolved = proj.resolve("", "000000002468", "Checking",
+                            ["ROWAN E VANCE"])
+
+    assert resolved.verdict == "same"
+    assert resolved.account_id == "acct:2468"
 
 
 def test_last_four_and_a_shared_issuer_word_do_not_merge_distinct_people_or_products(tmp_path):
