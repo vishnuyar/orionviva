@@ -35,6 +35,8 @@ Read in this order if arriving fresh. Each entry: what it is, and when you would
 - [data-flow.md](data-flow.md) — the machine in motion: how a document becomes numbers, how an answer becomes a ruling, how a question becomes a cited answer, and what crosses the bridge. Reads beside the architecture overview.
 - [implementation-roadmap.md](implementation-roadmap.md) — the checked record of what is built by capability, including quiet proof, bounded Activity correction, current-period control, durable conversation, and save-up Plans, followed by the two remaining dependency-ordered cycle families for scenarios and explicitly confirmed action. Each future family still requires its own approved brief and crosses product, surface contract and installed interface as one vertical slice.
 - [`../README.md`](../README.md) (repo root) — what OrionViva is, and the principles everything else reasons from.
+- [installation-guide.md](installation-guide.md) — release installation and source-build instructions for macOS, Windows, and Linux, including protected default-vault behavior and troubleshooting.
+- [usage-guide.md](usage-guide.md) — the end-user path through vaults, statements, financial surfaces, evidence, Review, Ask Viva, Trust, recovery, and accessibility.
 - [`../ROADMAP.md`](../ROADMAP.md) — the product phases and what each one has to deliver.
 
 **2 · The process spine — how things are decided**

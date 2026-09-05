@@ -17,11 +17,17 @@ privacy-filtered diagnostic.
 Known limitations are tracked in
 [UI implementation status](../docs/user-interface-implementation-status.md)
 and [backend capability gaps](../docs/backend-capability-gaps.md).
+End-user setup and workflows live in the
+[installation guide](../docs/installation-guide.md) and
+[usage guide](../docs/usage-guide.md).
 
 ## Development
 
-Prerequisites: Node.js/npm, Python 3.11 or newer, and the platform requirements
-for Tauri 2. From this directory:
+Prerequisites: Node.js/npm, Python 3.11 or newer, Rust, and the
+[platform requirements for Tauri 2](https://v2.tauri.app/start/prerequisites/).
+Before building the native application, install the Python packages and
+sidecar-build requirements as described in the
+[installation guide](../docs/installation-guide.md). From this directory:
 
 ```sh
 npm ci
