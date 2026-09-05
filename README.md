@@ -62,6 +62,8 @@ packaged Python sidecar.
   build a local desktop application on macOS, Windows, or Linux.
 - [Usage guide](./docs/usage-guide.md) — create or open a vault, add statements,
   inspect evidence, use Review and Ask Viva, and understand privacy boundaries.
+- [User acceptance suite](./acceptance/README.md) — repeatable, plain-language
+  product tests for human or AI testers, including the private 19-document run.
 - [Desktop contributor guide](./desktop/README.md) — frontend and native-host
   commands and architecture.
 - [Product package guide](./product/README.md) — Python engine setup, tests, and

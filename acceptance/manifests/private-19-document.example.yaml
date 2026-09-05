@@ -1,0 +1,49 @@
+# Copy this file outside the repository before filling it in.
+# Keep filenames, institutions, account details, dates, and expected values private.
+suite: private-19-document
+expected_document_count: 19
+input_policy:
+  tester_is_told_document_contents: false
+  filenames_are_opaque: true
+  roles_are_unique: true
+  private_files_may_be_committed: false
+  completed_manifest_may_be_committed: false
+documents:
+  - role: DOC-01
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-02
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-03
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-04
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-05
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-06
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-07
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-08
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-09
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-10
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-11
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-12
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-13
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-14
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-15
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-16
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-17
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-18
+    local_path: FILL_OUTSIDE_REPOSITORY
+  - role: DOC-19
+    local_path: FILL_OUTSIDE_REPOSITORY
