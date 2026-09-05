@@ -9,6 +9,19 @@ beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("vault", () => {
+  it("prefills the selected directory when the remembered vault is locked", async () => {
+    window.orionVivaBridge = {
+      request: async <T,>() => ({ protocol: "2.0", request_id: "req", ok: true, result: {} as T }),
+      openRememberedVault: async () => ({ state: "locked", directory: "/remembered/locked-vault" }),
+    };
+
+    const { getByLabelText, getByText } = render(<App />);
+
+    await waitFor(() => expect(getByLabelText("Vault directory")).toHaveValue("/remembered/locked-vault"));
+    expect(getByText(/remembered vault is still selected/i)).toBeInTheDocument();
+    expect(getByLabelText("Passphrase")).toHaveValue("");
+  });
+
   it("asks the native host to choose a vault directory and copies the selection into the manual field", async () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
@@ -449,9 +462,9 @@ describe("vault", () => {
       const control = getByRole("button", { name: "Opening vault..." });
       expect(control).not.toHaveAttribute("disabled");
       expect(control).toHaveAttribute("aria-disabled", "true");
-      // Both sentences reach the control: what a lost passphrase costs, which
-      // is what this form is for, and why pressing again does nothing.
-      expect(control).toHaveAccessibleDescription("This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above — a folder named by mistake would otherwise look like an empty vault. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it. Your vault is answering the last request. Pressing again does nothing until it has.");
+      // Both sentences reach the control: how the default is protected and
+      // why pressing again does nothing.
+      expect(control).toHaveAccessibleDescription("This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there. Your vault is answering the last request. Pressing again does nothing until it has.");
       resolveRequest?.();
       await waitFor(() => expect(getByRole("button", { name: "Open local vault" })).not.toHaveAttribute("aria-disabled", "true"));
     } finally {

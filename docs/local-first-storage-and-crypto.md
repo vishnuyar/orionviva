@@ -13,13 +13,13 @@
 1. Every event body is sealed with AES-256-GCM before it reaches disk.
 2. A copied vault file yields no plaintext to a reader without the passphrase.
 
-### PROG-43 — The key is derived, never stored
+### PROG-43 — The key is derived and never stored in the vault
 **State:** enforced
 **Code:** product/viva/crypto.py:78 (`derive_key`), product/viva/crypto.py:125 (`new_vault_header`)
 **Test:** product/tests/test_crypto.py::test_the_vault_header_never_stores_the_passphrase_or_the_key
 
 1. The vault key is stretched from a passphrase with scrypt and held only in memory.
-2. The stored header carries the salt, the KDF parameters and a sealed check token — never the passphrase and never the key.
+2. The stored vault header carries the salt, the KDF parameters and a sealed check token — never the vaultphrase and never the key. The desktop host separately stores the default vault directory and vaultphrase in macOS Keychain or Windows Credential Manager so that the selected vault opens automatically on that device.
 3. A wrong passphrase is refused by the header check before any record is read.
 
 ### PROG-44 — The crypto envelope is versioned, and its cost parameters are pinned
@@ -56,7 +56,7 @@
 1. The vault key is wrapped once by the OS keychain for daily convenience and once by a user-held recovery phrase for recovery.
 2. No cloud escrow is a default; any escrow is the user's own arrangement.
 
-**Note:** What ships derives one key from one passphrase and stores no wrap of any kind (product/viva/crypto.py:16-19 states this in the module's own words). A lost passphrase is a lost vault — the exact "one lost laptop is ruin" outcome this rule exists to prevent. The requirement is deferred, not withdrawn.
+**Note:** The vault format derives one key from one vaultphrase and stores no wrap in the vault itself (product/viva/crypto.py:16-19 states this in the module's own words). The desktop host keeps the selected vault's credential in the operating system's protected credential store; this is device-local convenience, not a portable recovery mechanism. Moving the vault to another device still requires its vaultphrase.
 
 ### PROG-49 — The chain head is periodically anchored outside the machine
 **State:** unmet

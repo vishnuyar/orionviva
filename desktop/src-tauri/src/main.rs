@@ -8,6 +8,9 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use serde::{Deserialize, Serialize};
+
 // The protocol version every frame this host sends is stamped with. The
 // sidecar refuses a frame whose major version is not its own, so this moves
 // with the sidecar's own constant and never on its own.
@@ -21,6 +24,76 @@ const JOB_PROGRESS_EVENT: &str = "orionviva://job-progress";
 
 const BRIDGE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const BRIDGE_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const VAULT_CREDENTIAL_SERVICE: &str = "com.orionviva.desktop.default-vault";
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const VAULT_CREDENTIAL_ACCOUNT: &str = "default";
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Serialize, Deserialize)]
+struct RememberedVault {
+    directory: String,
+    passphrase: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+enum RememberedVaultOpen {
+    Absent,
+    Opened { directory: String },
+    Locked { directory: String },
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn credential_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new(VAULT_CREDENTIAL_SERVICE, VAULT_CREDENTIAL_ACCOUNT)
+        .map_err(|error| format!("unable to access the operating-system credential store: {error}"))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn store_remembered_vault(directory: &str, passphrase: &str) -> Result<(), String> {
+    let encoded = serde_json::to_string(&RememberedVault {
+        directory: directory.to_string(),
+        passphrase: passphrase.to_string(),
+    })
+    .map_err(|error| format!("unable to encode the remembered vault: {error}"))?;
+    credential_entry()?.set_password(&encoded).map_err(|error| {
+        format!("unable to protect the remembered vault with this device: {error}")
+    })
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn load_remembered_vault() -> Result<Option<RememberedVault>, String> {
+    let encoded = match credential_entry()?.get_password() {
+        Ok(encoded) => encoded,
+        Err(keyring::Error::NoEntry) => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "unable to read the remembered vault from this device: {error}"
+            ))
+        }
+    };
+    serde_json::from_str(&encoded)
+        .map(Some)
+        .map_err(|_| "the protected remembered-vault entry is unreadable".to_string())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn store_remembered_vault(_directory: &str, _passphrase: &str) -> Result<(), String> {
+    Err("remembered vaults require macOS Keychain or Windows Credential Manager".to_string())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn load_remembered_vault() -> Result<Option<RememberedVaultFallback>, String> {
+    Ok(None)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+struct RememberedVaultFallback {
+    directory: String,
+    passphrase: String,
+}
 
 struct BridgeProcess {
     child: Child,
@@ -89,11 +162,21 @@ impl Drop for BridgeProcess {
     }
 }
 
-struct BridgeState(Mutex<Option<BridgeProcess>>);
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ActiveVault {
+    None,
+    Sample,
+    Private(String),
+}
+
+struct BridgeState {
+    process: Mutex<Option<BridgeProcess>>,
+    active_vault: Mutex<ActiveVault>,
+}
 
 impl BridgeState {
     fn lock(&self) -> Result<MutexGuard<'_, Option<BridgeProcess>>, String> {
-        self.0
+        self.process
             .lock()
             .map_err(|_| "OrionViva bridge lifecycle state is unavailable".to_string())
     }
@@ -277,6 +360,39 @@ fn request_process(
     }
 }
 
+fn reopen_remembered_vault(
+    app: &AppHandle,
+    process: &mut Option<BridgeProcess>,
+    expected_directory: &str,
+) -> Result<(), String> {
+    let remembered = load_remembered_vault()?
+        .ok_or_else(|| "no device-protected default vault is available".to_string())?;
+    if !protected_default_matches_active(
+        &ActiveVault::Private(expected_directory.to_string()),
+        &remembered.directory,
+    ) {
+        return Err("the protected default does not identify the active vault".to_string());
+    }
+    let request_id = "native-remembered-vault-recovery";
+    let encoded = serde_json::to_string(&json!({
+        "protocol": BRIDGE_PROTOCOL,
+        "request_id": request_id,
+        "operation": "bridge.open_vault",
+        "payload": {
+            "vault_directory": remembered.directory,
+            "passphrase": remembered.passphrase,
+            "create": false
+        }
+    }))
+    .map_err(|error| format!("unable to encode remembered-vault recovery: {error}"))?;
+    let response = request_process(app, ensure_bridge(process)?, request_id, &encoded)?;
+    if response.get("ok").and_then(Value::as_bool) == Some(true) {
+        Ok(())
+    } else {
+        Err("the device-protected default vault could not be unlocked".to_string())
+    }
+}
+
 fn request_bridge(app: &AppHandle, state: &BridgeState, frame: Value) -> Result<Value, String> {
     let request_id = frame
         .get("request_id")
@@ -285,18 +401,54 @@ fn request_bridge(app: &AppHandle, state: &BridgeState, frame: Value) -> Result<
         .to_string();
     let encoded = serde_json::to_string(&frame)
         .map_err(|error| format!("unable to encode OrionViva bridge request: {error}"))?;
-    let may_recover =
-        operation_can_restart_and_replay(frame.get("operation").and_then(Value::as_str));
+    let operation = frame.get("operation").and_then(Value::as_str);
+    let may_recover = operation_can_restart_and_replay(operation);
+    let may_reopen_vault = operation_can_reopen_vault_and_replay(operation);
+    let recovery_directory = if may_reopen_vault {
+        let active = state
+            .active_vault
+            .lock()
+            .map_err(|_| "active vault identity is unavailable".to_string())?;
+        recovery_directory_for(&active).map(str::to_string)
+    } else {
+        None
+    };
     let mut process = state.lock()?;
 
     for attempt in 0..2 {
         let result = request_process(app, ensure_bridge(&mut process)?, &request_id, &encoded);
         match result {
-            Ok(response) => return Ok(response),
+            Ok(response) => {
+                if response.get("ok").and_then(Value::as_bool) == Some(true) {
+                    let next_active = match operation {
+                        Some("bridge.open_vault") => frame
+                            .pointer("/payload/vault_directory")
+                            .and_then(Value::as_str)
+                            .map(|directory| ActiveVault::Private(directory.trim().to_string())),
+                        Some("bridge.open_demo_vault") => Some(ActiveVault::Sample),
+                        _ => None,
+                    };
+                    if let Some(next_active) = next_active {
+                        *state
+                            .active_vault
+                            .lock()
+                            .map_err(|_| "active vault identity is unavailable".to_string())? =
+                            next_active;
+                    }
+                }
+                return Ok(response);
+            }
             Err(error) => {
                 let cleanup_error = shutdown_current(&mut process).err();
-                if cleanup_error.is_none() && may_recover && attempt == 0 {
-                    continue;
+                if cleanup_error.is_none() && attempt == 0 {
+                    if may_recover {
+                        continue;
+                    }
+                    if let Some(directory) = recovery_directory.as_deref() {
+                        if reopen_remembered_vault(app, &mut process, directory).is_ok() {
+                            continue;
+                        }
+                    }
                 }
                 return Err(match cleanup_error {
                     Some(cleanup) => format!(
@@ -317,8 +469,8 @@ fn request_bridge(app: &AppHandle, state: &BridgeState, frame: Value) -> Result<
 // that establish a vault may therefore be replayed into a fresh process. A
 // surface read used to be replayed here as well; the fresh bridge correctly
 // answered that no vault was open, and the shell then replaced a visible
-// financial picture with that answer. Vault-dependent reads fail closed and
-// make the caller reopen instead.
+// financial picture with that answer. A surface read may be replayed only
+// after the protected default credential has first reopened the same vault.
 fn operation_can_restart_and_replay(operation: Option<&str>) -> bool {
     matches!(
         operation,
@@ -326,9 +478,27 @@ fn operation_can_restart_and_replay(operation: Option<&str>) -> bool {
     )
 }
 
+fn operation_can_reopen_vault_and_replay(operation: Option<&str>) -> bool {
+    operation == Some("viva.surface.read")
+}
+
+fn recovery_directory_for(active: &ActiveVault) -> Option<&str> {
+    match active {
+        ActiveVault::Private(directory) => Some(directory),
+        ActiveVault::None | ActiveVault::Sample => None,
+    }
+}
+
+fn protected_default_matches_active(active: &ActiveVault, remembered_directory: &str) -> bool {
+    recovery_directory_for(active) == Some(remembered_directory)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::operation_can_restart_and_replay;
+    use super::{
+        operation_can_reopen_vault_and_replay, operation_can_restart_and_replay,
+        protected_default_matches_active, recovery_directory_for, ActiveVault,
+    };
 
     #[test]
     fn only_vault_openers_are_safe_to_replay_after_bridge_loss() {
@@ -341,6 +511,33 @@ mod tests {
             "viva.documents.upload"
         )));
         assert!(!operation_can_restart_and_replay(None));
+        assert!(operation_can_reopen_vault_and_replay(Some(
+            "viva.surface.read"
+        )));
+        assert!(!operation_can_reopen_vault_and_replay(Some(
+            "viva.documents.upload"
+        )));
+    }
+
+    #[test]
+    fn protected_recovery_is_bound_to_the_exact_active_private_vault() {
+        let vault_b = ActiveVault::Private("/vault/b".to_string());
+        assert!(protected_default_matches_active(&vault_b, "/vault/b"));
+        assert!(!protected_default_matches_active(&vault_b, "/vault/a"));
+        assert_eq!(recovery_directory_for(&vault_b), Some("/vault/b"));
+    }
+
+    #[test]
+    fn sample_and_unopened_sessions_never_recover_a_private_default() {
+        assert!(!protected_default_matches_active(
+            &ActiveVault::Sample,
+            "/vault/a"
+        ));
+        assert!(!protected_default_matches_active(
+            &ActiveVault::None,
+            "/vault/a"
+        ));
+        assert_eq!(recovery_directory_for(&ActiveVault::Sample), None);
     }
 }
 
@@ -364,6 +561,41 @@ fn bridge_request(
 }
 
 #[tauri::command]
+fn remember_vault(vault_directory: String, passphrase: String) -> Result<(), String> {
+    if vault_directory.trim().is_empty() || passphrase.is_empty() {
+        return Err("a vault directory and vaultphrase are required".to_string());
+    }
+    store_remembered_vault(vault_directory.trim(), &passphrase)
+}
+
+#[tauri::command]
+fn open_remembered_vault(
+    app: AppHandle,
+    state: State<'_, BridgeState>,
+) -> Result<RememberedVaultOpen, String> {
+    let Some(remembered) = load_remembered_vault()? else {
+        return Ok(RememberedVaultOpen::Absent);
+    };
+    let directory = remembered.directory;
+    let frame = json!({
+        "protocol": BRIDGE_PROTOCOL,
+        "request_id": "native-remembered-vault-open",
+        "operation": "bridge.open_vault",
+        "payload": {
+            "vault_directory": directory,
+            "passphrase": remembered.passphrase,
+            "create": false
+        }
+    });
+    match request_bridge(&app, &state, frame) {
+        Ok(response) if response.get("ok").and_then(Value::as_bool) == Some(true) => {
+            Ok(RememberedVaultOpen::Opened { directory })
+        }
+        Ok(_) | Err(_) => Ok(RememberedVaultOpen::Locked { directory }),
+    }
+}
+
+#[tauri::command]
 fn bridge_restart(state: State<'_, BridgeState>) -> Result<(), String> {
     state.restart()
 }
@@ -377,9 +609,14 @@ fn bridge_shutdown(state: State<'_, BridgeState>) -> Result<(), String> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(BridgeState(Mutex::new(None)))
+        .manage(BridgeState {
+            process: Mutex::new(None),
+            active_vault: Mutex::new(ActiveVault::None),
+        })
         .invoke_handler(tauri::generate_handler![
             bridge_request,
+            remember_vault,
+            open_remembered_vault,
             bridge_restart,
             bridge_shutdown
         ])

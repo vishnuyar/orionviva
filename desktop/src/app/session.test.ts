@@ -333,6 +333,74 @@ describe("surface session", () => {
     expect(result.current.session.jobs[0]).toMatchObject({ jobId: restored.job_id, operation: "viva.maintenance.run", state: "failed" });
   });
 
+  it("opens the device-protected default vault automatically on startup", async () => {
+    let automaticOpens = 0;
+    window.orionVivaBridge = {
+      openRememberedVault: async () => { automaticOpens += 1; return { state: "opened", directory: "/remembered/vault" }; },
+      request: async <T>(frame: BridgeRequest) => {
+        const surface = frame.payload.surface as SurfaceName;
+        return ok(frame.requestId, { surface, job_id: "remembered", data: completeSurfacePayload(surface) } as T);
+      },
+    };
+
+    const { result } = renderHook(() => useSurfaceSession());
+    await waitFor(() => expect(result.current.session.phase).toBe("settled"));
+
+    expect(automaticOpens).toBe(1);
+    expect(result.current.session.source?.label).toBe("Private vault");
+    expect(result.current.session.snapshot.overview.state).toBe("ready");
+  });
+
+  it("keeps a remembered vault selected and exposes its directory when automatic unlock fails", async () => {
+    window.orionVivaBridge = {
+      openRememberedVault: async () => ({ state: "locked", directory: "/remembered/locked" }),
+      request: async () => { throw new Error("no surface read is allowed while locked"); },
+    };
+
+    const { result } = renderHook(() => useSurfaceSession());
+    await waitFor(() => expect(result.current.session.phase).toBe("settled"));
+
+    expect(result.current.rememberedVaultDirectory).toBe("/remembered/locked");
+    expect(result.current.session.source).toBeNull();
+    expect(result.current.session.notice?.text).toContain("still selected");
+  });
+
+  it("replaces the protected default after a successful manual vault open", async () => {
+    const remembered: Array<[string, string]> = [];
+    window.orionVivaBridge = {
+      rememberVault: async (directory, passphrase) => { remembered.push([directory, passphrase]); },
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+        const surface = frame.payload.surface as SurfaceName;
+        return ok(frame.requestId, { surface, job_id: "manual", data: completeSurfacePayload(surface) } as T);
+      },
+    };
+
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/next/vault", "device secret", false); });
+
+    expect(remembered).toEqual([["/next/vault", "device secret"]]);
+    expect(result.current.session.snapshot.overview.state).toBe("ready");
+  });
+
+  it("keeps a newly opened vault active when protecting its credential fails", async () => {
+    window.orionVivaBridge = {
+      rememberVault: async () => { throw new Error("credential store unavailable"); },
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+        const surface = frame.payload.surface as SurfaceName;
+        return ok(frame.requestId, { surface, job_id: "vault-b", data: completeSurfacePayload(surface) } as T);
+      },
+    };
+
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault/b", "secret", false); });
+
+    expect(result.current.session.source?.label).toBe("Private vault");
+    expect(result.current.session.snapshot.overview.state).toBe("ready");
+    expect(result.current.session.notice?.text).toContain("could not protect its vaultphrase");
+  });
+
   it("a newer private request beats reads from an older request", async () => {
     const oldReads = Array.from({ length: 5 }, () => deferred<BridgeResponse<unknown>>());
     let openCount = 0; let oldReadIndex = 0;

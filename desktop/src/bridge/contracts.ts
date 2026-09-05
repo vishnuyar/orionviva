@@ -41,6 +41,10 @@ export const REQUEST_REFUSED = "invalid_request";
 // nothing here is real is a shipped sentence, and a shell composing its own
 // would put it out of the pack's reach.
 export type SampleFrame = { title: string; detail: string; leave: string };
+export type RememberedVaultOpen =
+  | { state: "absent" }
+  | { state: "opened"; directory: string }
+  | { state: "locked"; directory: string };
 export const OPEN_REFUSALS: readonly string[] = ["vault_absent", "vault_not_a_directory", "vault_wrong_passphrase"];
 // The sidecar said it accepted the request and sent nothing to read. A handler
 // ran and may have written, so this is never told as a request that never
@@ -66,6 +70,8 @@ export const JOB_PROGRESS_EVENT = "orionviva://job-progress";
 export type DroppedPathsListener = (paths: readonly string[]) => void;
 export type BridgeTransport = {
   request: <T>(frame: BridgeRequest) => Promise<BridgeResponse<T>>;
+  openRememberedVault?: () => Promise<RememberedVaultOpen>;
+  rememberVault?: (vaultDirectory: string, passphrase: string) => Promise<void>;
   pickVaultDirectory?: () => Promise<string | null>;
   pickDocumentPaths?: () => Promise<readonly string[]>;
   subscribeToDroppedPaths?: (listen: DroppedPathsListener) => Promise<() => void>;
@@ -77,6 +83,8 @@ export type BridgeClient = {
   // answered with a brand-new empty vault, which reads as their records having
   // vanished.
   openVault: (vaultDirectory: string, passphrase: string, create: boolean) => Promise<void>;
+  openRememberedVault?: () => Promise<RememberedVaultOpen>;
+  rememberVault?: (vaultDirectory: string, passphrase: string) => Promise<void>;
   // The sample vault, opened from one affordance. It carries no directory and
   // no passphrase: where it lives and what opens it are the engine's, so there
   // is nowhere here to point it at a folder somebody keeps their own records

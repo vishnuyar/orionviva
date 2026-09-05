@@ -2,7 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { BRIDGE_PROTOCOL, JOB_PROGRESS_EVENT } from "./bridge/contracts";
-import type { BridgeRequest, BridgeResponse, BridgeTransport, DroppedPathsListener, JobProgressFrame, JobProgressListener } from "./bridge/contracts";
+import type { BridgeRequest, BridgeResponse, BridgeTransport, DroppedPathsListener, JobProgressFrame, JobProgressListener, RememberedVaultOpen } from "./bridge/contracts";
 
 type TauriInternals = {
   invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -32,6 +32,8 @@ export function installTauriBridge(): boolean {
       });
       return JSON.parse(response) as BridgeResponse<T>;
     },
+    openRememberedVault: () => invoke<RememberedVaultOpen>("open_remembered_vault"),
+    rememberVault: (vaultDirectory, passphrase) => invoke<void>("remember_vault", { vaultDirectory, passphrase }),
     pickVaultDirectory: async () => {
       const selected = await open({
         directory: true,

@@ -390,7 +390,7 @@ What happens between a file arriving and a figure being posted.
 | **ING-73** | Extraction and conversation are separate contexts | by-review | [threat-model-and-ingestion-security.md](threat-model-and-ingestion-security.md) | — |
 | **ING-74** | The poisoned document and the exact exchange are retained | enforced | [threat-model-and-ingestion-security.md](threat-model-and-ingestion-security.md) | `test_read_that_throws_is_recorded_not_orphaned` +1 |
 | **ING-75** | No provider SDK on the wire | enforced | [threat-model-and-ingestion-security.md](threat-model-and-ingestion-security.md) | `test_the_model_adapters_import_nothing_the_package_did_not_declare` |
-| **ING-76** | One key, derived from one passphrase, stored nowhere | enforced | [threat-model-and-ingestion-security.md](threat-model-and-ingestion-security.md) | `test_nothing_readable_at_rest` +2 |
+| **ING-76** | One key, derived from one vaultphrase, never stored in the vault | enforced | [threat-model-and-ingestion-security.md](threat-model-and-ingestion-security.md) | `test_nothing_readable_at_rest` +2 |
 | **ING-77** | Where a document is sent is decided by this process, not by its surroundings | enforced | [threat-model-and-ingestion-security.md](threat-model-and-ingestion-security.md) | `test_a_dotenv_in_the_working_directory_is_not_configuration` +1 |
 | **ING-78** | A document may not cost unbounded work to read | enforced | [threat-model-and-ingestion-security.md](threat-model-and-ingestion-security.md) | `test_too_many_pages_is_refused_rather_than_partly_read` +2 |
 | **ING-80** | Extraction always works with no profile at all | enforced | [format-commons.md](format-commons.md) | `test_no_template_matching_is_a_legitimate_answer` +1 |
@@ -621,7 +621,7 @@ The instruments that measure the product, and where truth is kept.
 | **PROG-40** | Merging two devices is a union, not a fight over rows | **unmet** | [multi-device-and-remote-access.md](multi-device-and-remote-access.md) | — |
 | **PROG-41** | Recovery comes from something the user holds, never from the relay | **unmet** | [multi-device-and-remote-access.md](multi-device-and-remote-access.md) | — |
 | **PROG-42** | Nothing is readable at rest | enforced | [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) | `test_nothing_readable_at_rest` |
-| **PROG-43** | The key is derived, never stored | enforced | [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) | `test_the_vault_header_never_stores_the_passphrase_or_the_key` |
+| **PROG-43** | The key is derived and never stored in the vault; the device-protected vaultphrase opens the default vault | enforced | [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) | `test_the_vault_header_never_stores_the_passphrase_or_the_key` |
 | **PROG-44** | The crypto envelope is versioned, and its cost parameters are pinned | enforced | [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) | `test_the_production_cost_parameters_are_not_quietly_lowered` |
 | **PROG-45** | The log is append-only, hash-chained, and verifiable without the key | enforced | [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) | `test_the_chain_verifies_without_the_passphrase` +1 |
 | **PROG-46** | Original documents are encrypted, immutable, content-addressed blobs | enforced | [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) | `test_put_is_content_addressed` +1 |

@@ -54,7 +54,7 @@ An ADR is a record of a moment, which is why it keeps its date while every other
 
 ## Open
 
-- Four requirements are recorded as unmet by the current build: ADR-003 (the ingest path stores no model request), ADR-004 (no chain head has ever been anchored), ADR-005 (the dual-wrap custody scheme is not built, so a lost passphrase is a lost vault) and ADR-007 (identity and recognition are one content-derived string, with no fingerprint field). None of the four is withdrawn.
+- Four requirements are recorded as unmet by the current build: ADR-003 (the ingest path stores no model request), ADR-004 (no chain head has ever been anchored), ADR-005 (device-protected automatic opening exists, but the portable recovery half of the dual-wrap custody scheme is not built) and ADR-007 (identity and recognition are one content-derived string, with no fingerprint field). None of the four is withdrawn.
 - ADR-011 is `Proposed` and not adopted; ADR-012's mechanism is decided and unbuilt.
 - Three ADRs are owed and unwritten: the ledger/event-store engine, a formalized confidence-grade vocabulary, and the stack record.
 - Nothing checks that a document's ADR references resolve, or that an ADR marked `Accepted` has a rule somewhere naming what enforces it.

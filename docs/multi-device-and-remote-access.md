@@ -39,7 +39,7 @@
 1. A relay can authorise ciphertext sync and can reset nothing that matters.
 2. "Forgot passkey" recovers from the user's own recovery phrase.
 
-**Note:** the recovery phrase this rule leans on does not exist. The product derives one key from one passphrase with no keychain wrap and no recovery phrase (product/viva/crypto.py:16-19), so a lost passphrase is a lost vault and this rule inherits that gap rather than closing it. See [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) PROG-48.
+**Note:** the recovery phrase this rule leans on does not exist. The desktop protects one default vault credential in macOS Keychain or Windows Credential Manager, but that convenience is local to the device and does not provide cross-device recovery. The product still has no portable recovery phrase, so this rule inherits that gap rather than closing it. See [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) PROG-48.
 
 ## Why
 

@@ -21,7 +21,7 @@ _This records reasoning, not current behaviour._
 4. Development ergonomics are solved with test keys and synthetic fixtures, never by temporarily disabling encryption.
 5. Key custody is the companion decision, and the dual-wrap recovery scheme is a requirement rather than a sketch.
 
-**Exception:** assertion 5 has no implementation. What ships derives one key from one passphrase with scrypt under the envelope this record decided (product/viva/crypto.py:34); there is no keychain wrap, no recovery phrase and no keychain dependency in the tree. The encryption posture is met in full and the custody half is outstanding, so today **a lost passphrase is a lost vault**.
+**Exception:** assertion 5 remains only partly implemented. What ships derives one key from one vaultphrase with scrypt under the envelope this record decided (product/viva/crypto.py:34). The desktop protects the default vault's directory and vaultphrase in macOS Keychain or Windows Credential Manager for automatic opening on that device, but there is still no portable recovery phrase or second wrap. Losing both the device credential and the owner's vaultphrase still loses the vault.
 
 ## Why
 
@@ -43,4 +43,4 @@ Nothing. Algorithm choices rotate freely under the envelope; the posture does no
 
 ## Open
 
-- Key custody is deferred rather than delivered: no keychain wrap, no recovery phrase, no social recovery. A lost passphrase is a lost vault until a cycle closes it.
+- Portable key custody remains deferred: device-protected automatic opening exists, but there is no recovery phrase, portable second wrap, or social recovery.

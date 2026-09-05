@@ -61,13 +61,13 @@
 1. A model adapter imports only the standard library, a dependency the package declares, and the project's own code.
 2. No provider SDK and no multi-provider wrapper sits between a bank statement and the wire.
 
-### ING-76 — One key, derived from one passphrase, stored nowhere
+### ING-76 — One key, derived from one vaultphrase, never stored in the vault
 **State:** enforced
 **Code:** product/viva/crypto.py:8-19, :30 (`VERSION` names the algorithm and the KDF), product/viva/ingest/raw_store.py:56
 **Test:** product/tests/test_raw_store.py::test_nothing_readable_at_rest, product/tests/test_raw_store.py::test_wrong_passphrase_rejected, product/tests/test_raw_store.py::test_tampered_blob_fails
 
 1. Data at rest is sealed with a versioned authenticated envelope; tampering is detected on open, never silently accepted.
-2. The key is derived from the owner's passphrase with a memory-hard KDF and is never stored.
+2. The key is derived from the owner's vaultphrase with a memory-hard KDF and is never stored in the vault. The desktop application stores the default vault's directory and vaultphrase only in macOS Keychain or Windows Credential Manager, never in browser storage, ordinary configuration, or diagnostics.
 3. There is no second wrap of the key and no recovery phrase.
 
 ### ING-77 — Where a document is sent is decided by this process, not by its surroundings
@@ -101,12 +101,14 @@ wrong figure verification catches and surfaces. Ruin threats dominate the design
 budget regardless of probability; bad-day threats are handled proportionately.
 The goal of every control here is to convert a ruin path into a bad-day path.
 
-Against a **device thief**, encryption does that conversion outright: everything
-at rest is ciphertext and the key derives from a passphrase that is not on the
-device. Against **malware running as the user while the app is unlocked**, no
+Against a **device thief**, vault contents remain ciphertext and the vaultphrase
+is protected by macOS Keychain or Windows Credential Manager. This protection
+therefore inherits the operating system account's authentication and credential-
+store security; theft of an already-unlocked user session is not equivalent to
+theft of a powered-off device. Against **malware running as the user while the app is unlocked**, no
 local-first application can fully protect data in memory — this is the hardest
 residual and it is documented rather than pretended away. The mitigations are to
-minimize the unlocked window, hold the passphrase no longer than needed, use OS
+keep the credential out of browser storage, logs, and ordinary files, use OS
 sandboxing where available, and rely on the tamper-evident log as the backstop
 that makes *silent* corruption detectable even when prevention fails. Against a
 **cloud model provider**, the exposure is exactly the document content sent for
@@ -161,15 +163,12 @@ the final catch.
 Provenance doubles as an injection tripwire: an extracted claim whose stated
 source region does not contain the value is a signal something is off.
 
-Key custody is where honesty costs something. The dual wrap this design once
-assumed — the key wrapped once by the OS keychain and once by an offline
-recovery phrase — is a requirement in the storage design and is **not built**.
-One key is derived from one passphrase and nothing else unwraps it. Against the
-device thief that is if anything stronger: nothing on the stolen device unlocks
-the vault, because no wrap sits there to be attacked. The cost lands on the
-owner instead, and it belongs in a threat model rather than only in a storage
-doc — **a lost passphrase is a lost vault**, an unrecoverable loss of a person's
-own data with no adversary in it at all. Recovery is deferred, not delivered.
+Key custody is where honesty costs something. The desktop now protects the
+default vault's vaultphrase with macOS Keychain or Windows Credential Manager,
+which provides automatic opening on that device. This is not a second portable
+wrap and is not a recovery phrase: access on a different device still requires
+the vaultphrase. If both the device-protected credential and the owner's copy of
+the vaultphrase are lost, the vault remains unrecoverable.
 
 ### Why the model adapters are hand-written HTTP
 
@@ -193,7 +192,7 @@ are related and are not the same claim.
 - Spotlighting implementation: the exact delimiter and framing for untrusted document content in the extraction prompt, plus a red-team benchmark mode that injects a known instruction into a test PDF and confirms it never actuates and is caught.
 - Format-commons and knowledge-registry governance: the review bar and the privacy-lint specifics that make community contribution safe at scale.
 - Live-session malware: how far OS sandboxing can shrink the unlocked-window exposure on each target platform.
-- Key recovery: today a lost passphrase is a lost vault, and no recovery path exists.
+- Portable key recovery: the protected device credential provides convenience on one device, but no offline recovery phrase or cross-device recovery path exists.
 - The chain head is not anchored to any external timestamp, so the tamper-evident log's value as the malware backstop rests on the chain alone.
 - Nothing tests that the extraction call is toolless; it is true by the shape of the interface and unchecked by the build.
 

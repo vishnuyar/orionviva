@@ -6,13 +6,17 @@ import { installTauriBridge } from "./tauri-host";
 
 const opened = vi.fn();
 const subscribed = vi.fn();
+const invoked = vi.fn(async (command: string, _args?: Record<string, unknown>) => {
+  if (command === "open_remembered_vault") return { state: "opened", directory: "/remembered/vault" };
+  return "{}";
+});
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: (options: unknown) => opened(options) }));
 vi.mock("@tauri-apps/api/webview", () => ({ getCurrentWebview: () => ({ onDragDropEvent: async (handler: unknown) => { subscribed(handler); return () => {}; } }) }));
 
 function install() {
   delete window.orionVivaBridge;
-  window.__TAURI_INTERNALS__ = { invoke: async <T>() => "{}" as T };
+  window.__TAURI_INTERNALS__ = { invoke: async <T>(command: string, args?: Record<string, unknown>) => await invoked(command, args) as T };
   installTauriBridge();
   return window.orionVivaBridge!;
 }
@@ -22,9 +26,19 @@ afterEach(() => {
   delete window.__TAURI_INTERNALS__;
   opened.mockReset();
   subscribed.mockReset();
+  invoked.mockClear();
 });
 
 describe("the host shim", () => {
+  it("keeps remembered-vault secrets inside native commands", async () => {
+    const transport = install();
+    await expect(transport.openRememberedVault?.()).resolves.toEqual({ state: "opened", directory: "/remembered/vault" });
+    await transport.rememberVault?.("/chosen/vault", "device secret");
+
+    expect(invoked).toHaveBeenNthCalledWith(1, "open_remembered_vault", undefined);
+    expect(invoked).toHaveBeenNthCalledWith(2, "remember_vault", { vaultDirectory: "/chosen/vault", passphrase: "device secret" });
+  });
+
   it("asks the operating system for one document, not for several", async () => {
     opened.mockResolvedValue("/chosen/first.pdf");
     const transport = install();

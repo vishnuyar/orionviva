@@ -35,6 +35,8 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
   }
   return {
     openVault: async (vaultDirectory, passphrase, create) => { await request("bridge.open_vault", { vault_directory: vaultDirectory, passphrase, create }); },
+    ...(transport.openRememberedVault ? { openRememberedVault: transport.openRememberedVault } : {}),
+    ...(transport.rememberVault ? { rememberVault: transport.rememberVault } : {}),
     openSampleVault: async () => sampleFrame(await request<unknown>("bridge.open_demo_vault", {})),
     ...(transport.pickVaultDirectory ? { pickVaultDirectory: transport.pickVaultDirectory } : {}),
     ...(transport.pickDocumentPaths ? { pickDocumentPaths: transport.pickDocumentPaths } : {}),

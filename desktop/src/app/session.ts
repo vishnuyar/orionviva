@@ -64,6 +64,7 @@ export type SessionAction =
   | { type: "mutation-loaded"; requestId: number; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
   | { type: "mutation-refresh-failed"; requestId: number }
   | { type: "open-failed"; requestId: number; said: string }
+  | { type: "remembered-open-finished"; requestId: number; said?: string }
   | { type: "load-failed"; requestId: number }
   | { type: "reset"; requestId: number }
   | { type: "navigate"; destination: Destination }
@@ -395,6 +396,9 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       // sidecar once, and re-typing a correct passphrase cannot fix a bridge
       // that was never running.
       return { ...state, phase: "settled", notice: { kind: "refused", text: action.said || "The local vault could not be opened. Nothing came back saying why — a wrong folder or a wrong passphrase would have said so." } };
+    case "remembered-open-finished":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, phase: "settled", notice: action.said ? { kind: "refused", text: action.said } : null };
     case "load-failed":
       if (action.requestId !== state.requestId) return state;
       return { ...state, phase: "settled", notice: { kind: "refused", text: "The vault connection was lost while its surfaces were being read. The selected vault has not been replaced, but it must be reopened before it can be used." } };

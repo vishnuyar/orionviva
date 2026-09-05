@@ -41,6 +41,20 @@ packaged Python sidecar. The desktop consumes every operation the sidecar
 declares. A private vault and persistent sample vault both use the live bridge;
 fixtures remain for deterministic presentation-state coverage.
 
+After a private vault opens successfully, the native host stores its directory
+and vaultphrase as one protected credential in macOS Keychain or Windows
+Credential Manager. Startup asks the native host to open that default before
+the interface performs any vault reads. If the bridge process is lost during a
+read, the host may replay that read only after the protected credential has
+reopened the exact private vault active before the process loss; a sample vault
+and a different private vault can never be replaced by the protected default.
+No write operation is replayed. If automatic unlock fails, the interface keeps
+the remembered directory selected and asks for its vaultphrase without receiving
+the protected vaultphrase from the native host. Choosing or creating a
+different private vault replaces the protected default. Neither the credential
+nor the vaultphrase is written to browser storage, ordinary configuration, or
+diagnostics.
+
 The live path provides financial picture and account evidence, a user-facing
 Transactions workspace (the compatibility destination and contract key remain
 `activity`) with movement-scoped existing-choice category, economic-treatment,

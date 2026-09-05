@@ -80,10 +80,10 @@ describe("documents", () => {
     }
   });
 
-  it("names what a lost passphrase costs to the field and the control beside it", async () => {
+  it("explains device-protected default-vault storage to the field and control", async () => {
     const previousBridge = window.orionVivaBridge;
     window.orionVivaBridge = { request: async <T,>(frame: { requestId: string }) => ({ protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }) };
-    const consequence = "This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above — a folder named by mistake would otherwise look like an empty vault. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.";
+    const consequence = "This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there.";
     try {
       const { container, getByLabelText, getByRole, getByText } = render(<App />);
       expect(getByText(consequence)).toBeInTheDocument();

@@ -29,6 +29,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const [session, dispatch] = useReducer(sessionReducer, undefined, initialSession);
   const [hostBridge] = useState(createDetectedBridgeClient);
   const [settingAsideFindingId, setSettingAsideFindingId] = useState("");
+  const [rememberedVaultDirectory, setRememberedVaultDirectory] = useState("");
   const requestId = useRef(0);
   const dropped = useRef(onDropped);
   dropped.current = onDropped;
@@ -63,7 +64,47 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const planActions = session.source?.planActions ?? null;
   const source = session.source;
   const sourceIdentity = useRef(source);
+  const rememberedOpenStarted = useRef(false);
   sourceIdentity.current = source;
+
+  async function readOpenedSource(activeSource: NonNullable<typeof source>, activeRequest: number) {
+    dispatch({ type: "reading", requestId: activeRequest, source: activeSource, snapshot: liveReadingSnapshot() });
+    try {
+      const [snapshot, jobsRead] = await Promise.all([activeSource.load(activityLimit.current), activeSource.loadJobs?.() ?? Promise.resolve(null)]);
+      const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
+      if (requestId.current === activeRequest) dispatch({ type: "loaded", requestId: activeRequest, source: activeSource, snapshot, jobs });
+      return requestId.current === activeRequest;
+    } catch {
+      if (requestId.current === activeRequest) dispatch({ type: "load-failed", requestId: activeRequest });
+      return false;
+    }
+  }
+
+  useEffect(() => {
+    if (!hostBridge?.openRememberedVault || rememberedOpenStarted.current) return;
+    rememberedOpenStarted.current = true;
+    const activeRequest = ++requestId.current;
+    dispatch({ type: "opening", requestId: activeRequest });
+    void hostBridge.openRememberedVault()
+      .then((result) => {
+        if (requestId.current !== activeRequest) return;
+        if (result.state === "absent") {
+          dispatch({ type: "remembered-open-finished", requestId: activeRequest });
+          return;
+        }
+        setRememberedVaultDirectory(result.directory);
+        if (result.state === "locked") {
+          dispatch({ type: "remembered-open-finished", requestId: activeRequest, said: "The remembered vault is still selected, but it could not be unlocked automatically. Enter its vaultphrase again." });
+          return;
+        }
+        activityLimit.current = 50;
+        ++surfaceRevision.current;
+        void readOpenedSource(privateSource(hostBridge), activeRequest);
+      })
+      .catch(() => {
+        if (requestId.current === activeRequest) dispatch({ type: "remembered-open-finished", requestId: activeRequest, said: "The remembered vault could not be unlocked automatically. Enter its vaultphrase again to replace the protected credential on this device." });
+      });
+  }, [hostBridge]);
 
   async function refreshAfterAction(activeSource: NonNullable<typeof source>, activeRequest: number, stillCurrent: () => boolean = () => true) {
     ++surfaceRevision.current;
@@ -333,6 +374,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       }
       return result;
     },
+    rememberedVaultDirectory,
     hostAvailable: Boolean(hostBridge),
     captureAvailable: Boolean(documentActions),
     filePickerAvailable: Boolean(documentActions && hostBridge?.pickDocumentPaths),
@@ -356,16 +398,12 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       }
       if (requestId.current !== nextRequestId) return false;
       const source = privateSource(hostBridge);
-      dispatch({ type: "reading", requestId: nextRequestId, source, snapshot: liveReadingSnapshot() });
-      try {
-        const [snapshot, jobsRead] = await Promise.all([source.load(activityLimit.current), source.loadJobs?.() ?? Promise.resolve(null)]);
-        const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
-        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, source, snapshot, jobs });
-      } catch {
-        if (requestId.current === nextRequestId) dispatch({ type: "load-failed", requestId: nextRequestId });
-        return false;
-      }
-      return requestId.current === nextRequestId;
+      let rememberFailed = false;
+      try { await hostBridge.rememberVault?.(vaultDirectory, passphrase); }
+      catch { rememberFailed = true; }
+      const loaded = await readOpenedSource(source, nextRequestId);
+      if (loaded && rememberFailed) dispatch({ type: "notice", notice: { kind: "refused", text: "This vault is open, but this device could not protect its vaultphrase. You will need to enter it again after restarting OrionViva." } });
+      return loaded;
     },
     // The one affordance the sample vault is entered from. It names no
     // directory and no passphrase, because the request carries neither: where
@@ -392,16 +430,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       // showing somebody invented money with nothing saying it was invented.
       if (!frame) { dispatch({ type: "open-failed", requestId: nextRequestId, said: "" }); return false; }
       const source = sampleSource(hostBridge, frame);
-      dispatch({ type: "reading", requestId: nextRequestId, source, snapshot: liveReadingSnapshot() });
-      try {
-        const [snapshot, jobsRead] = await Promise.all([source.load(activityLimit.current), source.loadJobs?.() ?? Promise.resolve(null)]);
-        const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
-        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, source, snapshot, jobs });
-      } catch {
-        if (requestId.current === nextRequestId) dispatch({ type: "load-failed", requestId: nextRequestId });
-        return false;
-      }
-      return requestId.current === nextRequestId;
+      return readOpenedSource(source, nextRequestId);
     },
     async pickVaultDirectory() { return hostBridge?.pickVaultDirectory?.() ?? null; },
     // One picker at a time, and one capture at a time. The picker being open
