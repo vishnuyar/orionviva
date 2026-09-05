@@ -167,6 +167,29 @@ def seed_subcategories() -> tuple[str, ...]:
     return read_subcategory_seed(path)
 
 
+@lru_cache(maxsize=1)
+def seed_subcategories_by_category() -> dict[str, tuple[str, ...]]:
+    """The shipped finer labels, under the primary each one may slice.
+
+    The flat vocabulary remains useful when only label reuse matters.  A
+    compound human assignment needs the hierarchy as well: accepting a known
+    label under a different primary would create a state the taxonomy itself
+    contradicts.  Reuse :func:`read_subcategory_seed` as the validator before
+    retaining the file's grouping, so the two views cannot accept different
+    source bytes.
+    """
+    try:
+        path = versions.path_of(PACKAGE, TAXONOMY_VERSION)
+    except versions.ManifestError:
+        return {}
+    read_subcategory_seed(path)
+    grouped = json.loads(path.read_text(encoding="utf-8"))["subcategories"]
+    return {
+        category: tuple(str(label).strip() for label in labels)
+        for category, labels in grouped.items()
+    }
+
+
 def subcategory_vocabulary(known=None, seed=None) -> tuple[str, ...]:
     """The labels to offer, seed first and then the ones already in use.
 

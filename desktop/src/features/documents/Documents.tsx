@@ -1,4 +1,5 @@
 import { PanelStateView } from "../../components/PanelStateView";
+import { ProofLinks } from "../../components/ProofLinks";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
 import type { ChannelPresentation } from "../../components/actionChannel";
 import type { CancelActionState, CaptureActionState, DocumentsData, EvidenceLink, FeatureResult, JobView, RescanActionState, SurfaceDocument } from "../../surface/types";
@@ -46,9 +47,9 @@ function CapturePanel({ state, onChoose }: { state: CaptureActionState; onChoose
   const choose = () => { if (!working) onChoose(); };
   return <section className="document-capture-status" id="document-capture-status" tabIndex={-1} aria-labelledby="document-capture-title">
     <div className="detail-panel-label">Capture</div>
-    <h2 id="document-capture-title">Add a document</h2>
-    <p>Choose a file and it is saved into this vault, encrypted, on this machine. It is not sent anywhere.</p>
-    <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "document-capture-waiting" : undefined} onClick={choose}>Choose a file</button>
+    <h2 id="document-capture-title">Add a statement</h2>
+    <p>Choose one statement or financial document. It is encrypted and saved in this vault on this machine.</p>
+    <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "document-capture-waiting" : undefined} onClick={choose}>Choose statement file</button>
     {working ? <span className="action-explanation" id="document-capture-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
   </section>;
 }
@@ -98,7 +99,7 @@ function RescanPanel({ rescan }: { rescan: RescanControls }) {
 }
 
 function ReadScope() {
-  return <section className="document-scope"><h2>What this read can show</h2><p>This vault read supplies document identity, the name of the file where one was recorded, document type, resolution status, whether an original is available, whether it has been read, and what it put on your books. Lifecycle steps, pages, source regions, provenance, wait reasons, and recovery are not supplied. What a capture is doing while it runs is reported separately, by the sidecar doing it.</p></section>;
+  return <details className="document-scope"><summary>What this page can show</summary><p>This vault read supplies document identity, filename, type, resolution status, original availability, reading status, and what the document put on your books. Page regions and lifecycle internals are not supplied.</p></details>;
 }
 
 function DocumentLibrary({ documents, selectedDocument, onSelectDocument }: { documents: readonly SurfaceDocument[]; selectedDocument: string; onSelectDocument: (id: string) => void }) {
@@ -107,7 +108,7 @@ function DocumentLibrary({ documents, selectedDocument, onSelectDocument }: { do
     const selectable = Boolean(document.id.trim()) && identityCount === 1;
     const selected = selectable && selectedDocument === document.id;
     return <li className="document-list-item" key={`${document.id || "blank-document"}-${occurrence}`}>
-      {selectable ? <button className={selected ? "detail-row detail-row-button active" : "detail-row detail-row-button"} aria-pressed={selected} onClick={() => onSelectDocument(document.id)}><span><strong>{documentRowLabel(document)}</strong><small>{`Document ID · ${document.id}`}</small></span><span className="state-pill">{document.resolved === true ? "Resolved" : document.resolved === false ? "Unresolved" : "Resolution unavailable"}</span></button> : <div className="detail-row document-row-unavailable"><span><strong>{document.id.trim() ? "Document selection unavailable" : "Document identity unavailable"}</strong><small>{document.id.trim() ? "This identity appears more than once and cannot be selected." : "This row has no stable document ID, so it cannot be selected."}</small></span></div>}
+      {selectable ? <button className={selected ? "detail-row detail-row-button active" : "detail-row detail-row-button"} aria-pressed={selected} onClick={() => onSelectDocument(document.id)}><span><strong>{documentRowLabel(document)}</strong><small>{document.docType?.trim() || "Document type unavailable"}</small></span><span className="state-pill">{document.resolved === true ? "Resolved" : document.resolved === false ? "Unresolved" : "Resolution unavailable"}</span></button> : <div className="detail-row document-row-unavailable"><span><strong>{document.id.trim() ? "Document selection unavailable" : "Document identity unavailable"}</strong><small>{document.id.trim() ? "This identity appears more than once and cannot be selected." : "This row has no stable document ID, so it cannot be selected."}</small></span></div>}
     </li>;
   })}</ul></section>;
 }
@@ -126,25 +127,19 @@ function RelatedEvidence() {
 }
 
 function Limitations() {
-  return <section className="document-limitations"><h4>Unavailable in this preview</h4><ul><li id="document-page-review-unavailable">Page and source-region review are not connected.</li><li>Focused correction is not connected.</li><li>Ledger posting is not available from this screen.</li><li>Outbound actions and outbound history are not connected.</li><li>No control here changes a document or vault.</li></ul></section>;
+  return <details className="document-limitations"><summary>Unavailable details</summary><ul><li id="document-page-review-unavailable">Page and source-region review are not connected.</li><li>Focused correction is not connected.</li><li>Ledger posting is not available from this screen.</li><li>Outbound actions and outbound history are not connected.</li><li>No control here changes a document or vault.</li></ul></details>;
 }
 
-function DocumentDetail({ document }: { document: SurfaceDocument }) {
-  return <aside className="detail-panel document-detail"><div className="detail-panel-label">Selected document</div><h3 id="selected-document-title" tabIndex={-1}>{document.docType?.trim() || "Document type unavailable"}</h3><div className="detail-panel-grid document-detail-grid">
-    <DetailField label="Document ID" value={document.id} help="A document ID is a stable document identity. It is not a filename or record ID." />
+function DocumentDetail({ document, onOpenEvidence }: { document: SurfaceDocument; onOpenEvidence: (link: EvidenceLink) => void }) {
+  return <aside className="detail-panel document-detail"><div className="detail-panel-label">Selected statement</div><h3 id="selected-document-title" tabIndex={-1}>{document.name.trim() || document.docType?.trim() || "Document name unavailable"}</h3><div className="detail-panel-grid document-detail-grid document-status-grid">
     <DetailField label="Document name" value={document.name.trim() || "Document name was not supplied by this read."} />
     <DetailField label="Type" value={document.docType?.trim() || "Document type was not supplied by this read."} />
     <DetailField label="Resolution" value={document.resolved === true ? "Resolved" : document.resolved === false ? "Unresolved" : "Resolution status was not supplied by this read."} help="Resolution status does not say whether the document was verified or posted." />
     <DetailField label="Snapshot" value={document.snapshotSentence?.trim() || "Snapshot status was not supplied by this read."} />
     <DetailField label="Brokerage activity" value={document.activitySentence?.trim() || "Activity status was not supplied by this read."} />
-    <DetailField label="Unresolved reason" value="An unresolved reason is not supplied by this read." />
     <DetailField label="Original" value={document.rawAvailable === true ? "Available" : document.rawAvailable === false ? "Unavailable" : "Original availability was not supplied by this read."} help="This status says only whether an original is available; it does not say that the original can be opened or reviewed from this screen." />
-    <DetailField label="Lifecycle" value="Lifecycle is not supplied by this vault read." />
-    <DetailField label="Pages" value="Page details are not supplied by this vault read." />
-    <DetailField label="Source region" value="Source region is not supplied by this vault read." />
-    <DetailField label="Provenance" value="Provenance is not supplied by this vault read." />
     <DetailField label="Contribution" value={document.contribution?.trim() || "What this document contributed was not supplied by this read."} />
-  </div><section className="document-wait"><h4>Wait or hold</h4><p>A wait reason is not supplied by this vault read.</p></section><RelatedEvidence /><Limitations /></aside>;
+  </div><details className="document-technical-details"><summary>Technical details</summary><div className="detail-panel-grid document-detail-grid"><DetailField label="Document ID" value={document.id} help="The stable identity used inside this vault." /><DetailField label="Lifecycle" value="Lifecycle is not supplied by this vault read." /><DetailField label="Pages" value="Page details are not supplied by this vault read." /><DetailField label="Source region" value="Source region is not supplied by this vault read." /><DetailField label="Provenance" value="Provenance is not supplied by this vault read." /></div>{document.evidenceLinks.length ? <ProofLinks label="Source links" links={document.evidenceLinks} onOpen={onOpenEvidence} /> : null}<RelatedEvidence /><Limitations /></details></aside>;
 }
 
 // What became of the last capture a person asked for, and the capture control
@@ -171,7 +166,7 @@ export function Documents({ result, selectedDocument, capture, rescan, onSelectD
     const selection = resolveDocumentSelection(data.documents, selectedDocument);
     const activeId = selection.state === "ready" ? selection.document.id : selectedDocument;
     return <><ReadScope />
-      {!data.documents.length ? <div className="empty-state"><strong>No documents yet</strong><span>Nothing has been added to this vault yet. Choose a file to add one, or open the sample vault to see what a full one looks like.</span><button className="secondary-button" onClick={onExploreSample}>Open the sample vault</button></div> : <><div className="document-library-layout"><DocumentLibrary documents={data.documents} selectedDocument={activeId} onSelectDocument={onSelectDocument} />{selection.state === "ready" ? <DocumentDetail document={selection.document} /> : selection.state === "missing" ? <div className="empty-state"><strong>Selected document unavailable</strong><span>The selected document is no longer present in the current vault read.</span></div> : selection.state === "conflicted_identity" ? <div className="empty-state"><strong>Document selection unavailable</strong><span>More than one document in this read uses the selected identity, so the interface will not choose between them.</span></div> : <div className="empty-state"><strong>Document identity unavailable</strong><span>No document with a unique stable identity can be selected from this read.</span></div>}</div></>}
+      {!data.documents.length ? <div className="empty-state"><strong>No statements or documents yet</strong><span>Add a statement to begin, or open the sample vault to see a populated document index.</span><button className="secondary-button" onClick={onExploreSample}>Open the sample vault</button></div> : <><div className="document-library-layout"><DocumentLibrary documents={data.documents} selectedDocument={activeId} onSelectDocument={onSelectDocument} />{selection.state === "ready" ? <DocumentDetail document={selection.document} onOpenEvidence={onOpenEvidence} /> : selection.state === "missing" ? <div className="empty-state"><strong>Selected document unavailable</strong><span>The selected document is no longer present in the current vault read.</span></div> : selection.state === "conflicted_identity" ? <div className="empty-state"><strong>Document selection unavailable</strong><span>More than one document in this read uses the selected identity, so the interface will not choose between them.</span></div> : <div className="empty-state"><strong>Document identity unavailable</strong><span>No document with a unique stable identity can be selected from this read.</span></div>}</div></>}
     </>;
   }}</PanelStateView>
   </section>;

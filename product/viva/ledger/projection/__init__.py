@@ -296,6 +296,15 @@ class LedgerProjection:
     def canonical_category(self, label: str) -> str:
         return _categories.canonical_category(self._core, label)
 
+    def category_alias_is_ambiguous(self, label: str) -> bool:
+        return _categories.category_alias_is_ambiguous(self._core, label)
+
+    def canonical_subcategory(self, label: str) -> str:
+        return _categories.canonical_subcategory(self._core, label)
+
+    def subcategory_alias_is_ambiguous(self, label: str) -> bool:
+        return _categories.subcategory_alias_is_ambiguous(self._core, label)
+
     def known_categories(self) -> list[str]:
         return _categories.known_categories(self._core)
 
@@ -342,6 +351,9 @@ class LedgerProjection:
 
     def canonical_tag(self, label: str) -> str:
         return _categories.canonical_tag(self._core, label)
+
+    def tag_alias_is_ambiguous(self, label: str) -> bool:
+        return _categories.tag_alias_is_ambiguous(self._core, label)
 
     def known_tags(self) -> list[str]:
         return _categories.known_tags(self._core)

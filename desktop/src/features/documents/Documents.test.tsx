@@ -57,9 +57,9 @@ describe("Documents surface", () => {
     const { getByRole, getAllByText, getByText, queryByText } = render(<Documents rescan={null} capture={null} result={ready([injected])} selectedDocument="live-document-identity" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
 
     expect(queryByText("Document capture unavailable")).not.toBeInTheDocument();
-    expect(getByRole("heading", { name: "What this read can show" })).toBeInTheDocument();
+    expect(getByText("What this page can show")).toBeInTheDocument();
     expect(getByRole("heading", { name: "Documents in this vault read" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "statement" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "quarter-close.pdf" })).toBeInTheDocument();
     expect(getAllByText(/live-document-identity/).length).toBeGreaterThan(0);
     expect(getByText("Resolved", { selector: ".document-detail strong" })).toBeInTheDocument();
     expect(getByText("Unavailable", { selector: ".document-detail strong" })).toBeInTheDocument();
@@ -87,14 +87,14 @@ describe("Documents surface", () => {
   it("keeps every FeatureResult state bounded", () => {
     const props = { rescan: null, selectedDocument: "", capture: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
     const { getByText, queryByText, rerender } = render(<Documents {...props} result={{ state: "absent", reason: "none" }} />);
-    expect(queryByText("What this read can show")).not.toBeInTheDocument();
+    expect(queryByText("What this page can show")).not.toBeInTheDocument();
     rerender(<Documents {...props} result={{ state: "unavailable", reason: "internal" }} />);
     expect(getByText("Document details are not available in this build.")).toBeInTheDocument();
     rerender(<Documents {...props} result={{ state: "failed", reason: "read_failed" }} />);
     expect(getByText("The documents section could not be read. The private vault is still open.")).toBeInTheDocument();
     rerender(<Documents {...props} result={{ state: "partial", data: data([]), issues: [{ code: "partial", message: "bounded" }] }} />);
     expect(getByText("Some document details are unavailable. Available documents are shown below.")).toBeInTheDocument();
-    expect(getByText("What this read can show")).toBeInTheDocument();
+    expect(getByText("What this page can show")).toBeInTheDocument();
     rerender(<Documents {...props} result={{ state: "needs_input", data: data([]), issues: [{ code: "input", message: "bounded" }] }} />);
     expect(getByText("Some documents need review. Available document details are shown below.")).toBeInTheDocument();
     rerender(<Documents {...props} result={ready([])} />);
@@ -118,22 +118,22 @@ describe("adding a document", () => {
 
   it("offers the chosen file as the only invitation, and never invites the gesture nobody could watch land", () => {
     const { container, getByRole, getByText } = render(<Documents {...props} capture={idle()} result={ready([])} />);
-    expect(getByRole("heading", { name: "Add a document" })).toBeInTheDocument();
-    expect(getByText("Choose a file and it is saved into this vault, encrypted, on this machine. It is not sent anywhere.")).toBeInTheDocument();
-    expect(getByRole("button", { name: "Choose a file" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Add a statement" })).toBeInTheDocument();
+    expect(getByText("Choose one statement or financial document. It is encrypted and saved in this vault on this machine.")).toBeInTheDocument();
+    expect(getByRole("button", { name: "Choose statement file" })).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/drop|drag/i);
   });
 
   it("renders no capture control at all when nothing is behind one", () => {
     const { queryByRole } = render(<Documents {...props} capture={null} result={ready([])} />);
-    expect(queryByRole("heading", { name: "Add a document" })).not.toBeInTheDocument();
-    expect(queryByRole("button", { name: "Choose a file" })).not.toBeInTheDocument();
+    expect(queryByRole("heading", { name: "Add a statement" })).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "Choose statement file" })).not.toBeInTheDocument();
   });
 
   it("keeps a busy control reachable, says why in words, and refuses the second press", () => {
     const choose = vi.fn();
     const { container, getByRole, getByText, rerender } = render(<Documents {...props} capture={idle(choose)} result={ready([])} />);
-    const control = getByRole("button", { name: "Choose a file" });
+    const control = getByRole("button", { name: "Choose statement file" });
     fireEvent.click(control);
     expect(choose).toHaveBeenCalledTimes(1);
 
@@ -178,12 +178,12 @@ describe("adding a document", () => {
     const { getAllByText, getByText } = render(<Documents {...props} capture={settled(SAVED_NO_READER)} result={{ state: "failed", reason: "read_failed" }} />);
     expect(getAllByText(SAVED_NO_READER, { selector: "p" })).toHaveLength(1);
     expect(getByText("The documents section could not be read. The private vault is still open.")).toBeInTheDocument();
-    expect(getByText("Choose a file")).toBeInTheDocument();
+    expect(getByText("Choose statement file")).toBeInTheDocument();
   });
 
   it("keeps the one control this screen has when the read could not be made at all", () => {
     const { getByRole } = render(<Documents {...props} capture={idle()} result={{ state: "unavailable", reason: "internal" }} />);
-    expect(getByRole("button", { name: "Choose a file" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Choose statement file" })).toBeInTheDocument();
   });
 
   it("says one sentence at a time, the vault's answer standing in the slot the read's sentence would have had", () => {
@@ -198,8 +198,8 @@ describe("adding a document", () => {
   it("says what a dropped file became even where the host offers no picker", () => {
     const capture = droppedOnly({ state: "settled", outcome: { kind: "completed", message: SAVED_NO_READER, reason: "" } });
     const { getAllByText, queryByRole } = render(<Documents {...props} capture={capture} result={ready([])} />);
-    expect(queryByRole("button", { name: "Choose a file" })).not.toBeInTheDocument();
-    expect(queryByRole("heading", { name: "Add a document" })).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "Choose statement file" })).not.toBeInTheDocument();
+    expect(queryByRole("heading", { name: "Add a statement" })).not.toBeInTheDocument();
     expect(getAllByText(SAVED_NO_READER, { selector: "p" })).toHaveLength(1);
   });
 
@@ -233,7 +233,7 @@ describe("what this read says about reading", () => {
     expect(container.querySelector(".document-library")).toHaveTextContent("quarter-close.pdf");
     expect(container.querySelector(".document-detail")).toHaveTextContent("quarter-close.pdf");
     expect(getAllByText("statement").length).toBeGreaterThan(0);
-    expect(getByText("Document ID · named")).toBeInTheDocument();
+    expect(getByText("named")).toBeInTheDocument();
   });
 });
 

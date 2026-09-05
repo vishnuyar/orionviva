@@ -104,8 +104,12 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # nowhere to widen it from.
     MAINTENANCE_OPERATIONS["diagnose"]: {"file"},
     ACTIVITY_OPERATIONS["assign_category"]: {"movement_key", "category_id"},
+    ACTIVITY_OPERATIONS["assign_classification"]: {
+        "movement_ids", "category_id", "subcategory_id"},
     ACTIVITY_OPERATIONS["assign_meaning"]: {"movement_key", "meaning", "counterparty"},
     ACTIVITY_OPERATIONS["replace_tags"]: {"movement_key", "tag_ids"},
+    ACTIVITY_OPERATIONS["add_tags"]: {"movement_ids", "tag_ids"},
+    ACTIVITY_OPERATIONS["remove_tags"]: {"movement_ids", "tag_ids"},
     ACTIVITY_OPERATIONS["confirm_transfer"]: {"movement_key", "counterpart_key"},
     ACTIVITY_OPERATIONS["reject_transfer"]: {"movement_key"},
     ACTIVITY_OPERATIONS["unlink_transfer"]: {"movement_key", "counterpart_key"},
@@ -150,10 +154,16 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
                                          "_diagnose_request"),
     ACTIVITY_OPERATIONS["assign_category"]: (
         BRIDGE_PACKAGE / "activity_actions.py", "_category_request"),
+    ACTIVITY_OPERATIONS["assign_classification"]: (
+        BRIDGE_PACKAGE / "activity_actions.py", "_classification_request"),
     ACTIVITY_OPERATIONS["assign_meaning"]: (
         BRIDGE_PACKAGE / "activity_actions.py", "_meaning_request"),
     ACTIVITY_OPERATIONS["replace_tags"]: (
         BRIDGE_PACKAGE / "activity_actions.py", "_tag_request"),
+    ACTIVITY_OPERATIONS["add_tags"]: (
+        BRIDGE_PACKAGE / "activity_actions.py", "_tag_batch_request"),
+    ACTIVITY_OPERATIONS["remove_tags"]: (
+        BRIDGE_PACKAGE / "activity_actions.py", "_tag_batch_request"),
     ACTIVITY_OPERATIONS["confirm_transfer"]: (
         BRIDGE_PACKAGE / "activity_actions.py", "_transfer_pair_request"),
     ACTIVITY_OPERATIONS["reject_transfer"]: (

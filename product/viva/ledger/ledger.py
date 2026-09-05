@@ -31,10 +31,9 @@ class Ledger:
         # the live one does.
         self._resolve_keys = resolve_keys
         self._lock = RLock()
-        self._proj = LedgerProjection([], resolve_keys=resolve_keys)
-        for event in store.events():
-            self._proj.apply(event)
-        self._projection_size = self.store.path.stat().st_size
+        events, identity = store.snapshot_events_with_identity()
+        self._proj = LedgerProjection(events, resolve_keys=resolve_keys)
+        self._projection_identity = identity
 
     def fork(self) -> "Ledger":
         """An independently cached ledger over the same durable log."""
@@ -45,10 +44,14 @@ class Ledger:
                                 resolve_keys=self._resolve_keys)
 
     def _sync_if_external_write(self) -> None:
-        size = self.store.path.stat().st_size
-        if size != self._projection_size:
-            self._proj = self._replay()
-            self._projection_size = size
+        # The authenticated head is the cache witness. File size is neither an
+        # authenticity check nor enough to notice head-only rollback/tampering.
+        identity = self.store.authenticated_identity()
+        if identity != self._projection_identity:
+            events, identity = self.store.snapshot_events_with_identity()
+            self._proj = LedgerProjection(
+                events, resolve_keys=self._resolve_keys)
+            self._projection_identity = identity
 
     @classmethod
     def open(cls, path, passphrase: str, resolve_keys=None) -> "Ledger":
@@ -68,7 +71,7 @@ class Ledger:
             # Rebuild the cache from the locked prefix plus this event.
             self._proj = LedgerProjection(complete,
                                           resolve_keys=self._resolve_keys)
-            self._projection_size = self.store.path.stat().st_size
+            self._projection_identity = self.store._cached_identity()
             return record
 
     def projection(self) -> LedgerProjection:
@@ -81,6 +84,19 @@ class Ledger:
         """Replay the durable stream, including writes from other instances."""
         with self._lock:
             return self._replay()
+
+    def snapshot_projection(self) -> tuple[LedgerProjection, tuple[Event, ...]]:
+        """Return one resolver-aware projection and its exact event snapshot.
+
+        Consumers which bind a read contract to an event-stream revision need
+        both values to describe the same immutable prefix.  Taking the two
+        reads separately would leave a window for an external writer between
+        them.
+        """
+        with self._lock:
+            events = self.store.snapshot_events()
+            return (LedgerProjection(events, resolve_keys=self._resolve_keys),
+                    events)
 
     def append_atomically(
         self, decide: Callable[[LedgerProjection], Iterable[Event]]
@@ -101,7 +117,7 @@ class Ledger:
             # Refresh the live projection from the complete stream.
             self._proj = LedgerProjection(complete,
                                           resolve_keys=self._resolve_keys)
-            self._projection_size = self.store.path.stat().st_size
+            self._projection_identity = self.store._cached_identity()
             return records
 
     def projection_as_of(self, as_of: str | None) -> LedgerProjection:

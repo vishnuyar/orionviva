@@ -97,8 +97,8 @@ def build_demo_vault(directory: Path):
                          opening_balance_observed, read_recorded,
                          simple_transaction)
     from .ingest.statement import StatementFacts
-    from .ledger.events import (position_observed, ruling_recorded,
-                                statement_held)
+    from .ledger.events import (merchant_enriched, position_observed,
+                                ruling_recorded, statement_held)
     from .vault import Vault
 
     vault = Vault.open(directory, DEMO_PASSPHRASE)
@@ -182,7 +182,18 @@ def build_demo_vault(directory: Path):
     vault.ledger.append(simple_transaction(
         "acct:everyday-checking", "2400.00", "salary", "2026-06-05"))
     vault.ledger.append(simple_transaction(
-        "acct:everyday-checking", "-318.55", "rent", "2026-06-08"))
+        "acct:everyday-checking", "-318.55", "rent", "2026-06-08",
+        provenance=Provenance(doc_id=checking_doc, page=2,
+                              region="transactions:rent")))
+    # An ordinary source-backed merchant classification keeps the sample and
+    # parity artifact honest about the complete Activity connective contract:
+    # its category hierarchy and provenance are ledger events, not fixture
+    # fields authored to make an adapter test pass.
+    vault.ledger.append(merchant_enriched(
+        "rent", "housing", subcategory="rent", grade="corroborated",
+        occurred_at="2026-07-03", by="model",
+        provenance=Provenance(doc_id=checking_doc, page=2,
+                              region="transactions:rent")))
     vault.ledger.append(closing("acct:everyday-checking", "3081.45",
                                 "2026-06-30", checking_doc, 3))
 

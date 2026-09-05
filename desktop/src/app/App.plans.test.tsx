@@ -1,5 +1,5 @@
 import { within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, waitFor, userEvent, moments, openSample, installResponsiveMatchMedia } from "./App.testSupport";
+import { afterEach, beforeEach, describe, expect, it, waitFor, userEvent, moments, openSample, installResponsiveMatchMedia, reviewEmptyPayload } from "./App.testSupport";
 
 beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
@@ -9,7 +9,7 @@ describe("live Plans handoffs", () => {
     const user = userEvent.setup();
     const view = await openSample();
     try {
-      await user.click(await view.findByRole("button", { name: "Make a plan" }));
+      await user.click(await view.findByRole("button", { name: "Plans" }));
       await user.click(view.getByText("Plan actions"));
       const reserve = view.getByRole("form", { name: /Reserve locally for/ });
       await user.type(within(reserve).getByLabelText("Amount"), "25");
@@ -38,7 +38,7 @@ describe("live Plans handoffs", () => {
         },
       }], questions: [], total: 0, tail: { count: 0, amount: "" }, pending: { count: 0 }, invite: "", answered_by_document: "",
     };
-    const view = await openSample({ conversation: drafted });
+    const view = await openSample({ conversation: drafted, review: reviewEmptyPayload });
     try {
       await user.click(view.getByRole("button", { name: "Ask Viva" }));
       await user.click(view.getByRole("button", { name: "Review in Plans" }));
@@ -48,7 +48,7 @@ describe("live Plans handoffs", () => {
       await user.click(view.getAllByRole("button", { name: moments.sample_frame_leave })[0]);
       await user.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
       await waitFor(() => expect(view.getByText(moments.sample_frame)).toBeInTheDocument());
-      await user.click(await view.findByRole("button", { name: "Make a plan" }));
+      await user.click(await view.findByRole("button", { name: "Plans" }));
 
       expect(view.queryByText("Draft review")).not.toBeInTheDocument();
       expect(view.getAllByLabelText("Plan name")[0]).toHaveValue("");

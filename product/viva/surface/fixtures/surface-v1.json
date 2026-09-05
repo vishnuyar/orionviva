@@ -2,6 +2,16 @@
   "artifact": "orionviva.surface-v1",
   "fixtures": [
     {
+      "capability_id": "accounts.ledger",
+      "contract": "AccountLedger.v1",
+      "id": "accounts.ledger.ready",
+      "payload": {
+        "capability_id": "accounts.ledger",
+        "contract": "AccountLedger.v1"
+      },
+      "state": "ready"
+    },
+    {
       "capability_id": "activity.movements",
       "contract": "ActivityMovements.v3",
       "id": "activity.movements.ready",
@@ -110,6 +120,26 @@
         "contract": "ObligationsAndFindings.v1"
       },
       "state": "ready"
+    },
+    {
+      "capability_id": "overview.spending",
+      "contract": "SpendingBreakdown.v1",
+      "id": "overview.spending.ready",
+      "payload": {
+        "capability_id": "overview.spending",
+        "contract": "SpendingBreakdown.v1"
+      },
+      "state": "ready"
+    },
+    {
+      "capability_id": "overview.spending",
+      "contract": "SpendingBreakdown.v1",
+      "id": "overview.spending.empty",
+      "payload": {
+        "capability_id": "overview.spending",
+        "contract": "SpendingBreakdown.v1"
+      },
+      "state": "empty"
     },
     {
       "capability_id": "plans.goals",
@@ -929,6 +959,26 @@
       "state": "stale"
     },
     {
+      "capability_id": "review.attention",
+      "contract": "ReviewSummary.v1",
+      "id": "review.attention.ready",
+      "payload": {
+        "capability_id": "review.attention",
+        "contract": "ReviewSummary.v1"
+      },
+      "state": "ready"
+    },
+    {
+      "capability_id": "review.attention",
+      "contract": "ReviewSummary.v1",
+      "id": "review.attention.empty",
+      "payload": {
+        "capability_id": "review.attention",
+        "contract": "ReviewSummary.v1"
+      },
+      "state": "empty"
+    },
+    {
       "capability_id": "settings.configuration",
       "contract": "Configuration.v1",
       "id": "settings.configuration.ready",
@@ -1219,10 +1269,31 @@
   "protocol": "2.0",
   "registry": [
     {
+      "actions": [],
+      "availability": "when a vault is open and one exact account is requested",
+      "contract": "AccountLedger.v1",
+      "destination": "accounts",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "accounts.ledger.ready"
+      ],
+      "id": "accounts.ledger",
+      "maturity": "stable",
+      "owner": "viva.surface.account_ledger",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
       "actions": [
         "assign_category",
+        "assign_classification",
         "assign_meaning",
         "replace_tags",
+        "add_tags",
+        "remove_tags",
         "confirm_transfer",
         "reject_transfer",
         "unlink_transfer"
@@ -1749,6 +1820,25 @@
       ]
     },
     {
+      "actions": [],
+      "availability": "when a vault is open",
+      "contract": "SpendingBreakdown.v1",
+      "destination": "overview",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "overview.spending.ready",
+        "overview.spending.empty"
+      ],
+      "id": "overview.spending",
+      "maturity": "stable",
+      "owner": "viva.surface.spending",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
       "actions": [
         "draft",
         "propose",
@@ -1777,6 +1867,25 @@
       "trust_effect": [
         "reads_data",
         "writes_event"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "when a vault is open",
+      "contract": "ReviewSummary.v1",
+      "destination": "review",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "review.attention.ready",
+        "review.attention.empty"
+      ],
+      "id": "review.attention",
+      "maturity": "stable",
+      "owner": "viva.surface.review",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
       ]
     },
     {

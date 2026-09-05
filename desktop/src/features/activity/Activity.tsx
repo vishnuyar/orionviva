@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { PanelStateView } from "../../components/PanelStateView";
+import { ProofLinks } from "../../components/ProofLinks";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
 import type { ActivityActionResult, ActivityCorrectionState, ActivityCorrectionVerb, ActivityData, ActivityTransferReference, EvidenceLink, FeatureResult, MovementView } from "../../surface/types";
 
@@ -20,7 +21,8 @@ function transferVerbTitle(verb: ActivityCorrectionVerb, state: "completed" | "r
     reject_transfer: { completed: "Transfer suggestion rejected", refused: "Transfer rejection refused", stale: "Transfer suggestion changed" },
     unlink_transfer: { completed: "Transfer unlinked", refused: "Transfer unlink refused", stale: "Transfer link changed" },
   } as const;
-  return verb === "category" || verb === "meaning" || verb === "tags" ? null : titles[verb][state];
+  if (verb !== "confirm_transfer" && verb !== "reject_transfer" && verb !== "unlink_transfer") return null;
+  return titles[verb][state];
 }
 
 function outcomeCopy(result: ActivityActionResult, verb: ActivityCorrectionVerb): { title: string; detail: string; completed: boolean } {
@@ -160,10 +162,28 @@ function MovementCorrection({ movement, data, controls }: { movement: MovementVi
 // Every financial word here is the backend's. Corrections appear only where
 // the same row advertises one, and their choices come only from the complete
 // read-level vocabularies.
-function Movements({ data, correction, onLoadMore, selectedMovement }: { data: ActivityData; correction: ActivityCorrectionControls | null; onLoadMore: (() => void) | null; selectedMovement: string }) {
+function Movements({ data, correction, onLoadMore, selectedMovement, onOpenEvidence }: { data: ActivityData; correction: ActivityCorrectionControls | null; onLoadMore: (() => void) | null; selectedMovement: string; onOpenEvidence: (link: EvidenceLink) => void }) {
   const movements = data.movements ?? [];
+  const [query, setQuery] = useState("");
+  const [account, setAccount] = useState("");
+  const [category, setCategory] = useState("");
+  const [tag, setTag] = useState("");
+  const [reviewState, setReviewState] = useState("");
   const rows = useRef(new Map<string, HTMLLIElement>());
   const outcomeRef = useRef<HTMLDivElement>(null);
+  const accounts = [...new Map(movements.filter((movement) => movement.accountId).map((movement) => [movement.accountId, movement.accountName || movement.account])).entries()];
+  const categories = [...new Map(movements.filter((movement) => movement.category.valid && movement.category.id).map((movement) => [movement.category.id as string, movement.category.label])).entries()];
+  const tags = [...new Map(movements.flatMap((movement) => movement.tagsValid ? movement.tags.map((item) => [item.id, item.label] as const) : [])).entries()];
+  const visible = movements.filter((movement) => {
+    const attention = movement.provisional || movement.actions.length > 0 || movement.transfer?.state === "suggested";
+    const haystack = [movement.date, movement.description, movement.account, movement.accountName, movement.display, movement.category.label, movement.subcategory.label, ...movement.tags.map((item) => item.label)].join(" ").toLocaleLowerCase();
+    return (!query.trim() || haystack.includes(query.trim().toLocaleLowerCase()))
+      && (!account || movement.accountId === account)
+      && (!category || movement.category.id === category)
+      && (!tag || movement.tags.some((item) => item.id === tag))
+      && (!reviewState || (reviewState === "attention" ? attention : !attention));
+  });
+  const clearFilters = () => { setQuery(""); setAccount(""); setCategory(""); setTag(""); setReviewState(""); };
   useEffect(() => {
     if (!correction || correction.state.state !== "settled") return;
     const said = outcomeCopy(correction.state.result, correction.state.verb);
@@ -177,23 +197,25 @@ function Movements({ data, correction, onLoadMore, selectedMovement }: { data: A
     if (!selectedMovement) return;
     rows.current.get(selectedMovement)?.focus();
   }, [selectedMovement, data]);
-  return <section className="feature-panel activity-panel">
-    <header className="activity-header"><div className="detail-panel-label">Current vault read</div><h2>What moved</h2><p>{data.sentence}</p></header>
+  return <section className="feature-panel activity-panel" aria-labelledby="transactions-panel-title">
+    <header className="activity-header"><div className="detail-panel-label">Current vault read</div><h2 id="transactions-panel-title">Transactions</h2><p>{data.sentence}</p></header>
     {correction ? <CorrectionStatus state={correction.state} outcomeRef={outcomeRef} /> : null}
-    {!movements.length ? <div className="empty-state"><strong>No movements in this read</strong><span>{data.sentence}</span></div> : <>
-      <ul className="activity-movements">{movements.map((movement) => <li key={movement.id} ref={(node) => { if (node) rows.current.set(movement.id, node); else rows.current.delete(movement.id); }} tabIndex={-1} className={movement.direction === "in" ? "activity-movement inflow" : "activity-movement outflow"}>
+    {!movements.length ? <div className="empty-state"><strong>No transactions in this read</strong><span>{data.sentence}</span></div> : <>
+      <section className="activity-controls" aria-labelledby="transaction-filters-title"><h3 id="transaction-filters-title">Find transactions</h3><label className="activity-search">Search<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Description, account, category, tag, or amount" /></label><details><summary>Filters</summary><div className="activity-filter-grid"><label>Account<select value={account} onChange={(event) => setAccount(event.target.value)}><option value="">All accounts</option>{accounts.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{categories.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label>Tag<select value={tag} onChange={(event) => setTag(event.target.value)}><option value="">All tags</option>{tags.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label>Review state<select value={reviewState} onChange={(event) => setReviewState(event.target.value)}><option value="">Any review state</option><option value="attention">Needs attention</option><option value="clear">No action waiting</option></select></label></div></details><button className="secondary-button" type="button" onClick={clearFilters}>Clear filters</button><p className="activity-result-count" aria-live="polite">{visible.length === 1 ? "1 transaction shown." : `${visible.length} transactions shown.`}</p></section>
+      {!visible.length ? <div className="empty-state"><strong>No transactions match these filters</strong><span>Clear the search or filters to return to the full transaction list.</span><button className="secondary-button" type="button" onClick={clearFilters}>Clear filters</button></div> : <ul className="activity-movements">{visible.map((movement) => <li key={movement.id} ref={(node) => { if (node) rows.current.set(movement.id, node); else rows.current.delete(movement.id); }} tabIndex={-1} className={movement.direction === "in" ? "activity-movement inflow" : "activity-movement outflow"}>
         <span className="activity-movement-when">{movement.date}</span>
         <span className="activity-movement-what"><strong>{movement.description || "No description was recorded for this movement."}</strong><small>{movement.account}</small></span>
         <span className="activity-movement-amount"><strong>{movement.display}</strong><small>{movement.direction === "in" ? "in" : "out"}</small></span>
         {movement.sentence ? <p className="activity-movement-note">{movement.sentence}</p> : null}
         <dl className="activity-movement-classification"><div><dt>Category</dt><dd>{movement.category.valid ? movement.category.label : "Category unavailable from this read"}</dd></div><div><dt>Treatment</dt><dd>{movement.treatment.kind === "spending" ? "Counted as spending" : movement.treatment.kind === "loan" ? `Loan lent · ${movement.treatment.name}` : movement.treatment.kind === "loan_repayment" ? `Loan repayment received · ${movement.treatment.name}` : movement.treatment.kind === "settlement" ? "Debt settlement" : movement.treatment.kind === "mixed" ? "Split is unresolved" : "Not counted as spending"}</dd></div><div><dt>Tags</dt><dd>{movement.tagsValid ? (movement.tags.length ? movement.tags.map((tag) => tag.label).join(", ") : "No tags recorded") : "Tags unavailable from this read"}</dd></div></dl>
         {correction ? <MovementCorrection movement={movement} data={data} controls={correction} /> : null}
-      </li>)}</ul>
+        <details className="activity-source"><summary>Source details</summary>{movement.evidenceLinksValid && movement.evidenceLinks.length ? <ProofLinks label="Source statements" links={movement.evidenceLinks} onOpen={onOpenEvidence} /> : <p>{movement.evidenceLinksValid ? "No source statement link was supplied for this transaction." : "Source details are unavailable from this read."}</p>}</details>
+      </li>)}</ul>}
       {data.beyond && data.beyond.count > 0 ? <div className="activity-beyond"><p>{data.beyond.count} more are in this vault and not in this list.</p>{onLoadMore ? <button className="secondary-button" type="button" onClick={onLoadMore}>Load 50 more</button> : null}</div> : null}
     </>}
   </section>;
 }
 
-export function Activity({ result, correction, onLoadMore = null, selectedMovement = "" }: ActivityProps) {
-  return <PanelStateView result={result} copy={{ partial: "Some activity details are unavailable. Available movements are shown below.", needsInput: "Some activity details need more information. Available movements are shown below.", unavailable: { title: "Activity unavailable", detail: "Activity is not connected to this vault read." }, failed: { title: "Activity could not be read", detail: "Activity could not be read. The vault is still open." } }}>{(data) => <Movements data={data} correction={correction ?? null} onLoadMore={onLoadMore} selectedMovement={selectedMovement} />}</PanelStateView>;
+export function Activity({ result, correction, onOpenEvidence, onLoadMore = null, selectedMovement = "" }: ActivityProps) {
+  return <PanelStateView result={result} copy={{ partial: "Some transaction details are unavailable. Available transactions are shown below.", needsInput: "Some transactions need more information. Available transactions are shown below.", unavailable: { title: "Transactions unavailable", detail: "Transactions are not connected to this vault read." }, failed: { title: "Transactions could not be read", detail: "Transactions could not be read. The vault is still open." } }}>{(data) => <Movements data={data} correction={correction ?? null} onLoadMore={onLoadMore} selectedMovement={selectedMovement} onOpenEvidence={onOpenEvidence} />}</PanelStateView>;
 }

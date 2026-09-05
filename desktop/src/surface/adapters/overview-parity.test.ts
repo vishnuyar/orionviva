@@ -14,6 +14,7 @@ import moments from "../../../../product/viva/persona/pack-v33/moments.json";
 import { resolveEvidenceTarget, showCompactProof } from "../evidence";
 import type { DocumentsData, FeatureResult } from "../types";
 import { adaptDocuments } from "./documents";
+import { adaptAccountLedger } from "./account-ledger";
 import { adaptOverview, adaptOverviewPanel } from "./overview";
 
 const artifact = fixture as {
@@ -28,8 +29,24 @@ const overviewPayload = artifact.reads.overview.result.data;
 // something restated here.
 const payloadRows = new Map((overviewPayload as { accounts: Array<Record<string, any>> }).accounts.map((row) => [String(row.account), row]));
 const documentsPayload = artifact.reads.documents.result.data;
+const accountLedgerPayload = artifact.reads.account_ledger.result.data;
 const overview = adaptOverview(overviewPayload);
 const documents: FeatureResult<DocumentsData> = { state: "ready", data: adaptDocuments(documentsPayload)! };
+
+describe("the account ledger a real vault produces, read by the real adapter", () => {
+  it("keeps one exact account scope and backend-authored page structure", () => {
+    const ledger = adaptAccountLedger(accountLedgerPayload);
+    expect(ledger).not.toBeNull();
+    expect(ledger!.scope.accountId).toBe("acct:everyday-checking");
+    expect(ledger!.account.id).toBe(ledger!.scope.accountId);
+    expect(ledger!.page.returned).toBe(3);
+    expect(ledger!.page.nextCursor).not.toBeNull();
+    expect(ledger!.groups.flatMap((group) => group.movements)
+      .every((movement) => movement.accountId === ledger!.scope.accountId)).toBe(true);
+    expect(ledger!.reconciliation.overlap.deduplication.state).toBe("none");
+    expect(ledger!.reconciliation.runningBalance.state).toBe("absent");
+  });
+});
 const MEASURES = ["balance", "owed"];
 // The picture block the same read composed, as the backend wrote it.
 const payloadPicture = (overviewPayload as { picture: { coverage: string; read_on: string; withheld: Array<Record<string, any>>; unplaced: Array<Record<string, any>>; figures: Array<Record<string, any>> } }).picture;
@@ -78,6 +95,13 @@ describe("the overview a real vault produces, read by the real adapter", () => {
       expect(account.display).toBe(payloadRows.get(account.id)!.balance.display);
       expect(account.exactValue).toBe(payloadRows.get(account.id)!.balance.exact_value);
       expect(account.coverage).toBe(payloadRows.get(account.id)!.balance.coverage);
+    }
+  });
+
+  it("preserves every backend-masked account number byte-for-byte", () => {
+    for (const account of overview!.accounts) {
+      expect(account.maskedNumber, account.id).toBe(payloadRows.get(account.id)!.number);
+      expect(account.maskedNumber, account.id).toMatch(/^(?:\u2022){4}\d{4}$/);
     }
   });
 

@@ -2,7 +2,7 @@ import { act, fireEvent, render, waitFor, createRef, userEvent,
   afterEach, beforeEach, describe, expect, it, vi, App,
   ConversationDialogShell, moments, sampleVault, SAVED_NO_READER,
   queryByRoleIn, ThrowingConversationBody, installResponsiveMatchMedia,
-  installCapturedAnimationFrames, activityPayload, trustPayload, sampleReads,
+  installCapturedAnimationFrames, activityPayload, reviewBoundQuestion, reviewQuestionPayload, trustPayload, sampleReads,
   sampleFrame, installSampleBridge, openSample } from "./App.testSupport";
 
 beforeEach(() => { installResponsiveMatchMedia(1440); });
@@ -16,7 +16,7 @@ describe("conversation questions and corrections", () => {
     const questions = () => (setAside
       ? [{ id: "second-question", kind: "merchant", text: "What is this payment for?", why: "The merchant is unknown." }]
       : [{ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." },
-         { id: "second-question", kind: "merchant", text: "What is this payment for?", why: "The merchant is unknown." }]);
+         { id: "second-question", kind: "merchant", text: "What is this payment for?", why: "The merchant is unknown." }]).map(reviewBoundQuestion);
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
@@ -28,6 +28,7 @@ describe("conversation questions and corrections", () => {
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
             : surface === "conversation" ? { turns: [], questions: questions(), total: setAside ? 1 : 2, invite: "Write an answer", answered_by_document: "A document answers this" }
+              : surface === "review" ? reviewQuestionPayload(questions())
               : surface === "trust" ? trustPayload
                 : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
                   : activityPayload;
@@ -40,8 +41,9 @@ describe("conversation questions and corrections", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: "Ask Viva" })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: "Ask Viva" }));
+      await waitFor(() => expect(getByRole("button", { name: /^Review, 2 actionable items$/ })).toBeInTheDocument());
+      await user.click(getByRole("button", { name: /^Review, 2 actionable items$/ }));
+      await user.click(getAllByRole("button", { name: "Answer question" })[0]);
 
       await user.click(getByRole("button", { name: "Set aside for now" }));
 
@@ -71,7 +73,8 @@ describe("conversation questions and corrections", () => {
         const surface = payload.surface;
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
-            : surface === "conversation" ? { turns: [], questions: [{ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." }], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
+            : surface === "conversation" ? { turns: [], questions: [reviewBoundQuestion({ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." })], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
+              : surface === "review" ? reviewQuestionPayload([{ id: "first-question", text: "Is this your account?", why: "Account identity is unresolved." }])
               : surface === "trust" ? trustPayload
                 : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
                   : activityPayload;
@@ -84,8 +87,9 @@ describe("conversation questions and corrections", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: "Ask Viva" })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: "Ask Viva" }));
+      await waitFor(() => expect(getByRole("button", { name: /^Review, 1 actionable item$/ })).toBeInTheDocument());
+      await user.click(getByRole("button", { name: /^Review, 1 actionable item$/ }));
+      await user.click(getByRole("button", { name: "Answer question" }));
 
       const control = getByRole("button", { name: "Set aside for now" });
       await user.click(control);
@@ -128,7 +132,8 @@ describe("conversation questions and corrections", () => {
         if (surface === "conversation" && setAside) throw new Error("bounded read failure");
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
-            : surface === "conversation" ? { turns: [], questions: [{ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." }], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
+            : surface === "conversation" ? { turns: [], questions: [reviewBoundQuestion({ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." })], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
+              : surface === "review" ? reviewQuestionPayload([{ id: "first-question", text: "Is this your account?", why: "Account identity is unresolved." }])
               : surface === "trust" ? trustPayload
                 : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
                   : activityPayload;
@@ -141,8 +146,9 @@ describe("conversation questions and corrections", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: "Ask Viva" })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: "Ask Viva" }));
+      await waitFor(() => expect(getByRole("button", { name: /^Review, 1 actionable item$/ })).toBeInTheDocument());
+      await user.click(getByRole("button", { name: /^Review, 1 actionable item$/ }));
+      await user.click(getByRole("button", { name: "Answer question" }));
 
       await user.click(getByRole("button", { name: "Set aside for now" }));
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { ArrowUpRight, Check, ChevronRight, FilePlus2, FolderOpen, Info, Menu, Sparkles, X } from "lucide-react";
 import { FeatureBoundary } from "../components/FeatureBoundary";
 import { EvidenceBadge } from "../components/EvidenceBadge";
@@ -6,14 +7,16 @@ import { EvidenceDrawer } from "../components/EvidenceDrawer";
 import { SourceDisclosure } from "../components/SourceDisclosure";
 import { StatusNotice } from "../components/StatusNotice";
 import { Accounts } from "../features/accounts/Accounts";
+import { AccountLedger } from "../features/accounts/AccountLedger";
 import { Activity } from "../features/activity/Activity";
 import { ConversationDrawer } from "../features/conversation/ConversationDrawer";
 import { Documents } from "../features/documents/Documents";
 import { Overview } from "../features/overview/Overview";
 import { Plans } from "../features/plans/Plans";
+import { Review } from "../features/review/Review";
 import { Trust } from "../features/trust/Trust";
 import { resolveEvidenceTarget } from "../surface/evidence";
-import type { ActionResult, ConversationData, ConversationGoalDraft, DeclineReason, Destination, EvidenceLink, FeatureResult, NoticeKind, PlanDraftResult, PlanPayload, QuestionActionState } from "../surface/types";
+import type { ActionResult, ConversationData, ConversationGoalDraft, DeclineReason, Destination, EvidenceLink, FeatureResult, NoticeKind, PlanDraftResult, PlanPayload, QuestionActionState, ReviewTransactionTarget } from "../surface/types";
 import { destinations, standingCopy, standingOf } from "./navigation";
 import { useResponsiveNavigation } from "./useResponsiveNavigation";
 import { useEvidenceDialog } from "./useEvidenceDialog";
@@ -24,17 +27,20 @@ import type { CaptureGesture } from "./useSurfaceSession";
 const pageCopy: Record<Destination, { title: string; intro: string }> = {
   overview: { title: "Your financial picture", intro: "A quiet view of what is known, what is pending, and what still needs a human decision." },
   accounts: { title: "Accounts", intro: "Each account speaks in its own terms, with measurement dates shown rather than implied." },
-  activity: { title: "Activity", intro: "Movements, their supplied context, and the evidence behind each displayed figure." },
-  documents: { title: "Documents", intro: "Capture comes first. Reading and posting stay separate." },
+  activity: { title: "Transactions", intro: "Search what moved, review its context, and make available corrections." },
+  documents: { title: "Statements & documents", intro: "Add statements and check what the vault has finished reading." },
   plans: { title: "Plans", intro: "Targets, local reservations, and future contributions remain separate." },
-  trust: { title: "Trust", intro: "What this preview can establish, what is unavailable, and which capabilities are not connected." },
+  review: { title: "Review", intro: "Decisions the vault has explicitly asked you to make, in the order it supplied them." },
+  trust: { title: "Trust & settings", intro: "Privacy, verification preferences, and tools for this local vault." },
 };
 // One mark per kind of notice, chosen by the word the notice declares. The
 // tick is reachable only from the kind that means something happened, and a
 // refusal carries no mark at all: its border says what it is, as it does on
 // the conversation.
 const noticeIcons: Record<NoticeKind, ReactNode> = { acknowledged: <Check />, refused: null };
-type Overlay = null | { kind: "navigation" } | { kind: "conversation"; requestId: number } | { kind: "evidence"; selection: { figureId: string; requestId: number } };
+type Overlay = null | { kind: "navigation" } | { kind: "conversation"; requestId: number; mode: "ask" | "review" } | { kind: "evidence"; selection: { figureId: string; requestId: number } } | { kind: "account_transaction"; requestId: number; accountId: string };
+type AccountOrigin = { kind: "overview" | "accounts"; accountId: string };
+type ConversationReturn = { kind: "review"; itemId: string } | { kind: "ledger"; accountId: string; movementId: string; reviewItemId: string };
 type PendingDocumentFocus =
   | { target: "document"; documentId: string; requestId: number; nonce: number }
   | { target: "capture"; requestId: number; nonce: number };
@@ -48,8 +54,15 @@ function conversationHoldsQuestion(conversation: FeatureResult<ConversationData>
   return conversation.data.questions.queue.some((question) => question.id === questionId);
 }
 
-export function ConversationDialogShell({ resetKey, drawerRef, closeRef, onDismiss, children }: { resetKey: string; drawerRef: RefObject<HTMLElement | null>; closeRef: RefObject<HTMLButtonElement | null>; onDismiss: () => void; children: ReactNode }) {
-  return <><div className="conversation-backdrop" aria-hidden="true" onClick={onDismiss} /><aside ref={drawerRef} id="viva-conversation-drawer" className="conversation-drawer" role="dialog" aria-modal="true" aria-labelledby="viva-conversation-title" aria-describedby="viva-conversation-description" tabIndex={-1}><header className="conversation-topline"><div><h2 id="viva-conversation-title">Viva conversation</h2><p id="viva-conversation-description">Ask Viva a question about the records in this vault.</p></div><button ref={closeRef} className="conversation-close" type="button" onClick={onDismiss} aria-label="Close Viva conversation"><X size={18} /></button></header><FeatureBoundary resetKey={resetKey}>{children}</FeatureBoundary></aside></>;
+export function restoreAccountIndexFocus(accountId: string, fallback: HTMLElement | null) {
+  const account = [...document.querySelectorAll<HTMLElement>("[data-account-id]")].find((candidate) => candidate.dataset.accountId === accountId);
+  (account ?? document.getElementById("accounts-index-heading") ?? fallback)?.focus();
+}
+
+export function ConversationDialogShell({ resetKey, drawerRef, closeRef, onDismiss, children, mode = "ask" }: { resetKey: string; drawerRef: RefObject<HTMLElement | null>; closeRef: RefObject<HTMLButtonElement | null>; onDismiss: () => void; children: ReactNode; mode?: "ask" | "review" }) {
+  const title = mode === "review" ? "Review question" : "Ask Viva";
+  const description = mode === "review" ? "Answer an existing question from the Review queue." : "Start or continue a conversation about the records in this vault.";
+  return <><div className="conversation-backdrop" aria-hidden="true" onClick={onDismiss} /><aside ref={drawerRef} id="viva-conversation-drawer" className="conversation-drawer" role="dialog" aria-modal="true" aria-labelledby="viva-conversation-title" aria-describedby="viva-conversation-description" tabIndex={-1}><header className="conversation-topline"><div><h2 id="viva-conversation-title">{title}</h2><p id="viva-conversation-description">{description}</p></div><button ref={closeRef} className="conversation-close" type="button" onClick={onDismiss} aria-label={`Close ${title}`}><X size={18} /></button></header><FeatureBoundary resetKey={resetKey}>{children}</FeatureBoundary></aside></>;
 }
 
 export function App() {
@@ -58,22 +71,26 @@ export function App() {
   const { session } = control;
   const surface = session.snapshot;
   const plansResult = surface.plans ?? { state: "absent" as const, reason: "not_read" };
+  const reviewResult = surface.review ?? { state: "unavailable" as const, reason: "not_served" };
   const [vaultDirectory, setVaultDirectory] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [makeVault, setMakeVault] = useState(false);
   const [pickingVaultDirectory, setPickingVaultDirectory] = useState(false);
-  const [planRequested, setPlanRequested] = useState(false);
   const [conversationPlanDraft, setConversationPlanDraft] = useState<PlanDraftResult | null>(null);
   const [planActionReceipt, setPlanActionReceipt] = useState<ActionResult | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [pendingDocumentFocus, setPendingDocumentFocus] = useState<PendingDocumentFocus | null>(null);
   const [pendingReviewFocus, setPendingReviewFocus] = useState<PendingReviewFocus | null>(null);
   const [selectedMovement, setSelectedMovement] = useState("");
+  const [openedAccount, setOpenedAccount] = useState("");
+  const [accountOrigin, setAccountOrigin] = useState<AccountOrigin | null>(null);
+  const [reviewTransaction, setReviewTransaction] = useState<{ target: ReviewTransactionTarget; itemId: string } | null>(null);
   const pendingFocusNonce = useRef(0);
   const activePendingFocusNonce = useRef<number | null>(null);
   const reviewFocusNonce = useRef(0);
   const activeReviewFocusNonce = useRef<number | null>(null);
   const settledReviewAction = useRef<QuestionActionState | null>(null);
+  const conversationReturn = useRef<ConversationReturn | null>(null);
   const mobileNav = overlay?.kind === "navigation";
   const isNarrow = useResponsiveNavigation();
   const navigationTriggerRef = useRef<HTMLButtonElement>(null);
@@ -94,13 +111,15 @@ export function App() {
   const evidenceSelection = overlay?.kind === "evidence" && overlay.selection.requestId === session.requestId ? overlay.selection : null;
   const conversationSelection = overlay?.kind === "conversation" && overlay.requestId === session.requestId ? overlay : null;
   const conversationOpen = Boolean(conversationSelection);
+  const accountTransactionOpen = overlay?.kind === "account_transaction" && overlay.requestId === session.requestId && overlay.accountId === openedAccount;
   const evidenceDialog = useEvidenceDialog({ open: Boolean(evidenceSelection), drawerRef: evidenceDrawerRef, initialFocusRef: evidenceCloseRef, pageTitleRef, onDismiss: () => setOverlay(null) });
-  const conversationDialog = useEvidenceDialog({ open: conversationOpen, drawerRef: conversationDrawerRef, initialFocusRef: conversationCloseRef, pageTitleRef, onDismiss: () => setOverlay(null) });
+  const conversationDialog = useEvidenceDialog({ open: conversationOpen, drawerRef: conversationDrawerRef, initialFocusRef: conversationCloseRef, pageTitleRef, onDismiss: dismissConversation, restoreTarget: conversationReturnTarget });
 
   useEffect(() => { if (overlay?.kind === "evidence" && !evidenceSelection) setOverlay(null); }, [evidenceSelection, overlay]);
   useEffect(() => { if (overlay?.kind === "conversation" && !conversationSelection) setOverlay(null); }, [conversationSelection, overlay]);
+  useEffect(() => { if (overlay?.kind === "account_transaction" && !accountTransactionOpen) setOverlay(null); }, [accountTransactionOpen, overlay]);
   useEffect(() => { setConversationPlanDraft(null); setPlanActionReceipt(null); }, [session.requestId]);
-  useEffect(() => { setSelectedMovement(""); }, [session.requestId]);
+  useEffect(() => { setSelectedMovement(""); setOpenedAccount(""); setAccountOrigin(null); setReviewTransaction(null); conversationReturn.current = null; }, [session.requestId]);
 
   useEffect(() => {
     if (!pendingDocumentFocus) return undefined;
@@ -212,7 +231,7 @@ export function App() {
 
   function closeNavigation(restoreFocus = true) { setOverlay(null); if (restoreFocus) requestAnimationFrame(() => navigationTriggerRef.current?.focus()); }
   function openNavigation() { if (!isNarrow) return; setOverlay({ kind: "navigation" }); }
-  function navigate(destination: Destination) { const focusHeading = isNarrow && mobileNav; control.navigate(destination); if (mobileNav) setOverlay(null); if (focusHeading) requestAnimationFrame(() => pageTitleRef.current?.focus()); }
+  function navigate(destination: Destination) { const focusHeading = isNarrow && mobileNav; if (destination === "accounts") { setOpenedAccount(""); setAccountOrigin(null); setReviewTransaction(null); } control.navigate(destination); if (mobileNav) setOverlay(null); if (focusHeading) requestAnimationFrame(() => pageTitleRef.current?.focus()); }
   function openDocuments() {
     setPendingDocumentFocus({ target: "capture", requestId: session.requestId, nonce: ++pendingFocusNonce.current });
     control.navigate("documents");
@@ -220,23 +239,44 @@ export function App() {
   // Leaving a vault is one action, and it takes everything with it: the
   // overlays go, the session is rebuilt from nothing, and no row from the
   // vault that was open survives into the one that is not.
-  function leaveVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setPlanRequested(false); setConversationPlanDraft(null); setPlanActionReceipt(null); control.resetDemo(); setOverlay(null); }
+  function leaveVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setConversationPlanDraft(null); setPlanActionReceipt(null); control.resetDemo(); setOverlay(null); }
   async function openSampleVault() {
     evidenceDialog.cancelPendingRestore();
     conversationDialog.cancelPendingRestore();
-    setPlanRequested(false);
     setConversationPlanDraft(null);
     setPlanActionReceipt(null);
     setOverlay(null);
     const opened = await control.openSampleVault();
     if (opened) requestAnimationFrame(() => pageTitleRef.current?.focus());
   }
-  function openReviewQuestion(questionId: string) {
+  function openAskViva() { conversationReturn.current = null; setOverlay({ kind: "conversation", requestId: session.requestId, mode: "ask" }); }
+  function openReviewQuestion(questionId: string, itemId = "", movementId = "") {
+    conversationReturn.current = movementId ? { kind: "ledger", accountId: openedAccount, movementId, reviewItemId: reviewTransaction?.itemId ?? itemId }
+      : itemId ? { kind: "review", itemId } : null;
     control.selectQueue(questionId);
-    setOverlay({ kind: "conversation", requestId: session.requestId });
+    setOverlay({ kind: "conversation", requestId: session.requestId, mode: "review" });
     setPendingReviewFocus({ requestId: session.requestId, questionId, nonce: ++reviewFocusNonce.current });
   }
+  function openReviewTransaction(target: ReviewTransactionTarget, itemId: string) {
+    control.selectAccount(target.accountId);
+    setAccountOrigin(null);
+    setReviewTransaction({ target, itemId });
+    setOpenedAccount(target.accountId);
+    control.navigate("accounts");
+    requestAnimationFrame(() => pageTitleRef.current?.focus());
+  }
+  function returnToReview() {
+    const itemId = reviewTransaction?.itemId ?? "";
+    setOpenedAccount("");
+    setReviewTransaction(null);
+    control.navigate("review");
+    requestAnimationFrame(() => {
+      const item = itemId ? document.getElementById(`review-item-${itemId}`) : null;
+      (item ?? pageTitleRef.current)?.focus();
+    });
+  }
   function reviewMovement(movementId: string) {
+    setOverlay(null);
     setSelectedMovement(movementId);
     control.navigate("activity");
   }
@@ -247,12 +287,51 @@ export function App() {
   }
   function inspectOverviewAccount(accountId: string) {
     control.selectAccount(accountId);
+    setAccountOrigin({ kind: "overview", accountId });
+    setOpenedAccount(accountId);
     control.navigate("accounts");
     requestAnimationFrame(() => pageTitleRef.current?.focus());
   }
   function declineQuestion(questionId: string, reason: DeclineReason) { void control.declineQuestion(questionId, reason); }
   function answerQuestion(questionId: string, said: string) { void control.answerQuestion(questionId, said); }
   function confirmProposal(questionId: string, proposalId: string, said: string, asked: string) { void control.confirmProposal(questionId, proposalId, said, asked); }
+  function conversationReturnTarget(): HTMLElement | null {
+    const target = conversationReturn.current;
+    if (target?.kind === "ledger") {
+      const row = document.getElementById(`ledger-row-${target.movementId}`);
+      if (row) return row;
+      if (target.reviewItemId) return document.getElementById(`review-item-${target.reviewItemId}`);
+    }
+    if (target?.kind === "review") return document.getElementById(`review-item-${target.itemId}`) ?? pageTitleRef.current;
+    return null;
+  }
+  function dismissConversation() {
+    const target = conversationReturn.current;
+    if (target?.kind === "ledger" && !document.getElementById(`ledger-row-${target.movementId}`)) {
+      setOpenedAccount("");
+      setAccountOrigin(null);
+      setReviewTransaction(null);
+      control.navigate("review");
+    }
+    setOverlay(null);
+  }
+  function setAccountTransactionOverlay(open: boolean) {
+    setOverlay((current) => open
+      ? { kind: "account_transaction", requestId: session.requestId, accountId: openedAccount }
+      : current?.kind === "account_transaction" ? null : current);
+  }
+  function returnFromAccount() {
+    const origin = accountOrigin;
+    const returningTo = openedAccount;
+    setOpenedAccount("");
+    setAccountOrigin(null);
+    if (origin?.kind === "overview") {
+      control.navigate("overview");
+      requestAnimationFrame(() => ([...document.querySelectorAll<HTMLElement>("[data-overview-account-id]")].find((candidate) => candidate.dataset.overviewAccountId === origin.accountId) ?? pageTitleRef.current)?.focus());
+      return;
+    }
+    requestAnimationFrame(() => restoreAccountIndexFocus(returningTo, pageTitleRef.current));
+  }
   // A dropped file changed the screen without the person asking, so the move
   // goes through the same navigation every other screen change goes through,
   // any open drawer is dismissed so the receipt is neither inert nor hidden
@@ -298,7 +377,6 @@ export function App() {
     if (openingVault) return;
     if (!control.hostAvailable || !vaultDirectory.trim() || !passphrase) { control.setNotice({ kind: "refused", text: "Enter a vault directory and passphrase to open a local vault." }); return; }
     control.setNotice(null);
-    setPlanRequested(false);
     setConversationPlanDraft(null);
     setPlanActionReceipt(null);
     await control.openVault(vaultDirectory.trim(), passphrase, makeVault);
@@ -313,10 +391,12 @@ export function App() {
   }
 
   const frame = session.source?.frame ?? null;
-  const plansData = plansResult.state === "ready" || plansResult.state === "partial" || plansResult.state === "needs_input" ? plansResult.data : null;
   const plansServed = standingOf(session.description.registry, "plans") === "served";
-  const plansVisible = plansServed && (planRequested || Boolean(plansData?.goals.length) || Boolean(plansData?.proposals.length));
-  const shownDestinations = destinations.filter((item) => item.id !== "plans" || plansVisible);
+  const reviewData = reviewResult.state === "ready" || reviewResult.state === "partial" || reviewResult.state === "needs_input" ? reviewResult.data : null;
+  const reviewCount = reviewData?.actionableCount ?? 0;
+  const reviewCountLabel = reviewData ? `${reviewCount} actionable ${reviewCount === 1 ? "item" : "items"}` : "count unavailable";
+  const shownDestinations = destinations.filter((item) => item.placement === "primary" && (item.id !== "plans" || plansServed));
+  const utilityDestinations = destinations.filter((item) => item.placement === "utility");
   function focusPlanResult(result: ActionResult) {
     requestAnimationFrame(() => {
       const proposalId = result.state === "settled" && result.outcome.kind === "proposal" ? result.outcome.proposalId : "";
@@ -333,8 +413,7 @@ export function App() {
     confirm: async (proposalId: string) => { const result = await control.confirmPlan(proposalId); setPlanActionReceipt(result); focusPlanResult(result); return result; },
     decline: async (proposalId: string) => { const result = await control.declinePlan(proposalId); setPlanActionReceipt(result); focusPlanResult(result); return result; },
   } : null;
-  function startPlan() { if (!plansServed) return; setPlanRequested(true); navigate("plans"); requestAnimationFrame(() => pageTitleRef.current?.focus()); }
-  return <div className={frame ? "app-shell app-shell-sample" : "app-shell"}>
+  return <div className={frame ? "app-shell app-shell-sample" : "app-shell"} inert={accountTransactionOpen ? true : undefined} aria-hidden={accountTransactionOpen ? true : undefined}>
     {/* One frame, said once, around the whole place — never a qualifier on
         each sentence inside it. A qualifier on one figure quietly claims the
         unqualified figures beside it are different, and a person weighing up
@@ -343,34 +422,40 @@ export function App() {
         action beside them. */}
     {frame ? <div className="sample-frame" role="note" aria-label={frame.title}><div className="sample-frame-copy"><strong>{frame.title}</strong><span>{frame.detail}</span></div><button className="secondary-button sample-frame-leave" type="button" onClick={leaveVault}>{frame.leave}</button></div> : null}
     {isNarrow && mobileNav && <div className="navigation-backdrop" aria-hidden="true" onClick={() => closeNavigation()} />}
-    <aside ref={navigationDrawerRef} id="primary-navigation-drawer" className={mobileNav ? "sidebar sidebar-open" : "sidebar"} role={isNarrow && mobileNav ? "dialog" : undefined} aria-modal={isNarrow && mobileNav ? true : undefined} aria-labelledby={isNarrow && mobileNav ? "primary-navigation-title" : undefined} aria-hidden={isNarrow ? !mobileNav : undefined} inert={Boolean(evidenceSelection) || conversationOpen || (isNarrow && !mobileNav) ? true : undefined} tabIndex={-1}>
+    <aside ref={navigationDrawerRef} id="primary-navigation-drawer" className={mobileNav ? "sidebar sidebar-open" : "sidebar"} role={isNarrow && mobileNav ? "dialog" : undefined} aria-modal={isNarrow && mobileNav ? true : undefined} aria-labelledby={isNarrow && mobileNav ? "primary-navigation-title" : undefined} aria-hidden={isNarrow ? !mobileNav : accountTransactionOpen ? true : undefined} inert={Boolean(evidenceSelection) || conversationOpen || accountTransactionOpen || (isNarrow && !mobileNav) ? true : undefined} tabIndex={-1}>
       <h2 className="visually-hidden" id="primary-navigation-title">Main navigation</h2>
       <div className="brand-row"><div className="brand-mark">O</div><div><div className="brand-name">OrionViva</div><div className="brand-subtitle">Private financial picture</div></div><button ref={navigationCloseRef} className="icon-button mobile-close" onClick={() => closeNavigation()} aria-label="Close navigation"><X size={18} /></button></div>
       <div className="preview-badge"><span className="status-dot" />Preview build</div>
+      <details className="vault-source-disclosure" open={!session.source}>
+        <summary><span>Vault & privacy</span><small>Source and access</small></summary>
       <div className="vault-source-card">
         <div className="vault-source-topline"><span>Vault source</span>{session.source ? <button className="text-button" onClick={leaveVault}>{session.source.frame ? session.source.frame.leave : "Close this vault"}</button> : <button className="text-button" aria-disabled={openingVault} onClick={openSampleVault}>Open the sample vault</button>}</div>
         <strong>{surface.disclosure.title}</strong><span className="vault-source-subtitle">{surface.disclosure.subtitle}</span><p>{surface.disclosure.detail}</p>
         {control.hostAvailable ? <form className="vault-open-form" onSubmit={openVault}><label>Vault directory<span className="vault-directory-control"><input value={vaultDirectory} onChange={(event) => setVaultDirectory(event.target.value)} placeholder="/path/to/vault" autoComplete="off" />{control.pickerAvailable && <button className="vault-picker-button" type="button" onClick={pickVaultDirectory} aria-disabled={openingVault} aria-describedby={openingVault ? "vault-open-waiting" : undefined}><FolderOpen size={14} />{pickingVaultDirectory ? "Choosing..." : "Choose folder"}</button>}</span></label><label>Passphrase<input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="current-password" aria-describedby="vault-passphrase-consequence" /></label><label className="vault-create-choice"><input type="checkbox" checked={makeVault} onChange={(event) => setMakeVault(event.target.checked)} />Make a new vault in that folder</label><p className="vault-passphrase-consequence" id="vault-passphrase-consequence">This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above — a folder named by mistake would otherwise look like an empty vault. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.</p><button className="secondary-button vault-open-button" type="submit" aria-disabled={openingVault} aria-describedby={openingVault ? "vault-passphrase-consequence vault-open-waiting" : "vault-passphrase-consequence"}>{openingVault ? "Opening vault..." : makeVault ? "Make and open vault" : "Open local vault"}</button>{openingVault ? <span className="action-explanation" id="vault-open-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}</form> : <span className="vault-host-note">Preview mode. A desktop host bridge will enable local vault opening.</span>}
       </div>
-      <nav id="primary-navigation" aria-label="Main navigation"><div className="nav-label">Navigate</div>{shownDestinations.map((item) => {
+      </details>
+      <nav id="primary-navigation" aria-label="Primary navigation"><div className="nav-label">Money</div>{shownDestinations.map((item) => {
         // What the engine's own registry says about this place, said beside
         // it. Nothing here decides it, and a destination whose standing has
         // not been asked for carries no mark: a mark on everything while an
         // answer is on its way is a mark that stops meaning anything.
         const standing = standingOf(session.description.registry, item.id);
         const said = standingCopy[standing];
-        return <button key={item.id} className={session.destination === item.id ? "nav-item active" : "nav-item"} aria-current={session.destination === item.id ? "page" : undefined} onClick={() => navigate(item.id)}><span><strong>{item.label}</strong><small>{item.eyebrow}</small></span>{said ? <span className="nav-standing">{said}</span> : null}</button>;
+        const reviewBadge = item.id === "review" && reviewData ? (reviewCount > 999 ? "999+" : String(reviewCount)) : "";
+        return <button key={item.id} className={session.destination === item.id ? "nav-item active" : "nav-item"} aria-current={session.destination === item.id ? "page" : undefined} aria-label={item.id === "review" ? `${item.label}, ${reviewCountLabel}` : undefined} title={item.description} onClick={() => navigate(item.id)}><strong>{item.label}</strong>{reviewBadge ? <span className="review-badge" aria-hidden="true">{reviewBadge}</span> : said ? <span className="nav-standing">{said}</span> : null}</button>;
       })}</nav>
-      <div className="sidebar-footer"><div className="privacy-lock"><Info aria-hidden="true" size={16} /><span>Local source</span></div><p>Every vault this app opens, the sample one included, is opened through the local desktop host on this machine.</p></div>
+      <nav className="utility-navigation" aria-label="Vault and privacy">{utilityDestinations.map((item) => <button key={item.id} className={session.destination === item.id ? "nav-item utility-nav-item active" : "nav-item utility-nav-item"} aria-current={session.destination === item.id ? "page" : undefined} onClick={() => navigate(item.id)}><Info aria-hidden="true" size={16} /><strong>{item.label}</strong></button>)}</nav>
+      <div className="sidebar-footer"><div className="privacy-lock"><Info aria-hidden="true" size={16} /><span>Local source</span></div><p>Vaults stay on this machine unless an action explicitly says otherwise.</p></div>
     </aside>
-    <main className="main-content" inert={Boolean(evidenceSelection) || conversationOpen || (isNarrow && mobileNav) ? true : undefined}>
-      <header className="topbar"><button ref={navigationTriggerRef} id="mobile-navigation-trigger" className="icon-button mobile-menu" onClick={openNavigation} aria-label="Open navigation" aria-controls="primary-navigation-drawer" aria-expanded={isNarrow ? mobileNav : false}><Menu size={20} /></button><div className="breadcrumbs"><span>OrionViva</span><ChevronRight size={14} /><strong>{pageCopy[session.destination].title}</strong></div><button className="ask-button" onClick={() => setOverlay({ kind: "conversation", requestId: session.requestId })}><Sparkles size={16} />Ask Viva</button></header>
+    <main className="main-content" aria-hidden={accountTransactionOpen ? true : undefined} inert={Boolean(evidenceSelection) || conversationOpen || accountTransactionOpen || (isNarrow && mobileNav) ? true : undefined}>
+      <header className="topbar"><button ref={navigationTriggerRef} id="mobile-navigation-trigger" className="icon-button mobile-menu" onClick={openNavigation} aria-label="Open navigation" aria-controls="primary-navigation-drawer" aria-expanded={isNarrow ? mobileNav : false}><Menu size={20} /></button><div className="breadcrumbs"><span>OrionViva</span><ChevronRight size={14} /><strong>{pageCopy[session.destination].title}</strong></div><div className="topbar-actions"><button className="primary-button add-statement-button" onClick={openDocuments}><FilePlus2 className="action-icon" />Add statement</button><button className="ask-button" onClick={openAskViva}><Sparkles size={16} />Ask Viva</button></div></header>
       <StatusNotice notice={session.notice} onDismiss={() => control.setNotice(null)} icons={noticeIcons} dismissIcon={<X size={15} />} />
-      <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div>{session.destination !== "trust" && <div className="page-actions">{plansServed && session.destination !== "plans" ? <button className="secondary-button" onClick={startPlan}>Make a plan</button> : null}<button className="primary-button" onClick={openDocuments}><FilePlus2 size={17} />Go to documents</button></div>}</div>
+      <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div></div>
         <SourceDisclosure disclosure={surface.disclosure} />
         {session.phase === "reading" ? <section className="feature-panel" aria-live="polite"><div className="empty-state"><strong>Reading private vault</strong><span>Reading available surfaces from this device…</span></div></section> : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
-          {session.destination === "overview" && <Overview result={surface.overview} conversationResult={surface.conversation} activityResult={surface.activity} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? () => setOverlay({ kind: "conversation", requestId: session.requestId }) : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} onExploreSample={openSampleVault} />}
-          {session.destination === "accounts" && <Accounts result={surface.overview} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} />}
+          {session.destination === "overview" && <Overview result={surface.overview} reviewResult={reviewResult} activityResult={surface.activity} readSpendingBreakdown={control.readSpendingBreakdown} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? openAskViva : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} onExploreSample={openSampleVault} />}
+          {session.destination === "review" && <Review result={reviewResult} onOpenQuestion={openReviewQuestion} onOpenTransaction={openReviewTransaction} />}
+          {session.destination === "accounts" && openedAccount && (surface.overview.state === "ready" || surface.overview.state === "partial" || surface.overview.state === "needs_input") ? <AccountLedger accountId={openedAccount} loadingAccountName={surface.overview.data.accounts.find((account) => account.id === openedAccount)?.name} requestedReviewTarget={reviewTransaction?.target} backLabel={reviewTransaction ? "Back to Review" : accountOrigin?.kind === "overview" ? "Back to Overview" : undefined} read={control.readAccountLedger} activityResult={surface.activity} conversationResult={surface.conversation} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignClassification: async (movementIds, categoryId, subcategoryId) => await control.assignActivityClassification(movementIds, categoryId, subcategoryId) ?? null, onAddTags: async (movementIds, tagIds) => await control.addActivityTags(movementIds, tagIds) ?? null, onRemoveTags: async (movementIds, tagIds) => await control.removeActivityTags(movementIds, tagIds) ?? null } : null} onBack={reviewTransaction ? returnToReview : returnFromAccount} onOpenEvidence={openEvidenceDocument} onOpenQuestion={(questionId, movementId) => openReviewQuestion(questionId, reviewTransaction?.itemId ?? "", movementId)} onReviewTransfer={reviewMovement} onDrawerOpenChange={setAccountTransactionOverlay} drawerActive={accountTransactionOpen} renderOverlay={(content) => createPortal(content, document.body)} pageTitleRef={pageTitleRef} /> : session.destination === "accounts" ? <Accounts result={surface.overview} selectedAccount={session.selectedAccount} onOpenAccount={(accountId) => { setAccountOrigin({ kind: "accounts", accountId }); setOpenedAccount(accountId); }} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} /> : null}
           {session.destination === "documents" && <Documents result={surface.documents} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} rescan={control.captureAvailable ? { state: session.rescanAction, onRescan: () => void control.rescanDocuments(), onReviewMovement: reviewMovement } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={openSampleVault} />}
           {session.destination === "activity" && <Activity result={surface.activity} selectedMovement={selectedMovement} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignCategory: (movementId, categoryId) => void control.assignActivityCategory(movementId, categoryId), onAssignMeaning: (movementId, meaning, counterparty) => void control.assignActivityMeaning(movementId, meaning, counterparty), onReplaceTags: (movementId, tagIds) => void control.replaceActivityTags(movementId, tagIds), onConfirmTransfer: (movementId, counterpartId) => void control.confirmActivityTransfer(movementId, counterpartId), onRejectTransfer: (movementId) => void control.rejectActivityTransfer(movementId), onUnlinkTransfer: (movementId, counterpartId) => void control.unlinkActivityTransfer(movementId, counterpartId) } : null} onOpenEvidence={openEvidenceDocument} onLoadMore={() => void control.loadMoreActivity()} />}
           {session.destination === "plans" && <Plans result={plansResult} controls={planControls} initialDraft={conversationPlanDraft} receipt={planActionReceipt} onOpenEvidence={openEvidenceDocument} />}
@@ -378,7 +463,7 @@ export function App() {
         </FeatureBoundary>}
       </div>
     </main>
-    {conversationOpen && <ConversationDialogShell resetKey={`${session.requestId}-conversation`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer result={surface.conversation} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenFigure={openConversationFigure} onReviewPlan={(draft: ConversationGoalDraft) => { conversationDialog.cancelPendingRestore(); setPlanRequested(true); setPlanActionReceipt(null); setConversationPlanDraft({ state: "settled", kind: draft.kind, message: draft.message, reason: draft.reason, draft: draft.draft }); control.navigate("plans"); setOverlay(null); requestAnimationFrame(() => (document.getElementById("plans-draft-title") ?? pageTitleRef.current)?.focus()); }} ask={control.askAvailable ? { state: session.askAction, onAsk: (question: string, mirrored: boolean, planRequest = false) => void control.askViva(question, mirrored, planRequest) } : null} controls={{ state: session.questionAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} /></ConversationDialogShell>}
+    {conversationOpen && <ConversationDialogShell mode={conversationSelection?.mode} resetKey={`${session.requestId}-conversation-${conversationSelection?.mode}`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer mode={conversationSelection?.mode} result={surface.conversation} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenFigure={openConversationFigure} onReviewPlan={(draft: ConversationGoalDraft) => { conversationDialog.cancelPendingRestore(); setPlanActionReceipt(null); setConversationPlanDraft({ state: "settled", kind: draft.kind, message: draft.message, reason: draft.reason, draft: draft.draft }); control.navigate("plans"); setOverlay(null); requestAnimationFrame(() => (document.getElementById("plans-draft-title") ?? pageTitleRef.current)?.focus()); }} ask={control.askAvailable ? { state: session.askAction, onAsk: (question: string, mirrored: boolean, planRequest = false) => void control.askViva(question, mirrored, planRequest) } : null} controls={{ state: session.questionAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} /></ConversationDialogShell>}
     {evidenceSelection && <EvidenceDrawer snapshot={surface} selection={evidenceSelection} drawerRef={evidenceDrawerRef} closeRef={evidenceCloseRef} onDismiss={evidenceDialog.dismissAndRestore} onOpenDocument={(link) => openEvidenceDocument(link, true)} renderEvidenceBadge={(grade) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />} />}
   </div>;
 }

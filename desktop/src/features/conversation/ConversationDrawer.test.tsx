@@ -120,6 +120,37 @@ describe("durable Viva conversation", () => {
     expect(onAsk).toHaveBeenCalledWith("Build a rainy-day fund", true, true);
   });
 
+  it("keeps an Ask Viva draft through failure and clears only its own authoritative completion", () => {
+    const onAsk = vi.fn();
+    const idle = { state: { state: "idle" } as const, onAsk };
+    const working = { state: { state: "working", question: "What changed?" } as const, onAsk };
+    const failed = { state: { state: "settled", question: "What changed?", authoritative: false,
+      result: { state: "unanswered" }, turn: null } as const, onAsk };
+    const completed = { state: { state: "settled", question: "What changed?", authoritative: true,
+      result: { state: "settled", outcome: { kind: "completed", message: "Answered.", reason: "" } }, turn: null } as const, onAsk };
+    const view = render(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={idle} controls={controls} />);
+    const box = () => view.getByLabelText("Your question");
+
+    fireEvent.change(box(), { target: { value: "What changed?" } });
+    fireEvent.click(view.getByRole("button", { name: "Ask" }));
+    expect(box()).toHaveValue("What changed?");
+    view.rerender(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={working} controls={controls} />);
+    view.rerender(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={failed} controls={controls} />);
+    expect(box()).toHaveValue("What changed?");
+
+    fireEvent.change(box(), { target: { value: "What changed since Monday?" } });
+    view.rerender(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={completed} controls={controls} />);
+    expect(box()).toHaveValue("What changed since Monday?");
+
+    view.rerender(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={idle} controls={controls} />);
+    fireEvent.change(box(), { target: { value: "What changed?" } });
+    fireEvent.click(view.getByRole("button", { name: "Ask" }));
+    // The old settled state is no longer enough; the matching working state must be observed.
+    view.rerender(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={working} controls={controls} />);
+    view.rerender(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={completed} controls={controls} />);
+    expect(box()).toHaveValue("");
+  });
+
   it("announces one plain capability boundary after Ask settles", () => {
     const text = "I cannot answer that financial question yet. The available financial answers are listed below.";
     const answer: TurnView = {

@@ -115,7 +115,7 @@ describe("Questions inside the conversation", () => {
     expect(queryByRole("textbox")).not.toBeInTheDocument();
     expect(queryByText(/invites an answer in a sentence/)).not.toBeInTheDocument();
     expect(getByText("General document guidance")).toBeInTheDocument();
-    expect(getByText("This guidance is general and is not attached to a particular question. Add a document from Documents when a document is the answer.")).toBeInTheDocument();
+    expect(getByText("This guidance is general and is not attached to a particular question. Add a statement from Statements when a document is the answer.")).toBeInTheDocument();
     rerender(<Questions result={ready(data([], { tail: { count: 0, amount: "" }, pending: { count: 4 } }))} selectedQueue="" onSelectQueue={noAction} actions={inert} />);
     expect(getByText("4 set-aside items are reported. Each returns on its own when what it is about changes. Opening their detail is not available in this preview.")).toBeInTheDocument();
     expect(getByText("0", { selector: ".review-more-grid strong" })).toBeInTheDocument();
@@ -358,5 +358,44 @@ describe("answering in a person's own words", () => {
     const actions = { state: { state: "working", questionId: "q-1", verb: "answer" } as const, onAnswer: noAnswer, onDecline: noAction };
     const { getByRole } = render(<Questions {...props} result={answerable([slot])} actions={actions} />);
     expect(getByRole("button", { name: "Send this answer" })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("keeps an answer draft until its own authoritative completed reread", () => {
+    const onAnswer = vi.fn();
+    const idle = { state: { state: "idle" } as const, onAnswer, onDecline: noAction };
+    const working = { ...idle, state: { state: "working", questionId: "q-1", verb: "answer" } as const };
+    const refused = { ...idle, state: { state: "settled", questionId: "q-1", verb: "answer", authoritative: false,
+      result: { state: "settled", outcome: { kind: "refused", message: "Not recorded.", reason: "not_open" } } } as const };
+    const unreadable = { ...idle, state: { state: "settled", questionId: "q-1", verb: "answer", authoritative: false,
+      result: { state: "unreadable" } } as const };
+    const completedWithoutReread = { ...idle, state: { state: "settled", questionId: "q-1", verb: "answer", authoritative: false,
+      result: { state: "settled", outcome: { kind: "completed", message: "Recorded.", reason: "" } } } as const };
+    const completed = { ...idle, state: { state: "settled", questionId: "q-1", verb: "answer", authoritative: true,
+      result: { state: "settled", outcome: { kind: "completed", message: "Recorded.", reason: "" } } } as const };
+    const view = render(<Questions {...props} result={answerable([slot])} actions={idle} />);
+    const box = () => view.getByLabelText("Say it however you like.");
+
+    fireEvent.change(box(), { target: { value: "same account" } });
+    fireEvent.click(view.getByRole("button", { name: "Send this answer" }));
+    expect(box()).toHaveValue("same account");
+    view.rerender(<Questions {...props} result={answerable([slot])} actions={working} />);
+    expect(box()).toHaveValue("same account");
+    view.rerender(<Questions {...props} result={answerable([slot])} actions={refused} />);
+    expect(box()).toHaveValue("same account");
+    view.rerender(<Questions {...props} result={answerable([slot])} actions={unreadable} />);
+    expect(box()).toHaveValue("same account");
+    view.rerender(<Questions {...props} result={answerable([slot])} actions={completedWithoutReread} />);
+    expect(box()).toHaveValue("same account");
+
+    // A late completion for the submitted words may not erase words typed since.
+    fireEvent.change(box(), { target: { value: "new answer" } });
+    view.rerender(<Questions {...props} result={answerable([slot])} actions={completed} />);
+    expect(box()).toHaveValue("new answer");
+
+    view.rerender(<Questions {...props} result={answerable([slot])} actions={idle} />);
+    fireEvent.click(view.getByRole("button", { name: "Send this answer" }));
+    view.rerender(<Questions {...props} result={answerable([slot])} actions={working} />);
+    view.rerender(<Questions {...props} result={answerable([slot])} actions={completed} />);
+    expect(box()).toHaveValue("");
   });
 });

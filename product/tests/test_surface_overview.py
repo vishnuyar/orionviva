@@ -60,13 +60,15 @@ def test_a_row_whose_figure_cannot_be_completed_is_withheld_and_the_panel_says_s
     figure is kept back with a reason that names the account."""
     projection = LedgerProjection(_events(
         account_opened("acct:two", "depository", "Unmeasured Savings", "USD",
-                       "2026-06-01")))
+                       "2026-06-01", account_number="000000009876")))
 
     picture = overview(projection, "en-US", "2026-09-30")
     withheld = [row for row in picture["accounts"] if row["balance"] is None]
 
     assert picture["state"] == PanelState.PARTIAL.value
     assert [row["account"] for row in withheld] == ["acct:two"]
+    assert withheld[0]["number"] == "••••9876"
+    assert "000000009876" not in repr(withheld[0])
     assert len(picture["issues"]) == 1
     assert "Unmeasured Savings" in picture["issues"][0]["message"]
     assert picture["issues"][0]["code"]

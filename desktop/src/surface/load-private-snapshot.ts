@@ -2,6 +2,7 @@ import { BridgeRefusal, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/cont
 import type { BridgeClient } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
 import { adaptActivity, adaptActivityActionOutcome } from "./adapters/activity";
+import { adaptAccountLedger } from "./adapters/account-ledger";
 import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
 import { adaptConversation, adaptTurn } from "./adapters/conversation";
 import { isRecord } from "./adapters/primitives";
@@ -13,8 +14,10 @@ import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptPlanDraftReply, adaptPlans } from "./adapters/plans";
 import { adaptActionOutcome } from "./adapters/questions";
+import { adaptReview } from "./adapters/review";
+import { adaptSpendingBreakdown } from "./adapters/spending";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, ActivityActionResult, ActivityActions, ActivityData, ConversationData, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewActions, OverviewData, ConversationActions, PlanActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
+import type { AccountLedgerData, AccountLedgerReader, ActionResult, ActivityActionResult, ActivityActions, ActivityData, ConversationData, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewActions, OverviewData, ConversationActions, PlanActions, SettingsActions, SpendingBreakdownData, SpendingBreakdownReader, SpendingRequest, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -88,6 +91,33 @@ async function readTrustFeature(client: BridgeClient): Promise<FeatureResult<Tru
 async function readActivityFeature(client: BridgeClient, limit: number): Promise<FeatureResult<ActivityData>> {
   const [read] = await Promise.allSettled([client.readActivity({ limit })]);
   return settled(read, (value) => adaptActivity(value.data));
+}
+
+export async function readAccountLedgerFeature(client: BridgeClient, accountId: string, cursor?: string, limit?: number): Promise<FeatureResult<AccountLedgerData>> {
+  const [read] = await Promise.allSettled([client.readAccountLedger(accountId, cursor, limit)]);
+  return settled(read, (value) => adaptAccountLedger(value.data));
+}
+
+export function privateAccountLedgerReader(client: BridgeClient): AccountLedgerReader {
+  return { read: (accountId, cursor, limit) => readAccountLedgerFeature(client, accountId, cursor, limit) };
+}
+
+export async function readSpendingBreakdownFeature(client: BridgeClient, request: SpendingRequest): Promise<FeatureResult<SpendingBreakdownData>> {
+  if (!client.readSpending) return { state: "unavailable", reason: "not_served" };
+  const parameters = {
+    period: request.period,
+    granularity: request.granularity,
+    ...(request.currency ? { currency: request.currency } : {}),
+    ...(request.accountId ? { account_id: request.accountId } : {}),
+    ...(request.startDate ? { start_date: request.startDate } : {}),
+    ...(request.endDate ? { end_date: request.endDate } : {}),
+  };
+  const [read] = await Promise.allSettled([client.readSpending(parameters)]);
+  return settled(read, (value) => adaptSpendingBreakdown(value.data));
+}
+
+export function privateSpendingBreakdownReader(client: BridgeClient): SpendingBreakdownReader {
+  return { read: (request) => readSpendingBreakdownFeature(client, request) };
 }
 
 // What the sidecar declares about itself and about its own registry, read here
@@ -218,8 +248,11 @@ export function privateActivityActions(client: BridgeClient): ActivityActions {
   return {
     read: (limit) => readActivityFeature(client, limit),
     assignCategory: (movementId, categoryId) => activityActed(client.assignActivityCategory(movementId, categoryId)),
+    assignClassification: (movementIds, categoryId, subcategoryId) => activityActed(client.assignActivityClassification(movementIds, categoryId, subcategoryId)),
     assignMeaning: (movementId, meaning, counterparty) => activityActed(client.assignActivityMeaning(movementId, meaning, counterparty)),
     replaceTags: (movementId, tagIds) => activityActed(client.replaceActivityTags(movementId, tagIds)),
+    addTags: (movementIds, tagIds) => activityActed(client.addActivityTags(movementIds, tagIds)),
+    removeTags: (movementIds, tagIds) => activityActed(client.removeActivityTags(movementIds, tagIds)),
     confirmTransfer: (movementId, counterpartId) => activityActed(client.confirmActivityTransfer(movementId, counterpartId)),
     rejectTransfer: (movementId) => activityActed(client.rejectActivityTransfer(movementId)),
     unlinkTransfer: (movementId, counterpartId) => activityActed(client.unlinkActivityTransfer(movementId, counterpartId)),
@@ -245,7 +278,7 @@ export function privatePlanActions(client: BridgeClient): PlanActions {
 
 export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string): Promise<SurfaceSnapshot> {
   const activityParameters = { ...(activityLimit ? { limit: activityLimit } : {}), ...(activityFocus ? { focus: activityFocus } : {}) };
-  const [overviewRead, documentsRead, conversationRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readConversation(), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
+  const [overviewRead, documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
   return buildLiveSnapshot(
     settledOverview(overviewRead),
     settled(documentsRead, (read) => adaptDocuments(read.data)),
@@ -254,5 +287,6 @@ export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: Sur
     settled(activityRead, (read) => adaptActivity(read.data)),
     settledPlans(plansRead),
     disclosure,
+    settled(reviewRead, (read) => adaptReview(read.data)),
   );
 }

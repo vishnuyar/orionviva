@@ -387,6 +387,32 @@ def test_the_cached_projection_matches_a_full_replay(tmp_path):
     assert cached.amount == Decimal("1457.58") and cached.grade == CORROBORATED
 
 
+def test_snapshot_projection_preserves_the_ledgers_identity_resolver(tmp_path):
+    """A revision-bound read must not silently lose installed resolution."""
+    from viva.ledger import EventStore, Ledger, merchant_categorized
+    from viva.ledger.merchant_keys import MerchantKeys
+
+    key = "merchant:coffee"
+
+    def resolved(rows):
+        return MerchantKeys({(account, description): key
+                             for account, _institution, _kind, description
+                             in rows})
+
+    ledger = Ledger(EventStore.open(tmp_path / "e.jsonl", "pw"),
+                    resolve_keys=resolved)
+    ledger.append(account_opened("chk", "depository", "Checking", "USD",
+                                 "2026-01-01"))
+    ledger.append(simple_transaction("chk", "-5", "COFFEE 123", "2026-01-02"))
+    ledger.append(merchant_categorized(
+        key, "food", CORROBORATED, "2026-01-03", by="model"))
+
+    projection, events = ledger.snapshot_projection()
+    (movement,) = projection.movements()
+    assert projection.derived_category(movement)["category"] == "food"
+    assert tuple(ledger.events()) == events
+
+
 def test_an_isolated_background_ledger_cannot_reorder_the_interactive_cache(tmp_path):
     from viva.ledger import EventStore, Ledger
 

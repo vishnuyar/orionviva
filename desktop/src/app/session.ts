@@ -1,5 +1,5 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
-import type { ActionResult, ActivityActionResult, ActivityCorrectionState, ActivityCorrectionVerb, ActivityData, CancelActionState, CaptureActionState, Destination, FeatureResult, JobView, Notice, RescanActionState, RescanReport, QuestionActionState, QuestionQueueData, QuestionVerb, AskActionState, SettingsActionState, TrustActionState, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
+import type { ActionResult, ActivityActionResult, ActivityCorrectionState, ActivityCorrectionVerb, ActivityData, CancelActionState, CaptureActionState, Destination, FeatureResult, JobView, Notice, RescanActionState, RescanReport, QuestionActionState, QuestionQueueData, QuestionReferences, QuestionVerb, AskActionState, ReviewQuestionBinding, ReviewQuestionReferences, ReviewTarget, SettingsActionState, TrustActionState, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -72,11 +72,11 @@ export type SessionAction =
   | { type: "select-account"; id: string }
   | { type: "select-prompt"; id: string }
   | { type: "question-acting"; requestId: number; questionId: string; verb: QuestionVerb }
-  | { type: "question-acted"; requestId: number; questionId: string; verb: QuestionVerb; result: ActionResult }
-  | { type: "activity-correcting"; requestId: number; movementId: string; verb: ActivityCorrectionVerb }
-  | { type: "activity-outcome"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
-  | { type: "activity-refreshed"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
-  | { type: "activity-refresh-failed"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
+  | { type: "question-acted"; requestId: number; questionId: string; verb: QuestionVerb; result: ActionResult; authoritative: boolean; resolved: boolean }
+  | { type: "activity-correcting"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb }
+  | { type: "activity-outcome"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult }
+  | { type: "activity-refreshed"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
+  | { type: "activity-refresh-failed"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult }
   | { type: "activity-page-loaded"; requestId: number; activity: FeatureResult<ActivityData> }
   | { type: "capturing"; requestId: number }
   | { type: "captured"; requestId: number; result: ActionResult }
@@ -85,7 +85,7 @@ export type SessionAction =
   | { type: "trust-working"; requestId: number }
   | { type: "trust-settled"; requestId: number; result: ActionResult }
   | { type: "asking"; requestId: number; question: string }
-  | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null }
+  | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null; authoritative: boolean }
   | { type: "settings-read"; settings: FeatureResult<SettingsView> }
   | { type: "settings-working" }
   | { type: "settings-proposed"; proposal: SettingsProposal }
@@ -115,7 +115,96 @@ function selectedIds(snapshot: SurfaceSnapshot) {
 }
 
 function hasReadFailure(snapshot: SurfaceSnapshot) {
-  return [snapshot.overview, snapshot.documents, snapshot.activity, snapshot.conversation, snapshot.plans, snapshot.trust].some((result) => result?.state === "failed");
+  return [snapshot.overview, snapshot.documents, snapshot.activity, snapshot.conversation, snapshot.review, snapshot.plans, snapshot.trust].some((result) => result?.state === "failed");
+}
+
+function dataBearing<T>(result: FeatureResult<T> | undefined): result is Extract<FeatureResult<T>, { data: T }> {
+  return result?.state === "ready" || result?.state === "partial" || result?.state === "needs_input";
+}
+
+function sameReviewRefs(left: ReviewQuestionReferences, right: ReviewQuestionReferences): boolean {
+  return left.movement === right.movement && left.document === right.document
+    && left.documentId === right.documentId && left.account === right.account
+    && left.movements.length === right.movements.length
+    && left.movements.every((identity, index) => identity === right.movements[index])
+    && left.candidates.length === right.candidates.length
+    && left.candidates.every((identity, index) => identity === right.candidates[index]);
+}
+
+function sameReviewTarget(left: ReviewTarget, right: ReviewTarget): boolean {
+  if (left.kind !== right.kind || left.questionId !== right.questionId) return false;
+  if (left.kind === "conversation" || right.kind === "conversation") return left.kind === "conversation" && right.kind === "conversation" && left.disclosure === right.disclosure;
+  return left.accountId === right.accountId
+    && left.requestedMovementId === right.requestedMovementId
+    && left.canonicalMovementId === right.canonicalMovementId
+    && left.memberMovementIds.length === right.memberMovementIds.length
+    && left.memberMovementIds.every((identity, index) => identity === right.memberMovementIds[index]);
+}
+
+function sameReviewBinding(left: ReviewQuestionBinding, right: ReviewQuestionBinding): boolean {
+  return left.itemId === right.itemId && left.questionId === right.questionId
+    && left.questionKind === right.questionKind && left.label === right.label
+    && left.reason === right.reason && left.status === right.status
+    && left.primaryAction === right.primaryAction
+    && left.allowedActions.length === right.allowedActions.length
+    && left.allowedActions.every((action, index) => action === right.allowedActions[index])
+    && sameReviewRefs(left.refs, right.refs) && sameReviewTarget(left.target, right.target);
+}
+
+function normalizedQuestionRefs(question: { refs?: QuestionReferences }): ReviewQuestionReferences {
+  return {
+    movement: question.refs?.movement ?? "",
+    movements: question.refs?.movements ?? [],
+    candidates: question.refs?.candidates ?? [],
+    document: question.refs?.document ?? "",
+    documentId: question.refs?.doc_id ?? "",
+    account: question.refs?.account ?? "",
+  };
+}
+
+function reviewConversationSemanticallyMatch(snapshot: SurfaceSnapshot): boolean {
+  if (!dataBearing(snapshot.review) || !dataBearing(snapshot.conversation)) return false;
+  const review = snapshot.review.data;
+  const conversation = snapshot.conversation.data.questions;
+  const reviewIds = review.groups.flatMap((group) => group.items.map((item) => item.target.questionId));
+  const conversationIds = conversation.queue.map((question) => question.id);
+  if (reviewIds.some((id) => !id.trim()) || conversationIds.some((id) => !id.trim())) return false;
+  if (new Set(reviewIds).size !== reviewIds.length || new Set(conversationIds).size !== conversationIds.length) return false;
+  if (review.actionableCount !== conversation.meta.total
+      || review.shownCount !== reviewIds.length
+      || review.shownCount !== conversationIds.length
+      || conversation.count !== conversation.meta.total
+      || (conversation.meta.tail !== null && conversation.meta.tail.count !== review.remainingCount)) return false;
+  const items = review.groups.flatMap((group) => group.items);
+  return reviewIds.every((id, index) => id === conversationIds[index])
+    && items.every((item, index) => {
+      const question = conversation.queue[index];
+      const binding = question?.reviewBinding;
+      return Boolean(binding
+        && item.id === `question:${question.id}`
+        && item.label === question.label && item.reason === question.detail
+        && item.binding.questionKind === question.type
+        && item.binding.itemId === item.id && item.binding.questionId === question.id
+        && item.binding.label === item.label && item.binding.reason === item.reason
+        && item.binding.status === item.status && item.binding.primaryAction === item.primaryAction
+        && item.binding.allowedActions.length === item.allowedActions.length
+        && item.binding.allowedActions.every((action, actionIndex) => action === item.allowedActions[actionIndex])
+        && sameReviewTarget(item.binding.target, item.target)
+        && binding.label === question.label && binding.reason === question.detail
+        && binding.questionKind === question.type
+        && sameReviewRefs(binding.refs, normalizedQuestionRefs(question))
+        && sameReviewBinding(item.binding, binding));
+    });
+}
+
+// Review is the authored index of open conversation work. A post-write read
+// may replace neither side unless both arrived with data: an empty
+// conversation beside an absent/locked Review would otherwise erase the only
+// durable account of what is still waiting. Initial reads also fail the pair
+// closed, because a newly opened vault must not expose actions whose matching
+// conversation semantics it cannot prove.
+export function hasAuthoritativeReviewConversationPair(snapshot: SurfaceSnapshot | null): snapshot is SurfaceSnapshot {
+  return Boolean(snapshot && !hasReadFailure(snapshot) && reviewConversationSemanticallyMatch(snapshot));
 }
 
 // The session before either a sample or private vault is explicitly opened.
@@ -180,6 +269,7 @@ export function unopenedSnapshot(): SurfaceSnapshot {
     documents: { state: "absent", reason: "no_vault" },
     activity: { state: "absent", reason: "no_vault" },
     conversation: { state: "absent", reason: "no_vault" },
+    review: { state: "absent", reason: "no_vault" },
     plans: { state: "absent", reason: "no_vault" },
     trust: { state: "absent", reason: "no_vault" },
   };
@@ -196,6 +286,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
     documents: { state: "absent", reason: "reading" },
     activity: { state: "absent", reason: "reading" },
     conversation: { state: "absent", reason: "reading" },
+    review: { state: "absent", reason: "reading" },
     plans: { state: "absent", reason: "reading" },
     trust: { state: "absent", reason: "reading" },
   };
@@ -231,23 +322,13 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       };
     case "loaded": {
       if (action.requestId !== state.requestId) return state;
-      const ids = selectedIds(action.snapshot);
-      return {
-        ...state,
-        phase: "settled",
-        snapshot: action.snapshot,
-        jobs: action.jobs ?? state.jobs,
-        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
-        selectedQueue: retainSelection(state.selectedQueue, ids.queue),
-        selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
-        selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
-        notice: hasReadFailure(action.snapshot) ? { kind: "refused", text: "The private vault opened, but some surfaces could not be read. Your vault was not changed." } : null,
-      };
-    }
-    case "mutation-loaded": {
-      if (action.requestId !== state.requestId) return state;
-      const failed = hasReadFailure(action.snapshot);
-      const snapshot = failed ? state.snapshot : action.snapshot;
+      const dataPair = dataBearing(action.snapshot.review) && dataBearing(action.snapshot.conversation);
+      const mismatchedPair = dataPair && !reviewConversationSemanticallyMatch(action.snapshot);
+      const snapshot: SurfaceSnapshot = mismatchedPair ? {
+        ...action.snapshot,
+        review: { state: "failed", reason: "invalid_payload" },
+        conversation: { state: "failed", reason: "invalid_payload" },
+      } : action.snapshot;
       const ids = selectedIds(snapshot);
       return {
         ...state,
@@ -258,9 +339,31 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
         selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
-        notice: failed
+        notice: mismatchedPair
+          ? { kind: "refused", text: "The vault opened, but Review and conversation disagreed about which questions are actionable. Neither queue is available." }
+          : hasReadFailure(action.snapshot) ? { kind: "refused", text: "The private vault opened, but some surfaces could not be read. Your vault was not changed." } : null,
+      };
+    }
+    case "mutation-loaded": {
+      if (action.requestId !== state.requestId) return state;
+      const readFailed = hasReadFailure(action.snapshot);
+      const pairUnavailable = !hasAuthoritativeReviewConversationPair(action.snapshot);
+      const snapshot = readFailed || pairUnavailable ? state.snapshot : action.snapshot;
+      const ids = selectedIds(snapshot);
+      return {
+        ...state,
+        phase: "settled",
+        snapshot,
+        jobs: action.jobs ?? state.jobs,
+        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedQueue: retainSelection(state.selectedQueue, ids.queue),
+        selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
+        selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
+        notice: readFailed
           ? { kind: "refused", text: "The action finished, but some surfaces could not be read again. Anything still shown there may be stale." }
-          : null,
+          : pairUnavailable
+            ? { kind: "refused", text: "The action finished, but Review and conversation could not both be read again. Their prior questions and count remain on screen and may be stale." }
+            : null,
       };
     }
     case "mutation-refresh-failed":
@@ -306,20 +409,29 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       if (action.requestId !== state.requestId) return state;
       return { ...state, questionAction: { state: "working", questionId: action.questionId, verb: action.verb } };
     case "question-acted": {
-      if (action.requestId !== state.requestId) return state;
+      if (action.requestId !== state.requestId || state.questionAction.state !== "working"
+          || state.questionAction.questionId !== action.questionId || state.questionAction.verb !== action.verb) return state;
       return {
         ...state,
-        questionAction: { state: "settled", questionId: action.questionId, verb: action.verb, result: action.result },
+        questionAction: { state: "settled", questionId: action.questionId, verb: action.verb, result: action.result, authoritative: action.authoritative, resolved: action.resolved },
       };
     }
     case "activity-correcting":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, activityAction: { state: "working", movementId: action.movementId, verb: action.verb } };
+      return { ...state, activityAction: { state: "working", movementId: action.movementId, movementIds: [...(action.movementIds ?? [action.movementId])], verb: action.verb } };
     case "activity-outcome":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, activityAction: { state: "refreshing", movementId: action.movementId, verb: action.verb, result: action.result } };
+      return { ...state, activityAction: { state: "refreshing", movementId: action.movementId, movementIds: [...(action.movementIds ?? [action.movementId])], verb: action.verb, result: action.result } };
     case "activity-refreshed": {
       if (action.requestId !== state.requestId) return state;
+      if (!hasAuthoritativeReviewConversationPair(action.snapshot)) {
+        return {
+          ...state,
+          jobs: action.jobs ?? state.jobs,
+          notice: { kind: "refused", text: "The correction finished, but Review and conversation could not both be read again. Their prior questions and count remain on screen and may be stale." },
+          activityAction: { state: "settled", movementId: action.movementId, movementIds: [...(action.movementIds ?? [action.movementId])], verb: action.verb, result: action.result, refresh: "failed" },
+        };
+      }
       const ids = selectedIds(action.snapshot);
       return {
         ...state,
@@ -329,12 +441,12 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
         selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
-        activityAction: { state: "settled", movementId: action.movementId, verb: action.verb, result: action.result, refresh: "refreshed" },
+        activityAction: { state: "settled", movementId: action.movementId, movementIds: [...(action.movementIds ?? [action.movementId])], verb: action.verb, result: action.result, refresh: "refreshed" },
       };
     }
     case "activity-refresh-failed":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, activityAction: { state: "settled", movementId: action.movementId, verb: action.verb, result: action.result, refresh: "failed" } };
+      return { ...state, activityAction: { state: "settled", movementId: action.movementId, movementIds: [...(action.movementIds ?? [action.movementId])], verb: action.verb, result: action.result, refresh: "failed" } };
     case "activity-page-loaded":
       if (action.requestId !== state.requestId) return state;
       return { ...state, snapshot: { ...state.snapshot, activity: action.activity } };
@@ -365,8 +477,8 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       if (action.requestId !== state.requestId) return state;
       return { ...state, askAction: { state: "working", question: action.question } };
     case "asked":
-      if (action.requestId !== state.requestId) return state;
-      return { ...state, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn } };
+      if (action.requestId !== state.requestId || state.askAction.state !== "working" || state.askAction.question !== action.question) return state;
+      return { ...state, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn, authoritative: action.authoritative } };
     // Settings survive a vault opening and closing: they are this machine's,
     // not this vault's, and clearing them on a source change would make a
     // person say yes to the same thing twice.

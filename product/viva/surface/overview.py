@@ -21,6 +21,7 @@ from ..tools.boundary import (SELECTED_TERMS, UNPOSTED, account_written,
                               named_slice, said, statements)
 from ..ledger.projection.movements import leading_account
 from ..ledger.events import ASSERTED
+from ..ledger.identity import masked
 from ..tools.envelope import BY_ACCOUNT, BY_CURRENCY, GAP_REASONS
 from .models import Citation, CitationRelation, FigureGrade, FigureView, PanelState
 from .proof import freshness_confirmed_on, proof_presentation_from_evidence
@@ -158,7 +159,7 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
         known[info.account] = {
             "account": info.account,
             "currency": info.currency,
-            "number_masked": "",
+            "number_masked": masked(info.number),
         }
         account, issue = _account(
             {"record_id": info.account, "kind": info.kind,

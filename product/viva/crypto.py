@@ -7,9 +7,10 @@ The versioned envelope every sealed record in a vault is written under:
     open, never silently accepted.
   - The key is derived from a passphrase with **scrypt** (memory-hard), and is
     never stored. A random salt sits beside the data; the passphrase does not.
-  - The envelope is **versioned**. ``VERSION`` names the algorithm and the KDF,
-    so a future scheme can be introduced without stranding data written under
-    this one. Changing a parameter is a new version, never a silent edit.
+  - The envelope is **versioned**. ``VERSION`` names the record/raw-store
+    algorithm and KDF; ``HEAD_BOUND_HEADER_VERSION`` additionally binds the
+    event log's authenticated commit-head requirement into its check token.
+    Changing either contract is a new version, never a silent edit.
 
 Nothing here reads the passphrase from disk or config: it comes from the caller,
 which reads it from an env var or an interactive prompt.
@@ -21,6 +22,7 @@ recovery phrase, so a lost passphrase is a lost vault.
 from __future__ import annotations
 
 import base64
+import json
 import os
 from dataclasses import dataclass
 
@@ -28,6 +30,12 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 VERSION = "viva-vault-aesgcm-scrypt-v1"
+# Event logs which require an authenticated commit head use a distinct header
+# envelope version.  It is deliberately the same byte length as the legacy
+# version: a legacy JSONL header can be upgraded in place without moving any
+# encrypted record or replacing the inode writers have locked.
+HEAD_BOUND_HEADER_VERSION = "viva-vault-aesgcm-scrypt-h1"
+HEAD_CAPABILITY_VERSION = "head-v1"
 
 # scrypt cost parameters — interactive-login grade. They are part of the
 # versioned envelope and travel in the vault header.
@@ -122,23 +130,66 @@ CHECK_TOKEN = b"viva-vault-ok"
 CHECK_AAD = b"header"
 
 
-def new_vault_header(passphrase: str) -> tuple[dict, bytes]:
+def _header_check_aad(version: str) -> bytes:
+    if version == VERSION:
+        return CHECK_AAD
+    if version == HEAD_BOUND_HEADER_VERSION:
+        return CHECK_AAD + b":" + json.dumps(
+            {"event_head": HEAD_CAPABILITY_VERSION}, sort_keys=True,
+            separators=(",", ":")).encode("utf-8")
+    raise CryptoError(
+        f"header written with envelope {version!r}; this build reads "
+        f"{VERSION!r} and {HEAD_BOUND_HEADER_VERSION!r}")
+
+
+def new_vault_header(
+        passphrase: str, *, header_version: str = VERSION
+        ) -> tuple[dict, bytes]:
     """Create a fresh vault header and return (header, derived_key)."""
+    aad = _header_check_aad(header_version)
     kdf = KdfParams.new()
     key = derive_key(passphrase, kdf)
-    header = {"v": VERSION, "kdf": kdf.to_dict(),
-              "check": seal(key, CHECK_TOKEN, CHECK_AAD)}
+    header = {"v": header_version, "kdf": kdf.to_dict(),
+              "check": seal(key, CHECK_TOKEN, aad)}
     return header, key
+
+
+def rebind_vault_header(header: dict, key: bytes, *,
+                        header_version: str) -> dict:
+    """Return ``header`` with its check token bound to ``header_version``.
+
+    The KDF stays byte-for-byte the same, so the vault key does not change.
+    This is used to upgrade a legacy event-log header before the first modern
+    append.  Unknown top-level fields are not copied: none were authenticated
+    by the legacy format, and carrying one into the new header would imply
+    authority it never had.
+    """
+    aad = _header_check_aad(header_version)
+    return {
+        "v": header_version,
+        "kdf": dict(header["kdf"]),
+        "check": seal(key, CHECK_TOKEN, aad),
+    }
+
+
+def verify_vault_header(header: dict, key: bytes) -> str:
+    """Authenticate a header with an already-derived key; return its version."""
+    version = header.get("v")
+    aad = _header_check_aad(version)
+    try:
+        opened = open_sealed(key, header["check"], aad)
+    except (KeyError, TypeError) as exc:
+        raise CryptoError("vault header is incomplete") from exc
+    if opened != CHECK_TOKEN:
+        raise CryptoError("wrong passphrase")
+    return version
 
 
 def open_vault_header(header: dict, passphrase: str) -> bytes:
     """Re-derive the key from a stored header, verifying the passphrase."""
-    if header.get("v") != VERSION:
-        raise CryptoError(
-            f"header written with envelope {header.get('v')!r}; "
-            f"this build reads {VERSION!r}"
-        )
-    key = derive_key(passphrase, KdfParams.from_dict(header["kdf"]))
-    if open_sealed(key, header["check"], CHECK_AAD) != CHECK_TOKEN:
-        raise CryptoError("wrong passphrase")
+    try:
+        key = derive_key(passphrase, KdfParams.from_dict(header["kdf"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CryptoError("vault header has invalid KDF parameters") from exc
+    verify_vault_header(header, key)
     return key

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Figure } from "../../components/Figure";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
@@ -17,14 +17,27 @@ export type ConversationControls = {
 
 function AskBox({ ask }: { ask: AskControls }) {
   const [question, setQuestion] = useState("");
+  const [submitted, setSubmitted] = useState<{ question: string; observedWorking: boolean } | null>(null);
   const working = ask.state.state === "working";
   const settled = ask.state.state === "settled" ? ask.state : null;
   const channel = settled && settled.result.state !== "settled" ? channelPresentation(settled.result) : null;
   const said = channel ? `${channel.title}. ${channel.detail}` : settled && !settled.turn && settled.result.state === "settled" ? settled.result.outcome.message.trim() || UNSPOKEN_REPLY : "";
+  useEffect(() => {
+    if (submitted && !submitted.observedWorking && ask.state.state === "working" && ask.state.question === submitted.question) {
+      setSubmitted({ ...submitted, observedWorking: true });
+      return;
+    }
+    if (settled?.authoritative === true && settled.result.state === "settled" && settled.result.outcome.kind === "completed"
+        && submitted?.observedWorking && settled.question === submitted.question && question === submitted.question) {
+      setQuestion("");
+      setSubmitted(null);
+    }
+  }, [ask.state, question, settled, submitted]);
   function send(planRequest = false) {
     if (working || !question.trim()) return;
-    ask.onAsk(question.trim(), true, planRequest);
-    setQuestion("");
+    const exact = question.trim();
+    setSubmitted({ question: exact, observedWorking: false });
+    ask.onAsk(exact, true, planRequest);
   }
   return <section className="conversation-ask" aria-labelledby="conversation-ask-title">
     <h3 id="conversation-ask-title">Ask about your money</h3>
@@ -42,15 +55,29 @@ function AskBox({ ask }: { ask: AskControls }) {
 
 function ProposalReply({ turn, controls }: { turn: ConversationTurn; controls: ConversationControls }) {
   const [said, setSaid] = useState("");
+  const [submitted, setSubmitted] = useState<{ said: string; observedWorking: boolean } | null>(null);
   const proposal = turn.proposal;
+  const working = controls.state.state === "working";
+  useEffect(() => {
+    if (submitted && !submitted.observedWorking && controls.state.state === "working" && controls.state.questionId === turn.questionId) {
+      setSubmitted({ ...submitted, observedWorking: true });
+      return;
+    }
+    const settled = controls.state.state === "settled" ? controls.state : null;
+    if (settled?.authoritative === true && settled.result.state === "settled" && settled.result.outcome.kind === "completed"
+        && submitted?.observedWorking && settled.questionId === turn.questionId && said === submitted.said) {
+      setSaid("");
+      setSubmitted(null);
+    }
+  }, [controls.state, said, submitted, turn.questionId]);
   if (!proposal || proposal.status !== "open") return null;
   const openProposal = proposal;
-  const working = controls.state.state === "working";
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!said.trim() || working) return;
-    controls.onConfirm(turn.questionId, openProposal.id, said.trim(), openProposal.summary || turn.prompt);
-    setSaid("");
+    const exact = said.trim();
+    setSubmitted({ said: exact, observedWorking: false });
+    controls.onConfirm(turn.questionId, openProposal.id, exact, openProposal.summary || turn.prompt);
   }
   return <form className="conversation-proposal" onSubmit={submit}>
     <strong>{openProposal.summary}</strong>
@@ -112,16 +139,16 @@ function Timeline({ data, controls, onOpenFigure, onReviewPlan }: { data: Conver
   </section>;
 }
 
-export function ConversationDrawer({ result, selectedQueue, onSelectQueue, onOpenFigure, onReviewPlan, ask, controls }: { result: FeatureResult<ConversationData>; selectedQueue: string; onSelectQueue: (id: string) => void; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; ask: AskControls | null; controls: ConversationControls }) {
+export function ConversationDrawer({ result, selectedQueue, onSelectQueue, onOpenFigure, onReviewPlan, ask, controls, mode = "combined" }: { result: FeatureResult<ConversationData>; selectedQueue: string; onSelectQueue: (id: string) => void; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; ask: AskControls | null; controls: ConversationControls; mode?: "ask" | "review" | "combined" }) {
   const actionSaid = controls.state.state === "settled" ? outcomePresentation(controls.state.verb, controls.state.result) : null;
   const conversationReadable = result.state === "ready" || result.state === "partial" || result.state === "needs_input";
   return <>
-    {ask ? <AskBox ask={ask} /> : null}
+    {ask && mode !== "review" ? <AskBox ask={ask} /> : null}
     <PanelStateView result={result} copy={{ partial: "Some conversation details are unavailable.", needsInput: "This conversation needs input.", unavailable: { title: "Conversation unavailable", detail: "This build cannot read the conversation for this vault." }, failed: { title: "Conversation could not be read", detail: "The durable conversation read did not complete." } }}>
       {(data) => {
         const proposalIsRestored = data.turns.some((turn) => turn.proposal?.status === "open");
         const questionControls = proposalIsRestored ? { ...controls, onConfirm: undefined } : controls;
-        return <div className="conversation-body"><Timeline data={data} controls={controls} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} /><Questions result={{ state: "ready", data: data.questions }} selectedQueue={selectedQueue} onSelectQueue={onSelectQueue} actions={questionControls} /></div>;
+        return <div className="conversation-body"><Timeline data={data} controls={controls} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} />{mode !== "ask" ? <Questions result={{ state: "ready", data: data.questions }} selectedQueue={selectedQueue} onSelectQueue={onSelectQueue} actions={questionControls} /> : null}</div>;
       }}
     </PanelStateView>
     {actionSaid && !conversationReadable ? <section className="conversation-action-outcome" role="status" aria-live="polite"><h3 id="conversation-action-outcome" tabIndex={-1}>{actionSaid.title}</h3><p>{actionSaid.detail}</p></section> : null}

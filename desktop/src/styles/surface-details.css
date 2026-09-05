@@ -23,3 +23,17 @@
   border-top: 0;
   border-radius: 0;
 }
+.account-detail-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(160px, 34%);
+  grid-template-areas:
+    "account figure"
+    "qualifications qualifications"
+    "caveats caveats";
+  align-items: center;
+  width: 100%;
+}
+.account-detail-row > .detail-row-button { grid-area: account; display: block; width: 100%; min-width: 240px; min-height: var(--control-min-height); padding: var(--space-sm) 0; text-align: left; }
+.account-detail-row > .detail-figure { grid-area: figure; min-width: 0; max-width: 100%; }
+.account-detail-row > .proof-qualifications { grid-area: qualifications; min-width: 0; padding-left: 0; }
+.account-detail-row > .proof-caveats { grid-area: caveats; min-width: 0; padding-left: 0; }

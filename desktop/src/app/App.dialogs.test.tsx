@@ -3,19 +3,19 @@ import { act, fireEvent, render, waitFor, createRef, userEvent,
   ConversationDialogShell, moments, sampleVault, SAVED_NO_READER,
   queryByRoleIn, ThrowingConversationBody, installResponsiveMatchMedia,
   installCapturedAnimationFrames, activityPayload, trustPayload, sampleReads,
-  sampleFrame, installSampleBridge, openSample } from "./App.testSupport";
+  sampleFrame, installSampleBridge, openSample, reviewEmptyPayload } from "./App.testSupport";
 
 beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("dialogs", () => {
-  it("opens the Viva conversation drawer with cited turns and refusal states", async () => {
+  it("opens the Ask Viva drawer with cited turns and refusal states", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText, getAllByRole } = await openSample();
 
     await user.click(getByRole("button", { name: /ask viva/i }));
 
-    expect(getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
+    expect(getByRole("dialog", { name: "Ask Viva" })).toBeInTheDocument();
     // The absent transcript body renders nothing beside the live question box.
     expect(document.body).not.toHaveTextContent("Recorded conversation is unavailable");
     expect(document.body).not.toHaveTextContent("picture is complete");
@@ -24,7 +24,7 @@ describe("dialogs", () => {
     // can ask even where nothing has been answered yet.
     expect(getByRole("button", { name: /^Ask$/i })).toBeInTheDocument();
 
-    await user.click(getByRole("button", { name: /close viva conversation/i }));
+    await user.click(getByRole("button", { name: /close ask viva/i }));
     expect(getByRole("button", { name: /ask viva/i })).toBeInTheDocument();
   });
 
@@ -34,7 +34,7 @@ describe("dialogs", () => {
 
     await user.click(getByRole("button", { name: /ask viva/i }));
 
-    expect(getByRole("dialog", { name: "Viva conversation" })).toContainElement(document.activeElement as HTMLElement | null);
+    expect(getByRole("dialog", { name: "Ask Viva" })).toContainElement(document.activeElement as HTMLElement | null);
   });
 
   it("hands one conversation receipt to the shared Evidence drawer and keeps focus in the active surface", async () => {
@@ -49,14 +49,14 @@ describe("dialogs", () => {
         },
       }],
     };
-    const { getByRole, queryByRole } = await openSample({ conversation });
+    const { getByRole, queryByRole } = await openSample({ conversation, review: reviewEmptyPayload });
 
     await user.click(getByRole("button", { name: "Ask Viva" }));
     const receipt = getByRole("button", { name: "USD 20.00 The balance change", description: "View evidence for The balance change" });
     expect(document.body).not.toHaveTextContent("record-secret-1");
     await user.click(receipt);
 
-    expect(queryByRole("dialog", { name: "Viva conversation" })).not.toBeInTheDocument();
+    expect(queryByRole("dialog", { name: "Ask Viva" })).not.toBeInTheDocument();
     expect(getByRole("dialog", { name: "Evidence for The balance change" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Close evidence" })).toHaveFocus();
     expect(getByRole("button", { name: "Open travel-card-2026-06.pdf" })).toBeInTheDocument();
@@ -69,7 +69,7 @@ describe("dialogs", () => {
     await user.click(getByRole("button", { name: /ask viva/i }));
     await user.keyboard("{Escape}");
 
-    expect(queryByRole("dialog", { name: "Viva conversation" })).not.toBeInTheDocument();
+    expect(queryByRole("dialog", { name: "Ask Viva" })).not.toBeInTheDocument();
   });
 
   it("locks and inerts the shell while Viva is open, then Close restores its opener and exact overflow", async () => {
@@ -82,12 +82,12 @@ describe("dialogs", () => {
       const { getByRole } = await openSample();
       const opener = getByRole("button", { name: "Ask Viva" });
       await user.click(opener);
-      expect(getByRole("button", { name: "Close Viva conversation" })).toHaveFocus();
+      expect(getByRole("button", { name: "Close Ask Viva" })).toHaveFocus();
       expect(document.querySelector("main")).toHaveAttribute("inert");
       expect(document.getElementById("primary-navigation-drawer")).toHaveAttribute("inert");
       expect(document.documentElement.style.overflow).toBe("hidden");
       expect(document.body.style.overflow).toBe("hidden");
-      await user.click(getByRole("button", { name: "Close Viva conversation" }));
+      await user.click(getByRole("button", { name: "Close Ask Viva" }));
       await waitFor(() => expect(opener).toHaveFocus());
       expect(document.documentElement.style.overflow).toBe("clip");
       expect(document.body.style.overflow).toBe("visible");
@@ -102,8 +102,8 @@ describe("dialogs", () => {
     const { container, getByRole } = await openSample();
     const opener = getByRole("button", { name: "Ask Viva" });
     await user.click(opener);
-    const dialog = getByRole("dialog", { name: "Viva conversation" });
-    const close = getByRole("button", { name: "Close Viva conversation" });
+    const dialog = getByRole("dialog", { name: "Ask Viva" });
+    const close = getByRole("button", { name: "Close Ask Viva" });
     await user.keyboard("{Shift>}{Tab}{/Shift}");
     expect(dialog).toContainElement(document.activeElement as HTMLElement);
     expect(close).not.toHaveFocus();
@@ -121,7 +121,7 @@ describe("dialogs", () => {
     const opener = getByRole("button", { name: "Ask Viva" });
     await user.click(opener);
     fireEvent.click(getAllByRole("button", { name: moments.sample_frame_leave, hidden: true })[0]);
-    expect(queryByRole("dialog", { name: "Viva conversation" })).not.toBeInTheDocument();
+    expect(queryByRole("dialog", { name: "Ask Viva" })).not.toBeInTheDocument();
     expect(opener).not.toHaveFocus();
     expect(document.querySelector("main")).not.toHaveAttribute("inert");
     expect(document.getElementById("primary-navigation-drawer")).not.toHaveAttribute("inert");
@@ -134,36 +134,39 @@ describe("dialogs", () => {
     const close = createRef<HTMLButtonElement>();
     try {
       const view = render(<ConversationDialogShell resetKey="request-1-demo" drawerRef={drawer} closeRef={close} onDismiss={dismiss}><ThrowingConversationBody /></ConversationDialogShell>);
-      expect(view.getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
+      expect(view.getByRole("dialog", { name: "Ask Viva" })).toBeInTheDocument();
       expect(view.getByText("This surface could not be shown")).toBeInTheDocument();
-      fireEvent.click(view.getByRole("button", { name: "Close Viva conversation" }));
+      fireEvent.click(view.getByRole("button", { name: "Close Ask Viva" }));
       expect(dismiss).toHaveBeenCalledTimes(1);
       view.rerender(<ConversationDialogShell resetKey="request-2-live" drawerRef={drawer} closeRef={close} onDismiss={dismiss}><div>Recovered supplied body</div></ConversationDialogShell>);
       expect(view.getByText("Recovered supplied body")).toBeInTheDocument();
-      expect(view.getByText("Ask Viva a question about the records in this vault.")).toBeInTheDocument();
+      expect(view.getByText("Start or continue a conversation about the records in this vault.")).toBeInTheDocument();
     } finally {
       error.mockRestore();
     }
   });
 
-  it("keeps the overview selected account spotlight in sync with selection", async () => {
+  it("opens an Overview card as a ledger and restores its selected spotlight on return", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText, container } = await openSample();
 
     expect(getByText("Abroad Current", { selector: ".coverage-account-title" })).toBeInTheDocument();
 
-    await user.click(container.querySelectorAll(".account-card-button")[4] as HTMLElement);
+    const origin = container.querySelectorAll(".account-card-button")[4] as HTMLElement;
+    await user.click(origin);
 
+    expect(getByRole("heading", { name: "Household Card" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Back to Overview" }));
+    await waitFor(() => expect(document.querySelector('[data-overview-account-id="acct:household-card"]')).toHaveFocus());
     expect(getByText("Household Card", { selector: ".coverage-account-title" })).toBeInTheDocument();
-    expect(getByRole("button", { name: /open accounts/i })).toBeInTheDocument();
   });
 
   it("shows the selected document detail inside documents", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText, getAllByText } = await openSample();
-    await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-    expect(getByRole("heading", { name: "Add a document" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "What this read can show" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Statements" }));
+    expect(getByRole("heading", { name: "Add a statement" })).toBeInTheDocument();
+    expect(getByText("What this page can show")).toBeInTheDocument();
     expect(getByRole("heading", { name: "Documents in this vault read" })).toBeInTheDocument();
     await user.click(getByRole("button", { name: /growth-portfolio-2026-06\.pdf/i }));
     // The read supplies identity, filename, kind, resolution and what the
@@ -176,14 +179,14 @@ describe("dialogs", () => {
 
 
 
-  it("opens Activity on the vault own movements, with no second implementation", async () => {
+  it("opens Transactions on the vault movements, with no second implementation", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText, queryByRole } = await openSample();
-    await user.click(getByRole("button", { name: /activity.*what moved/i }));
-    expect(getByRole("heading", { name: "What moved" })).toBeInTheDocument();
-    // One implementation, and no search box: the facet explorer this screen
-    // used to carry existed only for rows composed in the shell.
-    expect(queryByRole("searchbox")).not.toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Transactions" }));
+    expect(getByRole("heading", { name: "Transactions", level: 1 })).toBeInTheDocument();
+    // The one ledger implementation owns search and correction; no parallel
+    // queue or second transaction surface is introduced by the shell.
+    expect(queryByRole("searchbox")).toBeInTheDocument();
     expect(queryByRole("button", { name: /go to review queue/i })).not.toBeInTheDocument();
   });
 
@@ -210,7 +213,7 @@ describe("dialogs", () => {
       pendingFrames.forEach((callback) => callback(performance.now()));
       pendingFrames.clear();
 
-      fireEvent.click(getAllByRole("button", { name: "DocumentsWhat supports it" })[0]);
+      fireEvent.click(getAllByRole("button", { name: "Statements" })[0]);
       expect(document.querySelector("#selected-document-title")).toBeNull();
     } finally {
       globalThis.requestAnimationFrame = originalRequestAnimationFrame;
@@ -228,12 +231,12 @@ describe("dialogs", () => {
 
     try {
       const { queryByRole, getAllByRole, getByRole } = await openSample();
-      fireEvent.click(getByRole("button", { name: "Go to documents" }));
+      fireEvent.click(getByRole("button", { name: "Add statement" }));
       expect(document.getElementById("document-capture-status")).not.toHaveFocus();
       fireEvent.click(getAllByRole("button", { name: moments.sample_frame_leave })[0]);
       pendingFrames.forEach((callback) => callback(performance.now()));
       pendingFrames.clear();
-      fireEvent.click(getAllByRole("button", { name: "DocumentsWhat supports it" })[0]);
+      fireEvent.click(getAllByRole("button", { name: "Statements" })[0]);
       expect(document.getElementById("document-capture-status")).toBeNull();
     } finally {
       globalThis.requestAnimationFrame = originalRequestAnimationFrame;
@@ -246,11 +249,11 @@ describe("dialogs", () => {
     try {
       const { container, getByRole } = await openSample();
       fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
-      fireEvent.click(getByRole("button", { name: "AccountsWhere money sits" }));
-      fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-      getByRole("heading", { name: "Documents" }).focus();
+      fireEvent.click(getByRole("button", { name: "Accounts" }));
+      fireEvent.click(getByRole("button", { name: "Statements" }));
+      getByRole("heading", { name: "Statements & documents" }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: "bank_statement" })).not.toHaveFocus();
+      expect(getByRole("heading", { name: "abroad-current-2026-06.pdf" })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
@@ -263,9 +266,9 @@ describe("dialogs", () => {
       fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
       fireEvent.click(getByRole("button", { name: /growth-portfolio-2026-06\.pdf/i }));
       fireEvent.click(getByRole("button", { name: /everyday-checking-2026-06\.pdf/i }));
-      getByRole("heading", { name: "Documents" }).focus();
+      getByRole("heading", { name: "Statements & documents" }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: "bank_statement" })).not.toHaveFocus();
+      expect(getByRole("heading", { name: "everyday-checking-2026-06.pdf" })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
@@ -284,7 +287,7 @@ describe("dialogs", () => {
     await user.click(getByRole("button", { name: "Open everyday-checking-2026-06.pdf" }));
 
     expect(queryByRole("dialog", { name: "Net worth in USD" })).not.toBeInTheDocument();
-    await waitFor(() => expect(getByRole("heading", { name: "bank_statement" })).toHaveFocus());
+    await waitFor(() => expect(getByRole("heading", { name: "everyday-checking-2026-06.pdf" })).toHaveFocus());
   });
 
   it("keeps Evidence, Viva, and narrow navigation mutually exclusive", async () => {
@@ -297,57 +300,64 @@ describe("dialogs", () => {
     expect(getByRole("dialog", { name: "Net worth in USD" })).toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Ask Viva", hidden: true }));
     expect(queryByRole("dialog", { name: "Net worth in USD" })).not.toBeInTheDocument();
-    expect(getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
+    expect(getByRole("dialog", { name: "Ask Viva" })).toBeInTheDocument();
 
     fireEvent.click(getByRole("button", { name: "Open navigation" }));
-    expect(queryByRole("dialog", { name: "Viva conversation" })).not.toBeInTheDocument();
+    expect(queryByRole("dialog", { name: "Ask Viva" })).not.toBeInTheDocument();
     expect(getByRole("dialog", { name: "Main navigation" })).toBeInTheDocument();
     installResponsiveMatchMedia(1440);
   });
 
   it("shows the selected queue item inside Viva", async () => {
     const user = userEvent.setup();
-    const { getAllByText, getByRole, getByText } = await openSample();
-    await user.click(getByRole("button", { name: "Ask Viva" }));
-    await user.click(getByRole("button", { name: /May I ask what annual fee is/i }));
+    const { getAllByRole, getAllByText, getByRole, getByText } = await openSample();
+    await user.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+    const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
+    expect(action).toBeDefined(); await user.click(action!);
     expect(getByRole("heading", { name: /May I ask what/ })).toBeInTheDocument();
     expect(getByText("Set this question aside")).toBeInTheDocument();
     expect(getAllByText("160.00").length).toBeGreaterThan(0);
   });
 
-  it("opens and focuses an exact review question from Overview", async () => {
+  it("opens and focuses an exact question from Review", async () => {
     const user = userEvent.setup();
     const { getAllByRole, getByRole, queryByRole } = await openSample();
-    await user.click(getAllByRole("button", { name: "View question" })[1]);
+    await user.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+    const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
+    expect(action).toBeDefined(); await user.click(action!);
     await waitFor(() => expect(getByRole("heading", { name: /May I ask what/ })).toHaveFocus());
     expect(queryByRole("button", { name: /^Answer$/i })).not.toBeInTheDocument();
     expect(queryByRole("button", { name: /^Confirm$/i })).not.toBeInTheDocument();
   });
 
-  it("does not resurrect Overview question focus after closing Viva", async () => {
+  it("restores the exact Review item after closing Viva even if another element briefly receives focus", async () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { getAllByRole, getByRole } = await openSample();
-      fireEvent.click(getAllByRole("button", { name: "View question" })[1]);
-      fireEvent.click(getByRole("button", { name: "Close Viva conversation" }));
-      getByRole("heading", { name: "Your financial picture" }).focus();
+      fireEvent.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+      const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
+      fireEvent.click(action!);
+      fireEvent.click(getByRole("button", { name: "Close Review question" }));
+      getByRole("heading", { name: "Review", level: 1 }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: "Your financial picture" })).toHaveFocus();
+      expect(action!.closest("li")).toHaveFocus();
     } finally {
       frames.restore();
     }
   });
 
-  it("keeps the selected question when Viva is closed and opened again", async () => {
+  it("does not carry a selected Review question into Ask Viva", async () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { getAllByRole, getByRole } = await openSample();
-      fireEvent.click(getAllByRole("button", { name: "View question" })[1]);
+      fireEvent.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+      const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
+      fireEvent.click(action!);
       fireEvent.click(getByRole("button", { name: /Your acct:everyday-checking statement/i }));
       fireEvent.click(getByRole("button", { name: /May I ask what annual fee is/i }));
-      fireEvent.click(getByRole("button", { name: "Close Viva conversation" }));
+      fireEvent.click(getByRole("button", { name: "Close Review question" }));
       fireEvent.click(getByRole("button", { name: "Ask Viva" }));
-      expect(getByRole("heading", { name: /May I ask what/ })).toBeInTheDocument();
+      expect(getByRole("heading", { name: "Ask about your money" })).toBeInTheDocument();
     } finally {
       frames.restore();
     }
@@ -363,11 +373,12 @@ describe("dialogs", () => {
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
       await waitFor(() => expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument());
-      // A question opened from Overview asks for focus one frame later. The
+      // A question opened from Review asks for focus one frame later. The
       // vault is closed before that frame runs, so the focus it captured names
       // a question on a screen nobody is looking at any more.
-      fireEvent.click(getAllByRole("button", { name: "View question" })[0]);
-      fireEvent.click(getByRole("button", { name: "Close Viva conversation" }));
+      fireEvent.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+      fireEvent.click(getAllByRole("button", { name: "Answer question" })[0]);
+      fireEvent.click(getByRole("button", { name: "Close Review question" }));
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
       frames.runCaptured();
       expect(document.querySelector("#selected-question-title")).toBeNull();
@@ -382,13 +393,13 @@ describe("dialogs", () => {
     const user = userEvent.setup();
     const { getByRole, getByText, queryByRole } = await openSample();
 
-    await user.click(getByRole("button", { name: /documents.*what supports it/i }));
+    await user.click(getByRole("button", { name: "Statements" }));
     await user.click(getByRole("button", { name: /growth-portfolio-2026-06\.pdf/i }));
-    expect(getByRole("heading", { name: "brokerage_statement" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "growth-portfolio-2026-06.pdf" })).toBeInTheDocument();
 
-    await user.click(getByRole("button", { name: /overview.*your picture/i }));
-    await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-    expect(getByRole("heading", { name: "brokerage_statement" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Overview" }));
+    await user.click(getByRole("button", { name: "Statements" }));
+    expect(getByRole("heading", { name: "growth-portfolio-2026-06.pdf" })).toBeInTheDocument();
     expect(queryByRole("button", { name: /open page review/i })).not.toBeInTheDocument();
     expect(getByText("Page and source-region review are not connected.")).toBeInTheDocument();
   });
@@ -398,24 +409,25 @@ describe("dialogs", () => {
     const { getByRole, getByText, container } = await openSample();
 
     await user.click(container.querySelectorAll(".account-card-button")[1] as HTMLElement);
-    await user.click(getByRole("button", { name: /open accounts/i }));
+    expect(getByRole("heading", { name: "Dormant Savings" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Back to Overview" }));
+    expect(getByText("Dormant Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Accounts" }));
     expect(getByRole("heading", { name: "Accounts in this read" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Dormant Savings" })).toBeInTheDocument();
-
-    await user.click(getByRole("button", { name: /overview.*your picture/i }));
-    expect(getByText("Dormant Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
   });
 
-  it("keeps the selected question when Viva closes and reopens", async () => {
+  it("keeps the selected question when Review closes and reopens", async () => {
     const user = userEvent.setup();
-    const { getAllByText, getByRole, getByText } = await openSample();
+    const { getAllByRole, getAllByText, getByRole, getByText } = await openSample();
 
-    await user.click(getByRole("button", { name: "Ask Viva" }));
-    await user.click(getByRole("button", { name: /May I ask what annual fee is/i }));
+    await user.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+    const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
+    expect(action).toBeDefined(); await user.click(action!);
     expect(getAllByText("160.00").length).toBeGreaterThan(0);
 
-    await user.click(getByRole("button", { name: "Close Viva conversation" }));
-    await user.click(getByRole("button", { name: "Ask Viva" }));
+    await user.click(getByRole("button", { name: "Close Review question" }));
+    await user.click(action!);
     expect(getAllByText("160.00").length).toBeGreaterThan(0);
   });
 
@@ -423,7 +435,7 @@ describe("dialogs", () => {
     const user = userEvent.setup();
     const { getByRole, getByText, container } = await openSample();
 
-    await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
+    await user.click(getByRole("button", { name: "Accounts" }));
     expect(getByRole("heading", { name: "Accounts in this read" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Abroad Current" })).toBeInTheDocument();
     expect(getByText("Grade")).toBeInTheDocument();
@@ -447,15 +459,15 @@ describe("dialogs", () => {
     const user = userEvent.setup();
     const { getAllByText, getByRole, getByText, queryByRole } = await openSample();
 
-    await user.click(getByRole("button", { name: /trust.*how it works/i }));
-    expect(getByRole("heading", { name: "Trust" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Trust & settings" }));
+    expect(getByRole("heading", { name: "Trust & settings" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Trust and limitations" })).toBeInTheDocument();
     // The outbound record, and what nothing on this machine can establish.
     // Both are the read's; neither is a row this screen authored.
     expect(getAllByText(moments.trust_no_anchoring).length).toBeGreaterThan(0);
     expect(getByText("Local source", { selector: ".privacy-lock span" })).toBeInTheDocument();
-    expect(getByText("Every vault this app opens, the sample one included, is opened through the local desktop host on this machine.")).toBeInTheDocument();
-    expect(queryByRole("button", { name: "Go to documents" })).not.toBeInTheDocument();
+    expect(getByText("Vault & privacy").closest("details")).not.toHaveAttribute("open");
+    expect(queryByRole("button", { name: "Add statement" })).toBeInTheDocument();
     const source = getByRole("complementary", { name: "Vault source" });
     const trustHeader = getByRole("heading", { name: "Trust and limitations" });
     expect(source.compareDocumentPosition(trustHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -521,8 +533,7 @@ describe("dialogs", () => {
     expect(document.body.style.overflow).toBe("hidden");
     expect(document.documentElement.style.overflow).toBe("hidden");
     const close = getByRole("button", { name: "Close navigation" });
-    const navButtons = document.querySelectorAll<HTMLElement>("#primary-navigation button");
-    const last = navButtons[navButtons.length - 1];
+    const last = getByRole("button", { name: "Trust & settings" });
     close.focus();
     await user.keyboard("{Shift>}{Tab}{/Shift}");
     expect(last).toHaveFocus();
@@ -547,7 +558,7 @@ describe("dialogs", () => {
     await user.click(trigger);
     const dialog = getByRole("dialog", { name: "Main navigation" });
     const close = getByRole("button", { name: "Close navigation" });
-    const currentPage = getByRole("button", { name: "OverviewYour picture" });
+    const currentPage = getByRole("button", { name: "Overview" });
     expect(document.querySelector("main")).toHaveAttribute("inert");
 
     trigger.focus();
@@ -560,7 +571,7 @@ describe("dialogs", () => {
     const backward = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
     document.dispatchEvent(backward);
     expect(backward.defaultPrevented).toBe(true);
-    expect(getByRole("button", { name: "TrustHow it works" })).toHaveFocus();
+    expect(getByRole("button", { name: "Trust & settings" })).toHaveFocus();
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(currentPage).toHaveAttribute("aria-current", "page");
   });
@@ -597,7 +608,7 @@ describe("dialogs", () => {
     act(() => responsive.resize(390));
 
     await user.click(getByRole("button", { name: "Open navigation" }));
-    await user.click(getByRole("button", { name: "OverviewYour picture" }));
+    await user.click(getByRole("button", { name: "Overview" }));
 
     await waitFor(() => expect(getByRole("heading", { name: "Your financial picture" })).toHaveFocus());
     expect(getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "false");
@@ -610,10 +621,10 @@ describe("dialogs", () => {
     act(() => responsive.resize(390));
 
     await user.click(getByRole("button", { name: /ask viva/i }));
-    expect(getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
+    expect(getByRole("dialog", { name: "Ask Viva" })).toBeInTheDocument();
     await user.click(getByRole("button", { name: "Open navigation" }));
 
-    expect(queryByRole("dialog", { name: "Viva conversation" })).not.toBeInTheDocument();
+    expect(queryByRole("dialog", { name: "Ask Viva" })).not.toBeInTheDocument();
     expect(getByRole("dialog", { name: "Main navigation" })).toBeInTheDocument();
   });
 
@@ -635,7 +646,7 @@ describe("dialogs", () => {
     expect(document.getElementById("primary-navigation-drawer")).not.toHaveAttribute("aria-hidden");
     expect(document.getElementById("primary-navigation-drawer")).not.toHaveAttribute("inert");
     expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await waitFor(() => expect(getByRole("button", { name: "OverviewYour picture" })).toHaveFocus());
+    await waitFor(() => expect(getByRole("button", { name: "Overview" })).toHaveFocus());
     expect(getByRole("button", { name: "Close navigation" })).not.toHaveFocus();
     expect(trigger).not.toHaveFocus();
     expect(document.body.style.overflow).toBe("");
@@ -650,7 +661,7 @@ describe("dialogs", () => {
     act(() => responsive.resize(390));
 
     await user.click(getByRole("button", { name: "Open navigation" }));
-    getByRole("button", { name: "OverviewYour picture" }).removeAttribute("aria-current");
+    getByRole("button", { name: "Overview" }).removeAttribute("aria-current");
     responsive.resize(761);
 
     await waitFor(() => expect(getByRole("heading", { name: "Your financial picture" })).toHaveFocus());

@@ -56,6 +56,40 @@ function installCapturedAnimationFrames() {
 // every destination test in this file also a test of what happens when Activity
 // cannot be read.
 const activityPayload = { state: "absent", sentence: moments.activity_empty, items: [], beyond: { count: 0 }, vocabularies: { categories: { items: [], complete: true, limit: 40 }, tags: { items: [], complete: true, limit: 40, max_selected: 40, max_label_length: 80 } } };
+const reviewEmptyPayload = { contract: "ReviewSummary.v1", state: "ready", title: "Review", summary: "Nothing needs your answer.", actionable_count: 0, shown_count: 0, remaining_count: 0, types: [], groups: [] };
+type ReviewFixtureQuestion = { id: string; kind?: string; text?: string; why?: string; refs?: { movement?: string; movements?: readonly string[]; candidates?: readonly string[]; document?: string; doc_id?: string; account?: string } };
+function reviewBindingForQuestion(question: ReviewFixtureQuestion) {
+  const target = { kind: "conversation", question_id: question.id, disclosure: "No exact transaction mapping was supplied. The existing conversation will open instead." };
+  return {
+    item_id: `question:${question.id}`,
+    question_id: question.id,
+    question_kind: question.kind || "identity",
+    label: question.text || "Question",
+    reason: question.why || "An answer is needed.",
+    refs: {
+      movement: question.refs?.movement || "",
+      movements: [...(question.refs?.movements || [])],
+      candidates: [...(question.refs?.candidates || [])],
+      document: question.refs?.document || "",
+      doc_id: question.refs?.doc_id || "",
+      account: question.refs?.account || "",
+    },
+    target,
+    status: "open",
+    primary_action: "open_question",
+    allowed_actions: ["open_question"],
+  };
+}
+function reviewBoundQuestion<T extends ReviewFixtureQuestion>(question: T) {
+  return { ...question, review_binding: reviewBindingForQuestion(question) };
+}
+function reviewQuestionPayload(questions: readonly ReviewFixtureQuestion[]) {
+  const items = questions.map((question) => {
+    const binding = reviewBindingForQuestion(question);
+    return { id: binding.item_id, type: "question", type_label: "Question", marker: "?", marker_label: "Viva needs an answer", label: binding.label, reason: binding.reason, status: "open", context: { date: "", amount: "", account: "", merchant: "" }, target: binding.target, primary_action: "open_question", action_label: "Answer question", allowed_actions: ["open_question"], binding };
+  });
+  return items.length ? { contract: "ReviewSummary.v1", state: "ready", title: "Review", summary: `${items.length} ${items.length === 1 ? "item needs" : "items need"} your answer.`, actionable_count: items.length, shown_count: items.length, remaining_count: 0, types: [{ id: "questions", label: "Questions", count: items.length }], groups: [{ id: "questions", label: "Questions", count: items.length, items }] } : reviewEmptyPayload;
+}
 const trustPayload = { state: "ready", notes: [], outbound: { state: "ready", sentence: moments.outbound_none, call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [{ id: "scope", sentence: moments.outbound_scope }, { id: "anchoring", sentence: moments.outbound_no_anchor }] } };
 
 // The sample vault, as the backend actually answers for it. These are the same
@@ -77,7 +111,7 @@ function installSampleBridge(overrides: Record<string, unknown> = {}) {
       if (operation === "bridge.open_demo_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: true, frame: sampleFrame, surfaces: [] } as T };
       if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: false } as T };
       if (operation === "bridge.handshake") return { protocol: "1.0", request_id: "hand", ok: true, result: { protocol: "2.0", transport: "json-lines", revision: "sample-build" } as T };
-      if (operation === "viva.surface.capabilities") return { protocol: "1.0", request_id: "caps", ok: true, result: { protocol: "2.0", capabilities: [], destinations: { overview: true, accounts: true, activity: true, documents: true, plans: true, viva: true, trust: true } } as T };
+      if (operation === "viva.surface.capabilities") return { protocol: "1.0", request_id: "caps", ok: true, result: { protocol: "2.0", capabilities: [], destinations: { overview: true, accounts: true, activity: true, documents: true, plans: true, review: true, viva: true, trust: true } } as T };
       if (operation === "viva.settings.read") return { protocol: "1.0", request_id: "set", ok: true, result: { state: "ready", locale: "en-US", currency: "USD", adapter: "", model: "", base_url: "", key_set: false, can_send: false } as T };
       if (operation !== "viva.surface.read") return { protocol: "1.0", request_id: "act", ok: true, result: { kind: "completed", message: "Done.", state: null, reason: null } as T };
       const surface = String(payload.surface);
@@ -108,4 +142,4 @@ export { act, fireEvent, render, waitFor, createRef, userEvent, afterEach,
   beforeEach, describe, expect, it, vi, App, ConversationDialogShell, moments,
   sampleVault, SAVED_NO_READER, queryByRoleIn, ThrowingConversationBody,
   installResponsiveMatchMedia, installCapturedAnimationFrames, activityPayload,
-  trustPayload, sampleReads, sampleFrame, installSampleBridge, openSample };
+  reviewEmptyPayload, reviewBoundQuestion, reviewQuestionPayload, trustPayload, sampleReads, sampleFrame, installSampleBridge, openSample };

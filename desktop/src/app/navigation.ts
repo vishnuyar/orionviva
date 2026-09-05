@@ -3,13 +3,14 @@ import type { Destination, FeatureResult, SurfaceRegistry } from "../surface/typ
 // Where a person can stand, and what each place is called. The labels are this
 // shell's, because they are the words on its own furniture; whether a place has
 // anything behind it is not, and is never written here.
-export const destinations: Array<{ id: Destination; label: string; eyebrow: string }> = [
-  { id: "overview", label: "Overview", eyebrow: "Your picture" },
-  { id: "accounts", label: "Accounts", eyebrow: "Where money sits" },
-  { id: "activity", label: "Activity", eyebrow: "What moved" },
-  { id: "documents", label: "Documents", eyebrow: "What supports it" },
-  { id: "plans", label: "Plans", eyebrow: "What you are making room for" },
-  { id: "trust", label: "Trust", eyebrow: "How it works" },
+export const destinations: Array<{ id: Destination; label: string; description: string; placement: "primary" | "utility" }> = [
+  { id: "overview", label: "Overview", description: "Your financial picture", placement: "primary" },
+  { id: "accounts", label: "Accounts", description: "Balances and account ledgers", placement: "primary" },
+  { id: "activity", label: "Transactions", description: "Search and correct transactions", placement: "primary" },
+  { id: "documents", label: "Statements", description: "Statements and source documents", placement: "primary" },
+  { id: "review", label: "Review", description: "Decisions waiting for you", placement: "primary" },
+  { id: "plans", label: "Plans", description: "Goals and reservations", placement: "primary" },
+  { id: "trust", label: "Trust & settings", description: "Privacy, settings, and vault tools", placement: "utility" },
 ];
 
 // How a destination stands to the engine behind the source. `served` is a read

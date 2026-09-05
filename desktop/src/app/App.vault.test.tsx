@@ -2,7 +2,7 @@ import { act, fireEvent, render, waitFor, createRef, userEvent,
   afterEach, beforeEach, describe, expect, it, vi, App,
   ConversationDialogShell, moments, sampleVault, SAVED_NO_READER,
   queryByRoleIn, ThrowingConversationBody, installResponsiveMatchMedia,
-  installCapturedAnimationFrames, activityPayload, trustPayload, sampleReads,
+  installCapturedAnimationFrames, activityPayload, reviewEmptyPayload, reviewBoundQuestion, reviewQuestionPayload, trustPayload, sampleReads,
   sampleFrame, installSampleBridge, openSample } from "./App.testSupport";
 
 beforeEach(() => { installResponsiveMatchMedia(1440); });
@@ -120,6 +120,8 @@ describe("vault", () => {
           ? { accounts: [] }
           : payload.surface === "documents"
             ? { documents: [] }
+            : payload.surface === "review"
+              ? reviewEmptyPayload
             : payload.surface === "trust"
               ? trustPayload
               : payload.surface === "activity"
@@ -209,7 +211,8 @@ describe("vault", () => {
           : surface === "documents"
             ? { documents: [{ id: "live-document", doc_type: "statement", resolved: false, raw_available: true }] }
             : surface === "conversation"
-              ? { turns: [], questions: [{ id: "live-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." }], total: 1, tail: { count: 0, amount: "0" }, pending: { count: 0 }, invite: "Write an answer", answered_by_document: "A document answers this" }
+              ? { turns: [], questions: [reviewBoundQuestion({ id: "live-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." })], total: 1, tail: { count: 0, amount: "0" }, pending: { count: 0 }, invite: "Write an answer", answered_by_document: "A document answers this" }
+              : surface === "review" ? reviewQuestionPayload([{ id: "live-question", text: "Is this your account?", why: "Account identity is unresolved." }])
               : surface === "trust" ? trustPayload : activityPayload;
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },
@@ -238,25 +241,26 @@ describe("vault", () => {
       expect(queryByText("Document capture is not connected for this vault.")).not.toBeInTheDocument();
       expect(queryByRole("button", { name: /add document/i })).not.toBeInTheDocument();
 
-      await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
+      await user.click(getByRole("button", { name: "Accounts" }));
       expect(queryByText("101.25")).not.toBeInTheDocument();
       expect(getAllByText("Amount unavailable from this preview read.").length).toBeGreaterThan(0);
-      await user.click(getByRole("button", { name: /overview.*your picture/i }));
+      await user.click(getByRole("button", { name: "Overview" }));
 
       await user.click(getByRole("button", { name: /ask viva/i }));
       expect(getByRole("button", { name: /^Ask$/i })).toBeInTheDocument();
       expect(document.body).not.toHaveTextContent("Recorded conversation is unavailable");
       expect(queryByText("What changed this month?")).not.toBeInTheDocument();
-      await user.click(getByRole("button", { name: /close viva conversation/i }));
+      await user.click(getByRole("button", { name: /close ask viva/i }));
 
-      await user.click(getByRole("button", { name: /documents.*what supports it/i }));
+      await user.click(getByRole("button", { name: "Statements" }));
       expect(getByRole("heading", { name: "statement" })).toBeInTheDocument();
       expect(getAllByText(/live-document/).length).toBeGreaterThan(0);
       expect(queryByText("Capture queue")).not.toBeInTheDocument();
       expect(queryByRole("button", { name: /choose a/i })).not.toBeInTheDocument();
       expect(queryByText("Document capture unavailable")).not.toBeInTheDocument();
 
-      await user.click(getByRole("button", { name: /ask viva/i }));
+      await user.click(getByRole("button", { name: /^Review, 1 actionable item$/i }));
+      await user.click(getByRole("button", { name: "Answer question" }));
       expect(getByRole("heading", { name: "Is this your account?" })).toBeInTheDocument();
       expect(queryByRole("textbox", { name: "Your answer" })).not.toBeInTheDocument();
       expect(getByRole("button", { name: "Set aside for now" })).toBeInTheDocument();
@@ -265,7 +269,7 @@ describe("vault", () => {
       // can take one, so a real vault's invitation is never put to a person.
       expect(queryByText("Write an answer")).not.toBeInTheDocument();
       expect(queryByText(/invites an answer in a sentence/)).not.toBeInTheDocument();
-      await user.click(getByRole("button", { name: /close viva conversation/i }));
+      await user.click(getByRole("button", { name: /close review question/i }));
 
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
       expect(getAllByText("No vault open")[0]).toBeInTheDocument();
@@ -301,7 +305,7 @@ describe("vault", () => {
 
       await waitFor(() => expect(getAllByText(canonicalDisplay).length).toBeGreaterThan(0));
       expect(queryByText("202.50")).not.toBeInTheDocument();
-      await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
+      await user.click(getByRole("button", { name: "Accounts" }));
       expect(getAllByText(canonicalDisplay).length).toBeGreaterThan(0);
       expect(queryByText("202.50")).not.toBeInTheDocument();
     } finally {
@@ -321,6 +325,8 @@ describe("vault", () => {
           ? { accounts: [] }
           : payload.surface === "documents"
             ? { documents: [] }
+            : payload.surface === "review"
+              ? reviewEmptyPayload
             : payload.surface === "trust"
               ? trustPayload
               : payload.surface === "activity"
@@ -338,26 +344,25 @@ describe("vault", () => {
 
       await waitFor(() => expect(getByText("No accounts yet", { selector: "strong" })).toBeInTheDocument());
       expect(getByText("Local source", { selector: ".privacy-lock span" })).toBeInTheDocument();
-      expect(getByText("Every vault this app opens, the sample one included, is opened through the local desktop host on this machine.")).toBeInTheDocument();
+      expect(getByText("Vault & privacy").closest("details")).not.toHaveAttribute("open");
       expect(getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
-      await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
+      await user.click(getByRole("button", { name: "Accounts" }));
       expect(getByText("No accounts yet", { selector: "strong" })).toBeInTheDocument();
       expect(getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
-      await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-      expect(getByText("No documents yet", { selector: "strong" })).toBeInTheDocument();
+      await user.click(getByRole("button", { name: "Statements" }));
+      expect(getByText("No statements or documents yet", { selector: "strong" })).toBeInTheDocument();
       expect(getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
-      await user.click(getByRole("button", { name: /ask viva/i }));
-      expect(getByText("Nothing needs you right now", { selector: "strong" })).toBeInTheDocument();
-      await user.click(getByRole("button", { name: /close viva conversation/i }));
-      await user.click(getByRole("button", { name: /activity.*what moved/i }));
-      // Activity is a read. A vault that knows of nothing moving says so,
+      await user.click(getByRole("button", { name: /^Review, 0 actionable items$/i }));
+      expect(getByText("Nothing to review", { selector: "strong" })).toBeInTheDocument();
+      await user.click(getByRole("button", { name: "Transactions" }));
+      // Transactions is a read. A vault that knows of nothing moving says so,
       // which is not the same as nothing having moved.
       expect(getAllByText(moments.activity_empty).length).toBeGreaterThan(0);
-      await user.click(getByRole("button", { name: /trust.*how it works/i }));
+      await user.click(getByRole("button", { name: "Trust & settings" }));
       // Trust is a read, and a vault that has sent nothing says so with the
       // same prominence as one that has. That emptiness is the record.
       expect(getAllByText(moments.outbound_none).length).toBeGreaterThan(0);
-      await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
+      await user.click(getByRole("button", { name: "Accounts" }));
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
       expect(getAllByText("No vault open")[0]).toBeInTheDocument();
     } finally {
@@ -391,7 +396,7 @@ describe("vault", () => {
 
       await waitFor(() => expect(getAllByRole("status")[0]).toHaveTextContent("The private vault opened, but some surfaces could not be read. Your vault was not changed."));
       expect(getAllByText("Kept account", { ignore: "script, style, .figure-invitation" })).toHaveLength(2);
-      await user.click(getByRole("button", { name: /documents.*what supports it/i }));
+      await user.click(getByRole("button", { name: "Statements" }));
       expect(getByText("The documents section could not be read. The private vault is still open.")).toBeInTheDocument();
     } finally {
       window.orionVivaBridge = previousBridge;

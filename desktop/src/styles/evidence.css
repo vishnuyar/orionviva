@@ -14,29 +14,29 @@
 }
 .evidence-drawer-topline { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
 .evidence-drawer-topline > div { min-width: 0; }
-.evidence-boundary { display: block; margin-bottom: 7px; color: #75857c; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.evidence-boundary { display: block; margin-bottom: 7px; color: #75857c; font-size: var(--text-fine); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .evidence-drawer h2 { font-size: 25px; overflow-wrap: anywhere; }
-.evidence-drawer-topline p { margin: 7px 0 0; color: #849087; font-size: 11px; line-height: 1.5; }
+.evidence-drawer-topline p { margin: 7px 0 0; color: #849087; font-size: var(--text-fine); line-height: 1.5; }
 .evidence-close { display: grid; place-items: center; flex: 0 0 auto; min-width: 44px; min-height: 44px; padding: 6px; border: 1px solid #d7e0d5; border-radius: 10px; color: #52675b; background: #f1f4ed; font-size: 22px; }
 .evidence-sections { display: grid; gap: 0; }
 .evidence-sections > section { display: grid; gap: 11px; padding: 22px 0; border-bottom: 1px solid var(--line); }
 .evidence-sections h3 { margin: 0; color: #405248; font-size: 14px; }
-.evidence-sections p, .evidence-sections li, .evidence-sections dd, .evidence-target-state span { margin: 0; color: #748078; font-size: 11px; line-height: 1.55; }
+.evidence-sections p, .evidence-sections li, .evidence-sections dd, .evidence-target-state span { margin: 0; color: #748078; font-size: var(--text-fine); line-height: 1.55; }
 .precision-state { display: grid; gap: 4px; padding: 11px 12px; border: 1px solid #dce4d9; border-radius: 10px; background: #f2f5ee; }
 .precision-state strong { color: #526b5c; font-size: 12px; }
-.precision-state span { color: #7e8982; font-size: 11px; line-height: 1.5; }
+.precision-state span { color: #7e8982; font-size: var(--text-fine); line-height: 1.5; }
 .precision-state.rounded { border-color: #ddd5c4; background: #f6f1e7; }
 .precision-state.unrecognized, .precision-state.unavailable { border-color: #e1d8ca; background: #f5f1e9; }
 .evidence-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 0; }
 .evidence-detail-grid div { min-width: 0; padding: 11px; border-radius: 10px; background: #f1efe7; }
-.evidence-detail-grid dt { color: #8a958e; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.evidence-detail-grid dt { color: #8a958e; font-size: var(--text-fine); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .evidence-detail-grid dd { margin-top: 5px; color: #46584f; font-weight: 700; }
 .record-identity-list { display: grid; gap: 7px; margin: 0; padding-left: 20px; }
 .evidence-source-list { display: grid; gap: 10px; }
 .evidence-source-row { display: grid; gap: 6px; min-width: 0; padding: 12px; border: 1px solid #e0e4dc; border-radius: 11px; background: #fffef9; }
 .evidence-source-row > strong { color: #46584f; font-size: 12px; }
-.evidence-source-row > span { color: #849087; font-size: 10px; }
-.evidence-source-action { justify-self: start; min-height: 44px; padding: 8px 11px; color: #536e5f; background: #edf2eb; border: 1px solid #dae4d9; border-radius: 8px; font-size: 11px; font-weight: 700; text-align: left; }
+.evidence-source-row > span { color: #849087; font-size: var(--text-fine); }
+.evidence-source-action { justify-self: start; min-height: 44px; padding: 8px 11px; color: #536e5f; background: #edf2eb; border: 1px solid #dae4d9; border-radius: 8px; font-size: var(--text-fine); font-weight: 700; text-align: left; }
 .evidence-target-state { display: grid; gap: 4px; padding: 10px; border-radius: 9px; background: #f4efe7; }
-.evidence-target-state strong { color: #765e4c; font-size: 11px; }
+.evidence-target-state strong { color: #765e4c; font-size: var(--text-fine); }
 .evidence-drawer, .evidence-drawer *, .figure-trigger, .record-identity-list li, .evidence-source-row, .evidence-source-action { overflow-wrap: anywhere; word-break: break-word; }

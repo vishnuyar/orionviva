@@ -44,7 +44,8 @@ import shutil
 import sys
 import time
 
-from .crypto import open_sealed, open_vault_header, seal
+from .crypto import (HEAD_BOUND_HEADER_VERSION, open_sealed,
+                     open_vault_header, rebind_vault_header, seal)
 from .env import load_dotenv
 from .ledger.store import GENESIS, _canonical, _record_hash, write_head
 from .logs import configure as configure_logging
@@ -115,9 +116,14 @@ def rebuild_log(src_events: pathlib.Path, dst_events: pathlib.Path,
             survivors.append(payload)
             counts_out[et] += 1
 
-    # Write the new log: same header (same key), survivors re-sequenced and
-    # re-sealed. The event body — including its original recorded_at — is
-    # untouched; only seq and the chain move.
+    # Write the new log with the same key and a head-bound header. A rebuilt
+    # destination is newly head-tracked even when its source was genuinely
+    # legacy; copying a legacy check token beside a new head would leave an
+    # unauthenticated downgrade path.
+    header = rebind_vault_header(
+        header, key, header_version=HEAD_BOUND_HEADER_VERSION)
+    # Survivors are re-sequenced and re-sealed. The event body — including its
+    # original recorded_at — is untouched; only seq and the chain move.
     dst_events.parent.mkdir(parents=True, exist_ok=True)
     prev = GENESIS
     with dst_events.open("w") as f:

@@ -13,10 +13,27 @@ import evidence from "./evidence.css?raw";
 import surfaceResponsive from "./surface-responsive.css?raw";
 import capture from "./capture.css?raw";
 import picture from "./picture.css?raw";
+import plans from "./plans.css?raw";
+import accountLedger from "./account-ledger.css?raw";
+import reviewCenter from "./review-center.css?raw";
+import spending from "./spending-breakdown.css?raw";
+import surfaceImports from "./surfaces.css?raw";
 
 const surfaces = [surfaceBase, documents, surfacePrimitives, review,
   surfaceDetails, conversation, activity, trust, evidence,
-  surfaceResponsive].join("\n");
+  surfaceResponsive, accountLedger, reviewCenter, spending].join("\n");
+
+const productionStyles = new Map([
+  ["tokens.css", tokens], ["shell.css", shell], ["surface-base.css", surfaceBase],
+  ["documents.css", documents], ["surface-primitives.css", surfacePrimitives],
+  ["questions.css", review], ["review-center.css", reviewCenter],
+  ["surface-details.css", surfaceDetails], ["conversation.css", conversation],
+  ["activity.css", activity], ["account-ledger.css", accountLedger],
+  ["trust.css", trust], ["evidence.css", evidence],
+  ["surface-responsive.css", surfaceResponsive], ["capture.css", capture],
+  ["picture.css", picture], ["plans.css", plans],
+  ["spending-breakdown.css", spending],
+]);
 
 // What a person can actually read, measured rather than judged. The colours
 // come from the token file, the grounds under them from the stylesheets that
@@ -179,6 +196,236 @@ const lightSource = tokens.replace(qualifiedRootBlock(tokens), "");
 const grounds = [...new Set([...lightSource.matchAll(new RegExp("linear-gradient\\(180deg,\\s*(#[0-9a-f]{6})\\s*0%,\\s*(#[0-9a-f]{6})\\s*100%\\)", "g"))].flatMap((match) => [match[1], match[2]]))];
 
 describe("what a person can read on the screens this cycle authored", () => {
+  it("audits every production stylesheet directly instead of trusting an aggregate alias", () => {
+    const nestedNames = ["surface-base.css", "documents.css", "surface-primitives.css", "questions.css", "review-center.css", "surface-details.css", "conversation.css", "activity.css", "account-ledger.css", "trust.css", "evidence.css", "surface-responsive.css"];
+    for (const file of nestedNames) expect(surfaceImports, `${file} production import`).toContain(file);
+    expect([...productionStyles.keys()].sort()).toEqual([
+      "account-ledger.css", "activity.css", "capture.css", "conversation.css",
+      "documents.css", "evidence.css", "picture.css", "plans.css", "questions.css",
+      "review-center.css", "shell.css", "spending-breakdown.css", "surface-base.css",
+      "surface-details.css", "surface-primitives.css", "surface-responsive.css",
+      "tokens.css", "trust.css",
+    ]);
+  });
+
+  it("keeps meaningful text at twelve pixels or larger in every shipped stylesheet", () => {
+    for (const [file, source] of productionStyles) {
+      for (const match of source.matchAll(new RegExp("font-size\\s*:\\s*([^;}]+)", "g"))) {
+        const value = match[1].trim();
+        const pixels = [...value.matchAll(new RegExp("([\\d.]+)px", "g"))].map((size) => Number(size[1]));
+        const usesTypeToken = value.includes("var(--text-");
+        expect(pixels.length > 0 || usesTypeToken, `${file}: unsupported font-size ${value}`).toBe(true);
+        for (const size of pixels) expect(size, `${file}: font-size ${value}`).toBeGreaterThanOrEqual(12);
+      }
+    }
+  });
+
+  it("computes the type floor on nested meaningful text instead of trusting declarations", () => {
+    const style = document.createElement("style");
+    style.textContent = [...productionStyles.values()].join("\n");
+    const fixture = document.createElement("div");
+    fixture.innerHTML = '<div class="signal-value"><strong>USD 1.00</strong><small id="recent-direction">out</small></div><div class="utility-card"><small id="utility-detail">Current coverage</small></div><div class="account-ledger-description"><small id="ledger-detail">Groceries</small></div>';
+    document.head.append(style); document.body.append(fixture);
+    try {
+      for (const id of ["recent-direction", "utility-detail", "ledger-detail"]) {
+        const size = Number(resolve(getComputedStyle(document.getElementById(id)!).fontSize).replace("px", ""));
+        expect(size, `${id} computed size`).toBeGreaterThanOrEqual(12);
+      }
+    } finally {
+      fixture.remove(); style.remove();
+    }
+  });
+
+  it("computes a 44 by 44 floor for dense desktop controls and disclosures", () => {
+    const style = document.createElement("style");
+    style.textContent = [...productionStyles.values()].join("\n");
+    const fixture = document.createElement("div");
+    fixture.innerHTML = '<button id="nav" class="nav-item">Accounts</button><button id="secondary" class="secondary-button">Inspect</button><button id="proof" class="proof-link">Source</button><button id="account-title" class="coverage-account-title">Current account</button><div class="account-detail-row"><button id="account-row" class="detail-row-button">Everyday Checking</button></div><button id="text" class="text-button">Open transactions</button><button id="figure" class="figure-trigger">USD 1.00</button><button id="conversation-figure" class="figure-trigger conversation-figure-trigger">USD 2.00</button><button id="review-action" class="review-topbar-button">Review</button><aside class="account-transaction-drawer"><button id="drawer-close" class="conversation-close">Close</button></aside><section class="account-ledger-page"><label id="ledger-check" class="account-ledger-check"><input id="ledger-checkbox" type="checkbox" />Select transaction</label></section><button id="disabled" class="secondary-button" aria-disabled="true">Saving</button><details><summary id="disclosure">Source details</summary></details><label>Account<select id="filter"><option>All accounts</option></select></label>';
+    document.head.append(style); document.body.append(fixture);
+    try {
+      for (const id of ["nav", "secondary", "proof", "account-title", "account-row", "text", "figure", "conversation-figure", "review-action", "drawer-close", "ledger-check", "disabled", "disclosure"]) {
+        const computed = getComputedStyle(document.getElementById(id)!);
+        expect(Number(resolve(computed.minWidth).replace("px", "")), `${id} minimum width`).toBeGreaterThanOrEqual(44);
+        expect(Number(resolve(computed.minHeight).replace("px", "")), `${id} minimum height`).toBeGreaterThanOrEqual(44);
+      }
+      expect(document.getElementById("ledger-check")).toContainElement(document.getElementById("ledger-checkbox"));
+      expect(Number(resolve(getComputedStyle(document.getElementById("filter")!).minHeight).replace("px", "")), "filter minimum height").toBeGreaterThanOrEqual(44);
+    } finally {
+      fixture.remove(); style.remove();
+    }
+  });
+
+  it("keeps every spending caption readable and every bar distinguishable", () => {
+    const paper = stack("#f7f2e7", "var(--paper)");
+    const panel = paint(declared(spending, ".spending-figure", "background")).rgb;
+    const checks = [
+      [".spending-card .section-kicker", paper],
+      [".spending-card .text-button", paper],
+      [".spending-controls label", paper],
+      [".spending-filter-summary", paper],
+      [".spending-update", paper],
+      [".spending-coverage", paper],
+      [".spending-coverage-details", paper],
+      [".spending-figure figcaption span", panel],
+      [".spending-figure figcaption small", panel],
+      [".spending-bars small", panel],
+      [".spending-card .empty-state span", panel],
+      [".spending-disclosures", paper],
+    ] as const;
+    for (const [selector, ground] of checks) {
+      expect(Number(resolve(declared(spending, selector, "font-size")).replace("px", "")), `${selector} size`).toBeGreaterThanOrEqual(12);
+      expect(contrast(declared(spending, selector, "color"), ground), `${selector} contrast`).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+    const trackBorder = declared(spending, ".spending-bar-track", "border").split(" ").at(-1)!;
+    const fillBoundary = declared(spending, ".spending-bar-fill", "stroke");
+    expect(contrast(trackBorder, panel), "track boundary").toBeGreaterThanOrEqual(AA_NON_TEXT);
+    expect(contrast(fillBoundary, paint(declared(spending, ".spending-bar-ground", "fill")).rgb), "bar boundary").toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+
+  it("measures the actual Review center, summary, badges, rows, statuses, and actions", () => {
+    const panel = paint(declared(reviewCenter, ".review-center", "background")).rgb;
+    const row = paint(declared(reviewCenter, ".review-center-row", "background")).rgb;
+    const checks = [
+      [".review-center-header p", panel],
+      [".review-center-count span", panel],
+      [".review-center-row-heading > span", row],
+      [".review-center-row p", row],
+      [".review-center-row small", row],
+      [".review-center-marker", paint(declared(reviewCenter, ".review-center-marker", "background")).rgb],
+      [".review-center-row .secondary-button", paint(declared(reviewCenter, ".review-center-row .secondary-button", "background")).rgb],
+      [".review-center-boundary > .empty-state span", paint(declared(reviewCenter, ".review-center-boundary > .empty-state", "background")).rgb],
+      [".overview-review-summary p", paint(declared(reviewCenter, ".overview-review-summary", "background")).rgb],
+      [".review-topbar-button", paint(declared(reviewCenter, ".review-topbar-button", "background")).rgb],
+    ] as const;
+    for (const [selector, ground] of checks) {
+      const size = Number(resolve(declared(reviewCenter, selector, "font-size")).replace("px", ""));
+      expect(size, `${selector} size`).toBeGreaterThanOrEqual(12);
+      expect(contrast(declared(reviewCenter, selector, "color"), ground), `${selector} contrast`).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+    const badgeGround = paint(declared(reviewCenter, ".review-badge", "background")).rgb;
+    expect(Number(resolve(declared(reviewCenter, ".review-badge", "font-size")).replace("px", ""))).toBeGreaterThanOrEqual(12);
+    expect(contrast(declared(reviewCenter, ".review-badge", "color"), badgeGround)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(paint(declared(reviewCenter, ".review-center", "background")).alpha).toBe(1);
+    expect(paint(declared(reviewCenter, ".review-center-row", "background")).alpha).toBe(1);
+    expect(paint(declared(reviewCenter, ".review-center-boundary > .empty-state", "background")).alpha).toBe(1);
+  });
+
+  it("keeps ledger captions at twelve pixels or larger with readable panel text", () => {
+    const panel = declared(accountLedger, ".account-ledger-coverage", "background");
+    const checks = [
+      [".account-ledger-coverage", ".account-ledger-coverage"],
+      [".account-ledger-status span", ".account-ledger-status"],
+      [".account-ledger-filters label", ".account-ledger-filters"],
+    ] as const;
+    for (const [words, groundSelector] of checks) {
+      const size = Number(resolve(declared(accountLedger, words, "font-size")).replace("px", ""));
+      const ink = declared(accountLedger, words, "color");
+      const ground = groundSelector === ".account-ledger-coverage" ? panel : declared(accountLedger, groundSelector, "background");
+      expect(size, `${words} size`).toBeGreaterThanOrEqual(12);
+      expect(contrast(ink, paint(ground).rgb), `${words} contrast`).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  it("keeps viewport-independent ledger and drawer overrides above the text floor", () => {
+    expect(resolve(declared(surfacePrimitives, ".detail-panel-label", "font-size"))).toBe("12px");
+    expect(resolve(declared(shell, ".text-button", "font-size"))).toBe("12px");
+    expect(resolve(declared(activity, ".proof-link", "font-size"))).toBe("12px");
+    const selectors = [
+      ".account-ledger-page .detail-panel-label",
+      ".account-transaction-drawer .detail-panel-label",
+      ".account-ledger-page .text-button",
+      ".account-ledger-state > .text-button",
+      ".account-transaction-drawer .proof-link",
+      ".account-ledger-page .empty-state span",
+      ".account-ledger-state .empty-state span",
+    ];
+    const panel = paint(declared(accountLedger, ".account-transaction-drawer", "background")).rgb;
+    for (const selector of selectors) {
+      const size = Number(resolve(declared(accountLedger, selector, "font-size")).replace("px", ""));
+      const ink = declared(accountLedger, selector, "color");
+      expect(size, `${selector} size`).toBeGreaterThanOrEqual(12);
+      expect(contrast(ink, panel), `${selector} contrast`).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  it("computes readable ledger and drawer details in a representative DOM", () => {
+    const style = document.createElement("style");
+    style.textContent = [tokens, shell, surfaceBase, documents, surfacePrimitives, review, surfaceDetails, conversation, activity, accountLedger, trust, evidence, surfaceResponsive].join("\n");
+    const fixture = document.createElement("div");
+    fixture.innerHTML = '<section class="account-ledger-page"><header class="account-ledger-heading"><span id="ledger-identity" class="detail-panel-label">Account identity</span><button id="ledger-back" class="text-button">Back to accounts</button></header><div class="empty-state"><span id="ledger-hint">No transactions</span></div><section class="account-ledger-batch"><button id="ledger-disabled" class="secondary-button" aria-disabled="true">Save batch</button></section></section><section class="account-ledger-state"><button id="state-back" class="text-button">Back to accounts</button><div class="empty-state"><span id="state-hint">Read unavailable</span></div></section><aside class="account-transaction-drawer"><header><div><span id="drawer-label" class="detail-panel-label">Transaction details</span><h2 id="drawer-title">Corner market</h2></div></header><section><h3 id="drawer-section-title">Transaction summary</h3><p id="drawer-detail">Posted debit</p><dl class="account-transaction-summary"><div><dt id="drawer-term">Amount</dt><dd id="drawer-value">$42.00</dd></div></dl></section><div class="account-ledger-status"><strong id="drawer-status-title">Saving changes</strong><span id="drawer-status-detail">Waiting for the vault.</span></div><form class="account-ledger-editor"><label id="drawer-editor-label">Category<select id="drawer-disabled-select" aria-disabled="true"><option>Dining</option></select></label><button id="drawer-disabled-button" class="secondary-button" aria-disabled="true">Save category and subcategory</button></form><button id="drawer-proof" class="proof-link">Source document</button></aside>';
+    document.head.append(style); document.body.append(fixture);
+    try {
+      for (const id of ["ledger-identity", "ledger-back", "ledger-hint", "state-back", "state-hint", "drawer-label", "drawer-title", "drawer-section-title", "drawer-detail", "drawer-term", "drawer-value", "drawer-status-title", "drawer-status-detail", "drawer-editor-label", "drawer-disabled-select", "drawer-disabled-button", "drawer-proof"]) {
+        const computed = getComputedStyle(document.getElementById(id)!);
+        expect(Number(resolve(computed.fontSize).replace("px", "")), `${id} size`).toBeGreaterThanOrEqual(12);
+        expect(contrast(computed.color, paint("var(--panel)").rgb), `${id} contrast`).toBeGreaterThanOrEqual(AA_TEXT);
+      }
+    } finally {
+      fixture.remove(); style.remove();
+    }
+  });
+
+  it("replaces the shell's translucent disabled treatment inside every ledger context", () => {
+    expect(declared(shell, '.secondary-button[aria-disabled="true"]', "opacity")).toBe(".58");
+    const selectors = [
+      '.account-ledger-page button[aria-disabled="true"]',
+      '.account-ledger-page input[aria-disabled="true"]',
+      '.account-ledger-page select[aria-disabled="true"]',
+      '.account-ledger-state button[aria-disabled="true"]',
+      '.account-transaction-drawer button[aria-disabled="true"]',
+      '.account-transaction-drawer input[aria-disabled="true"]',
+      '.account-transaction-drawer select[aria-disabled="true"]',
+    ];
+    for (const selector of selectors) {
+      expect(declared(accountLedger, selector, "opacity"), selector).toBe("1");
+      const foreground = declared(accountLedger, selector, "color");
+      const background = declared(accountLedger, selector, "background");
+      const border = declared(accountLedger, selector, "border").split(" ").at(-1)!;
+      expect(paint(background).alpha, `${selector} ground opacity`).toBe(1);
+      expect(contrast(foreground, paint(background).rgb), `${selector} text contrast`).toBeGreaterThanOrEqual(AA_TEXT);
+      expect(contrast(border, paint(background).rgb), `${selector} border contrast`).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    }
+
+    const style = document.createElement("style");
+    style.textContent = [tokens, shell, accountLedger].join("\n");
+    const fixture = document.createElement("div");
+    fixture.innerHTML = '<section class="account-ledger-page"><button id="computed-ledger-disabled" class="secondary-button" aria-disabled="true">Load more</button></section><aside class="account-transaction-drawer"><button id="computed-drawer-disabled" class="secondary-button" aria-disabled="true">Save</button><select id="computed-drawer-select" aria-disabled="true"><option>Category</option></select></aside>';
+    document.head.append(style); document.body.append(fixture);
+    try {
+      for (const id of ["computed-ledger-disabled", "computed-drawer-disabled", "computed-drawer-select"]) {
+        const computed = getComputedStyle(document.getElementById(id)!);
+        expect(computed.opacity, `${id} effective opacity`).toBe("1");
+        expect(contrast(computed.color, paint(computed.background).rgb), `${id} effective contrast`).toBeGreaterThanOrEqual(AA_TEXT);
+      }
+    } finally {
+      fixture.remove(); style.remove();
+    }
+  });
+
+  it("paints an opaque transaction drawer with readable detail text", () => {
+    const ground = declared(accountLedger, ".account-transaction-drawer", "background");
+    const words = declared(accountLedger, ".account-transaction-drawer section p", "color");
+    expect(paint(ground).alpha).toBe(1);
+    expect(contrast(words, paint(ground).rgb)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("collapses the filter body only at the narrow ledger breakpoint", () => {
+    expect(accountLedger).toContain("@media (max-width: 620px)");
+    expect(accountLedger).toContain(".account-ledger-filter-disclosure > summary { display: flex;");
+    expect(accountLedger).toContain(".account-ledger-filter-disclosure:not([open]) > .account-ledger-filters { display: none;");
+    expect(accountLedger).toContain(".account-transaction-drawer { width: 100vw;");
+  });
+
+  it("does not downgrade ledger text or disabled-state paint in narrow-only CSS", () => {
+    // jsdom does not evaluate media queries. Inspect the actual narrow rule
+    // block instead, while computed-style coverage above remains viewport-neutral.
+    const narrow = accountLedger.slice(accountLedger.indexOf("@media (max-width: 620px)"));
+    expect(narrow).not.toContain("font-size:");
+    expect(narrow).not.toContain("color:");
+    expect(narrow).not.toContain("opacity:");
+    expect(narrow).not.toContain("background:");
+  });
+
   it("measures the palette the application renders, not the one it merely defines", () => {
     expect(light.get("--ink")).toBe("#21332c");
     expect(dark.get("--ink")).not.toBe(light.get("--ink"));
@@ -197,7 +444,7 @@ describe("what a person can read on the screens this cycle authored", () => {
     const paper = declared(capture, ".vault-open-form .vault-passphrase-consequence", "background");
     expect(resolve(declared(capture, ".vault-open-form .vault-passphrase-consequence", "font-size"))).toBe("14px");
     for (const page of grounds) {
-      const ground = stack(page, declared(shell, ".sidebar", "background"), declared(shell, ".vault-source-card", "background"), paper);
+      const ground = stack(page, declared(shell, ".sidebar", "background"), declared(shell, ".vault-source-disclosure", "background"), paper);
       expect(contrast(ink, ground), `passphrase on ${page}`).toBeGreaterThanOrEqual(AA_TEXT);
     }
   });

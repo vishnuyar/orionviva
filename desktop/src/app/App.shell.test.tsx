@@ -4,11 +4,20 @@ import { act, fireEvent, render, waitFor, createRef, userEvent,
   queryByRoleIn, ThrowingConversationBody, installResponsiveMatchMedia,
   installCapturedAnimationFrames, activityPayload, trustPayload, sampleReads,
   sampleFrame, installSampleBridge, openSample } from "./App.testSupport";
+import { restoreAccountIndexFocus } from "./App";
 
 beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("shell", () => {
+  it("returns focus to the Accounts heading when the originating account disappeared", () => {
+    const host = document.createElement("section");
+    host.innerHTML = '<h2 id="accounts-index-heading" tabindex="-1">Accounts in this read</h2>';
+    document.body.append(host);
+    restoreAccountIndexFocus("account-that-is-no-longer-present", null);
+    expect(host.querySelector("h2")).toHaveFocus();
+    host.remove();
+  });
   it("opens on the financial picture", async () => {
     const { getByRole, getByText, getAllByText } = await openSample();
     const heading = getByRole("heading", { name: "Your financial picture" });
@@ -22,21 +31,24 @@ describe("shell", () => {
     expect(disclosure.compareDocumentPosition(hero as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("lets the overview spotlight select an account and open its detail", async () => {
+  it("opens an exact Overview account in its ledger and returns focus to the originating card", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText, getAllByText } = await openSample();
 
-    await user.click(getAllByText("Rainy Day Savings").find((node) => node.closest("button")?.classList.contains("account-card-button"))!.closest("button")!);
+    const origin = getAllByText("Rainy Day Savings").find((node) => node.closest("button")?.classList.contains("account-card-button"))!.closest("button")!;
+    origin.focus();
+    await user.keyboard("{Enter}");
 
-    expect(getByText("Selected account")).toBeInTheDocument();
-    expect(getByRole("button", { name: /open accounts/i })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Rainy Day Savings" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Accounts" })).toHaveAttribute("aria-current", "page");
+    expect(getByRole("button", { name: "Back to Overview" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Back to Overview" }));
+    await waitFor(() => expect(document.querySelector('[data-overview-account-id="acct:rainy-day-savings"]')).toHaveFocus());
     expect(getByText("Rainy Day Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
-    expect(getAllByText("This figure is over Rainy Day Savings alone. It is good as of 2026-06-01.")).toHaveLength(2);
   });
 
   it("pairs every overview account amount with a distinct stable-id source control", async () => {
-    const user = userEvent.setup();
-    const { container, getByRole, getByText, getAllByText } = await openSample();
+    const { container, getAllByText } = await openSample();
     const cards = Array.from(container.querySelectorAll<HTMLElement>(".account-card"));
 
     expect(cards).toHaveLength(8);
@@ -51,9 +63,6 @@ describe("shell", () => {
     });
 
     const savingsCard = cards.find((card) => card.textContent?.includes("Rainy Day Savings")) as HTMLElement;
-    await user.click(savingsCard.querySelector(".account-card-button") as HTMLElement);
-    expect(getByText("Rainy Day Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
-
     // The proof link beside a figure is the read's own citation, and it is a
     // separate control from the one that selects the row: pressing the row
     // never reads as pressing the figure.
@@ -73,7 +82,7 @@ describe("shell", () => {
     const spotlight = [...view.container.querySelectorAll<HTMLElement>(".account-card")].find((card) => card.textContent?.includes("Rainy Day Savings"))!;
     expect(spotlight.textContent).toContain(qualification);
 
-    await user.click(view.getByRole("button", { name: "AccountsWhere money sits" }));
+    await user.click(view.getByRole("button", { name: "Accounts" }));
     const row = [...view.container.querySelectorAll<HTMLElement>(".detail-row")].find((entry) => entry.textContent?.includes("Rainy Day Savings"))!;
     expect(row.textContent).toContain(qualification);
   });
@@ -81,9 +90,9 @@ describe("shell", () => {
   it("moves through shell destinations without leaving the page", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText } = await openSample();
-    await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-    expect(getByRole("heading", { name: "Documents" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Add a document" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Statements" }));
+    expect(getByRole("heading", { name: "Statements & documents" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Add a statement" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Documents in this vault read" })).toBeInTheDocument();
   });
 
@@ -92,10 +101,10 @@ describe("shell", () => {
     const activity = {
       state: "ready", sentence: moments.activity_scope, beyond: { count: 0 },
       vocabularies: { categories: { items: [{ id: "food", label: "Food" }, { id: "housing", label: "Housing" }], complete: true, limit: 40 }, tags: { items: [{ id: "trip", label: "Trip" }], complete: true, limit: 40, max_selected: 40, max_label_length: 80 } },
-      items: [{ id: "movement:key", date: "2026-06-01", description: "Corner shop", account: "acct:one", direction: "out", exact_value: "12.00", currency: "USD", display: "USD 12.00", nature: "spending", treatment: { kind: "spending", name: "" }, sentence: "", decided_by: "default", provisional: false, linked: false, category: { id: "food", label: "Food" }, tags: [{ id: "trip", label: "Trip" }], transfer: { state: "none" }, actions: ["assign_category", "assign_meaning", "replace_tags"] }],
+      items: [{ id: "movement:key", date: "2026-06-01", description: "Corner shop", account: "acct:one", account_id: "acct:one", account_name: "Everyday account", direction: "out", exact_value: "12.00", currency: "USD", display: "USD 12.00", nature: "spending", treatment: { kind: "spending", name: "" }, sentence: "", decided_by: "default", provisional: false, linked: false, category: { id: "food", label: "Food" }, subcategory: { id: null, label: "" }, classification: { grade: "verified", provenance: "human" }, tags: [{ id: "trip", label: "Trip" }], evidence_links: [], transfer: { state: "none" }, actions: ["assign_category", "assign_meaning", "replace_tags"] }],
     };
     const view = await openSample({ activity });
-    await user.click(view.getByRole("button", { name: "ActivityWhat moved" }));
+    await user.click(view.getByRole("button", { name: "Transactions" }));
     await user.click(view.getByText(/Correct category, treatment, or tags/));
     await user.selectOptions(view.getByRole("combobox", { name: /Category for/ }), "housing");
     await user.click(view.getByRole("button", { name: /Save category for/ }));
@@ -115,7 +124,7 @@ describe("shell", () => {
     const linked = raw.items.find((row) => row.transfer.state === "linked")?.transfer;
     if (!suggested?.explanation || !suggested.candidates?.[0] || !linked?.explanation || !linked.relationship) throw new Error("live v3 parity fixture is missing transfer authority");
     const view = await openSample();
-    await user.click(view.getByRole("button", { name: "ActivityWhat moved" }));
+    await user.click(view.getByRole("button", { name: "Transactions" }));
     const suggestionSummary = view.getAllByText("Correct category, treatment, tags, or transfer", { exact: true }).find((summary) => summary.getAttribute("aria-label")?.includes("possible transfer to savings"));
     if (!suggestionSummary) throw new Error("installed suggested row correction is missing");
     await user.click(suggestionSummary);
@@ -135,11 +144,11 @@ describe("shell", () => {
     const user = userEvent.setup();
     const view = await openSample();
     const destinations = [
-      ["OverviewYour picture", ".hero-grid"],
-      ["AccountsWhere money sits", ".feature-panel"],
-      ["ActivityWhat moved", ".activity-panel"],
-      ["DocumentsWhat supports it", ".documents-surface"],
-      ["TrustHow it works", ".trust-panel"],
+      ["Overview", ".hero-grid"],
+      ["Accounts", ".feature-panel"],
+      ["Transactions", ".activity-panel"],
+      ["Statements", ".documents-surface"],
+      ["Trust & settings", ".trust-panel"],
     ] as const;
     for (const [name, selector] of destinations) {
       await user.click(view.getByRole("button", { name }));
@@ -148,36 +157,36 @@ describe("shell", () => {
       expect(facts).not.toBeNull();
       expect(source.compareDocumentPosition(facts as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(view.container.querySelectorAll("h1")).toHaveLength(1);
-      expect(view.container.querySelectorAll('#primary-navigation [aria-current="page"]')).toHaveLength(1);
+      expect(view.container.querySelectorAll('.sidebar [aria-current="page"]')).toHaveLength(1);
     }
   });
 
   it("acknowledges document capture as local-only", async () => {
     const user = userEvent.setup();
     const { getAllByRole, container, getByRole } = await openSample();
-    await user.click(getByRole("button", { name: "Go to documents" }));
-    await waitFor(() => expect(getByRole("region", { name: "Add a document" })).toHaveFocus());
+    await user.click(getByRole("button", { name: "Add statement" }));
+    await waitFor(() => expect(getByRole("region", { name: "Add a statement" })).toHaveFocus());
     expect(container.querySelector('input[type="file"]')).toBeNull();
   });
 
   it("focuses the static capture explanation when already on Documents", async () => {
     const user = userEvent.setup();
     const { getByRole } = await openSample();
-    await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-    await user.click(getByRole("button", { name: "Go to documents" }));
-    await waitFor(() => expect(getByRole("region", { name: "Add a document" })).toHaveFocus());
+    await user.click(getByRole("button", { name: "Statements" }));
+    await user.click(getByRole("button", { name: "Add statement" }));
+    await waitFor(() => expect(getByRole("region", { name: "Add a statement" })).toHaveFocus());
   });
 
   it("does not resurrect capture focus after navigating away and back from another destination", async () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { getByRole } = await openSample();
-      fireEvent.click(getByRole("button", { name: "Go to documents" }));
-      fireEvent.click(getByRole("button", { name: "AccountsWhere money sits" }));
-      fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-      getByRole("heading", { name: "Documents" }).focus();
+      fireEvent.click(getByRole("button", { name: "Add statement" }));
+      fireEvent.click(getByRole("button", { name: "Accounts" }));
+      fireEvent.click(getByRole("button", { name: "Statements" }));
+      getByRole("heading", { name: "Statements & documents" }).focus();
       frames.runCaptured();
-      expect(getByRole("region", { name: "Add a document" })).not.toHaveFocus();
+      expect(getByRole("region", { name: "Add a statement" })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
@@ -187,13 +196,13 @@ describe("shell", () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { getByRole } = await openSample();
-      fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-      fireEvent.click(getByRole("button", { name: "Go to documents" }));
-      fireEvent.click(getByRole("button", { name: "AccountsWhere money sits" }));
-      fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-      getByRole("heading", { name: "Documents" }).focus();
+      fireEvent.click(getByRole("button", { name: "Statements" }));
+      fireEvent.click(getByRole("button", { name: "Add statement" }));
+      fireEvent.click(getByRole("button", { name: "Accounts" }));
+      fireEvent.click(getByRole("button", { name: "Statements" }));
+      getByRole("heading", { name: "Statements & documents" }).focus();
       frames.runCaptured();
-      expect(getByRole("region", { name: "Add a document" })).not.toHaveFocus();
+      expect(getByRole("region", { name: "Add a statement" })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
@@ -215,11 +224,11 @@ describe("shell", () => {
   });
 
   it.each([
-    ["Overview", "OverviewYour picture"],
-    ["Accounts", "AccountsWhere money sits"],
-    ["Activity", "ActivityWhat moved"],
-    ["Documents", "DocumentsWhat supports it"],
-    ["Trust", "TrustHow it works"],
+    ["Overview", "Overview"],
+    ["Accounts", "Accounts"],
+    ["Transactions", "Transactions"],
+    ["Statements", "Statements"],
+    ["Trust & settings", "Trust & settings"],
   ] as const)("leaves the sample vault from %s and takes the whole session with it", async (destination, navigationName) => {
     // Leaving is one action, and nothing from the vault survives it: not the
     // screen a person was on, not what they had selected there, not an open
@@ -234,7 +243,7 @@ describe("shell", () => {
 
     if (destination === "Overview") fireEvent.click(view.container.querySelectorAll(".account-card-button")[1]);
     if (destination === "Accounts") fireEvent.click(view.container.querySelectorAll(".detail-row-button")[1]);
-    if (destination === "Documents") fireEvent.click(view.container.querySelectorAll(".document-list .detail-row-button")[1]);
+    if (destination === "Statements") fireEvent.click(view.container.querySelectorAll(".document-list .detail-row-button")[1]);
 
     await user.click(view.getAllByRole("button", { name: moments.sample_frame_leave })[0]);
 
@@ -242,7 +251,7 @@ describe("shell", () => {
     expect(view.getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
     expect(view.container.querySelectorAll("h1")).toHaveLength(1);
     expect(view.container.querySelectorAll('#primary-navigation [aria-current="page"]')).toHaveLength(1);
-    expect(view.getByRole("button", { name: "OverviewYour picture" })).toHaveAttribute("aria-current", "page");
+    expect(view.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page");
     expect(view.queryByText("USD 17,486.45")).not.toBeInTheDocument();
     expect(view.getAllByRole("status")[0]).toHaveTextContent("Closed. Nothing from that vault is on this screen.");
     expect(view.queryAllByRole("dialog")).toHaveLength(0);
@@ -260,8 +269,8 @@ describe("shell", () => {
       await user.click(view.getByRole("button", { name: "Close evidence" }));
     } else {
       await user.click(view.getByRole("button", { name: "Ask Viva" }));
-      expect(view.getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
-      await user.click(view.getByRole("button", { name: "Close Viva conversation" }));
+      expect(view.getByRole("dialog", { name: "Ask Viva" })).toBeInTheDocument();
+      await user.click(view.getByRole("button", { name: "Close Ask Viva" }));
     }
     await waitFor(() => expect(view.queryByRole("dialog")).not.toBeInTheDocument());
     await user.click(view.getAllByRole("button", { name: moments.sample_frame_leave })[0]);
@@ -285,7 +294,7 @@ describe("shell", () => {
         const opener = view.getByRole("button", { name: "Ask Viva" });
         opener.focus();
         fireEvent.click(opener);
-        fireEvent.click(view.getByRole("button", { name: "Close Viva conversation" }));
+        fireEvent.click(view.getByRole("button", { name: "Close Ask Viva" }));
       }
       const reset = view.getAllByRole("button", { name: moments.sample_frame_leave })[0];
       reset.focus();
@@ -302,14 +311,13 @@ describe("shell", () => {
     }
   });
 
-  it("shows the supplied question total inside Viva without adding a navigation count", async () => {
+  it("keeps Ask Viva separate and shows the authored total on Review navigation", async () => {
     const user = userEvent.setup();
-    const { container, getByRole, getByText } = await openSample();
+    const { getByRole, queryByRole } = await openSample();
     await user.click(getByRole("button", { name: "Ask Viva" }));
-    expect(getByRole("heading", { name: "Questions for you" })).toBeInTheDocument();
-    expect(getByText("Open questions")).toBeInTheDocument();
-    const reviewTotal = (sampleReads.conversation.result.data as { total: number }).total;
-    expect(getByText(String(reviewTotal), { selector: ".review-summary > strong" })).toBeInTheDocument();
-    expect(container.querySelector(".nav-count")).toBeNull();
+    expect(queryByRole("heading", { name: "Questions for you" })).not.toBeInTheDocument();
+    await user.click(getByRole("button", { name: "Close Ask Viva" }));
+    const reviewTotal = (sampleReads.review.result.data as { actionable_count: number }).actionable_count;
+    expect(getByRole("button", { name: new RegExp(`Review, ${reviewTotal} actionable items`, "i") })).toBeInTheDocument();
   });
 });

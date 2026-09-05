@@ -4,7 +4,7 @@
 .review-surface-header > p, .review-summary p, .review-queue > p, .review-value-helper, .review-live-omissions p, .review-action-boundary p, .review-source-state p, .review-more > p, .review-guidance p {
   margin: 0;
   color: #7d8982;
-  font-size: 11px;
+  font-size: var(--text-fine);
   line-height: 1.6;
 }
 .review-summary {
@@ -40,8 +40,8 @@
 .review-question-row.active { border-color: #91ab97; box-shadow: 0 0 0 1px rgba(93, 121, 104, .14); background: #f3f6ef; }
 .review-question-row > span { display: grid; gap: 4px; min-width: 0; }
 .review-question-row strong { font-size: 12px; line-height: 1.45; }
-.review-question-row small { color: #839088; font-size: 10px; line-height: 1.45; }
-.review-question-action { justify-items: end; color: #5f7969; font-size: 11px; font-weight: 700; }
+.review-question-row small { color: #839088; font-size: var(--text-fine); line-height: 1.45; }
+.review-question-action { justify-items: end; color: #5f7969; font-size: var(--text-fine); font-weight: 700; }
 .review-question-action small { color: #8a744f; font-weight: 700; text-transform: uppercase; }
 .review-question-unavailable { grid-template-columns: 1fr; background: #f5f1e9; }
 .review-selected {
@@ -63,10 +63,10 @@
   border-radius: 10px;
   background: #f1efe7;
 }
-.review-detail-grid span, .review-more-grid span, .review-proposal-field span { color: #8e9992; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
-.review-detail-grid strong, .review-more-grid strong, .review-proposal-field strong { color: #46584f; font-size: 11px; line-height: 1.5; }
-.review-detail-grid small { color: #78867e; font-size: 10px; line-height: 1.45; }
-.review-more-grid small { color: #78867e; font-size: 10px; line-height: 1.45; }
+.review-detail-grid span, .review-more-grid span, .review-proposal-field span { color: #8e9992; font-size: var(--text-fine); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.review-detail-grid strong, .review-more-grid strong, .review-proposal-field strong { color: #46584f; font-size: var(--text-fine); line-height: 1.5; }
+.review-detail-grid small { color: #78867e; font-size: var(--text-fine); line-height: 1.45; }
+.review-more-grid small { color: #78867e; font-size: var(--text-fine); line-height: 1.45; }
 .review-live-omissions { display: grid; gap: 5px; }
 .review-action-boundary, .review-source-state {
   display: grid;
@@ -89,7 +89,7 @@
   background: var(--paper);
 }
 .review-set-aside h4 { margin: 0; color: #53665b; font-size: 12px; }
-.review-set-aside p, .review-outcome p { margin: 0; color: #7d8982; font-size: 11px; line-height: 1.6; }
+.review-set-aside p, .review-outcome p { margin: 0; color: #7d8982; font-size: var(--text-fine); line-height: 1.6; }
 .review-set-aside-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .review-outcome {
   display: grid;

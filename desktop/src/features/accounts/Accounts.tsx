@@ -5,6 +5,7 @@ import { ProofCaveats, ProofQualifications } from "../../components/ProofCaveats
 import { identifiedRows, resolveStableSelection, type StableSelection } from "../../app/selection";
 import { accountEvidenceFigure, showCompactProof } from "../../surface/evidence";
 import type { AccountView, EvidenceLink, FeatureResult, OverviewData } from "../../surface/types";
+import { useRef } from "react";
 
 function accountName(account: AccountView) {
   return account.name.trim() ? account.name : "Account name was not supplied by this overview read.";
@@ -29,18 +30,20 @@ function AccountDetail({ selection, showVerificationDetails, onOpenEvidence, onO
   return <aside className="detail-panel" aria-labelledby="selected-account-title"><div className="detail-panel-label">Selected account</div><h3 id="selected-account-title" tabIndex={-1}>{title}</h3><p>{detail}</p>{requestedId && <dl><div><dt>Requested account ID</dt><dd>{requestedId}</dd></div></dl>}</aside>;
 }
 
-export function Accounts({ result, selectedAccount, showVerificationDetails, onSelectAccount, onOpenEvidence, onOpenFigure, onExploreSample }: { result: FeatureResult<OverviewData>; selectedAccount: string; showVerificationDetails: boolean; onSelectAccount: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onOpenFigure: (figureId: string) => void; onExploreSample: () => void }) {
+export function Accounts({ result, selectedAccount, showVerificationDetails, onSelectAccount, onOpenAccount, onOpenEvidence, onOpenFigure, onExploreSample }: { result: FeatureResult<OverviewData>; selectedAccount: string; showVerificationDetails: boolean; onSelectAccount: (id: string) => void; onOpenAccount?: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onOpenFigure: (figureId: string) => void; onExploreSample: () => void }) {
+  const accountButtons = useRef(new Map<string, HTMLButtonElement>());
+  const openerRef = useRef<HTMLButtonElement | null>(null);
   return <PanelStateView result={result} copy={{ partial: "Some account details are unavailable. Available accounts are shown below.", needsInput: "Some accounts need more information. Available account details are shown below.", unavailable: { title: "Accounts unavailable", detail: "Account details are not available in this build." }, failed: { title: "Accounts could not be read", detail: "The accounts section could not be read. The private vault is still open." } }}>{(data) => {
     if (!data.accounts.length) return <section className="feature-panel"><div className="empty-state"><strong>No accounts yet</strong><span>No accounts are visible in this vault yet. Add a statement, or open the sample vault to see what one looks like when it is full.</span><button type="button" className="secondary-button" onClick={onExploreSample}>Open the sample vault</button></div></section>;
     const selection = resolveStableSelection(data.accounts, selectedAccount);
-    return <section className="feature-panel"><div className="feature-icon">◎</div><h2>Accounts in this read</h2><p>Each account is shown independently with the fields supplied to this view.</p>
+    return <section className="feature-panel"><div className="feature-icon">◎</div><h2 id="accounts-index-heading" tabIndex={-1}>Accounts in this read</h2><p>Each account is shown independently with the fields supplied to this view.</p>
       <div className="account-detail-list">{identifiedRows(data.accounts, "accounts-list").map((row) => {
         if (row.state === "missing_identity") return <div className="detail-row identity-state" key={row.key}><div><strong>Account identity unavailable</strong><span>One or more accounts have no stable account ID. They cannot be selected or opened as evidence.</span></div></div>;
         if (row.state === "conflicted_identity") return <div className="detail-row identity-state" key={row.key}><div><strong>Account identity conflicted</strong><span>More than one account uses this account ID. The interface will not choose between them or open their evidence.</span><dl><div><dt>Account ID</dt><dd>{row.id}</dd></div></dl></div></div>;
         const account = row.item;
         const pressed = selection.state === "ready" && selection.item.id === account.id;
         const showProof = showCompactProof(account.proofPresentation, showVerificationDetails);
-        return <div className="detail-row" key={row.key}><button type="button" className={pressed ? "detail-row-button active" : "detail-row-button"} aria-pressed={pressed} onClick={() => onSelectAccount(account.id)}><div><strong>{accountName(account)}</strong><span>{accountKind(account)}{showProof && account.note ? ` · ${account.note}` : ""}</span></div></button><div className="detail-figure"><Figure figure={accountEvidenceFigure(account)} onOpenEvidence={onOpenFigure} />{account.asOf && <span>{account.asOf}</span>}</div><ProofQualifications proof={account.proofPresentation} alreadyRendered={[account.note ?? "", ...(account.caveats ?? [])]} /><ProofCaveats caveats={account.caveats ?? []} /></div>;
+        return <div className="detail-row account-detail-row" key={row.key}><button data-account-id={account.id} ref={(node) => { if (node) accountButtons.current.set(account.id, node); else accountButtons.current.delete(account.id); }} type="button" className={pressed ? "detail-row-button active" : "detail-row-button"} aria-pressed={pressed} onClick={(event) => { openerRef.current = event.currentTarget; onSelectAccount(account.id); onOpenAccount?.(account.id); }}><div><strong>{accountName(account)}</strong><span>{accountKind(account)}{account.maskedNumber ? ` · ${account.maskedNumber}` : ""}{showProof && account.note ? ` · ${account.note}` : ""}</span></div></button><div className="detail-figure"><Figure figure={accountEvidenceFigure(account)} onOpenEvidence={onOpenFigure} />{account.asOf && <span>{account.asOf}</span>}</div><ProofQualifications proof={account.proofPresentation} alreadyRendered={[account.note ?? "", ...(account.caveats ?? [])]} /><ProofCaveats caveats={account.caveats ?? []} /></div>;
       })}</div>
       <AccountDetail selection={selection} showVerificationDetails={showVerificationDetails} onOpenEvidence={onOpenEvidence} onOpenFigure={onOpenFigure} />
     </section>;

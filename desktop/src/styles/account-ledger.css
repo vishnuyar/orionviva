@@ -1,0 +1,84 @@
+.account-ledger-page { display: grid; gap: var(--space-lg); min-width: 0; max-width: 1180px; }
+.account-ledger-heading { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); }
+.account-ledger-heading > .text-button { justify-self: start; display: inline-flex; align-items: center; gap: var(--space-xs); min-height: var(--control-min-height); }
+.account-ledger-page .detail-panel-label, .account-transaction-drawer .detail-panel-label { color: var(--ink); font-size: var(--text-fine); }
+.account-ledger-page .text-button, .account-ledger-page .secondary-button, .account-transaction-drawer .text-button, .account-transaction-drawer .secondary-button { color: var(--ink); font-size: var(--text-fine); }
+.account-ledger-page .empty-state, .account-ledger-state .empty-state { color: var(--ink); background: var(--panel); }
+.account-ledger-page .empty-state span, .account-ledger-state .empty-state span { color: var(--ink); font-size: var(--text-fine); }
+.account-ledger-heading h2 { margin: var(--space-xs) 0 0; color: var(--ink); font: 600 25px/1.2 "Playfair Display", Georgia, serif; }
+.account-ledger-heading p { margin: var(--space-sm) 0 0; color: var(--ink); font-size: var(--text-fine); line-height: var(--leading-body); }
+.account-ledger-balance { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-sm) var(--space-md); }
+.account-ledger-balance strong { color: var(--ink); font: 700 24px/1.2 "Playfair Display", Georgia, serif; }
+.account-ledger-balance-state { justify-self: start; padding: var(--space-xs) var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-pill); }
+.account-ledger-balance-state.balance-conflicted { border-color: var(--rust); font-weight: var(--weight-strong); }
+.account-ledger-coverage { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); padding: var(--space-md) var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--ink); background: var(--panel); font-size: var(--text-fine); }
+.account-ledger-coverage details { width: 100%; }
+.account-ledger-coverage summary { min-height: var(--control-min-height); display: flex; align-items: center; cursor: pointer; font-weight: var(--weight-strong); }
+.account-ledger-coverage p { margin: var(--space-xs) 0; color: var(--ink); line-height: var(--leading-body); }
+.account-ledger-gap { color: var(--rust); font-weight: var(--weight-strong); }
+.account-ledger-status { display: grid; gap: var(--space-xs); padding: var(--space-md) var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); color: var(--ink); }
+.account-ledger-status.failed { border-color: var(--rust); }
+.account-ledger-status strong { font-size: var(--text-fine); }
+.account-ledger-status span { color: var(--ink); font-size: var(--text-fine); line-height: var(--leading-body); }
+.account-ledger-filter-disclosure > summary { display: flex; min-height: var(--control-min-height); align-items: center; justify-content: space-between; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--ink); background: var(--panel); cursor: pointer; font-size: var(--text-fine); font-weight: var(--weight-strong); }
+.account-ledger-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-sm); padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); }
+.account-ledger-filters label, .account-ledger-editor label { display: grid; gap: var(--space-xs); color: var(--ink); font-size: var(--text-fine); font-weight: var(--weight-strong); }
+.account-ledger-filters input, .account-ledger-filters select, .account-ledger-editor select { width: 100%; min-width: 0; min-height: var(--control-min-height); padding: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--ink); background: var(--paper); font: inherit; }
+.account-ledger-filter-summary { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); color: var(--ink); font-size: var(--text-fine); }
+.account-ledger-filter-chip { padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-pill); background: var(--sage); color: var(--ink); font-weight: var(--weight-strong); }
+.account-ledger-select-visible { min-height: var(--control-min-height); display: inline-flex; align-items: center; justify-self: start; gap: var(--space-sm); color: var(--ink); font-size: var(--text-fine); font-weight: var(--weight-strong); }
+.account-ledger-select-visible input, .account-ledger-check input { width: 18px; height: 18px; }
+.account-ledger-batch { position: sticky; z-index: 10; top: var(--space-sm); display: grid; grid-template-columns: auto minmax(250px, 1fr) minmax(250px, 1fr); align-items: start; gap: var(--space-md); padding: var(--space-md); border: 1px solid var(--moss); border-radius: var(--radius-md); background: var(--panel); }
+.account-ledger-batch > strong { padding: var(--space-sm); color: var(--ink); font-size: var(--text-fine); }
+.account-ledger-batch > .account-ledger-status { grid-column: 1 / -1; }
+.account-ledger-editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-sm); }
+.account-ledger-editor .secondary-button { grid-column: 1 / -1; justify-self: start; min-height: var(--control-min-height); }
+.account-ledger-tag-editor { display: grid; gap: var(--space-sm); min-width: 0; margin: 0; padding: 0; border: 0; color: var(--ink); font-size: var(--text-fine); }
+.account-ledger-tag-editor > div { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.account-ledger-tag-editor label { min-height: var(--control-min-height); display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--paper); }
+.account-ledger-tag-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.account-ledger-tag-actions .secondary-button { min-height: var(--control-min-height); }
+.account-ledger-tag-editor small, .account-ledger-unavailable { color: var(--ink); font-size: var(--text-fine); line-height: var(--leading-body); }
+.account-ledger-groups { display: grid; gap: var(--space-xl); min-width: 0; }
+.account-ledger-groups section { display: grid; gap: var(--space-sm); min-width: 0; }
+.account-ledger-groups h3 { position: sticky; top: 0; z-index: 2; margin: 0; padding: var(--space-sm) var(--space-md); border-bottom: 1px solid var(--line); color: var(--ink); background: var(--paper); font-size: var(--text-fine); }
+.account-ledger-groups ul { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.account-ledger-row { display: grid; grid-template-columns: var(--control-min-height) minmax(28px, auto) minmax(0, 1fr); align-items: stretch; width: 100%; max-width: 100%; min-width: 0; border-bottom: 1px solid var(--line); background: var(--paper); }
+.account-ledger-row[class*="attention-"] { box-shadow: inset 3px 0 var(--gold); }
+.account-ledger-row.attention-conflict { box-shadow: inset 3px 0 var(--rust); }
+.account-ledger-check { display: grid; place-items: center; min-width: var(--control-min-height); min-height: var(--control-min-height); }
+.account-ledger-markers { display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: var(--space-xs); max-width: 64px; }
+.account-ledger-marker { display: grid; place-items: center; color: var(--gold); }
+.account-ledger-marker.marker-conflict { color: var(--rust); }
+.account-ledger-marker.marker-transfer { color: var(--moss); }
+.account-ledger-icon { width: var(--icon-sm); height: var(--icon-sm); }
+.account-ledger-row-button { display: grid; grid-template-columns: minmax(86px, .25fr) minmax(190px, 1fr) minmax(120px, .35fr); align-items: center; gap: var(--space-md); width: 100%; max-width: 100%; min-width: 0; min-height: 58px; padding: var(--space-md); border: 0; color: var(--ink); background: transparent; font: inherit; text-align: left; }
+.account-ledger-row-button:hover, .account-ledger-row-button:focus-visible { background: var(--panel); }
+.account-ledger-date { color: var(--ink); font-size: var(--text-fine); }
+.account-ledger-description, .account-ledger-amount { display: grid; gap: var(--space-xs); min-width: 0; overflow-wrap: anywhere; }
+.account-ledger-description strong, .account-ledger-amount strong { font-size: var(--text-fine); }
+.account-ledger-description small, .account-ledger-amount small { color: var(--ink); font-size: var(--text-fine); line-height: var(--leading-body); }
+.account-ledger-amount { text-align: right; }
+.account-ledger-load-more { justify-self: start; min-height: var(--control-min-height); }
+.account-ledger-state > .text-button { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: var(--control-min-height); color: var(--ink); font-size: var(--text-fine); }
+.account-transaction-drawer { position: fixed; z-index: 70; inset: 0 0 0 auto; width: min(540px, calc(100vw - 24px)); height: 100dvh; overflow-y: auto; display: grid; align-content: start; gap: var(--space-lg); padding: var(--space-xl); color: var(--ink); background: var(--panel); border-left: 1px solid var(--line); }
+.account-transaction-drawer > header { display: flex; justify-content: space-between; align-items: start; gap: var(--space-md); }
+.account-transaction-drawer h2 { margin: var(--space-xs) 0 0; font: 600 23px/1.25 "Playfair Display", Georgia, serif; }
+.account-transaction-drawer section { display: grid; gap: var(--space-sm); padding-top: var(--space-lg); border-top: 1px solid var(--line); }
+.account-transaction-drawer section h3, .account-transaction-drawer section p { margin: 0; }
+.account-transaction-drawer section h3 { font-size: var(--text-fine); }
+.account-transaction-drawer section p { color: var(--ink); font-size: var(--text-fine); line-height: var(--leading-body); }
+.account-transaction-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-sm); margin: 0; }
+.account-transaction-summary div { display: grid; gap: var(--space-xs); padding: var(--space-sm); border-radius: var(--radius-md); background: var(--paper); }
+.account-transaction-summary dt { color: var(--ink); font-size: var(--text-fine); }
+.account-transaction-summary dd { margin: 0; overflow-wrap: anywhere; font-size: var(--text-fine); font-weight: var(--weight-strong); }
+.account-ledger-transfer { display: grid; gap: var(--space-md); }
+.account-ledger-transfer h4 { margin: 0; color: var(--ink); font-size: var(--text-fine); }
+.account-ledger-transfer-candidates { display: grid; gap: var(--space-md); }
+.account-ledger-transfer-candidates article { display: grid; gap: var(--space-sm); padding: var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--paper); }
+.account-transaction-drawer .proof-link { justify-self: start; min-height: var(--control-min-height); color: var(--ink); background: var(--paper); font-size: var(--text-fine); }
+.account-ledger-page button[aria-disabled="true"], .account-ledger-page input[aria-disabled="true"], .account-ledger-page select[aria-disabled="true"], .account-ledger-state button[aria-disabled="true"], .account-transaction-drawer button[aria-disabled="true"], .account-transaction-drawer input[aria-disabled="true"], .account-transaction-drawer select[aria-disabled="true"] { opacity: 1; color: var(--ink); background: var(--panel); border: 1px solid var(--ink); }
+.account-ledger-page, .account-ledger-page *, .account-transaction-drawer, .account-transaction-drawer * { min-width: 0; overflow-wrap: anywhere; }
+.account-ledger-page .account-ledger-check, .account-transaction-drawer .conversation-close { min-width: var(--control-min-height); min-height: var(--control-min-height); }
+@media (max-width: 900px) { .account-ledger-batch { grid-template-columns: 1fr; } .account-ledger-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .account-ledger-row-button { grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); } .account-ledger-date, .account-ledger-description, .account-ledger-amount { grid-column: 1; } .account-ledger-amount { text-align: left; } }
+@media (max-width: 620px) { .account-ledger-filter-disclosure > summary { display: flex; } .account-ledger-filter-disclosure:not([open]) > .account-ledger-filters { display: none; } .account-ledger-filters { grid-template-columns: 1fr; margin-top: var(--space-sm); padding: var(--space-md); } .account-transaction-summary, .account-ledger-editor { grid-template-columns: 1fr; } .account-ledger-editor .secondary-button { grid-column: 1; } .account-transaction-drawer { width: 100vw; padding: var(--space-lg); } }

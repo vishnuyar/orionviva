@@ -77,6 +77,12 @@ from .schemas import ANSWER_CHOICE, ANSWER_LABEL, ANSWER_LINK, ANSWER_YES_NO
 # How many questions to surface before summarizing the rest. A count, never a
 # money threshold.
 DEFAULT_LIMIT = 10
+# Review and the unanswered-question portion of Conversation are two views of
+# the same actionable queue. They must read the same deterministic window so
+# every Review action has an exact conversation target. Durable conversation
+# turns keep their own unbounded/history policy; this constant governs only
+# currently unanswered questions.
+ACTIONABLE_QUESTION_WINDOW = 100
 
 # Question kinds.
 IDENTITY = "identity"              # whose account is this?

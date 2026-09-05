@@ -28,6 +28,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from merchantcore import (seed_subcategories_by_category,
+                          subcategory_identity)
+
 from .. import render
 from ..ingest.categorize import (UNCATEGORIZED, normalize_category,
                                  open_loan_receivables_at)
@@ -35,6 +38,7 @@ from ..ingest.transfers import is_transfer_candidate
 from ..listen import category_vocabulary
 from ..ledger.projection.movements import (BY_CATEGORY, MIXED, SETTLEMENT,
                                            SPENDING, TRANSFER, is_expense)
+from ..ledger.events import GRADES
 from ..ledger.streams import money_effect
 from ..persona import moment
 from .models import PanelState
@@ -44,8 +48,10 @@ from .models import PanelState
 # count of what was left out travels so nothing is hidden — only not pushed.
 DEFAULT_LIMIT = 50
 VOCABULARY_LIMIT = 40
+SUBCATEGORY_VOCABULARY_LIMIT = 200
 MAX_SELECTED_TAGS = 40
 MAX_TAG_LABEL_LENGTH = 80
+MAX_BATCH_MOVEMENTS = 100
 TRANSFER_CANDIDATE_LIMIT = 20
 TRANSFER_EVIDENCE_RULES = frozenset({
     "account_ref_slot",
@@ -117,27 +123,35 @@ def _row(projection, movement, locale: str,
     function that decides it — never from the posted sign, which reads a card
     purchase as money arriving."""
     effect = money_effect(movement.kind, movement.amount)
-    current = _current_category(projection, movement)
+    current = _current_classification(projection, movement)
+    account_name = _account_display(projection, movement.account)
     tags = list(getattr(projection, "tags_of", lambda _m: [])(movement))
     inherited = list(getattr(projection, "inherited_tags_of", lambda _m: [])(movement))
     actions: list[str] = []
-    if (vocabularies["categories"]["complete"]
+    if (current["valid"] and vocabularies["categories"]["complete"]
             and vocabularies["categories"]["items"]):
         actions.append("assign_category")
     repayment_choices = _loan_repayment_choices(projection, movement, effect)
     # Linked own-account transfers do not offer an economic-treatment action.
     # Offer inbound repayment only for receivables that can accept the amount.
-    if not movement.linked and (effect < 0 or repayment_choices):
+    if current["valid"] and not movement.linked and (effect < 0 or repayment_choices):
         actions.append("assign_meaning")
-    if vocabularies["tags"]["complete"] and not inherited:
+    if (current["valid"] and vocabularies["tags"]["complete"]
+            and not inherited):
         actions.append("replace_tags")
     transfer, transfer_actions = _transfer_state(projection, movement, locale)
-    actions.extend(transfer_actions)
+    if current["valid"]:
+        actions.extend(transfer_actions)
     return {
         "id": movement.key,
         "date": movement.date,
         "description": movement.description,
         "account": movement.account,
+        # The ledger path remains the stable identity.  Its separately rendered
+        # name is what a person sees; neither field has to be recovered from the
+        # other by a consumer.
+        "account_id": movement.account,
+        "account_name": account_name,
         # `direction` is what the money did, and it is the kind's answer. The
         # amount travels unsigned beside it, because a sign and a word saying
         # the same thing are two chances to disagree.
@@ -160,8 +174,16 @@ def _row(projection, movement, locale: str,
         "decided_by": movement.nature_reason,
         "provisional": bool(movement.provisional),
         "linked": bool(movement.linked),
-        "category": current,
+        "category": current["category"],
+        "subcategory": current["subcategory"],
+        # Classification provenance belongs to the category record, not to the
+        # posting grade or the economic-treatment rung.  It is absent when the
+        # projection has no complete authoritative pair to provide.
+        "classification": current["classification"],
         "tags": [_choice(tag) for tag in tags],
+        # A movement cites only its own source.  Page and region are carried
+        # exactly where the posting recorded them and left empty otherwise.
+        "evidence_links": _evidence_links(projection, movement),
         # The closed relationship state is the only authority for transfer
         # controls. `linked` above remains descriptive compatibility data; a
         # caller must never turn that boolean into a write affordance.
@@ -311,6 +333,8 @@ def _transfer_reference(projection, source, counterpart, locale: str,
         "date": str(counterpart.date or "").strip(),
         "description": str(counterpart.description or "").strip(),
         "account": _account_display(projection, counterpart.account),
+        "account_id": str(counterpart.account or "").strip(),
+        "account_name": _account_display(projection, counterpart.account),
         "direction": "in" if effect > 0 else "out",
         "exact_value": str(abs(effect)),
         "currency": str(counterpart.currency or "").strip(),
@@ -356,12 +380,53 @@ def _relationship(projection, source, counterpart, locale: str) -> str:
     return moment("activity_transfer_relationship", **values)
 
 
-def _current_category(projection, movement) -> dict[str, Any]:
+def _current_classification(projection, movement) -> dict[str, Any]:
     found = getattr(projection, "derived_category", lambda _m: None)(movement)
-    raw = str(found.get("category", "") or "").strip() if found else ""
-    identity = normalize_category(raw) if raw else ""
-    return {"id": identity or None,
-            "label": str(render.category(identity or UNCATEGORIZED))}
+    raw_category = str(found.get("category", "") or "").strip() if found else ""
+    category = normalize_category(raw_category) if raw_category else ""
+    raw_subcategory = (str(found.get("subcategory", "") or "").strip()
+                       if found else "")
+    grade = str(found.get("grade", "") or "").strip() if found else ""
+    by = str(found.get("by", "") or "").strip() if found else ""
+    # The category hierarchy and its grade/provenance are one authoritative
+    # record. Never emit provenance for an orphan subcategory, or claim a
+    # populated category without the complete pair consumers require.
+    classification = ({"grade": grade, "provenance": by}
+                      if category and grade in GRADES and by else None)
+    valid = (not raw_subcategory or bool(category)) and (
+        bool(category) == bool(classification))
+    return {
+        "category": {
+            "id": category or None,
+            "label": str(render.category(category or UNCATEGORIZED)),
+        },
+        "subcategory": {
+            "id": raw_subcategory or None,
+            "label": str(render.label(raw_subcategory)) if raw_subcategory else "",
+        },
+        "classification": classification,
+        # Internal only: the row emits the pieces above, while this gates every
+        # write affordance when those pieces do not form one coherent record.
+        "valid": valid,
+    }
+
+
+def _evidence_links(projection, movement) -> list[dict[str, str]]:
+    """The exact source route attached to one movement, when it has one."""
+    provenance = getattr(movement, "provenance", None)
+    document_id = str(getattr(provenance, "doc_id", "") or "").strip()
+    if not document_id:
+        return []
+    page = getattr(provenance, "page", None)
+    filenames = (getattr(projection, "captured_filenames", lambda: {})()
+                 if hasattr(projection, "captured_filenames") else {})
+    return [{
+        "document_id": document_id,
+        "label": str(filenames.get(document_id) or ""),
+        "relation": "attests",
+        "page": "" if page is None else str(page),
+        "region": str(getattr(provenance, "region", "") or ""),
+    }]
 
 
 def _category_choice(identity: str) -> dict[str, str]:
@@ -372,6 +437,40 @@ def _category_choice(identity: str) -> dict[str, str]:
 def _choice(identity: str) -> dict[str, str]:
     held = str(identity or "").strip()
     return {"id": held, "label": str(render.label(held))}
+
+
+def _subcategory_choices(projection) -> list[dict[str, str]]:
+    """The exact category/subcategory pairs accepted by the compound action.
+
+    The picker and writer deliberately share the taxonomy's pair identity. A
+    flat list would let a valid finer label be offered under the wrong parent.
+    Already-used vault pairs remain available alongside the shipped seed.
+    """
+    pairs: dict[tuple[str, str], dict[str, str]] = {}
+    canonical_category = getattr(
+        projection, "canonical_category", normalize_category)
+    canonical_subcategory = getattr(
+        projection, "canonical_subcategory", subcategory_identity)
+    for parent, labels in seed_subcategories_by_category().items():
+        category = canonical_category(normalize_category(parent))
+        for label in labels:
+            subcategory = canonical_subcategory(subcategory_identity(label))
+            pairs[(category, subcategory)] = {
+                "id": subcategory,
+                "label": str(render.label(subcategory)),
+                "category_id": category,
+            }
+    for movement in projection.movements():
+        current = _current_classification(projection, movement)
+        category = current["category"]["id"]
+        subcategory = current["subcategory"]["id"]
+        if category and subcategory:
+            pairs.setdefault((category, subcategory), {
+                "id": subcategory,
+                "label": current["subcategory"]["label"],
+                "category_id": category,
+            })
+    return [pairs[key] for key in sorted(pairs)]
 
 
 def _vocabularies(projection) -> dict[str, Any]:
@@ -386,12 +485,18 @@ def _vocabularies(projection) -> dict[str, Any]:
                    for value in getattr(projection, "known_tags", lambda: [])()
                    if str(value or "").strip()})
     tags_within_bounds = all(len(value) <= MAX_TAG_LABEL_LENGTH for value in tags)
+    subcategories = _subcategory_choices(projection)
     return {
         "categories": {
             "items": [_category_choice(value)
                       for value in categories[:VOCABULARY_LIMIT]],
             "complete": len(categories) <= VOCABULARY_LIMIT,
             "limit": VOCABULARY_LIMIT,
+        },
+        "subcategories": {
+            "items": subcategories[:SUBCATEGORY_VOCABULARY_LIMIT],
+            "complete": len(subcategories) <= SUBCATEGORY_VOCABULARY_LIMIT,
+            "limit": SUBCATEGORY_VOCABULARY_LIMIT,
         },
         "tags": {
             "items": [_choice(value) for value in tags[:VOCABULARY_LIMIT]],

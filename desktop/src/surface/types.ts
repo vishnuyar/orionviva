@@ -1,4 +1,4 @@
-export type Destination = "overview" | "accounts" | "activity" | "documents" | "plans" | "trust";
+export type Destination = "overview" | "accounts" | "activity" | "documents" | "plans" | "review" | "trust";
 export type FigureGrade = "verified" | "corroborated" | "unverified" | "conflicted" | "unavailable" | "not_applicable";
 export type PanelState = "absent" | "ready" | "partial" | "needs_input" | "unavailable" | "failed";
 export type ActionOutcome = "completed" | "refused" | "proposal" | "waiting" | "stale" | "set_aside";
@@ -105,7 +105,7 @@ export type QuestionVerb = "answer" | "confirm" | "decline";
 export type QuestionActionState =
   | { state: "idle" }
   | { state: "working"; questionId: string; verb: QuestionVerb }
-  | { state: "settled"; questionId: string; verb: QuestionVerb; result: ActionResult };
+  | { state: "settled"; questionId: string; verb: QuestionVerb; result: ActionResult; authoritative?: boolean; resolved?: boolean };
 export type DeclineReason = "not_now" | "dont_know";
 // What kind of thing a notice is, as a closed word the notice carries. How a
 // notice is dressed follows this word; nothing reads the sentence itself to
@@ -152,7 +152,7 @@ export type FigureMeasure = "balance" | "owed" | "spending" | "income" | "net_wo
 // witness — the figure was read from this document; `corroborates` is a
 // second one. The set is the backend's and is closed on both sides.
 export type EvidenceRelation = "attests" | "corroborates" | "same_period" | "same_account" | "settles_question";
-export type EvidenceLink = { targetDocumentId: string; label: string; relation: EvidenceRelation; page: string };
+export type EvidenceLink = { targetDocumentId: string; label: string; relation: EvidenceRelation; page: string; region?: string };
 // `coverage` is an ordered list of whole sentences, one line each, and is
 // never joined or split here: three of the sentences two figures carry can be
 // identical while the one that differs is the last, and a person who meets
@@ -188,12 +188,13 @@ export type SurfaceDocument = { id: string; name: string; contribution?: string;
 export type DocumentCapture = { id: string; label: string; state: "captured" | "processing" | "held" | "ready" | "sent"; detail: string; source: string; note: string };
 export type DocumentJob = { id: string; label: string; state: "running" | "paused" | "done"; detail: string; progress: string };
 export type OutboundRecord = { id: string; label: string; state: "queued" | "sent" | "blocked"; detail: string; destination: string };
-export type AccountView = { id: string; name: string; kind: string; measure: "balance" | "owed" | null; exactValue: string; currency: string; display: string; grade: FigureGrade; gradeLabel: string; gradeDescription: string; proofPresentation: ProofPresentation; note: string | null; asOf: string; coverage: string | null; provenance: string | null; evidenceLinks: EvidenceLink[]; state: PanelState; caveats?: readonly string[]; exactness?: string | null; recordIds?: readonly string[] };
+export type AccountView = { id: string; name: string; maskedNumber: string; kind: string; measure: "balance" | "owed" | null; exactValue: string; currency: string; display: string; grade: FigureGrade; gradeLabel: string; gradeDescription: string; proofPresentation: ProofPresentation; note: string | null; asOf: string; coverage: string | null; provenance: string | null; evidenceLinks: EvidenceLink[]; state: PanelState; caveats?: readonly string[]; exactness?: string | null; recordIds?: readonly string[] };
 // One thing a question needs back. `wants` is the queue's own sentence saying
 // what kind of thing that is, and `choices` is the closed vocabulary an answer
 // must land in — the vocabulary tokens. Both are the backend's.
 export type QuestionSlot = { name: string; type: string; required: boolean; wants: string; choices: readonly string[] };
-export type QuestionView = { id: string; slots?: readonly QuestionSlot[]; label: string; detail: string; status: string; action: string; type: string; evidence: string; state: "needs_input" | "partial"; outcome: ActionOutcome | null; disposition: "answer" | "decline" | "proposal" | "confirm" | null; count?: number; scope?: string; currency?: string; amount?: string };
+export type QuestionReferences = { movement?: string; movements?: readonly string[]; candidates?: readonly string[]; document?: string; doc_id?: string; account?: string };
+export type QuestionView = { id: string; slots?: readonly QuestionSlot[]; refs?: QuestionReferences; reviewBinding?: ReviewQuestionBinding; label: string; detail: string; status: string; action: string; type: string; evidence: string; state: "needs_input" | "partial"; outcome: ActionOutcome | null; disposition: "answer" | "decline" | "proposal" | "confirm" | null; count?: number; scope?: string; currency?: string; amount?: string };
 export type ConversationProposal = { id: string; summary: string; status: string; outcome: string; message: string; reason: string };
 export type ConversationTurn = { id: string; kind: "ask" | "answer" | "decline" | "confirm"; occurredAt: string; prompt: string; said: string; questionId: string; outcome: ActionOutcome; message: string; reason: string; answer: TurnView | null; proposal: ConversationProposal | null };
 
@@ -234,6 +235,38 @@ export type CurrentPeriodStepView = { date: string; kind: "balance" | "income" |
 export type CurrentPeriodSliceView = { id: string; currency: string; horizonStart: string; horizonEnd: string; headline: string; explanation: string; amountDisplay: string; liquidBalance: string; expectedIncomeMin: string; expectedIncomeMax: string; obligationsMin: string; obligationsMax: string; reservedForGoals?: string; goalContributions?: string; remainderMin: string; remainderMax: string; coverage: string; grade: FigureGrade; gradeLabel: string; gradeDescription: string; proofPresentation: ProofPresentation; evidenceLabel: string; evidenceHeading: string; assumptions: readonly string[]; caveats: readonly string[]; missingInputs: readonly string[]; completeness: CurrentPeriodCompletenessView; exclusions: readonly CurrentPeriodExclusionView[]; evidenceDates: readonly string[]; recordIds: readonly string[]; evidenceLinks: readonly EvidenceLink[]; evidenceIds: readonly string[]; accountIds: readonly string[]; series: readonly CurrentPeriodStepView[]; requiredVisibility: boolean };
 export type CurrentPeriodView = { state: "absent" | "ready" | "limited" | "refused"; title: string; kicker: string; horizonStart: string; horizonEnd: string; slices: readonly CurrentPeriodSliceView[]; exclusions: readonly CurrentPeriodExclusionView[]; refusal: string };
 export type OverviewData = { picture: PictureView; accounts: AccountView[]; utility?: UtilityView; currentPeriod?: CurrentPeriodView };
+export type SpendingPeriodId = "latest_complete_month" | "current_month" | "last_3_months" | "year_to_date" | "custom";
+export type SpendingGranularity = "category" | "subcategory";
+export type SpendingRequest = { period: SpendingPeriodId; granularity: SpendingGranularity; currency?: string; accountId?: string; startDate?: string; endDate?: string };
+export type SpendingBar = { id: string; order: number; label: string; amountDisplay: string; shareBasisPoints: number; barBasisPoints: number; count: number; colorToken: "category-1" | "category-2" | "category-3" | "category-4" | "category-5" | "category-6" };
+export type SpendingSection = { currency: string; order: number; includedCount: number; totalDisplay: string; bars: readonly SpendingBar[]; emptyMessage: string };
+export type SpendingCoverageGap = { order: number; accountId: string; accountLabel: string; from: string; to: string; reason: "missing_statement_coverage"; sentence: string };
+export type SpendingUnsupportedAccount = { order: number; accountId: string; label: string; currency: string; reason: "missing_account_id" | "missing_account_name" | "unsupported_account_kind" | "missing_account_currency"; sentence: string };
+export type SpendingBreakdownData = {
+  contract: "SpendingBreakdown.v1";
+  state: "ready" | "empty";
+  title: string;
+  asOf: string;
+  timezonePolicy: string;
+  period: { id: SpendingPeriodId; label: string; startDate: string; endDate: string };
+  granularity: SpendingGranularity;
+  scopeSummary: string;
+  controls: {
+    periods: readonly { id: SpendingPeriodId; label: string; requiresCustom: boolean }[];
+    granularities: readonly { id: SpendingGranularity; label: string }[];
+    accounts: readonly { id: string; label: string; currency: string; order: number }[];
+    currencies: readonly { id: string; label: string; order: number }[];
+    selectedPeriod: SpendingPeriodId;
+    selectedGranularity: SpendingGranularity;
+    selectedAccountId: string;
+    selectedCurrency: string;
+  };
+  sections: readonly SpendingSection[];
+  coverage: { state: "complete" | "partial" | "unavailable"; label: string; coveredFrom: string; coveredTo: string; includedCount: number; excludedCount: number; gaps: readonly SpendingCoverageGap[]; unsupportedAccounts: readonly SpendingUnsupportedAccount[] };
+  exclusions: readonly { kind: string; count: number; sentence: string }[];
+  notes: readonly string[];
+};
+export type SpendingBreakdownReader = { read: (request: SpendingRequest) => Promise<FeatureResult<SpendingBreakdownData>> };
 export type PlanVerb = "create" | "change_terms" | "reserve" | "release" | "pause" | "resume" | "set_aside";
 export type PlanPayload = Readonly<Record<string, string | number | null>>;
 export type GoalAccountView = { id: string; name: string; currency: string; eligible: boolean; balance: string; balanceDisplay: string; reserved: string; reservedDisplay: string; available: string; availableDisplay: string; grade: FigureGrade | ""; gradeDescription: string; dated: string; asOf: string; balanceExplanation: string; sourceDocumentId: string; sourcePage: string; sourceRegion: string; sourceNote: string; caveats: readonly string[]; sentence: string; reason: string; evidenceLinks: readonly EvidenceLink[] };
@@ -250,38 +283,81 @@ export type PlanActions = { draft: (payload: PlanPayload) => Promise<PlanDraftRe
 // repeated per row.
 export type DocumentsData = { documents: SurfaceDocument[]; readingSentence: string; captureQueue: DocumentCapture[]; processingJobs: DocumentJob[]; outboundRecords: OutboundRecord[] };
 export type QuestionQueueData = { queue: QuestionView[]; count: number; meta: { total: number; tail: { count: number; amount: string } | null; pending: { count: number } | null; invite: string; answeredByDocument: string } };
+export type ReviewContext = { date: string; amount: string; account: string; merchant: string };
+export type ReviewConversationTarget = { kind: "conversation"; questionId: string; disclosure: string };
+export type ReviewTransactionTarget = { kind: "transaction"; questionId: string; accountId: string; requestedMovementId: string; canonicalMovementId: string; memberMovementIds: readonly string[] };
+export type ReviewTarget = ReviewConversationTarget | ReviewTransactionTarget;
+export type ReviewQuestionReferences = { movement: string; movements: readonly string[]; candidates: readonly string[]; document: string; documentId: string; account: string };
+export type ReviewQuestionBinding = { itemId: string; questionId: string; questionKind: string; label: string; reason: string; refs: ReviewQuestionReferences; target: ReviewTarget; status: "open"; primaryAction: "open_question" | "open_transaction"; allowedActions: readonly ("open_question" | "open_transaction")[] };
+export type ReviewItem = { id: string; type: "question"; typeLabel: string; marker: "?"; markerLabel: string; label: string; reason: string; status: "open"; context: ReviewContext; target: ReviewTarget; primaryAction: "open_question" | "open_transaction"; actionLabel: string; allowedActions: readonly ("open_question" | "open_transaction")[]; binding: ReviewQuestionBinding };
+export type ReviewGroup = { id: "questions"; label: string; count: number; items: readonly ReviewItem[] };
+export type ReviewData = { contract: "ReviewSummary.v1"; title: string; summary: string; actionableCount: number; shownCount: number; remainingCount: number; types: readonly { id: "questions"; label: string; count: number }[]; groups: readonly ReviewGroup[] };
 // One movement as the live read composed it. `direction` is the read's answer
 // and comes from the kind of account the money moved on; `amount` is unsigned
 // beside it, because a sign and a word saying the same thing are two chances to
 // disagree. `sentence` is empty on an ordinary spending row and is never
 // composed here.
 export type ActivityVocabularyItem = { id: string; label: string };
+export type ActivitySubcategoryVocabularyItem = ActivityVocabularyItem & { categoryId: string };
 export type ActivityCategoryVocabulary = { items: readonly ActivityVocabularyItem[]; complete: boolean; limit: number };
+export type ActivitySubcategoryVocabulary = { items: readonly ActivitySubcategoryVocabularyItem[]; complete: boolean; limit: number };
 export type ActivityTagVocabulary = ActivityCategoryVocabulary & { maxSelected: number; maxLabelLength: number };
 export type ActivityRowAction = "assign_category" | "assign_meaning" | "replace_tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
-export type ActivityTransferReference = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string };
+export type ActivityTransferReference = { id: string; date: string; description: string; account: string; accountId: string; accountName: string; direction: "in" | "out"; exactValue: string; currency: string; display: string };
 export type ActivityTransferState =
   | { state: "none" }
   | { state: "suggested"; explanation: string; candidates: readonly (ActivityTransferReference & { relationship: string })[]; complete: boolean; limit: number }
   | { state: "linked"; explanation: string; counterpart: ActivityTransferReference; relationship: string };
 export type ActivityTreatment = { kind: "spending" | "loan" | "loan_repayment" | "settlement" | "mixed" | "not_spending"; name: string };
-export type MovementView = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; treatment: ActivityTreatment; loanRepaymentChoices: readonly string[]; sentence: string; decidedBy: string; provisional: boolean; linked: boolean; category: { id: string | null; label: string; valid: boolean }; tags: readonly ActivityVocabularyItem[]; tagsValid: boolean; transfer: ActivityTransferState | null; actions: readonly ActivityRowAction[] };
-export type ActivityData = { sentence: string; movements: readonly MovementView[]; beyond: { count: number }; vocabularies: { categories: ActivityCategoryVocabulary; tags: ActivityTagVocabulary } };
-export type ActivityCorrectionVerb = "category" | "meaning" | "tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
+export type ActivityClassification = { grade: "verified" | "corroborated" | "unverified" | "conflicted"; provenance: string };
+export type ActivityClassificationValue = { id: string | null; label: string; valid: boolean };
+export type MovementView = { id: string; date: string; description: string; account: string; accountId: string; accountName: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; treatment: ActivityTreatment; loanRepaymentChoices: readonly string[]; sentence: string; decidedBy: string; provisional: boolean; linked: boolean; category: ActivityClassificationValue; subcategory: ActivityClassificationValue; classification: ActivityClassification | null; classificationValid: boolean; tags: readonly ActivityVocabularyItem[]; tagsValid: boolean; evidenceLinks: readonly EvidenceLink[]; evidenceLinksValid: boolean; transfer: ActivityTransferState | null; actions: readonly ActivityRowAction[] };
+export type ActivityData = { sentence: string; movements: readonly MovementView[]; beyond: { count: number }; vocabularies: { categories: ActivityCategoryVocabulary; subcategories: ActivitySubcategoryVocabulary; tags: ActivityTagVocabulary } };
+export type AccountLedgerBalance =
+  | { state: "available"; kind: "current_balance" | "amount_owed"; exactValue: string; display: string; asOf: string; grade: "verified" | "corroborated" | "unverified" | "conflicted" }
+  | { state: "absent"; reason: "no_authoritative_balance_observation" };
+export type AccountLedgerAccount = { id: string; name: string; maskedNumber: string; type: "depository" | "liability" | "investment"; currency: string; balance: AccountLedgerBalance };
+export type AccountLedgerCoverageRun = { from: string; to: string; statementIds: readonly string[] };
+export type AccountLedgerGap = { from: string; to: string; reason: "missing_statement_coverage" };
+export type AccountLedgerRowDeduplication = { state: "single" | "exact_duplicate"; canonicalMovementId: string; memberMovementIds: readonly string[] };
+export type AccountLedgerMovement = MovementView & { directionDisplay: "Debit" | "Credit" | "Direction unavailable"; deduplication: AccountLedgerRowDeduplication };
+export type AccountLedgerDeduplication = {
+  state: "none" | "exact_duplicates_collapsed" | "unresolved_candidates_present" | "exact_duplicates_collapsed_with_unresolved_candidates";
+  policy: "exact_economic_posting_in_overlapping_statements_only";
+  collapsed: readonly { canonicalMovementId: string; memberMovementIds: readonly string[]; documentIds: readonly string[] }[];
+  unresolved: readonly { kind: "probable" | "conflicting"; movementIds: readonly [string, string]; documentIds: readonly [string, string] }[];
+};
+export type AccountLedgerOverlap = { state: "none_observed" | "overlap_present"; deduplication: AccountLedgerDeduplication; groups: readonly { from: string; to: string; documentIds: readonly [string, string] }[] };
+export type AccountLedgerSource = { documentId: string; accountId: string; filename: string; relation: "statement" | "movement_evidence" | "statement_and_movement_evidence"; period: { from: string; to: string } | null };
+export type AccountLedgerData = {
+  scope: { kind: "account"; accountId: string };
+  revision: string;
+  account: AccountLedgerAccount;
+  coverage: { state: "unavailable" | "continuous" | "gapped" | "discontinuous"; runs: readonly AccountLedgerCoverageRun[]; gaps: readonly AccountLedgerGap[] };
+  reconciliation: { balance: "reconciled" | "conflicted" | "not_established"; overlap: AccountLedgerOverlap; runningBalance: { state: "absent"; reason: "not_authoritatively_available" } };
+  sources: readonly AccountLedgerSource[];
+  groups: readonly { month: string; label: string; movements: readonly AccountLedgerMovement[] }[];
+  page: { limit: number; returned: number; remaining: number; nextCursor: string | null };
+};
+export type AccountLedgerReader = { read: (accountId: string, cursor?: string, limit?: number) => Promise<FeatureResult<AccountLedgerData>> };
+export type ActivityCorrectionVerb = "category" | "classification" | "meaning" | "tags" | "add_tags" | "remove_tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
 export type ActivityActionOutcome = { kind: "completed" | "refused" | "stale"; message: string; reason: string };
 export type ActivityActionResult =
   | { state: "settled"; outcome: ActivityActionOutcome }
   | Exclude<ActionResult, { state: "settled" }>;
 export type ActivityCorrectionState =
   | { state: "idle" }
-  | { state: "working"; movementId: string; verb: ActivityCorrectionVerb }
-  | { state: "refreshing"; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
-  | { state: "settled"; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult; refresh: "refreshed" | "failed" };
+  | { state: "working"; movementId: string; movementIds: readonly string[]; verb: ActivityCorrectionVerb }
+  | { state: "refreshing"; movementId: string; movementIds: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult }
+  | { state: "settled"; movementId: string; movementIds: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult; refresh: "refreshed" | "failed" };
 export type ActivityActions = {
   read: (limit: number) => Promise<FeatureResult<ActivityData>>;
   assignCategory: (movementId: string, categoryId: string) => Promise<ActivityActionResult>;
+  assignClassification: (movementIds: readonly string[], categoryId: string, subcategoryId: string) => Promise<ActivityActionResult>;
   assignMeaning: (movementId: string, meaning: string, counterparty: string) => Promise<ActivityActionResult>;
   replaceTags: (movementId: string, tagIds: readonly string[]) => Promise<ActivityActionResult>;
+  addTags: (movementIds: readonly string[], tagIds: readonly string[]) => Promise<ActivityActionResult>;
+  removeTags: (movementIds: readonly string[], tagIds: readonly string[]) => Promise<ActivityActionResult>;
   confirmTransfer: (movementId: string, counterpartId: string) => Promise<ActivityActionResult>;
   rejectTransfer: (movementId: string) => Promise<ActivityActionResult>;
   unlinkTransfer: (movementId: string, counterpartId: string) => Promise<ActivityActionResult>;
@@ -316,7 +392,7 @@ export type ConversationActions = {
 export type AskActionState =
   | { state: "idle" }
   | { state: "working"; question: string }
-  | { state: "settled"; question: string; result: ActionResult; turn: TurnView | null };
+  | { state: "settled"; question: string; result: ActionResult; turn: TurnView | null; authoritative?: boolean };
 export type ConversationData = { turns: ConversationTurn[]; questions: QuestionQueueData };
 // What this application says about being updated and about being recovered.
 // There is no update channel; every sentence here is the engine's account of
@@ -379,4 +455,4 @@ export type DocumentActions = {
   rescan: () => Promise<{ result: ActionResult; report: RescanReport | null }>;
   reread: () => Promise<FeatureResult<DocumentsData>>;
 };
-export type SurfaceSnapshot = { disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; plans?: FeatureResult<PlansData>; trust: FeatureResult<TrustData> };
+export type SurfaceSnapshot = { disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; review?: FeatureResult<ReviewData>; plans?: FeatureResult<PlansData>; trust: FeatureResult<TrustData> };

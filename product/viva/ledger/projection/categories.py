@@ -83,18 +83,65 @@ def category_aliases(core: ProjectionCore) -> dict[str, str]:
     return dict(core._category_alias_map)
 
 
+def _resolve_alias(aliases: dict[str, str], label: str,
+                   identity, *, preserve_unaliased: bool = False) \
+        -> tuple[str, bool]:
+    """Resolve one normalized alias graph, reporting collisions and cycles.
+
+    Historical events predate normalized writers, so raw keys which differ
+    only in case or punctuation may occupy separate entries.  Normalize both
+    sides before walking.  If those entries disagree, or the requested path
+    cycles, preserve the normalized input rather than choosing one target and
+    report the ambiguity to mutation callers.
+    """
+    normalized: dict[str, str] = {}
+    collisions: set[str] = set()
+    for raw, target in sorted(aliases.items()):
+        key = identity(raw)
+        value = identity(target)
+        # Historical writers could record a spelling-only ruling.  Once both
+        # sides have passed through this vocabulary's identity function it is
+        # not an alias edge at all; retaining it would manufacture a self-cycle
+        # and could also manufacture a collision with a real alias for the
+        # same normalized key.
+        if key == value:
+            continue
+        if key in normalized and normalized[key] != value:
+            collisions.add(key)
+        else:
+            normalized[key] = value
+    start = identity(label)
+    current = start
+    if current not in normalized and preserve_unaliased:
+        return (label or "").strip(), False
+    seen: set[str] = set()
+    while current in normalized:
+        if current in seen or current in collisions:
+            return start, True
+        seen.add(current)
+        current = normalized[current]
+    if current in collisions:
+        return start, True
+    return current, False
+
+
+def _category_identity(label: str) -> str:
+    return (label or "").strip().lower()
+
+
 def canonical_category(core: ProjectionCore, label: str) -> str:
     """Follow a label to the one every total counts it under.
 
     Chains are followed (a → b → c) and a cycle terminates rather than
     hanging, returning the last label reached."""
-    aliases = core._category_alias_map
-    seen: set[str] = set()
-    current = label
-    while current in aliases and current not in seen:
-        seen.add(current)
-        current = aliases[current]
-    return current
+    return _resolve_alias(
+        core._category_alias_map, label, _category_identity,
+        preserve_unaliased=True)[0]
+
+
+def category_alias_is_ambiguous(core: ProjectionCore, label: str) -> bool:
+    return _resolve_alias(
+        core._category_alias_map, label, _category_identity)[1]
 
 
 def canonical_subcategory(core: ProjectionCore, label: str) -> str:
@@ -106,13 +153,13 @@ def canonical_subcategory(core: ProjectionCore, label: str) -> str:
     declares the same.
 
     Chains are followed and a cycle terminates, as in `canonical_category`."""
-    aliases = core._subcategory_alias_map
-    seen: set[str] = set()
-    current = subcategory_identity(label)
-    while current in aliases and current not in seen:
-        seen.add(current)
-        current = aliases[current]
-    return current
+    return _resolve_alias(
+        core._subcategory_alias_map, label, subcategory_identity)[0]
+
+
+def subcategory_alias_is_ambiguous(core: ProjectionCore, label: str) -> bool:
+    return _resolve_alias(
+        core._subcategory_alias_map, label, subcategory_identity)[1]
 
 
 def subcategory_spelling(core: ProjectionCore, m) -> tuple[str, str]:
@@ -374,13 +421,11 @@ def tag_aliases(core: ProjectionCore) -> dict[str, str]:
 
 
 def canonical_tag(core: ProjectionCore, label: str) -> str:
-    aliases = core._tag_alias_map
-    seen: set[str] = set()
-    current = (label or "").strip().lower()
-    while current in aliases and current not in seen:
-        seen.add(current)
-        current = aliases[current]
-    return current
+    return _resolve_alias(core._tag_alias_map, label, _category_identity)[0]
+
+
+def tag_alias_is_ambiguous(core: ProjectionCore, label: str) -> bool:
+    return _resolve_alias(core._tag_alias_map, label, _category_identity)[1]
 
 
 def known_tags(core: ProjectionCore) -> list[str]:

@@ -25,7 +25,8 @@ from .record import MerchantRecord
 from .taxonomy import (FALLBACK_CATEGORY, PRIMARY_CATEGORIES, TAXONOMY_VERSION,
                        canonical_primary, is_primary, normalize_subcategory,
                        read_subcategory_seed, seed_subcategories,
-                       subcategory_identity, subcategory_vocabulary)
+                       seed_subcategories_by_category, subcategory_identity,
+                       subcategory_vocabulary)
 
 __all__ = [
     "normalize_merchant", "is_shareable", "NORMALIZER_VERSION",
@@ -44,5 +45,5 @@ __all__ = [
     "PRIMARY_CATEGORIES", "FALLBACK_CATEGORY", "TAXONOMY_VERSION",
     "is_primary", "canonical_primary", "normalize_subcategory",
     "subcategory_identity", "subcategory_vocabulary", "seed_subcategories",
-    "read_subcategory_seed",
+    "seed_subcategories_by_category", "read_subcategory_seed",
 ]

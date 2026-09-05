@@ -6,28 +6,28 @@ import { Activity } from "./Activity";
 import type { ActivityCorrectionControls } from "./Activity";
 import moments from "../../../../product/viva/persona/pack-v31/moments.json";
 
-const vocabularies: ActivityData["vocabularies"] = { categories: { items: [{ id: "food", label: "Food" }, { id: "housing", label: "Housing" }], complete: true, limit: 20 }, tags: { items: [{ id: "trip", label: "Trip" }, { id: "tax", label: "Tax" }], complete: true, limit: 20, maxSelected: 8, maxLabelLength: 40 } };
-const movement = (over: Partial<MovementView> = {}): MovementView => ({ id: "m1", date: "2026-07-01", description: "a shop", account: "acct:one", direction: "out", exactValue: "10.00", currency: "USD", display: "USD 10.00", nature: "spending", treatment: { kind: "spending", name: "" }, loanRepaymentChoices: [], sentence: "", decidedBy: "default", provisional: false, linked: false, category: { id: "food", label: "Food", valid: true }, tags: [{ id: "trip", label: "Trip" }], tagsValid: true, transfer: { state: "none" }, actions: [], ...over });
-const counterpart = { id: "counterpart-one", date: "2026-07-02", description: "other account movement", account: "acct:two", direction: "in" as const, exactValue: "10.00", currency: "USD", display: "USD 10.00" };
+const vocabularies: ActivityData["vocabularies"] = { categories: { items: [{ id: "food", label: "Food" }, { id: "housing", label: "Housing" }], complete: true, limit: 20 }, subcategories: { items: [{ id: "restaurant", label: "Restaurant", categoryId: "food" }], complete: true, limit: 20 }, tags: { items: [{ id: "trip", label: "Trip" }, { id: "tax", label: "Tax" }], complete: true, limit: 20, maxSelected: 8, maxLabelLength: 40 } };
+const movement = (over: Partial<MovementView> = {}): MovementView => ({ id: "m1", date: "2026-07-01", description: "a shop", account: "acct:one", accountId: "acct:one", accountName: "Everyday account", direction: "out", exactValue: "10.00", currency: "USD", display: "USD 10.00", nature: "spending", treatment: { kind: "spending", name: "" }, loanRepaymentChoices: [], sentence: "", decidedBy: "default", provisional: false, linked: false, category: { id: "food", label: "Food", valid: true }, subcategory: { id: null, label: "", valid: true }, classification: { grade: "verified", provenance: "human" }, classificationValid: true, tags: [{ id: "trip", label: "Trip" }], tagsValid: true, evidenceLinks: [], evidenceLinksValid: true, transfer: { state: "none" }, actions: [], ...over });
+const counterpart = { id: "counterpart-one", date: "2026-07-02", description: "other account movement", account: "acct:two", accountId: "acct:two", accountName: "Savings", direction: "in" as const, exactValue: "10.00", currency: "USD", display: "USD 10.00" };
 const read = (movements: MovementView[]): ActivityData => ({ sentence: movements.length ? moments.activity_scope : moments.activity_empty, movements, beyond: { count: 0 }, vocabularies });
 const ready = (value: ActivityData): FeatureResult<ActivityData> => ({ state: "ready", data: value });
 const noAction = () => {};
 const completed: ActivityActionResult = { state: "settled", outcome: { kind: "completed", message: "The correction was recorded.", reason: "" } };
 function controls(state: ActivityCorrectionState, onAssignCategory = vi.fn(), onReplaceTags = vi.fn(), onConfirmTransfer = vi.fn(), onRejectTransfer = vi.fn(), onUnlinkTransfer = vi.fn(), onAssignMeaning = vi.fn()): ActivityCorrectionControls { return { state, onAssignCategory, onAssignMeaning, onReplaceTags, onConfirmTransfer, onRejectTransfer, onUnlinkTransfer }; }
 
-describe("Activity surface", () => {
+describe("Transactions surface", () => {
   it("renders every FeatureResult state, and an empty read in the read's own words", () => {
     const props = { onOpenEvidence: noAction };
     const { getByText, queryByText, rerender } = render(<Activity {...props} result={{ state: "absent", reason: "none" }} />);
-    expect(queryByText("Activity unavailable")).not.toBeInTheDocument();
+    expect(queryByText("Transactions unavailable")).not.toBeInTheDocument();
     rerender(<Activity {...props} result={{ state: "unavailable", reason: "not_connected" }} />);
-    expect(getByText("Activity is not connected to this vault read.")).toBeInTheDocument();
+    expect(getByText("Transactions are not connected to this vault read.")).toBeInTheDocument();
     rerender(<Activity {...props} result={{ state: "failed", reason: "read_failed" }} />);
-    expect(getByText("Activity could not be read. The vault is still open.")).toBeInTheDocument();
+    expect(getByText("Transactions could not be read. The vault is still open.")).toBeInTheDocument();
     rerender(<Activity {...props} result={{ state: "partial", data: read([]), issues: [{ code: "partial", message: "bounded" }] }} />);
-    expect(getByText("Some activity details are unavailable. Available movements are shown below.")).toBeInTheDocument();
+    expect(getByText("Some transaction details are unavailable. Available transactions are shown below.")).toBeInTheDocument();
     rerender(<Activity {...props} result={{ state: "needs_input", data: read([]), issues: [{ code: "input", message: "bounded" }] }} />);
-    expect(getByText("Some activity details need more information. Available movements are shown below.")).toBeInTheDocument();
+    expect(getByText("Some transactions need more information. Available transactions are shown below.")).toBeInTheDocument();
     rerender(<Activity {...props} result={ready(read([]))} />);
     // The read composes its own sentence about knowing of nothing that moved,
     // and it is not the same as nothing having moved.
@@ -37,7 +37,7 @@ describe("Activity surface", () => {
   it("has one way to draw a movement, and no second path for a sample vault", () => {
     // The sample vault uses the same Activity read and component.
     const { getByText, queryByRole } = render(<Activity result={ready(read([movement()]))} onOpenEvidence={noAction} />);
-    expect(getByText("What moved")).toBeInTheDocument();
+    expect(getByText("Transactions")).toBeInTheDocument();
     expect(getByText("a shop")).toBeInTheDocument();
     expect(queryByRole("textbox")).not.toBeInTheDocument();
   });
@@ -146,7 +146,7 @@ describe("Activity surface", () => {
     await user.type(screen.getByRole("textbox", { name: /Person or loan name for/ }), "  Sam   Loan  ");
 
     const refreshed = movement({ id: initial.id, description: initial.description, nature: "transfer", treatment: { kind: "loan", name: "Sam Loan" }, actions: ["assign_meaning"] });
-    rerender(<Activity result={ready(read([refreshed]))} correction={controls({ state: "settled", movementId: initial.id, verb: "meaning", result: completed, refresh: "refreshed" })} onOpenEvidence={noAction} />);
+    rerender(<Activity result={ready(read([refreshed]))} correction={controls({ state: "settled", movementId: initial.id, movementIds: [initial.id], verb: "meaning", result: completed, refresh: "refreshed" })} onOpenEvidence={noAction} />);
 
     expect(screen.getByText("Loan lent · Sam Loan")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /Treatment for/ })).toHaveValue("loan");
@@ -159,7 +159,7 @@ describe("Activity surface", () => {
     const user = userEvent.setup();
     const assign = vi.fn();
     const replace = vi.fn();
-    render(<Activity result={ready(read([movement({ id: "movement identity with spaces", actions: ["assign_category", "assign_meaning", "replace_tags"] })]))} correction={controls({ state: "working", movementId: "movement identity with spaces", verb: "category" }, assign, replace)} onOpenEvidence={noAction} />);
+    render(<Activity result={ready(read([movement({ id: "movement identity with spaces", actions: ["assign_category", "assign_meaning", "replace_tags"] })]))} correction={controls({ state: "working", movementId: "movement identity with spaces", movementIds: ["movement identity with spaces"], verb: "category" }, assign, replace)} onOpenEvidence={noAction} />);
     await user.click(screen.getByText(/Correct category, treatment, or tags/));
     const category = screen.getByRole("combobox", { name: /Category for/ });
     const save = screen.getByRole("button", { name: /Save category for/ });
@@ -234,9 +234,9 @@ describe("Activity surface", () => {
     const user = userEvent.setup();
     const confirm = vi.fn();
     const reject = vi.fn();
-    render(<Activity result={ready(read([movement({ transfer: { state: "suggested", explanation: "Reviewed.", candidates: [{ ...counterpart, relationship: "Reviewed relationship." }], complete: true, limit: 20 }, actions: ["confirm_transfer", "reject_transfer"] })]))} correction={controls({ state: "refreshing", movementId: "m1", verb: "category", result: completed }, vi.fn(), vi.fn(), confirm, reject)} onOpenEvidence={noAction} />);
+    render(<Activity result={ready(read([movement({ transfer: { state: "suggested", explanation: "Reviewed.", candidates: [{ ...counterpart, relationship: "Reviewed relationship." }], complete: true, limit: 20 }, actions: ["confirm_transfer", "reject_transfer"] })]))} correction={controls({ state: "refreshing", movementId: "m1", movementIds: ["m1"], verb: "category", result: completed }, vi.fn(), vi.fn(), confirm, reject)} onOpenEvidence={noAction} />);
     await user.click(screen.getByText("Review transfer suggestion"));
-    for (const button of screen.getAllByRole("button")) {
+    for (const button of screen.getAllByRole("button").filter((candidate) => candidate.closest(".activity-correction"))) {
       expect(button).toHaveAttribute("aria-disabled", "true");
       expect(button).not.toBeDisabled();
       button.focus();
@@ -269,12 +269,12 @@ describe("Activity surface", () => {
     ["unlink_transfer", "stale", "Transfer link changed"],
   ] as const)("keeps the %s %s outcome distinct", (verb, kind, title) => {
     const reason = kind === "completed" ? "" : "changed";
-    render(<Activity result={ready(read([movement()]))} correction={controls({ state: "settled", movementId: "m1", verb, result: { state: "settled", outcome: { kind, message: "Backend-reviewed outcome.", reason } }, refresh: "refreshed" })} onOpenEvidence={noAction} />);
+    render(<Activity result={ready(read([movement()]))} correction={controls({ state: "settled", movementId: "m1", movementIds: ["m1"], verb, result: { state: "settled", outcome: { kind, message: "Backend-reviewed outcome.", reason } }, refresh: "refreshed" })} onOpenEvidence={noAction} />);
     expect(screen.getByText(title)).toBeInTheDocument();
   });
 
   it("focuses the refreshed financial row after a completed correction", () => {
-    render(<Activity result={ready(read([movement()]))} correction={controls({ state: "settled", movementId: "m1", verb: "category", result: completed, refresh: "refreshed" })} onOpenEvidence={noAction} />);
+    render(<Activity result={ready(read([movement()]))} correction={controls({ state: "settled", movementId: "m1", movementIds: ["m1"], verb: "category", result: completed, refresh: "refreshed" })} onOpenEvidence={noAction} />);
     expect(screen.getByText("a shop").closest("li")).toHaveFocus();
   });
 

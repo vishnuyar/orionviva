@@ -3,7 +3,7 @@
 // and moves only when the sidecar's does.
 export const BRIDGE_PROTOCOL = "2.0";
 
-export type SurfaceName = "overview" | "documents" | "conversation" | "jobs" | "trust" | "activity" | "plans";
+export type SurfaceName = "overview" | "spending" | "documents" | "conversation" | "review" | "jobs" | "trust" | "activity" | "account_ledger" | "plans";
 export type SurfaceParameters = Record<string, string | number>;
 export type BridgeResponse<T> = { protocol: string; request_id: string; ok: boolean; result?: T; error?: { code: string; message: string } };
 export type SurfaceReadResult = { surface: SurfaceName; job_id: string; data: unknown };
@@ -84,8 +84,10 @@ export type BridgeClient = {
   openSampleVault: () => Promise<SampleFrame | null>;
   pickVaultDirectory?: () => Promise<string | null>;
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
+  readSpending?: (parameters: SurfaceParameters) => Promise<SurfaceReadResult>;
   readDocuments: () => Promise<SurfaceReadResult>;
   readConversation: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
+  readReview?: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   // What the sidecar is doing, or has just done. It is a read like any other
   // and answers absent for a sidecar that has run no job — which is not the
   // same fact as a sidecar that cannot say.
@@ -96,6 +98,9 @@ export type BridgeClient = {
   // What moved, and which way. Direction is the read's: on a card a purchase
   // posts positive, and a shell reading the sign would have it backwards.
   readActivity: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
+  // One exact account, loaded when account detail navigation asks for it. The
+  // cursor is opaque and remains bound to the revision that minted it.
+  readAccountLedger: (accountId: string, cursor?: string, limit?: number) => Promise<SurfaceReadResult>;
   readPlans: () => Promise<SurfaceReadResult>;
   draftPlan: (payload: Record<string, unknown>) => Promise<unknown>;
   proposePlan: (payload: Record<string, unknown>) => Promise<unknown>;
@@ -103,8 +108,11 @@ export type BridgeClient = {
   declinePlan: (proposalId: string) => Promise<unknown>;
   setAsideFinding?: (findingId: string) => Promise<unknown>;
   assignActivityCategory: (movementKey: string, categoryId: string) => Promise<unknown>;
+  assignActivityClassification: (movementIds: readonly string[], categoryId: string, subcategoryId: string) => Promise<unknown>;
   assignActivityMeaning: (movementKey: string, meaning: string, counterparty: string) => Promise<unknown>;
   replaceActivityTags: (movementKey: string, tagIds: readonly string[]) => Promise<unknown>;
+  addActivityTags: (movementIds: readonly string[], tagIds: readonly string[]) => Promise<unknown>;
+  removeActivityTags: (movementIds: readonly string[], tagIds: readonly string[]) => Promise<unknown>;
   confirmActivityTransfer: (movementKey: string, counterpartKey: string) => Promise<unknown>;
   rejectActivityTransfer: (movementKey: string) => Promise<unknown>;
   unlinkActivityTransfer: (movementKey: string, counterpartKey: string) => Promise<unknown>;

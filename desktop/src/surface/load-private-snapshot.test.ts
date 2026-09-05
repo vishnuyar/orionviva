@@ -14,6 +14,7 @@ function client(conversation: unknown = { state: "ready", turns: [], questions: 
     readJobs: () => read("jobs", { state: "absent", jobs: [], running: [] }),
     readTrust: () => read("trust", { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } }),
     readActivity: () => read("activity", { state: "ready", sentence: "", items: [], beyond: { count: 0 }, vocabularies: { categories: { items: [], complete: true, limit: 40 }, tags: { items: [], complete: true, limit: 40, max_selected: 40, max_label_length: 80 } } }),
+    readAccountLedger: () => read("account_ledger", {}),
     readPlans: () => read("plans", planRead),
     draftPlan: async () => ({ kind: "ready", message: "Draft ready.", draft: {} }),
     proposePlan: async () => ({ kind: "proposed", message: "Held.", state: null, reason: null }),
@@ -37,8 +38,11 @@ function client(conversation: unknown = { state: "ready", turns: [], questions: 
     confirmProposal: async () => ({ kind: "completed", message: "Recorded.", state: null, reason: null }),
     declineQuestion: async () => ({ kind: "set_aside", message: "Set aside.", state: null, reason: null }),
     assignActivityCategory: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
+    assignActivityClassification: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
     assignActivityMeaning: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
     replaceActivityTags: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
+    addActivityTags: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
+    removeActivityTags: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
     confirmActivityTransfer: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
     rejectActivityTransfer: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
     unlinkActivityTransfer: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
@@ -61,6 +65,11 @@ describe("private conversation surface", () => {
     expect(typeof actions?.confirm).toBe("function");
     expect(typeof actions?.decline).toBe("function");
     expect(typeof actions?.reread).toBe("function");
+  });
+
+  it("exposes account ledger reads separately for navigation-time loading", () => {
+    const source = privateSource(client());
+    expect(typeof source.accountLedgerReader?.read).toBe("function");
   });
 
   it("fails the conversation read closed when a turn is malformed", async () => {

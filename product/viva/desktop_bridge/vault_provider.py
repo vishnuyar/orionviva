@@ -10,7 +10,9 @@ if TYPE_CHECKING:
     from ..vault import Vault
 
 
-def create_vault_surface_provider(vault: "Vault") -> OpenedVaultSurfaceProvider:
+def create_vault_surface_provider(
+    vault: "Vault", *, cursor_secret: bytes | None = None
+) -> OpenedVaultSurfaceProvider:
     """Create a read-only surface provider for an already-open vault."""
 
-    return OpenedVaultSurfaceProvider(vault)
+    return OpenedVaultSurfaceProvider(vault, cursor_secret=cursor_secret)

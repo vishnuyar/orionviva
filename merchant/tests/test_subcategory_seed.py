@@ -17,6 +17,7 @@ from merchantcore import Catalog, Enricher, MerchantRecord
 from merchantcore.enrich import build_enrichment_prompt
 from merchantcore.taxonomy import (PRIMARY_CATEGORIES, FALLBACK_CATEGORY,
                                    read_subcategory_seed, seed_subcategories,
+                                   seed_subcategories_by_category,
                                    subcategory_identity, subcategory_vocabulary)
 
 # Clearly not a vocabulary anybody would ship: four labels invented for a test.
@@ -155,6 +156,17 @@ def test_the_shipped_vocabulary_is_read_through_every_guard():
                 for p in tuple(PRIMARY_CATEGORIES) + (FALLBACK_CATEGORY,)}
     assert not reserved & {subcategory_identity(label) for label in shipped}
     assert all(label == label.strip().lower() for label in shipped)
+
+
+def test_the_shipped_hierarchy_is_the_same_vocabulary_without_losing_parents():
+    grouped = seed_subcategories_by_category()
+
+    assert grouped
+    assert set(grouped) <= set(PRIMARY_CATEGORIES) | {FALLBACK_CATEGORY}
+    assert tuple(label for labels in grouped.values() for label in labels) == \
+        seed_subcategories()
+    assert "supermarket" in grouped["groceries"]
+    assert "supermarket" not in grouped["dining"]
 
 
 # --- what a model is shown --------------------------------------------------

@@ -240,6 +240,7 @@ def test_an_unknown_merchant_asks_what_it_is_scoped_to_the_merchant(tmp_path):
     (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == MERCHANT]
     assert q["count"] == 2 and Decimal(q["amount"]) == Decimal("250.00")
     assert q["scope"] == "pattern"           # one ruling clears both, and future
+    assert q["refs"]["movements"] == []       # explicit: this ruling is not per-row
     assert "ACME HARDWARE" in q["text"]
 
 
@@ -481,6 +482,24 @@ def test_a_transfer_suggestion_becomes_a_one_off_question(tmp_path):
     if qs:                                   # only if the matcher left it ambiguous
         assert qs[0]["scope"] == "one"
         assert "own accounts" in qs[0]["text"]
+
+
+def test_a_transfer_question_carries_its_source_and_candidate_identities(tmp_path):
+    from viva.ledger import transfer_suggested
+
+    ledger = _checking(tmp_path, [
+        ("2026-03-05", "POSSIBLE TRANSFER", "-200.00"),
+    ])
+    source = ledger.projection().movements()[0]
+    candidates = ["movement:candidate-one", "movement:candidate-two"]
+    ledger.append(transfer_suggested(
+        source.key, candidates, {}, "2026-04-01"))
+
+    (question,) = [q for q in open_questions(
+        ledger, as_of="2026-04-01")["questions"] if q["kind"] == TRANSFER]
+
+    assert question["refs"]["movement"] == source.key
+    assert question["refs"]["candidates"] == candidates
 
 
 def test_the_queue_carries_no_instructions_for_a_surface():

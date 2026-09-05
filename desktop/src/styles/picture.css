@@ -25,16 +25,15 @@
   min-width: 0;
 }
 
-/* The number sits in a list of its own kind, so the space between one currency
-   and the next belongs to the list rather than to the figure. The number
-   itself carries no mark: what it is set in is its own, and a rule drawn
-   through a serif numeral is read as damage to the total rather than as a way
-   into its evidence. It does not wrap: a total broken at its space is a unit
-   set as a heading with an amount beneath it, and which currency a total is in
-   is not decoration on the one screen that never adds two of them. */
+/* The number sits in a list of its own kind, so the space between currencies
+   belongs to the list rather than to the figure. Its full currency-and-amount
+   label normally stays together, but an unusually long authored figure may
+   wrap inside its own card instead of crossing into picture coverage. */
 .hero-card .picture-figure .hero-amount {
   margin: 0;
-  white-space: nowrap;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* A currency the read kept back, and the picture with nothing to stand behind

@@ -11,12 +11,14 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
 from viva.ledger.projection.movements import (BY_CATEGORY, BY_LINK, MIXED,
                                               SPENDING, TRANSFER)
+from viva.ledger.events import Provenance
 from viva.persona import moment
 from viva.surface.activity import activity
 from viva.vault import Vault
@@ -26,7 +28,8 @@ class _Movement:
     def __init__(self, *, key="m1", kind="asset", amount="10.00",
                  date="2026-07-01", description="a shop", account="acct:one",
                  currency="USD", nature=SPENDING, reason="default",
-                 provisional=False, linked=False, ruling_account=""):
+                 provisional=False, linked=False, ruling_account="",
+                 provenance=None):
         self.key = key
         self.kind = kind
         self.amount = Decimal(amount)
@@ -39,14 +42,26 @@ class _Movement:
         self.provisional = provisional
         self.linked = linked
         self.ruling_account = ruling_account
+        self.provenance = provenance or Provenance()
 
 
 class _Projection:
-    def __init__(self, movements) -> None:
+    def __init__(self, movements, classifications=None) -> None:
         self._movements = list(movements)
+        self._classifications = dict(classifications or {})
 
     def movements(self):
         return list(self._movements)
+
+    def account_info(self, account):
+        return SimpleNamespace(account=account, name="Everyday account",
+                               number="000000001122")
+
+    def derived_category(self, movement):
+        return self._classifications.get(movement.key)
+
+    def captured_filenames(self):
+        return {"doc-one": "march-statement.pdf"}
 
 
 def _read(movements, **kwargs) -> dict:
@@ -157,6 +172,70 @@ def test_the_reason_the_projection_recorded_is_carried_rather_than_re_derived():
     assert read["items"][0]["decided_by"] == BY_LINK
 
 
+def test_a_row_carries_separate_account_classification_and_source_contracts():
+    movement = _Movement(provenance=Provenance(
+        doc_id="doc-one", page=7, region="transaction-row-4"))
+    read = activity(_Projection([movement], classifications={
+        movement.key: {"category": "food", "subcategory": "grocery store",
+                       "grade": "corroborated", "by": "model"},
+    }), "en-US")
+
+    row = read["items"][0]
+    assert row["account_id"] == "acct:one"
+    assert "Everyday account" in row["account_name"]
+    assert row["category"] == {"id": "food", "label": "food"}
+    assert row["subcategory"] == {
+        "id": "grocery store", "label": "grocery store"}
+    assert row["classification"] == {
+        "grade": "corroborated", "provenance": "model"}
+    assert row["evidence_links"] == [{
+        "document_id": "doc-one", "label": "march-statement.pdf",
+        "relation": "attests", "page": "7", "region": "transaction-row-4"}]
+
+
+def test_absent_classification_and_source_are_explicit_without_inventing_region():
+    without_source = _read([_Movement()])["items"][0]
+    page_only = activity(_Projection([_Movement(
+        provenance=Provenance(doc_id="doc-one", page=3))]), "en-US")["items"][0]
+
+    assert without_source["subcategory"] == {"id": None, "label": ""}
+    assert without_source["classification"] is None
+    assert without_source["evidence_links"] == []
+    assert page_only["evidence_links"][0]["region"] == ""
+
+
+def test_classification_provenance_is_not_emitted_for_an_orphan_subcategory():
+    movement = _Movement()
+    row = activity(_Projection([movement], classifications={
+        movement.key: {"category": "", "subcategory": "grocery store",
+                       "grade": "corroborated", "by": "model"},
+    }), "en-US")["items"][0]
+
+    assert row["category"]["id"] is None
+    assert row["subcategory"]["id"] == "grocery store"
+    assert row["classification"] is None
+    assert row["actions"] == []
+
+
+@pytest.mark.parametrize("classification", [
+    {"category": "food", "subcategory": "grocery store",
+     "grade": "certain", "by": "model"},
+    {"category": "food", "subcategory": "grocery store",
+     "grade": "corroborated", "by": ""},
+])
+def test_populated_classification_without_authoritative_grade_and_provenance(
+        classification):
+    movement = _Movement()
+    row = activity(_Projection([movement], classifications={
+        movement.key: classification,
+    }), "en-US")["items"][0]
+
+    assert row["category"]["id"] == "food"
+    assert row["subcategory"]["id"] == "grocery store"
+    assert row["classification"] is None
+    assert row["actions"] == []
+
+
 # ----------------------------------------------------------- what the panel says
 
 
@@ -211,6 +290,18 @@ def test_nothing_here_is_a_total():
 
 def test_the_whole_read_is_json_safe():
     json.dumps(_read([_Movement(nature=MIXED)]), allow_nan=False)
+
+
+def test_compound_editor_vocabulary_carries_parented_subcategory_ids():
+    vocabulary = _read([])["vocabularies"]["subcategories"]
+
+    assert vocabulary["complete"] is True
+    assert vocabulary["items"]
+    identities = {(item["category_id"], item["id"])
+                  for item in vocabulary["items"]}
+    assert len(identities) == len(vocabulary["items"])
+    assert all(item["category_id"] and item["id"] and item["label"]
+               for item in vocabulary["items"])
 
 
 def test_the_surface_reads_activity_from_a_real_vault(tmp_path: Path):

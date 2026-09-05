@@ -41,9 +41,13 @@ packaged Python sidecar. The desktop consumes every operation the sidecar
 declares. A private vault and persistent sample vault both use the live bridge;
 fixtures remain for deterministic presentation-state coverage.
 
-The live path provides financial picture and account evidence, movement
-activity with movement-scoped existing-choice category, economic-treatment,
+The live path provides financial picture and account evidence, a user-facing
+Transactions workspace (the compatibility destination and contract key remain
+`activity`) with movement-scoped existing-choice category, economic-treatment,
 complete-set tag and backend-qualified transfer correction, document capture and rescan,
+an Accounts index whose rows open an in-app, account-scoped stitched ledger
+with backend month groups, coverage and reconciliation disclosures, filters,
+transaction evidence drawers, and exact single or visible-selection classification and tag editing,
 calendar-aware upcoming obligations and the backend's top three quiet findings
 with inspect, Ask Viva and evidence-staked set-aside gestures,
 per-currency thirty-day known-remainder ranges and refusals with
@@ -64,6 +68,18 @@ required backend-authored qualifications remain in the picture, and the
 complete Evidence drawer remains preference-independent, with its route and
 payload identity preserved.
 
+The shipped shell presents Overview, Accounts, Transactions, Statements,
+Review, and served Plans in task order. Review carries the backend-authored
+actionable count. Add statement and Ask Viva remain distinct top-level actions;
+Trust & settings remains one click away in a separate utility landmark. The
+narrow drawer preserves the same destinations, active state, focus trap,
+Escape and outside-close behavior. Meaningful interface text has a twelve-pixel
+minimum, actionable controls and disclosures keep a forty-four-pixel minimum
+hit area at desktop and narrow widths, and the two-card financial picture
+stacks before the fixed navigation rail can crowd its authored currency totals.
+Source/provenance internals are progressively disclosed while
+conflicts, coverage gaps, requests, errors, and pending work remain visible.
+
 ## Coverage tables
 
 These tables intentionally repeat only facts that tests derive from executable
@@ -73,26 +89,35 @@ operation column is additionally checked by the desktop architecture gate.
 | Destination | Live read | Registry destination | Claimed by a surfaced capability | Shipped in the interface |
 | --- | --- | --- | --- | --- |
 | `overview` | yes | yes | yes | yes |
+| `spending` | yes | no | no | yes |
 | `plans` | yes | yes | yes | yes |
-| `accounts` | no | yes | no | yes |
+| `accounts` | no | yes | yes | yes |
+| `account_ledger` | yes | no | no | yes |
 | `activity` | yes | yes | yes | yes |
 | `documents` | yes | yes | yes | yes |
 | `jobs` | yes | no | no | yes |
+| `review` | yes | yes | yes | yes |
 | `conversation` | yes | no | no | no |
 | `viva` | no | yes | yes | yes |
 | `trust` | yes | yes | yes | yes |
 | `settings` | no | yes | yes | no |
 | `none` | no | yes | no | no |
 
+`activity` in this implementation table is the stable internal compatibility
+name. The destination shown to people is **Transactions**.
+
 | Operation | Allowlisted | Where it is served | Consumed by the desktop |
 | --- | --- | --- | --- |
 | `bridge.handshake` | yes | before a vault opens | yes |
 | `bridge.open_demo_vault` | no | explicit sidecar open branch | yes |
 | `bridge.open_vault` | no | explicit sidecar open branch | yes |
+| `viva.activity.add_tags` | yes | opened vault | yes |
 | `viva.activity.assign_category` | yes | opened vault | yes |
+| `viva.activity.assign_classification` | yes | opened vault | yes |
 | `viva.activity.assign_meaning` | yes | opened vault | yes |
 | `viva.activity.confirm_transfer` | yes | opened vault | yes |
 | `viva.activity.reject_transfer` | yes | opened vault | yes |
+| `viva.activity.remove_tags` | yes | opened vault | yes |
 | `viva.activity.replace_tags` | yes | opened vault | yes |
 | `viva.activity.unlink_transfer` | yes | opened vault | yes |
 | `viva.conversation.ask` | yes | opened vault | yes |
@@ -123,8 +148,9 @@ operation column is additionally checked by the desktop architecture gate.
 | Anchor | Gap |
 | --- | --- |
 | `has-name product/viva/desktop_bridge/jobs.py#JobRegistry` | Bounded operational receipts survive restart. Work interrupted by exit is restored as failed and is not resumed, so the person must start it again. |
-| `has-file desktop/src/features/documents/Documents.tsx` | Page and source-region review, focused correction, and document-level outbound history are not connected in the Documents destination. |
-| `has-file desktop/src/features/activity/Activity.tsx` | Activity reaches movement-scoped existing-choice category correction; treatment correction for spending, a named loan lent, or a named loan repayment chosen from receivables open on the movement date with enough remaining principal; complete-set tag replacement that may introduce a bounded local tag where the backend advertises it; and backend-qualified transfer confirmation, rejection and unlinking. The desktop neither infers transfer candidates nor offers merchant-wide changes, new category labels, or bulk editing. |
+| `has-file desktop/src/features/documents/Documents.tsx` | Page and source-region review, focused correction, and document-level outbound history are not connected in the Statements & documents destination. Current capture, read status, resolution, and contribution remain primary; technical identity, lifecycle, pages, source regions, and provenance are available through disclosure rather than dominating the index. |
+| `has-file desktop/src/features/activity/Activity.tsx` | Transactions (internal `activity`) reaches movement-scoped existing-choice category correction; treatment correction for spending, a named loan lent, or a named loan repayment chosen from receivables open on the movement date with enough remaining principal; complete-set tag replacement that may introduce a bounded local tag where the backend advertises it; and backend-qualified transfer confirmation, rejection and unlinking. Search and authored filters lead the workspace, while source statements are disclosed per transaction. The desktop neither infers transfer candidates nor offers merchant-wide changes, new category labels, or bulk editing. |
+| `has-file product/viva/surface/account_ledger.py` | AccountLedger.v1 supplies an exact account-scoped, session-authenticated and revision-bound, month-grouped read with normalized attested coverage, gaps, overlap state and account-bound source evidence. Exact economic postings from overlapping statement periods collapse authoritatively before pagination, with canonical/member identities and unioned evidence; probable or conflicting candidates remain separate and disclosed. A transaction-only account remains readable with an explicitly absent balance, and the read carries no write actions. The desktop bridge, strict adapter, stale-safe account-detail route, shell hierarchy, and minimum-type audit now render and edit against it. |
 | `has-file desktop/src/features/conversation/ConversationDrawer.tsx` | Conversation is durable across process and interface sessions, includes the deterministic question queue, records proposal identity and exact proposed data separately, and restores confirmation controls after reopening. There is no microphone, speech recognition, or audio playback path; the reply shape remains voice-ready. Because the product is unreleased, this contract intentionally starts clean and performs no migration or backfill from earlier technical read records or prior vault shapes. |
 | `no-file product/viva/surface/connections.py` | No account-aggregation surface exists. Documents and the sample vault are the acquisition paths. |
 | `has-name product/viva/surface/outbound.py#outbound` | Trust reports outbound model calls and explicitly reports that no independent anchoring exists; it does not create external anchors or issuer signatures. |

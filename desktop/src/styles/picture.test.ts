@@ -106,13 +106,14 @@ describe("the picture's own stylesheet", () => {
   // words every other figure on this screen uses. It is not a mark on the
   // number: a mark under a numeral set in a serif face is cut into fragments
   // by its descenders and reads as damage to the total rather than as a way in.
-  it("leaves the total unmarked and keeps its unit against its amount", () => {
+  it("leaves the total unmarked and bounds an unusually long total inside its card", () => {
     const host = mount(twoFigures);
     expect(declarations(host.querySelector(".hero-amount")!, ["text-decoration-line"])).toEqual({ "text-decoration-line": "none" });
-    // A total broken at its space is a unit set as a heading with an amount
-    // beneath it, and which currency a total is in is not decoration on the
-    // one screen that never adds two of them.
-    expect(declarations(host.querySelector(".hero-amount")!, ["white-space"])).toEqual({ "white-space": "nowrap" });
+    // The ordinary figure stays together when it fits. A longer authored
+    // currency-and-amount label may wrap rather than cross the card boundary
+    // and obscure the picture coverage beside it.
+    expect(declarations(host.querySelector(".hero-amount")!, ["max-width", "white-space", "overflow-wrap"]))
+      .toEqual({ "max-width": "100%", "white-space": "normal", "overflow-wrap": "anywhere" });
     for (const rule of styleRules(picture)) for (const [property] of declarationsOf(rule.body)) {
       expect(property.startsWith("text-decoration"), `${rule.selectors.join(", ")} { ${property} }`).toBe(false);
       expect(property.startsWith("text-underline"), `${rule.selectors.join(", ")} { ${property} }`).toBe(false);

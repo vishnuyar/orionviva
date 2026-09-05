@@ -393,12 +393,19 @@ class ProjectionCore:
                           else self._tag_alias_map)
                 target[event.body["subject"]] = event.body["same_as"]
                 if scope == SCOPE_CATEGORY:
-                    subject = subcategory_identity(event.body["subject"])
-                    same_as = subcategory_identity(event.body["same_as"])
+                    raw_subject = event.body["subject"]
+                    raw_same_as = event.body["same_as"]
+                    subject = subcategory_identity(raw_subject)
+                    same_as = subcategory_identity(raw_same_as)
                     # A fold whose two sides share one identity is already
                     # folded, and would be a step from a label to itself.
                     if subject and same_as and subject != same_as:
-                        self._subcategory_alias_map[subject] = same_as
+                        # Preserve the raw historical spellings here.  Alias
+                        # resolution normalizes the complete graph at once so
+                        # two raw keys with one identity and different targets
+                        # remain a detectable collision rather than silently
+                        # overwriting each other during projection replay.
+                        self._subcategory_alias_map[raw_subject] = raw_same_as
 
         elif et == "QuestionDeclined":
             # Last decline wins; a question re-declined after returning simply

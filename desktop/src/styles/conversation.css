@@ -10,7 +10,7 @@
 }
 .conversation-topline > div { min-width: 0; }
 .conversation-topline h2 { margin-top: 4px; font-size: 25px; }
-.conversation-topline p, .conversation-intro { margin: 7px 0 0; color: #7d8780; font-size: 11px; line-height: 1.55; }
+.conversation-topline p, .conversation-intro { margin: 7px 0 0; color: #7d8780; font-size: var(--text-fine); line-height: 1.55; }
 .conversation-body { display: grid; gap: 20px; padding-top: 20px; }
 .conversation-intro { margin: 0; padding: 12px; border: 1px solid #ddd9cf; border-radius: 10px; background: #f3f0e8; }
 .conversation-thread {
@@ -38,25 +38,25 @@
   justify-content: space-between;
   gap: 10px;
   color: #8e968e;
-  font-size: 10px;
+  font-size: var(--text-fine);
   text-transform: uppercase;
   letter-spacing: .08em;
 }
 .conversation-turn-meta time { grid-column: 1 / -1; }
 .conversation-turn p { margin: 0; color: #46584f; font-size: 12px; line-height: 1.55; }
-.conversation-citation { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid var(--line); color: #66766d; font-size: 11px; line-height: 1.5; }
-.conversation-citation small { color: #8b948d; font-size: 10px; line-height: 1.45; }
+.conversation-citation { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid var(--line); color: #66766d; font-size: var(--text-fine); line-height: 1.5; }
+.conversation-citation small { color: #8b948d; font-size: var(--text-fine); line-height: 1.45; }
 .conversation-turn dl, .conversation-selected dl, .conversation-identity-state dl { display: grid; gap: 7px; margin: 0; }
 .conversation-turn dl div, .conversation-selected dl div, .conversation-identity-state dl div { display: grid; gap: 3px; }
-.conversation-turn dt, .conversation-selected dt, .conversation-identity-state dt { color: #89938d; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
-.conversation-figure-trigger { display: inline; padding: 0; color: inherit; background: transparent; border: 0; font: inherit; letter-spacing: inherit; text-align: left; text-decoration: underline; text-decoration-thickness: var(--space-hair); text-underline-offset: var(--space-xs); text-transform: inherit; }
+.conversation-turn dt, .conversation-selected dt, .conversation-identity-state dt { color: #89938d; font-size: var(--text-fine); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.conversation-figure-trigger { display: inline-flex; align-items: center; min-height: var(--control-min-height); padding: 0; color: inherit; background: transparent; border: 0; font: inherit; letter-spacing: inherit; text-align: left; text-decoration: underline; text-decoration-thickness: var(--space-hair); text-underline-offset: var(--space-xs); text-transform: inherit; }
 .conversation-figure-trigger:focus-visible { outline: var(--space-hair) solid var(--moss); outline-offset: var(--space-xs); border-radius: var(--radius-sm); }
-.conversation-turn dd, .conversation-selected dd, .conversation-identity-state dd { margin: 0; color: #526159; font-size: 11px; line-height: 1.45; }
+.conversation-turn dd, .conversation-selected dd, .conversation-identity-state dd { margin: 0; color: #526159; font-size: var(--text-fine); line-height: 1.45; }
 .conversation-prompts { display: grid; gap: 12px; }
 .conversation-section-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .conversation-section-heading > div { display: grid; gap: 6px; min-width: 0; }
-.conversation-section-heading p, .conversation-selected p { margin: 0; color: #7d8780; font-size: 11px; line-height: 1.5; }
-.conversation-readonly-badge { flex: 0 0 auto; padding: 4px 7px; border: 1px solid #d8d9d3; border-radius: 999px; color: #606863; background: #efeee8; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.conversation-section-heading p, .conversation-selected p { margin: 0; color: #7d8780; font-size: var(--text-fine); line-height: 1.5; }
+.conversation-readonly-badge { flex: 0 0 auto; padding: 4px 7px; border: 1px solid #d8d9d3; border-radius: 999px; color: #606863; background: #efeee8; font-size: var(--text-fine); font-weight: 700; white-space: nowrap; }
 .conversation-prompt {
   display: grid;
   gap: 4px;
@@ -73,15 +73,15 @@
   box-shadow: 0 0 0 1px rgba(93, 121, 104, 0.16);
 }
 .conversation-prompt strong { color: #45574d; font-size: 12px; }
-.conversation-prompt span { color: #8d968f; font-size: 10px; line-height: 1.45; }
-.conversation-prompt small { color: #9d8262; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.conversation-prompt span { color: #8d968f; font-size: var(--text-fine); line-height: 1.45; }
+.conversation-prompt small { color: #9d8262; font-size: var(--text-fine); text-transform: uppercase; letter-spacing: .08em; }
 .conversation-selected, .conversation-identity-state { display: grid; gap: 8px; padding: 13px; border: 1px solid #e0ddd4; border-radius: 11px; background: #f4f1e9; }
 .conversation-identity-state strong { color: #5c5148; font-size: 12px; }
-.conversation-identity-state span { color: #7c746c; font-size: 11px; line-height: 1.5; }
+.conversation-identity-state span { color: #7c746c; font-size: var(--text-fine); line-height: 1.5; }
 .conversation-close { display: grid; place-items: center; flex: 0 0 auto; min-width: 44px; min-height: 44px; padding: 6px; border: 1px solid #d7e0d5; border-radius: 10px; color: #52675b; background: #f1f4ed; }
 .conversation-close:focus-visible, .conversation-prompt:focus-visible { outline: 2px solid #8c9b91; outline-offset: 2px; }
 .conversation-drawer, .conversation-drawer *, .conversation-turn, .conversation-prompt, .conversation-selected, .conversation-identity-state, .conversation-citation { min-width: 0; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
 .conversation-drawer .conversation-close { min-width: 44px; min-height: 44px; }
 .conversation-drawer .review-inspection-layout, .conversation-drawer .review-detail-grid, .conversation-drawer .review-more-grid, .conversation-drawer .review-guidance { grid-template-columns: 1fr; }
 .conversation-drawer .feature-panel { padding: var(--space-lg); }
-.state-pill { padding: 5px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+.state-pill { padding: 5px 8px; border-radius: 999px; font-size: var(--text-fine); font-weight: 700; }

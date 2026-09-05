@@ -23,6 +23,7 @@ class CapabilityDestination(StrEnum):
 
     OVERVIEW = "overview"
     ACCOUNTS = "accounts"
+    REVIEW = "review"
     ACTIVITY = "activity"
     DOCUMENTS = "documents"
     VIVA = "viva"
@@ -162,6 +163,26 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         (TrustEffect.READS_DATA,),
     ),
     _surface(
+        "overview.spending",
+        "viva.surface.spending",
+        CapabilityDestination.OVERVIEW,
+        "when a vault is open",
+        "SpendingBreakdown.v1",
+        (),
+        (TrustEffect.READS_DATA,),
+        fixture_states=("ready", "empty"),
+    ),
+    _surface(
+        "accounts.ledger",
+        "viva.surface.account_ledger",
+        CapabilityDestination.ACCOUNTS,
+        "when a vault is open and one exact account is requested",
+        "AccountLedger.v1",
+        (),
+        # Pagination and evidence reads remain deterministic and local.
+        (TrustEffect.READS_DATA,),
+    ),
+    _surface(
         "overview.obligations",
         "viva.surface.obligations",
         CapabilityDestination.OVERVIEW,
@@ -192,6 +213,16 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT),
         fixture_states=("absent", "ready", "needs_input", "partial",
                         "refused", "open", "completed", "stale"),
+    ),
+    _surface(
+        "review.attention",
+        "viva.surface.review",
+        CapabilityDestination.REVIEW,
+        "when a vault is open",
+        "ReviewSummary.v1",
+        (),
+        (TrustEffect.READS_DATA,),
+        fixture_states=("ready", "empty"),
     ),
     _surface(
         "conversation.viva",
@@ -225,7 +256,8 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         CapabilityDestination.ACTIVITY,
         "when a vault is open",
         "ActivityMovements.v3",
-        ("assign_category", "assign_meaning", "replace_tags", "confirm_transfer",
+        ("assign_category", "assign_classification", "assign_meaning",
+         "replace_tags", "add_tags", "remove_tags", "confirm_transfer",
          "reject_transfer", "unlink_transfer"),
         # The local read and movement actions use no model or egress.
         (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT),

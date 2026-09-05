@@ -1,3 +1,10 @@
+/* The navigation rail consumes a fixed desktop column. Before the shell swaps
+   to its drawer, that can leave less room than two honest financial cards
+   need, so the picture stacks while the rest of the desktop shell remains. */
+@media (max-width: 1199px) {
+  .hero-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (max-width: 760px) {
   .app-shell, .main-content, .content-wrap, .page-heading, .page-actions, .hero-grid, .hero-card, .coverage-card, .section-block, .account-grid, .account-card, .account-card-button, .account-copy, .queue-row, .queue-copy, .detail-panel, .detail-row, .document-library-layout, .document-library, .sample-lifecycle-card, .conversation-thread, .signal-row, .signal-copy, .review-inspection-layout, .review-queue, .review-selected, .activity-layout, .activity-list, .activity-detail { min-width: 0; }
   .navigation-backdrop {
@@ -28,12 +35,11 @@
   .sidebar-open { transform: translateX(0); visibility: visible; pointer-events: auto; }
   .mobile-menu, .mobile-close { display: grid; place-items: center; }
   .mobile-close { margin-left: auto; }
-  button, input, select, textarea { min-height: 44px; }
   .icon-button { min-width: 44px; }
-  .nav-item, .ask-button, .primary-button, .secondary-button, .text-button, .proof-link, .related-evidence-button, .conversation-prompt { font-size: max(11px, 1em); }
+  .nav-item, .ask-button, .primary-button, .secondary-button, .text-button, .proof-link, .related-evidence-button, .conversation-prompt { font-size: max(12px, 1em); }
   .topbar { height: 67px; padding: 0 20px; gap: 12px; }
   .breadcrumbs { flex: 1; }
-  .ask-button { padding: 8px; font-size: 0; }
+  .ask-button { padding: var(--space-sm) var(--space-md); }
   .ask-button svg { width: 17px; }
   .content-wrap { padding: 37px 20px 60px; }
   .page-heading { align-items: start; flex-direction: column; margin-bottom: 20px; }
@@ -56,6 +62,8 @@
   .feature-panel { padding: 24px; }
   .notice { margin: 14px 20px -2px; }
   .queue-row, .detail-row { grid-template-columns: 1fr; display: grid; }
+  .account-detail-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "account" "figure" "qualifications" "caveats"; }
+  .account-detail-row > .detail-row-button { min-width: 0; }
   .sample-lifecycle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .document-library-layout { grid-template-columns: 1fr; }
   .review-inspection-layout { grid-template-columns: 1fr; }
@@ -82,6 +90,9 @@
   .topbar, .content-wrap { padding-left: 14px; padding-right: 14px; }
   .notice { margin-left: 14px; margin-right: 14px; }
   .breadcrumbs > span, .breadcrumbs svg { display: none; }
+  .topbar { gap: var(--space-xs); }
+  .topbar-actions { gap: var(--space-xs); }
+  .topbar-actions .primary-button, .topbar-actions .ask-button { padding-left: var(--space-sm); padding-right: var(--space-sm); }
   .hero-card, .coverage-card, .feature-panel { padding: 18px; }
   .sample-lifecycle-grid { grid-template-columns: 1fr; }
   .document-capture-status, .document-scope, .sample-lifecycle { padding: 16px; }
@@ -106,6 +117,7 @@
   .conversation-drawer { width: 100vw; padding: 12px; }
   .sidebar { width: calc(100vw - 20px); padding-left: 10px; padding-right: 10px; }
   .topbar, .content-wrap { padding-left: 10px; padding-right: 10px; }
+  .topbar-actions .primary-button, .topbar-actions .ask-button { gap: var(--space-xs); padding-left: var(--space-sm); padding-right: var(--space-sm); }
   .documents-surface { padding: 12px; }
   .review-inspection { padding: 12px; }
   .activity-panel { padding: 12px; }

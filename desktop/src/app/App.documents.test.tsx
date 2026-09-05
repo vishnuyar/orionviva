@@ -2,7 +2,7 @@ import { act, fireEvent, render, waitFor, createRef, userEvent,
   afterEach, beforeEach, describe, expect, it, vi, App,
   ConversationDialogShell, moments, sampleVault, SAVED_NO_READER,
   queryByRoleIn, ThrowingConversationBody, installResponsiveMatchMedia,
-  installCapturedAnimationFrames, activityPayload, trustPayload, sampleReads,
+  installCapturedAnimationFrames, activityPayload, reviewEmptyPayload, trustPayload, sampleReads,
   sampleFrame, installSampleBridge, openSample } from "./App.testSupport";
 
 beforeEach(() => { installResponsiveMatchMedia(1440); });
@@ -29,7 +29,8 @@ describe("documents", () => {
             ? { documents: [{ id: "captured-identity", doc_type: "statement", filename: "quarter-close.pdf", resolved: false, raw_available: true, reading: "never_read" }], reading_sentence: SAVED_NO_READER }
             : { documents: [], reading_sentence: "" })
             : surface === "conversation" ? { turns: [], questions: [], total: 0, invite: "", answered_by_document: "" }
-              : surface === "trust" ? trustPayload
+              : surface === "review" ? reviewEmptyPayload
+                : surface === "trust" ? trustPayload
                 : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
                   : activityPayload;
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
@@ -43,18 +44,18 @@ describe("documents", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: /documents.*what supports it/i })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-      expect(getByText("Nothing has been added to this vault yet. Choose a file to add one, or open the sample vault to see what a full one looks like.")).toBeInTheDocument();
+      await waitFor(() => expect(getByRole("button", { name: "Statements" })).toBeInTheDocument());
+      await user.click(getByRole("button", { name: "Statements" }));
+      expect(getByText("Add a statement to begin, or open the sample vault to see a populated document index.")).toBeInTheDocument();
 
       operations.length = 0;
-      await user.click(getByRole("button", { name: "Choose a file" }));
+      await user.click(getByRole("button", { name: "Choose statement file" }));
 
       // Capture sends one path, then rereads every destination and the job registry.
       await waitFor(() => expect(container.querySelector(".document-library")).toHaveTextContent("quarter-close.pdf"));
-      expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(7).fill("viva.surface.read")]);
+      expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(8).fill("viva.surface.read")]);
       expect(operations[0].payload).toEqual({ path: "/chosen/first.pdf" });
-      expect(operations.slice(1).map((frame) => frame.payload.surface).sort()).toEqual(["activity", "conversation", "documents", "jobs", "overview", "plans", "trust"]);
+      expect(operations.slice(1).map((frame) => frame.payload.surface).sort()).toEqual(["activity", "conversation", "documents", "jobs", "overview", "plans", "review", "trust"]);
       expect(getAllByText(SAVED_NO_READER).length).toBeGreaterThan(0);
 
       // A dropped path is the same request from the same screen: a path
@@ -62,7 +63,7 @@ describe("documents", () => {
       operations.length = 0;
       expect(listen).not.toBeNull();
       await act(async () => { listen?.(["/dropped/second.pdf"]); });
-      await waitFor(() => expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(7).fill("viva.surface.read")]));
+      await waitFor(() => expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(8).fill("viva.surface.read")]));
       expect(operations[0].payload).toEqual({ path: "/dropped/second.pdf" });
 
       // More than one document in one gesture is refused in this window,
@@ -114,16 +115,16 @@ describe("documents", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: /documents.*what supports it/i })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: /documents.*what supports it/i }));
+      await waitFor(() => expect(getByRole("button", { name: "Statements" })).toBeInTheDocument());
+      await user.click(getByRole("button", { name: "Statements" }));
 
       // Closed with nothing chosen is a person changing their mind.
-      await user.click(getByRole("button", { name: "Choose a file" }));
+      await user.click(getByRole("button", { name: "Choose statement file" }));
       expect(queryByText("The file picker could not be opened, so nothing was chosen and nothing was added to this vault.")).not.toBeInTheDocument();
 
       // A picker that could not be opened is a control that did not work.
       picker = async () => { throw new Error("the dialog never opened"); };
-      await user.click(getByRole("button", { name: "Choose a file" }));
+      await user.click(getByRole("button", { name: "Choose statement file" }));
       await waitFor(() => expect(getByText("The file picker could not be opened, so nothing was chosen and nothing was added to this vault.")).toBeInTheDocument());
     } finally {
       window.orionVivaBridge = previousBridge;
@@ -150,19 +151,19 @@ describe("documents", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: /overview.*your picture/i })).toBeInTheDocument());
+      await waitFor(() => expect(getByRole("button", { name: "Overview" })).toBeInTheDocument());
       expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
 
       // The drop lands while another screen is open. Something durable happens,
       // so the screen that can say what became of it is what the person sees.
       await act(async () => { listen?.(["/dropped/first.pdf"]); });
-      await waitFor(() => expect(getByRole("heading", { name: "Documents" })).toBeInTheDocument());
+      await waitFor(() => expect(getByRole("heading", { name: "Statements & documents" })).toBeInTheDocument());
       await waitFor(() => expect(getAllByText(SAVED_NO_READER, { selector: "p" })).toHaveLength(1));
 
       // What was written is the session's, not the panel's: leaving the screen
       // and returning does not discard the receipt for it.
-      await user.click(getByRole("button", { name: /overview.*your picture/i }));
-      await user.click(getByRole("button", { name: /documents.*what supports it/i }));
+      await user.click(getByRole("button", { name: "Overview" }));
+      await user.click(getByRole("button", { name: "Statements" }));
       expect(getAllByText(SAVED_NO_READER, { selector: "p" })).toHaveLength(1);
     } finally {
       window.orionVivaBridge = previousBridge;
@@ -191,11 +192,11 @@ describe("documents", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: /documents.*what supports it/i })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: /documents.*what supports it/i }));
+      await waitFor(() => expect(getByRole("button", { name: "Statements" })).toBeInTheDocument());
+      await user.click(getByRole("button", { name: "Statements" }));
 
       operations.length = 0;
-      await user.click(getByRole("button", { name: "Choose a file" }));
+      await user.click(getByRole("button", { name: "Choose statement file" }));
 
       await waitFor(() => expect(container.querySelector(".notice")).toHaveTextContent("This takes one document at a time. Nothing was added."));
       expect(operations).toEqual([]);
@@ -258,18 +259,18 @@ describe("documents", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: /overview.*your picture/i })).toBeInTheDocument());
+      await waitFor(() => expect(getByRole("button", { name: "Overview" })).toBeInTheDocument());
 
       // A drawer is open, so the screen under it is inert and anything landing
       // there would be announced to nobody and painted behind the drawer.
       await user.click(getByRole("button", { name: /ask viva/i }));
-      expect(getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
+      expect(getByRole("dialog", { name: "Ask Viva" })).toBeInTheDocument();
 
       await act(async () => { listen?.(["/dropped/first.pdf"]); });
 
       await waitFor(() => expect(container.querySelector("main")).not.toHaveAttribute("inert"));
       expect(queryByRoleIn(container, "dialog")).toBeNull();
-      await waitFor(() => expect(document.getElementById("page-title")).toHaveTextContent("Documents"));
+      await waitFor(() => expect(document.getElementById("page-title")).toHaveTextContent("Statements & documents"));
       await waitFor(() => expect(document.getElementById("page-title")).toHaveFocus());
     } finally {
       window.orionVivaBridge = previousBridge;

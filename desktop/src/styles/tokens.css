@@ -17,7 +17,7 @@
 
   /* Type. Eight steps, closed: a size that is not one of these is not a size
      this product has. Only the largest step responds to viewport width. */
-  --text-caption: 11px;
+  --text-caption: 12px;
   --text-fine: 12px;
   --text-body: 14px;
   --text-lead: 16px;
@@ -106,5 +106,17 @@ body {
   background:
     radial-gradient(circle at 90% 8%, rgba(255, 255, 255, 0.85), transparent 22rem),
     linear-gradient(180deg, #f7f2e7 0%, #f0ede6 100%);
+}
+/* Browser defaults must not be able to shrink meaningful text or actionable
+   hit areas below the product floors. Component rules can still choose their
+   visual padding and density; these two intrinsic dimensions only enlarge a
+   control when its authored box would otherwise be too small. */
+small { font-size: var(--text-fine); }
+button, [role="button"], summary {
+  min-width: var(--control-min-height);
+  min-height: var(--control-min-height);
+}
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  min-height: var(--control-min-height);
 }
 button { font: inherit; color: inherit; cursor: pointer; }

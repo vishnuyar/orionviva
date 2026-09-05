@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
-type EvidenceDialogOptions = { open: boolean; drawerRef: RefObject<HTMLElement | null>; initialFocusRef: RefObject<HTMLElement | null>; pageTitleRef: RefObject<HTMLElement | null>; onDismiss: () => void };
+type EvidenceDialogOptions = { open: boolean; drawerRef: RefObject<HTMLElement | null>; initialFocusRef: RefObject<HTMLElement | null>; pageTitleRef: RefObject<HTMLElement | null>; onDismiss: () => void; restoreTarget?: (() => HTMLElement | null) | null };
 const focusableSelector = 'button, input, a[href], select, textarea, [tabindex]:not([tabindex="-1"])';
 
 function eligibleFocusable(element: HTMLElement | null): element is HTMLElement {
@@ -28,12 +28,14 @@ function canRestore(element: HTMLElement | null) {
   return eligibleFocusable(element);
 }
 
-export function useEvidenceDialog({ open, drawerRef, initialFocusRef, pageTitleRef, onDismiss }: EvidenceDialogOptions) {
+export function useEvidenceDialog({ open, drawerRef, initialFocusRef, pageTitleRef, onDismiss, restoreTarget = null }: EvidenceDialogOptions) {
   const openerRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
   const restoreGenerationRef = useRef(0);
   const dismissRef = useRef(onDismiss);
   dismissRef.current = onDismiss;
+  const restoreTargetRef = useRef(restoreTarget);
+  restoreTargetRef.current = restoreTarget;
   const cancelPendingRestore = useCallback(() => {
     restoreGenerationRef.current += 1;
     if (restoreFrameRef.current !== null) cancelAnimationFrame(restoreFrameRef.current);
@@ -45,7 +47,8 @@ export function useEvidenceDialog({ open, drawerRef, initialFocusRef, pageTitleR
     restoreFrameRef.current = requestAnimationFrame(() => {
       if (restoreGenerationRef.current !== generation) return;
       restoreFrameRef.current = null;
-      (canRestore(openerRef.current) ? openerRef.current : pageTitleRef.current)?.focus();
+      const explicit = restoreTargetRef.current?.() ?? null;
+      (canRestore(explicit) ? explicit : canRestore(openerRef.current) && openerRef.current !== document.body ? openerRef.current : pageTitleRef.current)?.focus();
     });
   }, [cancelPendingRestore, pageTitleRef]);
   useEffect(() => () => cancelPendingRestore(), [cancelPendingRestore]);

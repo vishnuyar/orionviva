@@ -1,0 +1,35 @@
+.overview-review-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--space-lg); margin-top: var(--space-lg); padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); color: var(--ink); }
+.overview-review-summary > div { display: grid; gap: var(--space-xs); }
+.overview-review-summary span, .overview-review-summary p, .overview-review-summary small { margin: 0; color: var(--ink); font-size: var(--text-fine); line-height: var(--leading-body); }
+.overview-review-summary h2 { margin: 0; color: var(--ink); font-size: var(--text-body); }
+.review-center-boundary { min-width: 0; color: var(--ink); }
+.review-center-boundary > .empty-state { border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+.review-center-boundary > .empty-state span { color: var(--ink); font-size: var(--text-fine); }
+.review-center { display: grid; gap: var(--space-xl); min-width: 0; padding: var(--space-xl); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); color: var(--ink); }
+.review-center-header { display: flex; align-items: start; justify-content: space-between; gap: var(--space-xl); }
+.review-center-header > div:first-child { display: grid; gap: var(--space-sm); max-width: 720px; }
+.review-center-header h2, .review-center-header p, .review-center-group h3, .review-center-row p { margin: 0; }
+.review-center-header h2 { color: var(--ink); font: var(--weight-medium) var(--text-page)/var(--leading-tight) "Playfair Display", Georgia, serif; }
+.review-center-header p, .review-center-row p, .review-center-row small, .review-center-remaining { color: var(--ink); font-size: var(--text-fine); line-height: var(--leading-body); }
+.review-center-count { display: grid; justify-items: end; gap: var(--space-hair); min-width: 80px; }
+.review-center-count strong { color: var(--ink); font: var(--weight-medium) var(--text-page)/1 "Playfair Display", Georgia, serif; }
+.review-center-count span { color: var(--ink); font-size: var(--text-fine); }
+.review-center-group { display: grid; gap: var(--space-sm); }
+.review-center-group ol { display: grid; gap: var(--space-sm); margin: 0; padding: 0; list-style: none; }
+.review-center-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-md); align-items: center; padding: var(--space-md); border: 1px solid var(--moss); border-radius: var(--radius-md); background: var(--sage); color: var(--ink); }
+.review-center-row:focus { outline: var(--space-hair) solid var(--moss); outline-offset: var(--space-hair); }
+.review-center-marker { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--moss); border-radius: var(--radius-pill); color: var(--ink); background: var(--panel); font-size: var(--text-fine); font-weight: var(--weight-strong); }
+.review-center-marker svg { width: var(--icon-sm); height: var(--icon-sm); }
+.review-center-row > div { display: grid; gap: var(--space-xs); min-width: 0; }
+.review-center-row-heading { display: grid; gap: var(--space-xs); }
+.review-center-row-heading > span { color: var(--ink); font-size: var(--text-fine); font-weight: var(--weight-strong); }
+.review-center-row-heading strong { color: var(--ink); font-size: var(--text-body); line-height: var(--leading-body); }
+.review-center-context { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-md); }
+.review-center-context span + span::before { content: "·"; margin-right: var(--space-md); color: var(--ink); }
+.review-center-row .secondary-button { justify-content: center; white-space: nowrap; color: var(--ink); background: var(--panel); font-size: var(--text-fine); }
+.review-badge, .review-topbar-button b { display: inline-grid; place-items: center; min-width: 22px; min-height: 22px; padding: 0 var(--space-sm); border-radius: var(--radius-pill); color: var(--paper); background: var(--moss); font-size: var(--text-fine); line-height: var(--leading-tight); }
+.review-topbar-button { display: inline-flex; align-items: center; gap: var(--space-sm); min-height: var(--control-min-height); padding: var(--space-sm) var(--space-md); border: 1px solid var(--moss); border-radius: var(--radius-md); color: var(--ink); background: var(--panel); font: inherit; font-size: var(--text-fine); font-weight: var(--weight-strong); }
+.review-topbar-button:hover { border-color: var(--gold); background: var(--sage); }
+.review-center-action-icon { width: var(--icon-xs); height: var(--icon-xs); }
+@media (max-width: 760px) { .overview-review-summary, .review-center-header { align-items: stretch; flex-direction: column; } .review-center { padding: var(--space-lg); } .review-center-count { justify-items: start; } .review-center-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; } .review-center-row .secondary-button { grid-column: 1 / -1; width: 100%; } }
+@media (max-width: 390px) { .review-center { padding: var(--space-md); } .review-center-row { padding: var(--space-sm); } }

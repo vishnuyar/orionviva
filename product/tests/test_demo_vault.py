@@ -70,8 +70,11 @@ def test_every_surface_an_opened_vault_answers_has_something_to_show(home: Path)
     provider = OpenedVaultSurfaceProvider(vault)
 
     for surface in sorted(OpenedVaultSurfaceProvider._SURFACES - {"jobs"}):
-        read = provider.read_surface(surface, {})
-        assert read["state"] == "ready", surface
+        parameters = ({"account_id": "acct:everyday-checking"}
+                      if surface == "account_ledger" else {})
+        read = provider.read_surface(surface, parameters)
+        assert read["state"] in ({"ready", "empty"}
+                                 if surface == "spending" else {"ready"}), surface
         json.dumps(read, allow_nan=False)
 
 

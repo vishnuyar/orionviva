@@ -50,7 +50,23 @@ describe("overview adapter", () => {
 
   it("carries each supplied field on its own and leaves an absent one empty", () => {
     const result = adaptOverview({ accounts: [{ account: "a", balance: { exact_value: "101.25", display: "USD 101.25", grade: "verified" } }] });
-    expect(result?.accounts[0]).toMatchObject({ exactValue: "101.25", display: "USD 101.25", currency: "", coverage: null, provenance: null, measure: null });
+    expect(result?.accounts[0]).toMatchObject({ exactValue: "101.25", display: "USD 101.25", maskedNumber: "", currency: "", coverage: null, provenance: null, measure: null });
+  });
+
+  it("carries only the masked account number supplied by the backend", () => {
+    const result = adaptOverview({ accounts: [{ account: "a", name: "Everyday", number: "\u2022\u2022\u2022\u20224417" }] });
+    expect(result?.accounts[0]).toMatchObject({ id: "a", name: "Everyday", maskedNumber: "\u2022\u2022\u2022\u20224417" });
+  });
+
+  it("withholds malformed or unmasked account numbers instead of carrying digits through", () => {
+    const result = adaptOverview({ accounts: [
+      { account: "missing" },
+      { account: "empty", number: "" },
+      { account: "full", number: "000000004417" },
+      { account: "numeric", number: 4417 },
+      { account: "short-mask", number: "\u2022\u20224417" },
+    ] });
+    expect(result?.accounts.map((account) => account.maskedNumber)).toEqual(["", "", "", "", ""]);
   });
 
   it("keeps a complete canonical display byte-for-byte", () => {

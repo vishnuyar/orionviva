@@ -1,9 +1,10 @@
 import { fireEvent, render } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AccountView, FeatureResult, OverviewData } from "../../surface/types";
 import { Accounts } from "./Accounts";
 
-const account = (id: string, name = `Account ${id}`, kind = "Depository"): AccountView => ({ id, name, kind, measure: "balance", exactValue: "", currency: "USD", display: "$10.00", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "This read did not provide a recognized evidence grade.", proofPresentation: { emphasis: "required", reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" });
+const account = (id: string, name = `Account ${id}`, kind = "Depository"): AccountView => ({ id, name, maskedNumber: "", kind, measure: "balance", exactValue: "", currency: "USD", display: "$10.00", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "This read did not provide a recognized evidence grade.", proofPresentation: { emphasis: "required", reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" });
 const overview = (accounts: AccountView[]): OverviewData => ({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts });
 const ready = (accounts: AccountView[]): FeatureResult<OverviewData> => ({ state: "ready", data: overview(accounts) });
 const baseProps = { selectedAccount: "", showVerificationDetails: false, onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
@@ -18,6 +19,7 @@ describe("Accounts stable identity presentation", () => {
     expect(view.getAllByRole("button", { name: /Unique/i }).filter((button) => button.classList.contains("detail-row-button"))).toHaveLength(1);
     expect(view.container.querySelectorAll(".figure-trigger")).toHaveLength(2);
     expect(view.queryByRole("button", { name: /Blank|Duplicate/i })).not.toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "Accounts in this read" })).toHaveAttribute("tabindex", "-1");
   });
 
   it("renders missing, conflicted, and no-selectable detail refusal headings with requested IDs", () => {
@@ -41,6 +43,20 @@ describe("Accounts stable identity presentation", () => {
     fireEvent.click(buttons[1]);
     expect(onSelectAccount).toHaveBeenCalledWith("two");
     expect(buttons[1]).toHaveFocus();
+  });
+
+  it("keeps each account opener a full nonshrinking row target and activates its exact ID from the keyboard", async () => {
+    const user = userEvent.setup();
+    const onSelectAccount = vi.fn();
+    const onOpenAccount = vi.fn();
+    const view = render(<Accounts {...baseProps} onSelectAccount={onSelectAccount} onOpenAccount={onOpenAccount} result={ready([account("one", "Everyday Checking"), account("two", "Rainy Day Savings")])} />);
+    const target = view.getAllByRole("button", { name: /Rainy Day Savings/i }).find((button) => button.classList.contains("detail-row-button"))!;
+    expect(target.closest(".account-detail-row")).not.toBeNull();
+    expect(target).toHaveAttribute("data-account-id", "two");
+    target.focus();
+    await user.keyboard("{Enter}");
+    expect(onSelectAccount).toHaveBeenCalledWith("two");
+    expect(onOpenAccount).toHaveBeenCalledWith("two");
   });
 
 

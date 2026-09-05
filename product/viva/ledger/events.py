@@ -407,7 +407,8 @@ def transfer_suggested(movement_a: str, candidates: list[str], evidence: dict,
 def category_assigned(movement_key: str, descriptor: str, category: str,
                       grade: str, occurred_at: str, by: str = "human",
                       nature: str = "",
-                      provenance: Provenance | None = None) -> Event:
+                      provenance: Provenance | None = None,
+                      subcategory: str = "") -> Event:
     """Assign a category to one movement — a graded overlay, keyed to the stable
     movement key so it survives a reingest and never mutates the read.
 
@@ -415,14 +416,20 @@ def category_assigned(movement_key: str, descriptor: str, category: str,
     confirmation graded ``verified``. ``descriptor`` is the movement's raw
     merchant string, so merchant learning is a projection over these events.
 
+    ``subcategory`` is the finer half of this same authoritative assignment,
+    not an independent overlay.  An empty value is the compatible category-
+    only shape and therefore clears any finer movement override.
+
     ``nature`` (optional) records what the movement *is* — `spending`,
     `transfer`, or `settlement`. A person's ruling outranks any category hint
     when nature is derived."""
+    body = {"movement_key": movement_key, "descriptor": descriptor,
+            "category": category, "grade": grade, "by": by,
+            "nature": nature}
+    if subcategory:
+        body["subcategory"] = subcategory
     return Event(
-        "CategoryAssigned", occurred_at,
-        body={"movement_key": movement_key, "descriptor": descriptor,
-              "category": category, "grade": grade, "by": by,
-              "nature": nature},
+        "CategoryAssigned", occurred_at, body=body,
         provenance=provenance or Provenance(),
     )
 

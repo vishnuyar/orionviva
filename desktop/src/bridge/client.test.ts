@@ -18,13 +18,36 @@ describe("bridge transport framing", () => {
     await client.readOverview({ page: 1 });
     await client.readDocuments();
     await client.readConversation({ limit: 2 });
+    await client.readSpending?.({ period: "custom", granularity: "subcategory", account_id: "acct:checking", currency: "USD", start_date: "2026-08-01", end_date: "2026-08-31" });
+    await client.readAccountLedger("acct:checking", "opaque-cursor", 25);
 
-    expect(frames.map((frame) => frame.requestId)).toEqual(["desktop-1", "desktop-2", "desktop-3", "desktop-4"]);
-    expect(frames.map((frame) => frame.operation)).toEqual(["bridge.open_vault", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
+    expect(frames.map((frame) => frame.requestId)).toEqual(["desktop-1", "desktop-2", "desktop-3", "desktop-4", "desktop-5", "desktop-6"]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["bridge.open_vault", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
     expect(frames[0].payload).toEqual({ vault_directory: "/vault", passphrase: "secret", create: false });
     expect(frames[1].payload).toEqual({ surface: "overview", parameters: { page: 1 }, job_id: "desktop-overview-2" });
     expect(frames[2].payload).toEqual({ surface: "documents", parameters: {}, job_id: "desktop-documents-3" });
     expect(frames[3].payload).toEqual({ surface: "conversation", parameters: { limit: 2 }, job_id: "desktop-conversation-4" });
+    expect(frames[4].payload).toEqual({ surface: "spending", parameters: { period: "custom", granularity: "subcategory", account_id: "acct:checking", currency: "USD", start_date: "2026-08-01", end_date: "2026-08-31" }, job_id: "desktop-spending-5" });
+    expect(frames[5].payload).toEqual({ surface: "account_ledger", parameters: { account_id: "acct:checking", cursor: "opaque-cursor", limit: 25 }, job_id: "desktop-account_ledger-6" });
+  });
+
+  it("does not erase an explicitly invalid account-ledger limit", async () => {
+    const frames: BridgeRequest[] = [];
+    const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      return { protocol: "2.0", request_id: frame.requestId, ok: true,
+        result: { surface: "account_ledger", job_id: "job", data: {} } as T };
+    } });
+
+    await client.readAccountLedger("acct:checking", undefined, 0);
+    await client.readAccountLedger("acct:checking", undefined, -1);
+    await client.readAccountLedger("acct:checking", undefined, 101);
+
+    expect(frames.map((frame) => frame.payload.parameters)).toEqual([
+      { account_id: "acct:checking", limit: 0 },
+      { account_id: "acct:checking", limit: -1 },
+      { account_id: "acct:checking", limit: 101 },
+    ]);
   });
 
   it("frames a correction reply as part of conversation", async () => {
@@ -48,25 +71,31 @@ describe("bridge transport framing", () => {
     } });
 
     await client.assignActivityCategory("movement:key", "groceries");
+    await client.assignActivityClassification(["movement:one", "movement:two"], "groceries", "supermarket");
     await client.assignActivityMeaning("movement:key", "loan", "Sam");
     await client.replaceActivityTags("movement:key", ["japan", "tax"]);
     await client.replaceActivityTags("movement:key", []);
+    await client.addActivityTags(["movement:one", "movement:two"], ["japan", "tax"]);
+    await client.removeActivityTags(["movement:one", "movement:two"], ["tax"]);
     await client.confirmActivityTransfer("movement:key", "movement:counterpart");
     await client.rejectActivityTransfer("movement:key");
     await client.unlinkActivityTransfer("movement:key", "movement:counterpart");
 
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.activity.assign_meaning", "viva.activity.replace_tags", "viva.activity.replace_tags", "viva.activity.confirm_transfer", "viva.activity.reject_transfer", "viva.activity.unlink_transfer"]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.activity.assign_classification", "viva.activity.assign_meaning", "viva.activity.replace_tags", "viva.activity.replace_tags", "viva.activity.add_tags", "viva.activity.remove_tags", "viva.activity.confirm_transfer", "viva.activity.reject_transfer", "viva.activity.unlink_transfer"]);
     expect(frames.map((frame) => frame.payload)).toEqual([
       { movement_key: "movement:key", category_id: "groceries" },
+      { movement_ids: ["movement:one", "movement:two"], category_id: "groceries", subcategory_id: "supermarket" },
       { movement_key: "movement:key", meaning: "loan", counterparty: "Sam" },
       { movement_key: "movement:key", tag_ids: ["japan", "tax"] },
       { movement_key: "movement:key", tag_ids: [] },
+      { movement_ids: ["movement:one", "movement:two"], tag_ids: ["japan", "tax"] },
+      { movement_ids: ["movement:one", "movement:two"], tag_ids: ["tax"] },
       { movement_key: "movement:key", counterpart_key: "movement:counterpart" },
       { movement_key: "movement:key" },
       { movement_key: "movement:key", counterpart_key: "movement:counterpart" },
     ]);
     expect(frames.map((frame) => Object.keys(frame.payload).sort())).toEqual([
-      ["category_id", "movement_key"], ["counterparty", "meaning", "movement_key"], ["movement_key", "tag_ids"], ["movement_key", "tag_ids"],
+      ["category_id", "movement_key"], ["category_id", "movement_ids", "subcategory_id"], ["counterparty", "meaning", "movement_key"], ["movement_key", "tag_ids"], ["movement_key", "tag_ids"], ["movement_ids", "tag_ids"], ["movement_ids", "tag_ids"],
       ["counterpart_key", "movement_key"], ["movement_key"], ["counterpart_key", "movement_key"],
     ]);
   });

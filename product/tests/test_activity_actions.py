@@ -1,5 +1,6 @@
 """Activity v3 corrections validate live state and append exact overlays."""
 
+import json
 from decimal import Decimal
 from importlib import import_module
 
@@ -7,11 +8,16 @@ import pytest
 
 from viva.desktop_bridge.activity_actions import ActivityActions
 from viva.desktop_bridge.handlers import (ACTIVITY_OPERATIONS, BridgeRequestError,
+                                          default_handlers,
                                           handlers_for_opened_vault)
+from viva.desktop_bridge.rpc import dispatch_frame
 from viva.ingest import (ReadResult, StatementFacts, TxnFact, assign_category,
-                         capture_and_ingest, tag_merchant, tag_movement)
+                         capture_and_ingest, rule_category_same_as,
+                         rule_tag_same_as, tag_merchant, tag_movement)
 from viva.ledger import (account_opened, simple_transaction, transfer_linked,
                          transfer_suggested)
+from viva.ledger.events import (SCOPE_CATEGORY, SCOPE_TAG, VERIFIED,
+                                merchant_enriched, ruling_recorded)
 from viva.ledger.projection import LedgerProjection
 from viva.surface.activity import TRANSFER_CANDIDATE_LIMIT, activity
 from viva.surface.capabilities import TrustEffect, capability_for
@@ -40,6 +46,27 @@ def _vault(tmp_path):
 
 def _events(vault, event_type):
     return [event for event in vault.events() if event.event_type == event_type]
+
+
+def _fail_after_durable_first_batch_line(monkeypatch):
+    """Inject the complete-prefix write the batch boundary must roll back."""
+    store_module = import_module("viva.ledger.store")
+    real_write = store_module._write_batch
+    failed = False
+
+    def write_first(stream, content):
+        nonlocal failed
+        if failed:
+            return real_write(stream, content)
+        failed = True
+        lines = content.splitlines(keepends=True)
+        assert len(lines) >= 2, "the regression requires a multi-event batch"
+        assert stream.write(lines[0]) == len(lines[0])
+        stream.flush()
+        store_module.os.fsync(stream.fileno())
+        raise OSError("synthetic durable first-line short write")
+
+    monkeypatch.setattr(store_module, "_write_batch", write_first)
 
 
 def _transfer_vault(tmp_path, *, linked=False, candidates=1):
@@ -93,12 +120,21 @@ def test_activity_v3_carries_current_category_tag_choices_and_actions(tmp_path):
         {"id": "japan", "label": "japan"},
         {"id": "shared", "label": "shared"}]
     assert row["category"] == {"id": None, "label": "Uncategorized"}
+    assert row["account_id"] == second.account
+    assert "Checking" in row["account_name"]
+    assert row["subcategory"] == {"id": None, "label": ""}
+    assert row["classification"] is None
+    assert row["evidence_links"] == [{
+        "document_id": second.provenance.doc_id, "label": "",
+        "relation": "attests", "page": "", "region": ""}]
     assert row["tags"] == read["vocabularies"]["tags"]["items"]
     assert row["actions"] == ["assign_category", "assign_meaning", "replace_tags"]
     category = next(item for item in read["items"] if item["id"] == first.key)
     advertised = {item["id"]: item
                   for item in read["vocabularies"]["categories"]["items"]}
     assert category["category"] == advertised["groceries"]
+    assert category["classification"] == {
+        "grade": "verified", "provenance": "human"}
 
 
 def test_activity_v3_carries_none_suggested_and_exact_reviewed_relationship(tmp_path):
@@ -117,8 +153,11 @@ def test_activity_v3_carries_none_suggested_and_exact_reviewed_relationship(tmp_
     assert transfer["limit"] == TRANSFER_CANDIDATE_LIMIT
     assert [candidate["id"] for candidate in transfer["candidates"]] == counterparts
     candidate = transfer["candidates"][0]
-    assert set(candidate) == {"id", "date", "description", "account", "direction",
+    assert set(candidate) == {"id", "date", "description", "account",
+                              "account_id", "account_name", "direction",
                               "exact_value", "currency", "display", "relationship"}
+    assert candidate["account_id"].startswith("acct:destination-")
+    assert "Savings 0" in candidate["account_name"]
     assert candidate["direction"] == "in"
     assert all(str(value).strip() for value in candidate.values())
     assert "payment from everyday" in candidate["relationship"]
@@ -418,6 +457,702 @@ def test_tag_replacement_removes_by_one_append_survives_replay_and_keeps_partiti
     assert replayed.tags_of(replayed_target) == ["japan"]
 
 
+def test_compound_classification_assigns_the_exact_selection_atomically(tmp_path):
+    vault = _vault(tmp_path)
+    first, second = vault.ledger.projection().movements()
+    before = len(_events(vault, "CategoryAssigned"))
+
+    outcome = ActivityActions(vault).assign_classification({
+        "movement_ids": [second.key],
+        "category_id": " Groceries ",
+        "subcategory_id": "SuperMarket",
+    })
+
+    assert outcome["kind"] == "completed"
+    assert len(_events(vault, "CategoryAssigned")) == before + 1
+    projection = vault.ledger.projection()
+    assert projection.category_of(first.key) is None
+    written = projection.category_of(second.key)
+    assert written["category"] == "groceries"
+    assert written["subcategory"] == "supermarket"
+    assert written["grade"] == "verified"
+    assert written["by"] == "human"
+    row = next(item for item in activity(projection)["items"]
+               if item["id"] == second.key)
+    assert row["category"]["id"] == "groceries"
+    assert row["subcategory"]["id"] == "supermarket"
+    replayed = LedgerProjection(vault.events())
+    assert replayed.category_of(second.key)["subcategory"] == "supermarket"
+
+
+def test_compound_classification_can_assign_many_without_generalizing_a_merchant(
+        tmp_path):
+    vault = _vault(tmp_path)
+    movements = vault.ledger.projection().movements()
+    keys = [movement.key for movement in movements]
+
+    outcome = ActivityActions(vault).assign_classification({
+        "movement_ids": keys,
+        "category_id": "dining",
+        "subcategory_id": "restaurant",
+    })
+
+    assert outcome["kind"] == "completed"
+    assert len(_events(vault, "CategoryAssigned")) == len(keys)
+    projection = vault.ledger.projection()
+    assert all(projection.category_of(key)["subcategory"] == "restaurant"
+               for key in keys)
+    assert not _events(vault, "MerchantCategorized")
+    assert not _events(vault, "MerchantEnriched")
+
+
+def test_matching_merchant_inheritance_still_records_the_exact_movement(tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    merchant = vault.ledger.projection().merchant_key_of(first)
+    vault.ledger.append(merchant_enriched(
+        merchant, "groceries", subcategory="supermarket", grade=VERIFIED,
+        occurred_at="2026-03-07", by="human"))
+    assert vault.ledger.projection().category_of(first.key) is None
+    before = len(_events(vault, "CategoryAssigned"))
+
+    outcome = ActivityActions(vault).assign_classification({
+        "movement_ids": [first.key],
+        "category_id": "groceries",
+        "subcategory_id": "supermarket",
+    })
+
+    assert outcome["kind"] == "completed"
+    assert len(_events(vault, "CategoryAssigned")) == before + 1
+    assert vault.ledger.projection().category_of(first.key)["subcategory"] == \
+        "supermarket"
+
+
+def test_catalog_only_custom_pair_is_valid_for_an_exact_movement(tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    vault.ledger.append(merchant_enriched(
+        "catalog-only-merchant", "Household Spending",
+        subcategory="Artisan Market", occurred_at="2026-03-07"))
+
+    outcome = ActivityActions(vault).assign_classification({
+        "movement_ids": [first.key],
+        "category_id": "HOUSEHOLD SPENDING",
+        "subcategory_id": "Artisan-Market",
+    })
+
+    assert outcome["kind"] == "completed"
+    written = vault.ledger.projection().category_of(first.key)
+    assert (written["category"], written["subcategory"]) == (
+        "household spending", "artisan market")
+
+
+def test_subcategory_alias_repeat_is_a_canonical_movement_noop(tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    actions = ActivityActions(vault)
+    assert actions.assign_classification({
+        "movement_ids": [first.key],
+        "category_id": "groceries",
+        "subcategory_id": "supermarket",
+    })["kind"] == "completed"
+    rule_category_same_as(vault.ledger, "supermarket", "grocery store")
+    before = len(_events(vault, "CategoryAssigned"))
+
+    repeated = actions.assign_classification({
+        "movement_ids": [first.key],
+        "category_id": "groceries",
+        "subcategory_id": "supermarket",
+    })
+
+    assert repeated["kind"] == "completed"
+    assert len(_events(vault, "CategoryAssigned")) == before
+    effective = vault.ledger.projection().derived_category(first)
+    assert effective["subcategory"] == "grocery store"
+
+
+def test_category_alias_is_applied_to_pair_validation_and_the_written_overlay(
+        tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    vault.ledger.append(merchant_enriched(
+        "catalog-only-merchant", "household spending",
+        subcategory="artisan market", occurred_at="2026-03-07"))
+    rule_category_same_as(vault.ledger, "household spending", "home costs")
+
+    outcome = ActivityActions(vault).assign_classification({
+        "movement_ids": [first.key],
+        "category_id": "household spending",
+        "subcategory_id": "artisan market",
+    })
+
+    assert outcome["kind"] == "completed"
+    written = vault.ledger.projection().category_of(first.key)
+    assert written["category"] == "home costs"
+    assert written["subcategory"] == "artisan market"
+
+
+def test_historical_mixed_case_category_alias_resolves_to_canonical_target(
+        tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    vault.ledger.append(merchant_enriched(
+        "catalog-only-merchant", "HOUSEHOLD SPENDING",
+        subcategory="Artisan Market", occurred_at="2026-03-07"))
+    vault.ledger.append(ruling_recorded(
+        SCOPE_CATEGORY, "Household Spending", "2026-03-08",
+        same_as="HOME COSTS"))
+
+    outcome = ActivityActions(vault).assign_classification({
+        "movement_ids": [first.key],
+        "category_id": "HOUSEHOLD SPENDING",
+        "subcategory_id": "ARTISAN-MARKET",
+    })
+
+    assert outcome["kind"] == "completed"
+    written = vault.ledger.projection().category_of(first.key)
+    assert (written["category"], written["subcategory"]) == (
+        "home costs", "artisan market")
+
+
+def test_historical_case_only_category_alias_is_a_noop_not_a_cycle(tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    actions = ActivityActions(vault)
+    vault.ledger.append(ruling_recorded(
+        SCOPE_CATEGORY, "Groceries", "2026-03-08", same_as="GROCERIES"))
+
+    outcome = actions.assign_classification({
+        "movement_ids": [first.key], "category_id": "GROCERIES",
+        "subcategory_id": "supermarket",
+    })
+    before_repeat = len(_events(vault, "CategoryAssigned"))
+    repeated = actions.assign_classification({
+        "movement_ids": [first.key], "category_id": "groceries",
+        "subcategory_id": "supermarket",
+    })
+
+    assert outcome["kind"] == "completed"
+    assert repeated["kind"] == "completed"
+    assert len(_events(vault, "CategoryAssigned")) == before_repeat
+    written = vault.ledger.projection().category_of(first.key)
+    assert (written["category"], written["subcategory"]) == (
+        "groceries", "supermarket")
+
+
+def test_historical_mixed_case_subcategory_alias_resolves_to_canonical_target(
+        tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    vault.ledger.append(ruling_recorded(
+        SCOPE_CATEGORY, "SuperMarket", "2026-03-08",
+        same_as="GROCERY STORE"))
+
+    outcome = ActivityActions(vault).assign_classification({
+        "movement_ids": [first.key], "category_id": "GROCERIES",
+        "subcategory_id": "SUPERMARKET",
+    })
+
+    assert outcome["kind"] == "completed"
+    written = vault.ledger.projection().category_of(first.key)
+    assert (written["category"], written["subcategory"]) == (
+        "groceries", "grocery store")
+
+
+def test_historical_separator_only_subcategory_alias_is_not_a_cycle(tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    actions = ActivityActions(vault)
+    vault.ledger.append(merchant_enriched(
+        "catalog-only-merchant", "groceries", subcategory="market stall",
+        occurred_at="2026-03-07"))
+    vault.ledger.append(ruling_recorded(
+        SCOPE_CATEGORY, "market-stall", "2026-03-08",
+        same_as="market stall"))
+
+    outcome = actions.assign_classification({
+        "movement_ids": [first.key], "category_id": "groceries",
+        "subcategory_id": "market_stall",
+    })
+    before_repeat = len(_events(vault, "CategoryAssigned"))
+    repeated = actions.assign_classification({
+        "movement_ids": [first.key], "category_id": "groceries",
+        "subcategory_id": "market-stall",
+    })
+
+    assert outcome["kind"] == "completed"
+    assert repeated["kind"] == "completed"
+    assert len(_events(vault, "CategoryAssigned")) == before_repeat
+    written = vault.ledger.projection().category_of(first.key)
+    assert (written["category"], written["subcategory"]) == (
+        "groceries", "market stall")
+
+
+def test_classification_alias_cycles_and_normalized_collisions_are_refused(
+        tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    actions = ActivityActions(vault)
+    rule_category_same_as(vault.ledger, "cycle a", "cycle b")
+    rule_category_same_as(vault.ledger, "cycle b", "cycle a")
+    before_cycle = len(list(vault.events()))
+
+    cycle = actions.assign_classification({
+        "movement_ids": [first.key], "category_id": "cycle a",
+        "subcategory_id": "anything",
+    })
+    assert cycle["kind"] == "refused"
+    assert cycle["reason"] == "classification_alias_ambiguous"
+    assert len(list(vault.events())) == before_cycle
+
+    vault.ledger.append(ruling_recorded(
+        SCOPE_CATEGORY, "Collision Parent", "2026-03-08",
+        same_as="one parent"))
+    vault.ledger.append(ruling_recorded(
+        SCOPE_CATEGORY, "collision parent", "2026-03-09",
+        same_as="another parent"))
+    before_collision = len(list(vault.events()))
+    collision = actions.assign_classification({
+        "movement_ids": [first.key], "category_id": "collision parent",
+        "subcategory_id": "anything",
+    })
+    assert collision["kind"] == "refused"
+    assert collision["reason"] == "classification_alias_ambiguous"
+    assert len(list(vault.events())) == before_collision
+
+
+def test_subcategory_alias_cycles_and_identity_collisions_are_refused(
+        tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    actions = ActivityActions(vault)
+    rule_category_same_as(vault.ledger, "child a", "child b")
+    rule_category_same_as(vault.ledger, "child b", "child a")
+    before_cycle = len(list(vault.events()))
+
+    cycle = actions.assign_classification({
+        "movement_ids": [first.key], "category_id": "groceries",
+        "subcategory_id": "child a",
+    })
+    assert cycle["kind"] == "refused"
+    assert cycle["reason"] == "classification_alias_ambiguous"
+    assert len(list(vault.events())) == before_cycle
+
+    vault.ledger.append(ruling_recorded(
+        SCOPE_CATEGORY, "Collision_Sub", "2026-03-08",
+        same_as="first child"))
+    vault.ledger.append(ruling_recorded(
+        SCOPE_CATEGORY, "collision-sub", "2026-03-09",
+        same_as="second child"))
+    before_collision = len(list(vault.events()))
+
+    collision = actions.assign_classification({
+        "movement_ids": [first.key], "category_id": "groceries",
+        "subcategory_id": "collision sub",
+    })
+    assert collision["kind"] == "refused"
+    assert collision["reason"] == "classification_alias_ambiguous"
+    assert len(list(vault.events())) == before_collision
+
+
+def test_compound_classification_rejects_wrong_parent_and_stale_batch_without_writes(
+        tmp_path):
+    vault = _vault(tmp_path)
+    first, second = vault.ledger.projection().movements()
+    actions = ActivityActions(vault)
+    before = len(list(vault.events()))
+
+    wrong_parent = actions.assign_classification({
+        "movement_ids": [first.key, second.key],
+        "category_id": "dining",
+        "subcategory_id": "supermarket",
+    })
+    stale = actions.assign_classification({
+        "movement_ids": [first.key, "missing-movement"],
+        "category_id": "groceries",
+        "subcategory_id": "supermarket",
+    })
+
+    assert wrong_parent["kind"] == "refused"
+    assert wrong_parent["reason"] == "invalid_category_subcategory_pair"
+    assert stale["kind"] == "stale"
+    assert stale["reason"] == "movement_selection_stale"
+    assert len(list(vault.events())) == before
+
+
+def test_compound_classification_prepares_the_whole_batch_before_append(
+        tmp_path, monkeypatch):
+    vault = _vault(tmp_path)
+    movement_ids = [movement.key
+                    for movement in vault.ledger.projection().movements()]
+    module = import_module("viva.desktop_bridge.activity_actions")
+    real_factory = module.category_assigned
+    calls = 0
+
+    def fail_on_second(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("synthetic second-event failure")
+        return real_factory(*args, **kwargs)
+
+    monkeypatch.setattr(module, "category_assigned", fail_on_second)
+    before = len(list(vault.events()))
+
+    with pytest.raises(RuntimeError, match="second-event"):
+        ActivityActions(vault).assign_classification({
+            "movement_ids": movement_ids,
+            "category_id": "groceries",
+            "subcategory_id": "supermarket",
+        })
+
+    assert len(list(vault.events())) == before
+
+
+def test_classification_durable_prefix_failure_commits_none_and_stays_none(
+        tmp_path, monkeypatch):
+    vault = _vault(tmp_path)
+    movement_ids = [movement.key
+                    for movement in vault.ledger.projection().movements()]
+    _fail_after_durable_first_batch_line(monkeypatch)
+
+    with pytest.raises(OSError, match="durable first-line"):
+        ActivityActions(vault).assign_classification({
+            "movement_ids": movement_ids,
+            "category_id": "groceries",
+            "subcategory_id": "supermarket",
+        })
+
+    assert all(vault.ledger.projection().category_of(key) is None
+               for key in movement_ids)
+    reopened = Vault.open(vault.directory, "pw")
+    assert all(reopened.ledger.projection().category_of(key) is None
+               for key in movement_ids)
+    reopened.ledger.append(account_opened(
+        "sentinel", "depository", "Sentinel", "USD", "2026-04-02"))
+    replayed = Vault.open(vault.directory, "pw").ledger.projection()
+    assert all(replayed.category_of(key) is None for key in movement_ids)
+
+
+def test_batch_tag_add_remove_preserves_unrelated_tags_and_normalizes_case(tmp_path):
+    vault = _vault(tmp_path)
+    first, second = vault.ledger.projection().movements()
+    tag_movement(vault.ledger, first.key, ["Trip", "tax"])
+    tag_movement(vault.ledger, second.key, ["family"])
+    actions = ActivityActions(vault)
+
+    added = actions.add_tags({
+        "movement_ids": [first.key, second.key],
+        "tag_ids": [" WORK ", "trip"],
+    })
+    after_add = vault.ledger.projection()
+    added_movements = {movement.key: movement for movement in after_add.movements()}
+
+    assert added["kind"] == "completed"
+    assert after_add.movement_tags_of(added_movements[first.key]) == [
+        "tax", "trip", "work"]
+    assert after_add.movement_tags_of(added_movements[second.key]) == [
+        "family", "trip", "work"]
+
+    removed = actions.remove_tags({
+        "movement_ids": [first.key, second.key],
+        "tag_ids": ["TrIp"],
+    })
+    after_remove = vault.ledger.projection()
+    removed_movements = {movement.key: movement
+                         for movement in after_remove.movements()}
+
+    assert removed["kind"] == "completed"
+    assert after_remove.movement_tags_of(removed_movements[first.key]) == [
+        "tax", "work"]
+    assert after_remove.movement_tags_of(removed_movements[second.key]) == [
+        "family", "work"]
+
+
+def test_batch_tag_commands_are_repeatable_and_one_stale_id_rolls_back_all(tmp_path):
+    vault = _vault(tmp_path)
+    first, second = vault.ledger.projection().movements()
+    tag_movement(vault.ledger, first.key, ["held"])
+    actions = ActivityActions(vault)
+
+    assert actions.add_tags({
+        "movement_ids": [first.key], "tag_ids": ["held"]})["kind"] == "completed"
+    unchanged = len(list(vault.events()))
+    stale = actions.add_tags({
+        "movement_ids": [first.key, "missing-movement"],
+        "tag_ids": ["new"],
+    })
+
+    assert stale["kind"] == "stale"
+    assert stale["reason"] == "movement_selection_stale"
+    assert len(list(vault.events())) == unchanged
+    projection = vault.ledger.projection()
+    movements = {movement.key: movement for movement in projection.movements()}
+    assert projection.movement_tags_of(movements[first.key]) == ["held"]
+    assert projection.movement_tags_of(movements[second.key]) == []
+
+
+def test_batch_tags_decide_from_the_locked_fresh_projection(
+        tmp_path, monkeypatch):
+    vault = _vault(tmp_path)
+    first, second = vault.ledger.projection().movements()
+    external = vault.ledger.fork()
+    append_atomically = vault.ledger.append_atomically
+    calls = 0
+
+    def append_after_external_write(decide):
+        nonlocal calls
+        calls += 1
+        tag_movement(external, first.key, ["externally-added"])
+        return append_atomically(decide)
+
+    monkeypatch.setattr(
+        vault.ledger, "append_atomically", append_after_external_write)
+
+    outcome = ActivityActions(vault).add_tags({
+        "movement_ids": [first.key, second.key],
+        "tag_ids": ["requested"],
+    })
+
+    projection = vault.ledger.projection()
+    movements = {movement.key: movement for movement in projection.movements()}
+    assert outcome["kind"] == "completed"
+    assert calls == 1
+    assert projection.movement_tags_of(movements[first.key]) == [
+        "externally-added", "requested"]
+    assert projection.movement_tags_of(movements[second.key]) == ["requested"]
+
+
+def test_batch_tags_prepare_every_event_before_the_atomic_append(
+        tmp_path, monkeypatch):
+    vault = _vault(tmp_path)
+    movement_ids = [movement.key
+                    for movement in vault.ledger.projection().movements()]
+    module = import_module("viva.desktop_bridge.activity_actions")
+    real_factory = module.movement_tagged
+    calls = 0
+
+    def fail_on_second(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("synthetic second-tag-event failure")
+        return real_factory(*args, **kwargs)
+
+    monkeypatch.setattr(module, "movement_tagged", fail_on_second)
+    before = len(list(vault.events()))
+
+    with pytest.raises(RuntimeError, match="second-tag-event"):
+        ActivityActions(vault).add_tags({
+            "movement_ids": movement_ids,
+            "tag_ids": ["requested"],
+        })
+
+    assert len(list(vault.events())) == before
+
+
+def test_add_tags_durable_prefix_failure_commits_none_and_stays_none(
+        tmp_path, monkeypatch):
+    vault = _vault(tmp_path)
+    movement_ids = [movement.key
+                    for movement in vault.ledger.projection().movements()]
+    _fail_after_durable_first_batch_line(monkeypatch)
+
+    with pytest.raises(OSError, match="durable first-line"):
+        ActivityActions(vault).add_tags({
+            "movement_ids": movement_ids, "tag_ids": ["trip"]})
+
+    projection = vault.ledger.projection()
+    assert all(projection.movement_tags_of(movement) == []
+               for movement in projection.movements())
+    reopened = Vault.open(vault.directory, "pw")
+    assert all(reopened.ledger.projection().movement_tags_of(movement) == []
+               for movement in reopened.ledger.projection().movements())
+    reopened.ledger.append(account_opened(
+        "sentinel", "depository", "Sentinel", "USD", "2026-04-02"))
+    replayed = Vault.open(vault.directory, "pw").ledger.projection()
+    assert all(replayed.movement_tags_of(movement) == []
+               for movement in replayed.movements()
+               if movement.key in movement_ids)
+
+
+def test_remove_tags_durable_prefix_failure_commits_none_and_stays_none(
+        tmp_path, monkeypatch):
+    vault = _vault(tmp_path)
+    movements = vault.ledger.projection().movements()
+    movement_ids = [movement.key for movement in movements]
+    for movement_id in movement_ids:
+        tag_movement(vault.ledger, movement_id, ["held"])
+    _fail_after_durable_first_batch_line(monkeypatch)
+
+    with pytest.raises(OSError, match="durable first-line"):
+        ActivityActions(vault).remove_tags({
+            "movement_ids": movement_ids, "tag_ids": ["held"]})
+
+    projection = vault.ledger.projection()
+    assert all(projection.movement_tags_of(movement) == ["held"]
+               for movement in projection.movements())
+    reopened = Vault.open(vault.directory, "pw")
+    assert all(reopened.ledger.projection().movement_tags_of(movement) == ["held"]
+               for movement in reopened.ledger.projection().movements())
+    reopened.ledger.append(account_opened(
+        "sentinel", "depository", "Sentinel", "USD", "2026-04-02"))
+    replayed = Vault.open(vault.directory, "pw").ledger.projection()
+    assert all(replayed.movement_tags_of(movement) == ["held"]
+               for movement in replayed.movements()
+               if movement.key in movement_ids)
+
+
+def test_batch_requests_reject_duplicate_empty_and_out_of_bounds_inputs(tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    actions = ActivityActions(vault)
+    before = len(list(vault.events()))
+    invalid = [
+        lambda: actions.add_tags({"movement_ids": [], "tag_ids": ["one"]}),
+        lambda: actions.add_tags({
+            "movement_ids": [" padded-movement-id "], "tag_ids": ["one"]}),
+        lambda: actions.add_tags({
+            "movement_ids": [first.key, first.key], "tag_ids": ["one"]}),
+        lambda: actions.add_tags({
+            "movement_ids": [first.key], "tag_ids": ["Trip", "trip"]}),
+        lambda: actions.remove_tags({
+            "movement_ids": [first.key], "tag_ids": []}),
+        lambda: actions.add_tags({
+            "movement_ids": [first.key], "tag_ids": ["x" * 81]}),
+        lambda: actions.add_tags({
+            "movement_ids": [first.key],
+            "tag_ids": [f"tag-{index}" for index in range(41)]}),
+        lambda: actions.add_tags({
+            "movement_ids": [f"missing-{index}" for index in range(101)],
+            "tag_ids": ["one"]}),
+    ]
+
+    for call in invalid:
+        with pytest.raises(BridgeRequestError):
+            call()
+    assert len(list(vault.events())) == before
+
+
+def test_batch_tag_identity_refuses_two_aliases_of_one_tag_atomically(tmp_path):
+    vault = _vault(tmp_path)
+    first, second = vault.ledger.projection().movements()
+    rule_tag_same_as(vault.ledger, "journey", "trip")
+    before = len(list(vault.events()))
+
+    outcome = ActivityActions(vault).add_tags({
+        "movement_ids": [first.key, second.key],
+        "tag_ids": ["journey", "trip"],
+    })
+
+    assert outcome["kind"] == "refused"
+    assert outcome["reason"] == "duplicate_tag_ids"
+    assert len(list(vault.events())) == before
+
+
+def test_historical_mixed_case_tag_alias_resolves_to_canonical_target(tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    vault.ledger.append(ruling_recorded(
+        SCOPE_TAG, "Trip", "2026-03-08", same_as="JOURNEY"))
+
+    outcome = ActivityActions(vault).add_tags({
+        "movement_ids": [first.key], "tag_ids": ["TRIP"]})
+
+    assert outcome["kind"] == "completed"
+    movement = next(item for item in vault.ledger.projection().movements()
+                    if item.key == first.key)
+    assert vault.ledger.projection().movement_tags_of(movement) == ["journey"]
+
+
+def test_historical_case_only_tag_alias_is_a_noop_not_a_cycle(tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    actions = ActivityActions(vault)
+    vault.ledger.append(ruling_recorded(
+        SCOPE_TAG, "Trip", "2026-03-08", same_as="TRIP"))
+
+    outcome = actions.add_tags({
+        "movement_ids": [first.key], "tag_ids": ["TRIP"]})
+    before_repeat = len(_events(vault, "MovementTagged"))
+    repeated = actions.add_tags({
+        "movement_ids": [first.key], "tag_ids": ["trip"]})
+
+    assert outcome["kind"] == "completed"
+    assert repeated["kind"] == "completed"
+    assert len(_events(vault, "MovementTagged")) == before_repeat
+    movement = next(item for item in vault.ledger.projection().movements()
+                    if item.key == first.key)
+    assert vault.ledger.projection().movement_tags_of(movement) == ["trip"]
+
+
+def test_historical_tag_alias_collision_and_cycle_are_refused_atomically(
+        tmp_path):
+    vault = _vault(tmp_path)
+    first = vault.ledger.projection().movements()[0]
+    actions = ActivityActions(vault)
+    vault.ledger.append(ruling_recorded(
+        SCOPE_TAG, "Trip", "2026-03-08", same_as="journey"))
+    vault.ledger.append(ruling_recorded(
+        SCOPE_TAG, "trip", "2026-03-09", same_as="vacation"))
+    before_collision = len(list(vault.events()))
+
+    collision = actions.add_tags({
+        "movement_ids": [first.key], "tag_ids": ["trip"]})
+
+    assert collision["kind"] == "refused"
+    assert collision["reason"] == "tag_alias_ambiguous"
+    assert len(list(vault.events())) == before_collision
+
+    vault.ledger.append(ruling_recorded(
+        SCOPE_TAG, "cycle a", "2026-03-10", same_as="cycle b"))
+    vault.ledger.append(ruling_recorded(
+        SCOPE_TAG, "cycle b", "2026-03-11", same_as="cycle a"))
+    before_cycle = len(list(vault.events()))
+
+    cycle = actions.add_tags({
+        "movement_ids": [first.key], "tag_ids": ["cycle a"]})
+
+    assert cycle["kind"] == "refused"
+    assert cycle["reason"] == "tag_alias_ambiguous"
+    assert len(list(vault.events())) == before_cycle
+
+
+def test_batch_tag_alias_cannot_expand_past_the_written_length_bound(tmp_path):
+    vault = _vault(tmp_path)
+    first, second = vault.ledger.projection().movements()
+    rule_tag_same_as(vault.ledger, "short", "x" * 81)
+    before = len(list(vault.events()))
+
+    outcome = ActivityActions(vault).add_tags({
+        "movement_ids": [first.key, second.key],
+        "tag_ids": ["short"],
+    })
+
+    assert outcome["kind"] == "refused"
+    assert outcome["reason"] == "tag_label_out_of_bounds"
+    assert len(list(vault.events())) == before
+
+
+def test_batch_remove_refuses_an_inherited_tag_without_touching_any_selection(
+        tmp_path):
+    vault = _vault(tmp_path)
+    first, second = vault.ledger.projection().movements()
+    merchant = vault.ledger.projection().merchant_key_of(first)
+    tag_merchant(vault.ledger, merchant, ["merchant-wide"])
+    tag_movement(vault.ledger, second.key, ["merchant-wide", "private"])
+    before = len(list(vault.events()))
+
+    outcome = ActivityActions(vault).remove_tags({
+        "movement_ids": [first.key, second.key],
+        "tag_ids": ["merchant-wide"],
+    })
+
+    assert outcome["kind"] == "refused"
+    assert outcome["reason"] == "inherited_tags_not_movement_scoped"
+    assert len(list(vault.events())) == before
+
+
 def test_confirm_transfer_writes_one_verified_link_survives_replay_and_is_idempotent(
         tmp_path):
     vault, source, counterparts, _ordinary = _transfer_vault(tmp_path)
@@ -627,18 +1362,62 @@ def test_activity_actions_are_declared_allowlisted_and_write_scoped(tmp_path):
     capability = capability_for("activity.movements")
     assert capability.contract == "ActivityMovements.v3"
     assert capability.actions == (
-        "assign_category", "assign_meaning", "replace_tags", "confirm_transfer",
+        "assign_category", "assign_classification", "assign_meaning",
+        "replace_tags", "add_tags", "remove_tags", "confirm_transfer",
         "reject_transfer", "unlink_transfer")
     assert capability.trust_effect == (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT)
     handlers = handlers_for_opened_vault(_vault(tmp_path)).handlers
     assert ACTIVITY_OPERATIONS == {
         "assign_category": "viva.activity.assign_category",
+        "assign_classification": "viva.activity.assign_classification",
         "assign_meaning": "viva.activity.assign_meaning",
         "replace_tags": "viva.activity.replace_tags",
+        "add_tags": "viva.activity.add_tags",
+        "remove_tags": "viva.activity.remove_tags",
         "confirm_transfer": "viva.activity.confirm_transfer",
         "reject_transfer": "viva.activity.reject_transfer",
         "unlink_transfer": "viva.activity.unlink_transfer"}
     assert set(ACTIVITY_OPERATIONS.values()) <= set(handlers)
+    cold = default_handlers().handlers
+    assert not set(ACTIVITY_OPERATIONS.values()) & set(cold)
+    denied = json.loads(dispatch_frame(
+        '{"protocol":"2.0","request_id":"cold","operation":'
+        '"viva.activity.add_tags","payload":{"movement_ids":["m"],'
+        '"tag_ids":["trip"]}}', cold))
+    assert denied["error"]["code"] == "operation_not_allowed"
+
+
+def test_batch_bridge_handlers_return_typed_outcomes_and_structured_input_errors(
+        tmp_path):
+    vault = _vault(tmp_path)
+    first, second = vault.ledger.projection().movements()
+    handlers = handlers_for_opened_vault(vault).handlers
+
+    accepted = json.loads(dispatch_frame(json.dumps({
+        "protocol": "2.0", "request_id": "batch-ok",
+        "operation": "viva.activity.assign_classification",
+        "payload": {
+            "movement_ids": [first.key, second.key],
+            "category_id": "groceries",
+            "subcategory_id": "supermarket",
+        },
+    }), handlers))
+    before_invalid = len(list(vault.events()))
+    invalid = json.loads(dispatch_frame(json.dumps({
+        "protocol": "2.0", "request_id": "batch-invalid",
+        "operation": "viva.activity.add_tags",
+        "payload": {
+            "movement_ids": [first.key, first.key],
+            "tag_ids": ["trip"],
+        },
+    }), handlers))
+
+    assert accepted["ok"] is True
+    assert accepted["result"]["kind"] == "completed"
+    assert invalid["ok"] is False
+    assert invalid["error"]["code"] == "invalid_request"
+    assert "duplicates" in invalid["error"]["message"]
+    assert len(list(vault.events())) == before_invalid
 
 
 def test_action_coverage_detects_one_declared_handler_removed(tmp_path):

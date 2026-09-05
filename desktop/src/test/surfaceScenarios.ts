@@ -37,6 +37,7 @@ export function makeAccount(overrides: Partial<AccountView> = {}): AccountView {
   return {
     id: "scenario-account",
     name: "Scenario account",
+    maskedNumber: "",
     kind: "Depository",
     measure: "balance",
     exactValue: "",

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { PanelStateView } from "../../components/PanelStateView";
 import type { DeclineReason, FeatureResult, QuestionActionState, QuestionQueueData, QuestionView } from "../../surface/types";
 import { outcomePresentation, resolveReviewSelection, workingPresentation } from "./questionPresentation";
@@ -85,14 +85,29 @@ function SetAsideControls({ question, actions }: { question: QuestionView; actio
 // read's too. A screen inventing that line would be inviting a person into a
 // contract it made up.
 function AnswerControls({ question, invite, actions }: { question: QuestionView; invite: string; actions: ReviewActionControls }) {
-  const [said, setSaid] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [submitted, setSubmitted] = useState<{ questionId: string; said: string; observedWorking: boolean } | null>(null);
+  const said = drafts[question.id] ?? "";
   const working = actions.state.state === "working";
   const slots = question.slots ?? [];
+  useEffect(() => {
+    if (submitted && !submitted.observedWorking && actions.state.state === "working" && actions.state.questionId === submitted.questionId) {
+      setSubmitted({ ...submitted, observedWorking: true });
+      return;
+    }
+    const settled = actions.state.state === "settled" ? actions.state : null;
+    if (settled?.authoritative === true && settled.result.state === "settled" && settled.result.outcome.kind === "completed"
+        && submitted?.observedWorking && submitted.questionId === settled.questionId && drafts[settled.questionId] === submitted.said) {
+      setDrafts((current) => ({ ...current, [settled.questionId]: "" }));
+      setSubmitted(null);
+    }
+  }, [actions.state, drafts, submitted]);
   function answer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (working || !said.trim()) return;
-    actions.onAnswer(question.id, said.trim());
-    setSaid("");
+    const exact = said.trim();
+    setSubmitted({ questionId: question.id, said: exact, observedWorking: false });
+    actions.onAnswer(question.id, exact);
   }
   // A question with no slots is one nothing said in words settles — a document
   // does. The form is absent rather than present and refusing, and the read's
@@ -103,7 +118,7 @@ function AnswerControls({ question, invite, actions }: { question: QuestionView;
     <ul className="review-answer-wants">{slots.map((slot) => <li key={slot.name}>{slot.wants}</li>)}</ul>
     <form onSubmit={answer}>
       <label htmlFor="review-answer-said">{invite || "Write your answer here."}</label>
-      <textarea id="review-answer-said" value={said} onChange={(event) => setSaid(event.target.value)} rows={3} />
+      <textarea id="review-answer-said" value={said} onChange={(event) => setDrafts((current) => ({ ...current, [question.id]: event.target.value }))} rows={3} />
       <button className="primary-button" type="submit" aria-disabled={working} aria-describedby={working ? "review-answer-waiting" : undefined}>Send this answer</button>
     </form>
     {working ? <span className="action-explanation" id="review-answer-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
@@ -125,7 +140,7 @@ function MoreFromRead({ data }: { data: QuestionQueueData }) {
   const pendingCopy = pending === null ? "Set-aside summary was not supplied by this conversation." : pending.count === 0 ? "Set-aside items reported: 0." : pending.count === 1 ? "1 set-aside item is reported. It returns on its own when what it is about changes. Opening its detail is not available in this preview." : `${pending.count} set-aside items are reported. Each returns on its own when what it is about changes. Opening their detail is not available in this preview.`;
   // The invitation the read supplies is shown where a person writes, beside
   // the box it invites them into, rather than here.
-  return <section className="review-more" aria-labelledby="review-more-title"><h3 id="review-more-title">More questions</h3><p>These summaries are shown separately. The interface does not add them together or create question rows from them.</p><div className="review-more-grid">{data.meta.tail === null ? <div><span>Open questions outside this list</span><strong>Tail summary was not supplied by this conversation.</strong><small>No question rows are created from this summary.</small></div> : <><div><span>Open questions outside this list</span><strong>{data.meta.tail.count}</strong><small>No question rows are created from this summary.</small></div><div><span>Tail amount supplied</span><strong>{data.meta.tail.amount || "Tail amount was not supplied by this conversation."}</strong></div></>}<div><span>Set-aside summary</span><strong>{pendingCopy}</strong></div></div><div className="review-guidance"><div><h4>Document-answer guidance</h4><p>{data.meta.answeredByDocument || "Document-answer guidance was not supplied by this conversation."}</p></div></div><p>This guidance is general and is not attached to a particular question. Add a document from Documents when a document is the answer.</p></section>;
+  return <section className="review-more" aria-labelledby="review-more-title"><h3 id="review-more-title">More questions</h3><p>These summaries are shown separately. The interface does not add them together or create question rows from them.</p><div className="review-more-grid">{data.meta.tail === null ? <div><span>Open questions outside this list</span><strong>Tail summary was not supplied by this conversation.</strong><small>No question rows are created from this summary.</small></div> : <><div><span>Open questions outside this list</span><strong>{data.meta.tail.count}</strong><small>No question rows are created from this summary.</small></div><div><span>Tail amount supplied</span><strong>{data.meta.tail.amount || "Tail amount was not supplied by this conversation."}</strong></div></>}<div><span>Set-aside summary</span><strong>{pendingCopy}</strong></div></div><div className="review-guidance"><div><h4>Document-answer guidance</h4><p>{data.meta.answeredByDocument || "Document-answer guidance was not supplied by this conversation."}</p></div></div><p>This guidance is general and is not attached to a particular question. Add a statement from Statements when a document is the answer.</p></section>;
 }
 
 export function Questions({ result, selectedQueue, onSelectQueue, actions }: QuestionsProps) {

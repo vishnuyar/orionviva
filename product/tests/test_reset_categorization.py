@@ -10,6 +10,7 @@ from decimal import Decimal
 import pytest
 
 from merchantcore import Catalog
+from viva.crypto import HEAD_BOUND_HEADER_VERSION
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          assign_category, capture_and_ingest, enrich_merchants)
 from viva.ledger import EventStore, Ledger
@@ -136,9 +137,10 @@ def test_reset_chain_verifies_and_reindexes_sequences(tmp_path):
     raw_seqs = []
     import json
     with (tmp_path / "dst" / "events.jsonl").open() as f:
-        next(f)
+        header = json.loads(next(f))
         for line in f:
             raw_seqs.append(json.loads(line)["seq"])
+    assert header["v"] == HEAD_BOUND_HEADER_VERSION
     assert raw_seqs == seqs
 
 

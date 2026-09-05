@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import moments from "../../../../product/viva/persona/pack-v39/moments.json";
 import { EvidenceDrawer } from "../../components/EvidenceDrawer";
 import { currentPeriodEvidenceFigure } from "../../surface/evidence";
-import type { ConversationData, FeatureResult, FigureView, OverviewData, PictureView, SurfaceSnapshot , ActivityData } from "../../surface/types";
+import type { ConversationData, FeatureResult, FigureView, OverviewData, PictureView, ReviewData, SurfaceSnapshot, ActivityData } from "../../surface/types";
 import { Overview } from "./Overview";
 
 // The one slot the announcement lines take. Naming it here keeps the test
@@ -48,11 +48,59 @@ function view(result: FeatureResult<OverviewData>) {
   return render(<Overview {...actions} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
 }
 
+const emptyReview: ReviewData = { contract: "ReviewSummary.v1", title: "Review", summary: "Nothing is waiting for your answer.", actionableCount: 0, shownCount: 0, remainingCount: 0, types: [], groups: [] };
+function viewReview(reviewResult: FeatureResult<ReviewData>) {
+  return render(<Overview {...actions} result={overview()} reviewResult={reviewResult} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
+}
+
 function snapshotOf(result: FeatureResult<OverviewData>): SurfaceSnapshot {
   return { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: result, documents: { state: "absent", reason: "not_read" }, activity: { state: "absent", reason: "not_read" }, conversation: noConversation, trust: { state: "absent", reason: "not_read" } };
 }
 
 describe("the picture on the overview", () => {
+  it("places spending directly after net worth and keeps compact Review within the later account section", () => {
+    const rendered = view(overview({ coverage: "An authored picture boundary." }));
+    const hero = rendered.container.querySelector(".hero-grid");
+    const spending = rendered.container.querySelector(".spending-card");
+    const review = rendered.container.querySelector(".overview-review-summary");
+    const accounts = rendered.getByRole("heading", { name: "Accounts" }).closest("section");
+    const recent = rendered.getByRole("heading", { name: "Recent transactions" }).closest("section");
+    expect(hero?.nextElementSibling).toBe(spending);
+    expect(spending?.nextElementSibling).toBe(accounts);
+    expect(accounts?.contains(review)).toBe(true);
+    expect(accounts?.compareDocumentPosition(recent!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(rendered.queryByRole("heading", { name: "Questions for you" })).not.toBeInTheDocument();
+  });
+
+  it("keeps ready zero and nonzero Review reads compact and links to Review", async () => {
+    const user = userEvent.setup();
+    for (const [count, summary] of [[0, "Nothing is waiting for your answer."], [125, "125 items are waiting for your answer."]] as const) {
+      const rendered = viewReview({ state: "ready", data: { ...emptyReview, summary, actionableCount: count, remainingCount: count } });
+      expect(rendered.getByRole("heading", { name: summary })).toBeInTheDocument();
+      expect(rendered.getByText(`${count} actionable`)).toBeInTheDocument();
+      expect(rendered.queryByRole("heading", { name: "Questions for you" })).not.toBeInTheDocument();
+      expect(rendered.container.querySelector(".review-center-row")).toBeNull();
+      await user.click(rendered.getByRole("button", { name: "Open Review" }));
+      expect(actions.onNavigate).toHaveBeenLastCalledWith("review");
+      rendered.unmount();
+    }
+  });
+
+  it.each([
+    ["loading", { state: "absent", reason: "reading" }, "Review is being read"],
+    ["locked", { state: "absent", reason: "locked" }, "Review is locked"],
+    ["unopened", { state: "absent", reason: "no_vault" }, "Review has not been read"],
+    ["unavailable", { state: "unavailable", reason: "not_served" }, "Review is unavailable"],
+    ["failed", { state: "failed", reason: "read_failed" }, "Review could not be read"],
+  ] as const)("shows an honest compact %s Review state with a route", async (_label, reviewResult, title) => {
+    const user = userEvent.setup();
+    const rendered = viewReview(reviewResult as FeatureResult<ReviewData>);
+    expect(rendered.getByRole("heading", { name: title })).toBeInTheDocument();
+    expect(rendered.queryByText(/\d+ actionable/)).not.toBeInTheDocument();
+    await user.click(rendered.getByRole("button", { name: "Open Review" }));
+    expect(actions.onNavigate).toHaveBeenLastCalledWith("review");
+  });
+
   it("shows the sentence the read supplied, byte for byte", () => {
     const supplied = "A distinctive sentence the backend composed and this side did not.";
     expect(view(overview({ coverage: supplied })).getByText(supplied)).toBeInTheDocument();
@@ -273,7 +321,7 @@ describe("the picture on the overview", () => {
     const note = "The distinct account note is already visible.";
     const result: FeatureResult<OverviewData> = { state: "ready", data: {
       picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] },
-      accounts: [{ id: "account", name: "Account", kind: "Depository", measure: "balance", exactValue: "1", currency: "USD", display: "USD 1.00", grade: "verified", gradeLabel: "Verified", gradeDescription, proofPresentation: { emphasis: "required", reasons: ["incomplete_coverage"], qualifications: [gradeDescription, note] }, note, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
+      accounts: [{ id: "account", name: "Account", maskedNumber: "", kind: "Depository", measure: "balance", exactValue: "1", currency: "USD", display: "USD 1.00", grade: "verified", gradeLabel: "Verified", gradeDescription, proofPresentation: { emphasis: "required", reasons: ["incomplete_coverage"], qualifications: [gradeDescription, note] }, note, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
     } };
     const rendered = render(<Overview {...actions} showVerificationDetails={false} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
     const card = rendered.container.querySelector(".account-card")!;
@@ -311,7 +359,7 @@ describe("the picture on the overview", () => {
     expect(none.queryByRole("heading", { name: "Net worth" })).not.toBeInTheDocument();
     // And the rest of the overview is untouched: one panel standing down is
     // not the screen going quiet.
-    expect(none.getByText("The activity read is not available beside this picture.")).toBeInTheDocument();
+    expect(none.getByText("Transactions are not available beside this picture.")).toBeInTheDocument();
   });
 
   // The badge follows the ladder word the read supplied. A word the ladder
@@ -375,7 +423,7 @@ describe("the picture on the overview", () => {
     const shared = "EUR 642.10";
     const result: FeatureResult<OverviewData> = { state: "ready", data: {
       picture: { coverage: "A panel sentence.", readOn: "", withheld: [], unplaced: [], figures: [figure({ id: "EUR", currency: "EUR", display: shared, evidenceHeading: "Net worth in EUR" })] },
-      accounts: [{ id: "acct:abroad", name: "Abroad Current", kind: "Depository", measure: "balance", exactValue: "", currency: "EUR", display: shared, grade: "verified", gradeLabel: "verified", gradeDescription: "One reviewed sentence.", proofPresentation: { emphasis: "required", reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
+      accounts: [{ id: "acct:abroad", name: "Abroad Current", maskedNumber: "", kind: "Depository", measure: "balance", exactValue: "", currency: "EUR", display: shared, grade: "verified", gradeLabel: "verified", gradeDescription: "One reviewed sentence.", proofPresentation: { emphasis: "required", reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
       } };
     const rendered = render(<Overview {...actions} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
     const announced = [...rendered.container.querySelectorAll("button")].map((control) => (control.getAttribute("aria-labelledby") ?? "")
@@ -387,8 +435,8 @@ describe("the picture on the overview", () => {
 
   // Recent activity is deferred by decision, and the admission that stands in
   // its place stays exactly as it is until something can carry it.
-  it("leaves the activity admission word for word", () => {
-    expect(view(overview()).getByText("The activity read is not available beside this picture.")).toBeInTheDocument();
+  it("leaves the transaction admission word for word", () => {
+    expect(view(overview()).getByText("Transactions are not available beside this picture.")).toBeInTheDocument();
   });
 
   // Nothing on this screen speaks direction while the site that derives it

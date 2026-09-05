@@ -15,10 +15,15 @@ const WITHHOLDING: readonly PanelState[] = ["partial", "needs_input"];
 // so a word outside it is carried as no measure at all rather than shown as
 // one this side invented.
 const MEASURES: readonly FigureMeasure[] = ["balance", "owed", "spending", "income", "net_worth"];
+const MASKED_ACCOUNT_NUMBER = /^(?:\u2022){4}\d{4}$/;
 
 function relation(value: unknown): EvidenceRelation | null {
   const named = textValue(value);
   return RELATIONS.find((known) => known === named) ?? null;
+}
+
+function maskedAccountNumber(value: unknown): string {
+  return typeof value === "string" && (value === "" || MASKED_ACCOUNT_NUMBER.test(value)) ? value : "";
 }
 
 function evidenceLinks(balance: Record<string, unknown>): EvidenceLink[] {
@@ -241,6 +246,7 @@ export function adaptOverview(raw: unknown): OverviewData | null {
     return {
       id: textValue(account.account),
       name: textValue(account.name) || textValue(account.account),
+      maskedNumber: maskedAccountNumber(account.number),
       kind: textValue(account.kind),
       measure,
       exactValue: textValue(balance.exact_value),
