@@ -9,6 +9,43 @@ beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("vault", () => {
+  it("lets an explicit local-vault open supersede a pending remembered-vault check", async () => {
+    const user = userEvent.setup();
+    let finishRememberedCheck: (result: { state: "absent" }) => void = () => {};
+    const rememberedCheck = new Promise<{ state: "absent" }>((resolve) => {
+      finishRememberedCheck = resolve;
+    });
+    window.orionVivaBridge = {
+      openRememberedVault: async () => rememberedCheck,
+      request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") {
+          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+        }
+        const data = payload.surface === "overview"
+          ? { accounts: [] }
+          : payload.surface === "documents"
+            ? { documents: [] }
+            : payload.surface === "review"
+              ? reviewEmptyPayload
+              : payload.surface === "trust"
+                ? trustPayload
+                : payload.surface === "activity"
+                  ? activityPayload
+                  : { questions: [], total: 0 };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
+      },
+    };
+
+    const { getByLabelText, getByRole } = render(<App />);
+    await user.type(getByLabelText("Vault directory"), "/explicit/vault");
+    await user.type(getByLabelText("Passphrase"), "secret");
+    await user.click(getByRole("button", { name: "Opening vault..." }));
+
+    await waitFor(() => expect(getByRole("button", { name: "Close this vault" })).toBeVisible());
+    await act(async () => { finishRememberedCheck({ state: "absent" }); });
+    expect(getByRole("button", { name: "Close this vault" })).toBeVisible();
+  });
+
   it("prefills the selected directory when the remembered vault is locked", async () => {
     window.orionVivaBridge = {
       request: async <T,>() => ({ protocol: "2.0", request_id: "req", ok: true, result: {} as T }),

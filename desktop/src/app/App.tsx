@@ -91,6 +91,7 @@ export function App() {
   const [accountOrigin, setAccountOrigin] = useState<AccountOrigin | null>(null);
   const [reviewTransaction, setReviewTransaction] = useState<{ target: ReviewTransactionTarget; itemId: string } | null>(null);
   const pendingFocusNonce = useRef(0);
+  const explicitVaultOpen = useRef(false);
   const activePendingFocusNonce = useRef<number | null>(null);
   const reviewFocusNonce = useRef(0);
   const activeReviewFocusNonce = useRef<number | null>(null);
@@ -379,13 +380,18 @@ export function App() {
   // while it waits is the words beside it.
   async function openVault(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (openingVault) return;
+    if (explicitVaultOpen.current) return;
     if (!control.hostAvailable || !vaultDirectory.trim() || !passphrase) { control.setNotice({ kind: "refused", text: "Enter a vault directory and passphrase to open a local vault." }); return; }
+    explicitVaultOpen.current = true;
     control.setNotice(null);
     setConversationPlanDraft(null);
     setPlanActionReceipt(null);
-    await control.openVault(vaultDirectory.trim(), passphrase, makeVault);
-    setPassphrase("");
+    try {
+      await control.openVault(vaultDirectory.trim(), passphrase, makeVault);
+      setPassphrase("");
+    } finally {
+      explicitVaultOpen.current = false;
+    }
   }
   async function pickVaultDirectory() {
     if (!control.pickerAvailable || pickingVaultDirectory || openingVault) return;
