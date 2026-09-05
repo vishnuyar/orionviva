@@ -285,10 +285,8 @@ fn request_bridge(app: &AppHandle, state: &BridgeState, frame: Value) -> Result<
         .to_string();
     let encoded = serde_json::to_string(&frame)
         .map_err(|error| format!("unable to encode OrionViva bridge request: {error}"))?;
-    let may_recover = matches!(
-        frame.get("operation").and_then(Value::as_str),
-        Some("bridge.open_vault" | "viva.surface.read")
-    );
+    let may_recover =
+        operation_can_restart_and_replay(frame.get("operation").and_then(Value::as_str));
     let mut process = state.lock()?;
 
     for attempt in 0..2 {
@@ -315,18 +313,51 @@ fn request_bridge(app: &AppHandle, state: &BridgeState, frame: Value) -> Result<
     Err("OrionViva bridge recovery attempts were exhausted".to_string())
 }
 
+// Restarting the process discards the in-memory vault key. Only operations
+// that establish a vault may therefore be replayed into a fresh process. A
+// surface read used to be replayed here as well; the fresh bridge correctly
+// answered that no vault was open, and the shell then replaced a visible
+// financial picture with that answer. Vault-dependent reads fail closed and
+// make the caller reopen instead.
+fn operation_can_restart_and_replay(operation: Option<&str>) -> bool {
+    matches!(
+        operation,
+        Some("bridge.open_vault" | "bridge.open_demo_vault")
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::operation_can_restart_and_replay;
+
+    #[test]
+    fn only_vault_openers_are_safe_to_replay_after_bridge_loss() {
+        assert!(operation_can_restart_and_replay(Some("bridge.open_vault")));
+        assert!(operation_can_restart_and_replay(Some(
+            "bridge.open_demo_vault"
+        )));
+        assert!(!operation_can_restart_and_replay(Some("viva.surface.read")));
+        assert!(!operation_can_restart_and_replay(Some(
+            "viva.documents.upload"
+        )));
+        assert!(!operation_can_restart_and_replay(None));
+    }
+}
+
 #[tauri::command]
 fn bridge_request(
     app: AppHandle,
     state: State<'_, BridgeState>,
     frame: String,
 ) -> Result<String, String> {
-    let mut request: Value = serde_json::from_str(&frame)
-        .map_err(|error| format!("invalid bridge request: {error}"))?;
+    let mut request: Value =
+        serde_json::from_str(&frame).map_err(|error| format!("invalid bridge request: {error}"))?;
     let object = request
         .as_object_mut()
         .ok_or_else(|| "bridge request must be an object".to_string())?;
-    object.entry("protocol").or_insert_with(|| json!(BRIDGE_PROTOCOL));
+    object
+        .entry("protocol")
+        .or_insert_with(|| json!(BRIDGE_PROTOCOL));
     let response = request_bridge(&app, &state, request)?;
     serde_json::to_string(&response)
         .map_err(|error| format!("unable to encode OrionViva bridge response: {error}"))

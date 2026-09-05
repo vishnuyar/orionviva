@@ -360,7 +360,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       try {
         const [snapshot, jobsRead] = await Promise.all([source.load(activityLimit.current), source.loadJobs?.() ?? Promise.resolve(null)]);
         const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
-        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, snapshot, jobs });
+        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, source, snapshot, jobs });
       } catch {
         if (requestId.current === nextRequestId) dispatch({ type: "load-failed", requestId: nextRequestId });
         return false;
@@ -396,7 +396,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       try {
         const [snapshot, jobsRead] = await Promise.all([source.load(activityLimit.current), source.loadJobs?.() ?? Promise.resolve(null)]);
         const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
-        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, snapshot, jobs });
+        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, source, snapshot, jobs });
       } catch {
         if (requestId.current === nextRequestId) dispatch({ type: "load-failed", requestId: nextRequestId });
         return false;

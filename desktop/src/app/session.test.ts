@@ -151,6 +151,19 @@ describe("surface session", () => {
     expect(JSON.stringify(reading.snapshot)).not.toContain("Everyday checking");
   });
 
+  it("keeps the last good vault picture until a replacement read commits", () => {
+    const lastGood = readyLive();
+    const current = { ...initialSession(), source: liveSource, snapshot: lastGood, destination: "trust" as const, selectedAccount: "account-live" };
+    const opening = sessionReducer(current, { type: "opening", requestId: 1 });
+    const reading = sessionReducer(opening, { type: "reading", requestId: 1, source: liveSource, snapshot: liveReadingSnapshot() });
+
+    expect(reading.phase).toBe("reading");
+    expect(reading.source).toBe(liveSource);
+    expect(reading.snapshot).toBe(lastGood);
+    expect(reading.destination).toBe("trust");
+    expect(reading.selectedAccount).toBe("account-live");
+  });
+
   it("commits a current loaded request exactly into settled selections", () => {
     const opening = sessionReducer(initialSession(), { type: "opening", requestId: 1 });
     const reading = sessionReducer(opening, { type: "reading", requestId: 1, source: liveSource, snapshot: liveReadingSnapshot() });
@@ -223,6 +236,42 @@ describe("surface session", () => {
     const current = { ...initialSession(), requestId: 1, source: liveSource, snapshot: liveReadingSnapshot() };
     const settled = sessionReducer(current, { type: "loaded", requestId: 1, snapshot });
     expect(settled.notice).toEqual({ kind: "refused", text: "The private vault opened, but some surfaces could not be read. Your vault was not changed." });
+  });
+
+  it("retains the selected vault and requires an explicit reopen when every surface read fails", () => {
+    const failure = { state: "failed", reason: "read_failed" } as const;
+    const failedSnapshot: SurfaceSnapshot = {
+      ...readyLive(),
+      overview: failure,
+      documents: failure,
+      activity: failure,
+      conversation: failure,
+      review: failure,
+      plans: failure,
+      trust: failure,
+    };
+    const lastGood = readyLive();
+    const current = { ...initialSession(), requestId: 1, source: liveSource, snapshot: lastGood };
+    const settled = sessionReducer(current, { type: "loaded", requestId: 1, snapshot: failedSnapshot });
+
+    expect(settled.source).toBe(liveSource);
+    expect(settled.snapshot).toBe(lastGood);
+    expect(settled.snapshot.overview).toBe(lastGood.overview);
+    expect(settled.snapshot.trust).toBe(lastGood.trust);
+    expect(settled.notice).toEqual({
+      kind: "refused",
+      text: "The vault connection was lost while its surfaces were being read. The selected vault has not been replaced, but it must be reopened before it can be used.",
+    });
+  });
+
+  it("keeps the selected vault identity when a surface load rejects", () => {
+    const lastGood = readyLive();
+    const current = { ...initialSession(), phase: "reading" as const, requestId: 1, source: liveSource, snapshot: lastGood };
+    const settled = sessionReducer(current, { type: "load-failed", requestId: 1 });
+
+    expect(settled.source).toBe(liveSource);
+    expect(settled.snapshot).toBe(lastGood);
+    expect(settled.notice?.text).toContain("must be reopened");
   });
 
   it("reset during a pending open wins before the host resolves", async () => {

@@ -10,6 +10,21 @@ beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("shell", () => {
+  it("reaches and opens the sample vault using only Tab and Enter", async () => {
+    const user = userEvent.setup();
+    installSampleBridge();
+    const view = render(<App />);
+    const action = view.getAllByRole("button", { name: "Open the sample vault" })[0];
+
+    for (let step = 0; step < 20 && document.activeElement !== action; step += 1) {
+      await user.tab();
+    }
+
+    expect(action).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(view.getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument());
+  });
+
   it("returns focus to the Accounts heading when the originating account disappeared", () => {
     const host = document.createElement("section");
     host.innerHTML = '<h2 id="accounts-index-heading" tabindex="-1">Accounts in this read</h2>';

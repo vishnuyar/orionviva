@@ -60,7 +60,7 @@ export type SurfaceSession = {
 export type SessionAction =
   | { type: "opening"; requestId: number }
   | { type: "reading"; requestId: number; source: SurfaceSource; snapshot: SurfaceSnapshot }
-  | { type: "loaded"; requestId: number; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
+  | { type: "loaded"; requestId: number; source?: SurfaceSource; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
   | { type: "mutation-loaded"; requestId: number; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
   | { type: "mutation-refresh-failed"; requestId: number }
   | { type: "open-failed"; requestId: number; said: string }
@@ -116,6 +116,11 @@ function selectedIds(snapshot: SurfaceSnapshot) {
 
 function hasReadFailure(snapshot: SurfaceSnapshot) {
   return [snapshot.overview, snapshot.documents, snapshot.activity, snapshot.conversation, snapshot.review, snapshot.plans, snapshot.trust].some((result) => result?.state === "failed");
+}
+
+function everyVaultSurfaceFailed(snapshot: SurfaceSnapshot) {
+  return [snapshot.overview, snapshot.documents, snapshot.activity, snapshot.conversation, snapshot.review, snapshot.plans, snapshot.trust]
+    .every((result) => result?.state === "failed");
 }
 
 function dataBearing<T>(result: FeatureResult<T> | undefined): result is Extract<FeatureResult<T>, { data: T }> {
@@ -301,13 +306,17 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return {
         ...state,
         phase: "reading",
-        source: action.source,
-        snapshot: action.snapshot,
-        destination: "overview",
-        selectedDocument: "",
-        selectedQueue: "",
-        selectedAccount: "",
-        selectedPrompt: "",
+        // An already-rendered vault is the last trustworthy picture while a
+        // replacement read is in flight. Keep it intact until the whole new
+        // read can be committed; otherwise a dead transport blanks figures,
+        // evidence, and destinations before its failure is even reported.
+        source: state.source ?? action.source,
+        snapshot: state.source ? state.snapshot : action.snapshot,
+        destination: state.source ? state.destination : "overview",
+        selectedDocument: state.source ? state.selectedDocument : "",
+        selectedQueue: state.source ? state.selectedQueue : "",
+        selectedAccount: state.source ? state.selectedAccount : "",
+        selectedPrompt: state.source ? state.selectedPrompt : "",
         notice: { kind: "acknowledged", text: "Reading available surfaces from this device…" },
         questionAction: { state: "idle" },
         activityAction: { state: "idle" },
@@ -324,7 +333,8 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       if (action.requestId !== state.requestId) return state;
       const dataPair = dataBearing(action.snapshot.review) && dataBearing(action.snapshot.conversation);
       const mismatchedPair = dataPair && !reviewConversationSemanticallyMatch(action.snapshot);
-      const snapshot: SurfaceSnapshot = mismatchedPair ? {
+      const allFailed = everyVaultSurfaceFailed(action.snapshot);
+      const snapshot: SurfaceSnapshot = allFailed ? state.snapshot : mismatchedPair ? {
         ...action.snapshot,
         review: { state: "failed", reason: "invalid_payload" },
         conversation: { state: "failed", reason: "invalid_payload" },
@@ -333,6 +343,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return {
         ...state,
         phase: "settled",
+        source: allFailed ? state.source : action.source ?? state.source,
         snapshot,
         jobs: action.jobs ?? state.jobs,
         selectedDocument: retainSelection(state.selectedDocument, ids.documents),
@@ -341,7 +352,9 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
         notice: mismatchedPair
           ? { kind: "refused", text: "The vault opened, but Review and conversation disagreed about which questions are actionable. Neither queue is available." }
-          : hasReadFailure(action.snapshot) ? { kind: "refused", text: "The private vault opened, but some surfaces could not be read. Your vault was not changed." } : null,
+          : allFailed
+            ? { kind: "refused", text: "The vault connection was lost while its surfaces were being read. The selected vault has not been replaced, but it must be reopened before it can be used." }
+            : hasReadFailure(action.snapshot) ? { kind: "refused", text: "The private vault opened, but some surfaces could not be read. Your vault was not changed." } : null,
       };
     }
     case "mutation-loaded": {
@@ -384,7 +397,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return { ...state, phase: "settled", notice: { kind: "refused", text: action.said || "The local vault could not be opened. Nothing came back saying why — a wrong folder or a wrong passphrase would have said so." } };
     case "load-failed":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, phase: "settled", notice: { kind: "refused", text: "The local vault opened, but its surface data could not be loaded." } };
+      return { ...state, phase: "settled", notice: { kind: "refused", text: "The vault connection was lost while its surfaces were being read. The selected vault has not been replaced, but it must be reopened before it can be used." } };
     // Leaving a vault, which is one action and takes everything with it. The
     // whole session is rebuilt from nothing rather than having its fields
     // cleared one at a time, so a field added later cannot be the one that
