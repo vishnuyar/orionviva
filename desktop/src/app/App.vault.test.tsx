@@ -111,6 +111,8 @@ describe("vault", () => {
 
       await waitFor(() => expect(getByText("Private vault")).toBeInTheDocument());
       expect(getByText("Opened on this device")).toBeInTheDocument();
+      expect(getByRole("button", { name: "Close this vault" })).toBeVisible();
+      expect(getByRole("button", { name: "Close this vault" })).toBeEnabled();
     } finally {
       window.orionVivaBridge = previousBridge;
     }

@@ -32,6 +32,7 @@ from viva.desktop_bridge.rpc import dispatch_frame
 from viva.desktop_bridge.surface_read import _read_request
 from viva.surface import (
     BRIDGE_HANDSHAKE,
+    BRIDGE_OPEN_DEMO_VAULT,
     BRIDGE_OPEN_VAULT,
     LIFECYCLE_READ,
     SETTINGS_READ,
@@ -62,6 +63,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # It defaults to false, so a path typed with a letter wrong is refused
     # rather than answered with a brand-new empty vault.
     BRIDGE_OPEN_VAULT: {"vault_directory", "passphrase", "create"},
+    BRIDGE_OPEN_DEMO_VAULT: set(),
     SURFACE_CAPABILITIES: set(),
     SURFACE_READ: {"surface", "parameters", "job_id"},
     CONVERSATION_OPERATIONS["answer"]: {"question_id", "said"},
@@ -138,6 +140,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
 # Where the sidecar declares the fields it will accept, per operation.
 PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     BRIDGE_OPEN_VAULT: (BRIDGE_PACKAGE / "__main__.py", "_open_vault"),
+    BRIDGE_OPEN_DEMO_VAULT: (BRIDGE_PACKAGE / "__main__.py", "_open_demo_vault"),
     SURFACE_READ: (BRIDGE_PACKAGE / "surface_read.py", "_read_request"),
     CONVERSATION_OPERATIONS["answer"]: (BRIDGE_PACKAGE / "conversation_actions.py", "_answer_request"),
     CONVERSATION_OPERATIONS["confirm"]: (BRIDGE_PACKAGE / "conversation_actions.py", "_confirm_request"),
@@ -195,9 +198,14 @@ COMPLETE_PAYLOADS: dict[str, dict[str, object]] = {
     SURFACE_READ: {"surface": "overview", "parameters": {}, "job_id": "job-id"},
 }
 
-# The host declares which operations survive a sidecar restart here.
-RETRY_DECLARATION = "let may_recover = matches!("
-RETRY_PATTERN = "Some("
+# The host separates requests that can be replayed into a fresh sidecar from a
+# surface read that first requires the remembered private vault to be reopened.
+# Both paths replay the original operation, so both declarations belong to the
+# sidecar-operation compatibility gate.
+RETRY_DECLARATIONS = (
+    "fn operation_can_restart_and_replay(",
+    "fn operation_can_reopen_vault_and_replay(",
+)
 
 
 def _served_operations() -> set[str]:
@@ -206,7 +214,7 @@ def _served_operations() -> set[str]:
     The vault is never touched: the handlers hold it and only reach for it when
     a frame arrives, so an opened-vault allowlist can be built without one."""
     dispatcher = handlers_for_opened_vault(object())
-    return set(dispatcher.handlers) | {BRIDGE_OPEN_VAULT}
+    return set(dispatcher.handlers) | {BRIDGE_OPEN_VAULT, BRIDGE_OPEN_DEMO_VAULT}
 
 
 def _declared_payload_fields(module: Path, function: str) -> set[str]:
@@ -256,19 +264,20 @@ def _host_source() -> str:
 def _host_retry_operations() -> set[str]:
     """Return the operations the host declares safe to replay after a restart."""
     source = _host_source()
-    start = source.find(RETRY_DECLARATION)
-    assert start != -1, (
-        f"{HOST_SOURCE.name} no longer declares which operations may be replayed "
-        "after the sidecar dies, so retry safety cannot be checked"
-    )
-    block = source[start : source.index(");", start)]
-    arm = block.find(RETRY_PATTERN)
-    assert arm != -1, (
-        f"{HOST_SOURCE.name} declares replayable operations in a shape this gate "
-        "cannot read, so retry safety cannot be checked"
-    )
-    opening = arm + len(RETRY_PATTERN)
-    return set(re.findall(r'"([^"]+)"', block[opening : block.index(")", opening)]))
+    operations: set[str] = set()
+    for declaration in RETRY_DECLARATIONS:
+        start = source.find(declaration)
+        assert start != -1, (
+            f"{HOST_SOURCE.name} no longer declares which operations may be replayed "
+            "after the sidecar dies, so retry safety cannot be checked"
+        )
+        end = source.find("\n}", start)
+        assert end != -1, (
+            f"{HOST_SOURCE.name} declares replayable operations in a shape this gate "
+            "cannot read, so retry safety cannot be checked"
+        )
+        operations.update(re.findall(r'"([^"]+)"', source[start:end]))
+    return operations
 
 
 def _host_frame_fields() -> set[str]:

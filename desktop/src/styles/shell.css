@@ -61,6 +61,21 @@
   border-radius: var(--radius-lg);
   background: var(--paper);
 }
+.vault-session-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: var(--control-min-height);
+  margin: 0 var(--space-md) var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--text-fine);
+  font-weight: var(--weight-strong);
+}
 .vault-source-disclosure > summary {
   display: grid;
   gap: var(--space-hair);

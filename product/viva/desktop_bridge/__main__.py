@@ -82,9 +82,11 @@ def _open_demo_vault(payload: dict[str, Any]) -> tuple[Vault, bool]:
     It is minted once and stays. A sample vault made fresh each launch would
     lose whatever a person did inside it, and a demo somebody cannot change is
     a screenshot."""
-    if payload:
+    allowed = ()
+    extra = set(payload).difference(allowed)
+    if extra:
         raise ValueError("bridge.open_demo_vault does not accept fields: "
-                         + ", ".join(sorted(payload)))
+                         + ", ".join(sorted(extra)))
     from viva.demo import open_demo_vault
 
     return open_demo_vault()

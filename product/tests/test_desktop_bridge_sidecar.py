@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import json
 
+import pytest
+
 from viva.desktop_bridge import __main__ as sidecar_module
 from viva.desktop_bridge.__main__ import Sidecar
 
@@ -41,6 +43,20 @@ def test_sidecar_opens_vault_and_enables_only_surface_reads(tmp_path):
     assert response["ok"] is True
     assert response["result"]["surface"] == "overview"
     assert 'test-passphrase' not in output.getvalue()
+
+
+def test_sidecar_opens_demo_vault_only_with_an_empty_payload(monkeypatch):
+    from viva import demo
+
+    sentinel = object()
+    monkeypatch.setattr(demo, "open_demo_vault", lambda: (sentinel, True))
+    sidecar = Sidecar(io.StringIO())
+
+    opened = json.loads(sidecar.handle(_frame("bridge.open_demo_vault"))[0])
+    assert opened["ok"] is True
+    assert opened["result"]["state"] == "created"
+    with pytest.raises(ValueError, match="unexpected"):
+        sidecar_module._open_demo_vault({"unexpected": True})
 
 
 def test_a_folder_holding_no_vault_is_refused_rather_than_filled_with_one(tmp_path):
