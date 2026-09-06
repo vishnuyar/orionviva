@@ -51,6 +51,7 @@ PRIMARY_CATEGORIES = (
 )
 
 FALLBACK_CATEGORY = "other"    # for a category that is not one of the 16
+FALLBACK_SUBCATEGORY = "unclassified"  # explicit, reviewable lack of specificity
 
 
 def is_primary(category: str) -> bool:

@@ -40,7 +40,7 @@
 **Test:** product/tests/test_category_identity.py::test_the_known_vocabulary_is_what_every_minting_path_is_offered
 
 1. The primary set is a controlled list held in one file and is the single source of truth for it.
-2. A subcategory is the finer slice, and any string is a valid label — no country-shaped table anywhere.
+2. A subcategory is the finer slice, and any string is a valid label — no country-shaped table anywhere. Every newly ingested movement has one; when no finer classification is established, the explicit `unclassified` fallback is recorded at `unverified` rather than leaving the field empty.
 3. `spending_by_category` groups by primary; `spending_by_subcategory` is the finer view.
 
 ### MON-17 — every assignment captures the raw descriptor
@@ -85,7 +85,7 @@ Exclusion belongs to nature rather than to the category. "Spending excludes tran
 ## Open
 
 - The live model categorizer is injected but not wired to a real model call on this path.
-- Merchant normalization, permanent ids, reviewed exact aliases and merchant→category auto-apply are built locally. Known shipped or learned merchants categorize during statement import without a model call; unknown movements receive replaceable defaults instead of routine import questions. No fuzzy identity inference or alias-approval UI exists, and the networked commons registry remains unbuilt.
+- Merchant normalization, permanent ids, reviewed exact aliases and merchant→category auto-apply are built locally. Known shipped or learned merchants categorize during import or rebuild without a model call. Unknown movements receive replaceable category and `unclassified` subcategory defaults, remain reviewable as merchant questions, and do not create a nature question merely because the fallback exists. No fuzzy identity inference or alias-approval UI exists, and the networked commons registry remains unbuilt.
 - Amount-splits — one movement divided across categories, still balancing — are a separate overlay, unbuilt, and compose with the single-category work.
 - The external **Party** — a merchant, an employer, a landlord — is unbuilt. External counterparty attribution (a payment to a real person or biller is a real outflow, not a transfer) is the categorization-side of transfer-linking, and the same descriptor-capturing events seed it.
 - Per-transaction custom categories for peer descriptors: [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md).

@@ -408,7 +408,9 @@ def category_assigned(movement_key: str, descriptor: str, category: str,
                       grade: str, occurred_at: str, by: str = "human",
                       nature: str = "",
                       provenance: Provenance | None = None,
-                      subcategory: str = "") -> Event:
+                      subcategory: str = "", category_grade: str = "",
+                      subcategory_grade: str = "", category_by: str = "",
+                      subcategory_by: str = "") -> Event:
     """Assign a category to one movement — a graded overlay, keyed to the stable
     movement key so it survives a reingest and never mutates the read.
 
@@ -423,9 +425,17 @@ def category_assigned(movement_key: str, descriptor: str, category: str,
     ``nature`` (optional) records what the movement *is* — `spending`,
     `transfer`, or `settlement`. A person's ruling outranks any category hint
     when nature is derived."""
+    category_source = category_by or by
+    subcategory_source = subcategory_by or by
     body = {"movement_key": movement_key, "descriptor": descriptor,
-            "category": category, "grade": grade, "by": by,
-            "nature": nature}
+            "category": category, "grade": grade,
+            "by": (category_source if category_source == subcategory_source
+                   else "mixed"),
+            "nature": nature,
+            "category_grade": category_grade or grade,
+            "subcategory_grade": subcategory_grade or grade,
+            "category_by": category_source,
+            "subcategory_by": subcategory_source}
     if subcategory:
         body["subcategory"] = subcategory
     return Event(
@@ -714,7 +724,9 @@ def merchant_enriched(merchant: str, category: str, subcategory: str = "",
                       canonical_name: str = "", attributes: dict | None = None,
                       grade: str = "corroborated", occurred_at: str = "",
                       by: str = "model", provenance: Provenance | None = None,
-                      aliases: list[str] | None = None) -> Event:
+                      aliases: list[str] | None = None,
+                      category_grade: str = "", subcategory_grade: str = "",
+                      category_by: str = "", subcategory_by: str = "") -> Event:
     """The applied record of a merchantcore enrichment: a merchant's primary
     category, a finer ``subcategory``, a display ``canonical_name``, reviewed
     identity ``aliases``, and richer ``attributes`` (logo, mcc, website) synced
@@ -727,7 +739,11 @@ def merchant_enriched(merchant: str, category: str, subcategory: str = "",
         body={"merchant": merchant, "category": category,
               "subcategory": subcategory, "canonical_name": canonical_name,
               "attributes": dict(attributes or {}), "aliases": list(aliases or []),
-              "grade": grade, "by": by},
+              "grade": grade, "by": by,
+              "category_grade": category_grade or grade,
+              "subcategory_grade": subcategory_grade or grade,
+              "category_by": category_by or by,
+              "subcategory_by": subcategory_by or by},
         provenance=provenance or Provenance(),
     )
 

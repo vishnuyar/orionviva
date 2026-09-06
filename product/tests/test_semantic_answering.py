@@ -616,9 +616,8 @@ def test_unsupported_meaning_is_a_structured_capability_gap():
 def test_attention_reads_the_existing_ordered_queue_and_classification_is_proved():
     registry = _registry()
     attention = registry.call("check_completeness", {"view": "attention"})
-    assert attention.ok and attention.data["questions"]
-    stakes = [float(item["amount"]) for item in attention.data["questions"]]
-    assert stakes == sorted(stakes, reverse=True)
+    assert attention.ok and attention.data["kinds"]
+    assert sum(attention.data["kinds"].values()) == attention.data["total"]
 
     treatment = registry.call("get_provenance", {
         "movement_phrase": "greenfield market", "from": "2026-01-01",
@@ -626,6 +625,28 @@ def test_attention_reads_the_existing_ordered_queue_and_classification_is_proved
     assert treatment.ok and treatment.figures
     assert all(item["record_ids"] for item in treatment.figures)
     assert all("treated as" in item["what"] for item in treatment.figures)
+
+
+def test_attention_tool_returns_the_whole_queue(monkeypatch):
+    from viva.tools import ledger_audit
+
+    questions = [
+        {"id": f"identity:{index}", "kind": "identity", "amount": str(index),
+         "refs": {"subject": f"Account {index}"}}
+        for index in range(5, 0, -1)
+    ]
+
+    def complete(_projection):
+        return {"kinds": {"identity": 5}, "total": len(questions),
+                "pending": 0, "example_ids": {"identity": "identity:5"}}
+
+    monkeypatch.setattr("viva.questions.open_question_counts", complete)
+    result = ledger_audit._attention_summary(object())
+
+    assert result.ok
+    assert result.data["kinds"] == {"identity": 5}
+    assert result.data["total"] == 5
+    assert result.coverage == "Every open question, counted by kind."
 
 
 def test_materially_different_classification_matches_request_clarification():

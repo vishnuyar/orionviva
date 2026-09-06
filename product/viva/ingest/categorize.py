@@ -18,7 +18,8 @@ from decimal import Decimal
 from ..ledger.events import (CORROBORATED, MAJOR_ASSET, MAJOR_EXPENSE,
                              SCOPE_MOVEMENT, UNVERIFIED, VERIFIED,
                              category_assigned, merchant_categorized,
-                             merchant_enriched, ruling_recorded)
+                             merchant_enriched,
+                             ruling_recorded)
 from ..ledger.ledger import Ledger
 from ..ledger.merchants import is_shareable, normalize_merchant
 
@@ -28,7 +29,8 @@ log = logging.getLogger(__name__)
 
 # The primary categories live in merchantcore (the shareable taxonomy); the
 # product offers those plus the fallback, and accepts any other string.
-from merchantcore import FALLBACK_CATEGORY, PRIMARY_CATEGORIES  # noqa: E402
+from merchantcore import (FALLBACK_CATEGORY, FALLBACK_SUBCATEGORY,
+                          PRIMARY_CATEGORIES)  # noqa: E402
 
 SEED_CATEGORIES = PRIMARY_CATEGORIES + (FALLBACK_CATEGORY,)
 
@@ -102,7 +104,8 @@ def rule_category_same_as(ledger: Ledger, label: str, same_as: str,
 
 
 def assign_category(ledger: Ledger, movement_key: str, category: str,
-                    by: str = "human", nature: str = "") -> bool:
+                    by: str = "human", nature: str = "",
+                    subcategory: str = "") -> bool:
     """Assign a category to one movement.
 
     ``by='human'`` records it `verified`, anything else `unverified`. Captures
@@ -115,12 +118,22 @@ def assign_category(ledger: Ledger, movement_key: str, category: str,
     descriptor = m.description if m else ""
     when = m.date if m else date.today().isoformat()
     grade = VERIFIED if by == "human" else UNVERIFIED
+    supplied_subcategory = subcategory.strip().lower()
+    effective_subcategory = supplied_subcategory or FALLBACK_SUBCATEGORY
+    pair_grade = grade if supplied_subcategory else UNVERIFIED
     log.info("category: %s %s -> %r (%s)%s", by, movement_key[:24],
              normalize_category(category), grade,
              f" nature={nature}" if nature else "")
     ledger.append(category_assigned(movement_key, descriptor,
-                                    normalize_category(category), grade,
-                                    when, by=by, nature=nature))
+                                    normalize_category(category), pair_grade,
+                                    when, by=by, nature=nature,
+                                    subcategory=effective_subcategory,
+                                    category_grade=grade,
+                                    subcategory_grade=(grade if supplied_subcategory
+                                                       else UNVERIFIED),
+                                    category_by=by,
+                                    subcategory_by=(by if supplied_subcategory
+                                                    else "default")))
     return m is not None
 
 
@@ -134,6 +147,7 @@ def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
     and the sharper nature signal; supplying it records a `MerchantEnriched`
     rather than a `MerchantCategorized`."""
     grade = VERIFIED if by == "human" else UNVERIFIED
+    supplied_subcategory = subcategory.strip().lower()
     # Preserve a merchant key the projection already holds; normalize only a
     # descriptor that has not resolved to a held identity.
     projection = ledger.projection()
@@ -143,15 +157,14 @@ def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
     merchant_key = supplied if supplied in held else normalize_merchant(supplied)
     log.info("merchant: %s %r -> %r (%s)", by, merchant_key,
              normalize_category(category), grade)
-    if subcategory:
-        ledger.append(merchant_enriched(
-            merchant_key, normalize_category(category),
-            subcategory=subcategory.strip().lower(), grade=grade,
-            occurred_at=date.today().isoformat(), by=by))
+    if not supplied_subcategory:
+        ledger.append(merchant_categorized(
+            merchant_key, normalize_category(category), grade,
+            date.today().isoformat(), by=by))
         return
-    ledger.append(merchant_categorized(merchant_key,
-                                       normalize_category(category), grade,
-                                       date.today().isoformat(), by=by))
+    ledger.append(merchant_enriched(
+        merchant_key, normalize_category(category), supplied_subcategory,
+        grade=grade, occurred_at=date.today().isoformat(), by=by))
 
 
 def assign_default_categories(ledger: Ledger, doc_id: str) -> int:
@@ -168,19 +181,42 @@ def assign_default_categories(ledger: Ledger, doc_id: str) -> int:
     for movement in projection.movements():
         if movement.provenance.doc_id != doc_id:
             continue
-        if projection.derived_category(movement) is not None:
+        current = projection.derived_category(movement) or {}
+        if current.get("category") and current.get("subcategory"):
             continue
         person = projection.is_person(movement)
-        category = "transfers" if person else "other"
+        category = current.get("category") or ("transfers" if person else "other")
         ledger.append(category_assigned(
             movement.key, movement.description, category, UNVERIFIED,
             movement.date, by="default",
-            nature="transfer" if person else ""))
+            nature="transfer" if person else "",
+            subcategory=FALLBACK_SUBCATEGORY))
         assigned += 1
     if assigned:
         log.info("category: default-classified %d movement(s) from %s",
                  assigned, doc_id[:12])
+    gaps = document_classification_gaps(ledger.projection(), doc_id)
+    if gaps:
+        raise RuntimeError(
+            f"document {doc_id[:12]} has {len(gaps)} posted movement(s) "
+            "without a canonical category and subcategory")
     return assigned
+
+
+def document_classification_gaps(projection, doc_id: str) -> list[str]:
+    """Posted movement keys whose two-level classification is incomplete."""
+    gaps = []
+    for movement in projection.movements():
+        if movement.provenance.doc_id != doc_id:
+            continue
+        record = projection.derived_category(movement) or {}
+        category = str(record.get("category") or "").strip()
+        subcategory = str(record.get("subcategory") or "").strip()
+        if (not category or not subcategory
+                or projection.canonical_category(category) != category
+                or projection.canonical_subcategory(subcategory) != subcategory):
+            gaps.append(movement.key)
+    return gaps
 
 
 def open_loan_receivables_at(projection, movement) -> list[tuple[str, Decimal]]:
@@ -238,7 +274,10 @@ def assign_movement_meaning(ledger: Ledger, movement_key: str, meaning: str,
             # Keep the category aligned with the spending treatment.
             ledger.append(category_assigned(
                 movement.key, movement.description, FALLBACK_CATEGORY,
-                VERIFIED, movement.date, by="human"))
+                UNVERIFIED, movement.date, by="human",
+                subcategory=FALLBACK_SUBCATEGORY,
+                category_grade=VERIFIED, subcategory_grade=UNVERIFIED,
+                category_by="human", subcategory_by="default"))
     else:
         label = " ".join((counterparty or "").strip().split())
         if not label or not any(char.isalnum() for char in label):
@@ -262,8 +301,10 @@ def assign_movement_meaning(ledger: Ledger, movement_key: str, meaning: str,
                 else "this movement repaid the loan with ") + label
         # Loan treatments use the transfer category.
         ledger.append(category_assigned(
-            movement.key, movement.description, "transfers", VERIFIED,
-            movement.date, by="human"))
+            movement.key, movement.description, "transfers", UNVERIFIED,
+            movement.date, by="human", subcategory=FALLBACK_SUBCATEGORY,
+            category_grade=VERIFIED, subcategory_grade=UNVERIFIED,
+            category_by="human", subcategory_by="default"))
 
     ledger.append(ruling_recorded(
         SCOPE_MOVEMENT, movement.key, movement.date, legs=legs,
@@ -313,9 +354,9 @@ def categorize_merchants_batch(ledger: Ledger, categorize_fn,
     for mkey, category in results.items():
         if not category:
             continue
-        ledger.append(merchant_categorized(mkey, normalize_category(category),
-                                           CORROBORATED, date.today().isoformat(),
-                                           by="model"))
+        ledger.append(merchant_categorized(
+            mkey, normalize_category(category), CORROBORATED,
+            date.today().isoformat(), by="model"))
         n += 1
     if n:
         log.info("merchant: batched-categorized %d merchant(s)", n)
@@ -403,6 +444,9 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
 
     # Apply installed records independently of whether enrichment made a call.
     synced = sync_merchant_records(ledger, catalog, offered)
+    for doc_id in sorted({movement.provenance.doc_id for movement in every
+                          if movement.provenance.doc_id}):
+        assign_default_categories(ledger, doc_id)
     withheld = len([s for s in streams if s.is_person])
     if submitted or enriched or synced:
         log.info("merchants: offered %d brand(s), submitted %d, enriched %d, "
@@ -472,20 +516,27 @@ def export_catalog(ledger: Ledger) -> dict:
 
 
 def suggest_categories(ledger: Ledger, suggest_fn) -> int:
-    """Run a suggester over uncategorized expense movements.
+    """Run a suggester over unresolved/defaulted expense movements.
 
     Records each answer as an `unverified` assignment. ``suggest_fn(descriptor)
     -> category | None`` is injected, so this runs offline. Returns how many
     were suggested."""
     proj = ledger.projection()
     n = 0
-    for m in proj.uncategorized_expenses():
+    pending = []
+    for m in proj.movements():
+        if not proj._counts_as_spending(m):
+            continue
+        current = proj.derived_category(m) or {}
+        if not current or current.get("by") == "default":
+            pending.append(m)
+    for m in pending:
         cat = suggest_fn(m.description)
         if not cat:
             continue
-        ledger.append(category_assigned(m.key, m.description,
-                                        normalize_category(cat), UNVERIFIED,
-                                        m.date, by="model"))
+        ledger.append(category_assigned(
+            m.key, m.description, normalize_category(cat), UNVERIFIED,
+            m.date, by="model", subcategory=FALLBACK_SUBCATEGORY))
         n += 1
     if n:
         log.info("category: suggested %d category(ies)", n)

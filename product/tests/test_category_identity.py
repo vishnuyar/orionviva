@@ -75,7 +75,8 @@ def test_the_ruling_is_retroactive_and_rewrites_nothing(tmp_path):
     assign_category(ledger, key, "playing poker")
     rule_category_same_as(ledger, "playing poker", "poker")
 
-    said = [e for e in ledger.store.events() if e.event_type == "CategoryAssigned"]
+    said = [e for e in ledger.store.events()
+            if e.event_type == "CategoryAssigned" and e.body.get("category_by") == "human"]
     assert said and said[0].body["category"] == "playing poker", \
         "history must keep what was actually recorded"
     assert _spending(ledger).get("poker") == Decimal("100.00")

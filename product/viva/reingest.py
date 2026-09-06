@@ -143,7 +143,20 @@ def main() -> None:
         print(f"  [{i}/{len(doc_ids)}] {doc_id[:10]}… -> {res.action}"
               + (f" ({res.grade})" if res.grade else ""))
 
+    # Finish the batch's healing cascade before restoring merchant knowledge.
+    from .ingest import sweep
+
+    sweep(vault.ledger)
+
+    # Restore matches from the installed local catalog without a model call.
+    from .enrich import sync_installed_merchants
+
+    merchant_syncs = sum(
+        sync_installed_merchants(vault, doc_id)
+        for doc_id in sorted(vault.ledger.projection().posted_doc_ids()))
+
     print("done: " + ", ".join(f"{n} {a}" for a, n in sorted(counts.items())))
+    print(f"installed merchant knowledge: {merchant_syncs} record(s) applied")
 
     # What changed, split into documents gained and documents lost.
     gained = [c for c in changed if c[1] != "posted"]

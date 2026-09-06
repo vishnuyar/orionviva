@@ -9,7 +9,7 @@ import pytest
 from merchantcore import Catalog, MerchantRecord
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          account_id_for, assign_category, capture_and_ingest,
-                         enrich_merchants)
+                         enrich_merchants, sync_merchant_records)
 from viva.ledger import EventStore, Ledger, LedgerProjection
 from viva.ledger.events import VERIFIED, merchant_categorized
 from viva.ledger.merchant_keys import resolve_keys
@@ -86,7 +86,9 @@ def test_human_override_beats_the_synced_enrichment(tmp_path):
     assign_category(ledger, amazon.key, "groceries")      # per-transaction override
     proj = ledger.projection()
     assert proj.spending_by_category() == {"groceries": Decimal("50.00")}
-    assert proj.derived_category(amazon)["grade"] == "verified"
+    record = proj.derived_category(amazon)
+    assert record["category_grade"] == "verified"
+    assert record["subcategory_grade"] == "unverified"
 
 
 def test_sync_adds_reviewed_aliases_without_downgrading_a_local_record(tmp_path):
@@ -113,7 +115,10 @@ def test_sync_adds_reviewed_aliases_without_downgrading_a_local_record(tmp_path)
     assert first["synced"] == 1
     assert projection.merchant_key_of(movement) == "costco"
     assert projection.derived_category(movement)["category"] == "shopping"
-    assert projection.derived_category(movement)["grade"] == VERIFIED
+    classification = projection.derived_category(movement)
+    assert classification["category_grade"] == VERIFIED
+    assert classification["subcategory_grade"] == "unverified"
+    assert classification["grade"] == "unverified"
     assert enrich_merchants(
         ledger, cat, no_model, kind_for=lambda m: m.kind)["synced"] == 0
 
@@ -142,13 +147,10 @@ def test_subcategory_enables_a_finer_slice(tmp_path):
 def test_a_subcategory_summary_keeps_its_parent_and_names_the_remainder(tmp_path):
     """A finer summary that a person can add up.
 
-    `spending_by_subcategory` falls back to the category label when a movement
-    has no subcategory, so its keys are two vocabularies in one namespace and
-    nothing says which category a slice came from. The nested read keeps them
-    apart: every category's inner values sum to exactly what
-    `spending_by_category` gives that category, and the money no subcategory
-    names sits under `""` rather than being dropped or silently folded into a
-    sibling."""
+        Every ingested movement has a finer classification. Where the source and
+        merchant record establish no specificity, the nested read keeps the
+        explicit unverified ``unclassified`` fallback under its parent rather
+        than dropping that money or folding it into a sibling."""
     ledger = _card([("2026-01-05", "NETFLIX.COM", "15.00"),
                     ("2026-01-06", "SPOTIFY USA", "10.00"),
                     ("2026-01-08", "AMC THEATRES 123", "30.00"),
@@ -170,7 +172,7 @@ def test_a_subcategory_summary_keeps_its_parent_and_names_the_remainder(tmp_path
 
     assert tree == {"entertainment": {"streaming": Decimal("25.00"),
                                       "movies": Decimal("30.00"),
-                                      "": Decimal("5.00")}}
+                                      "unclassified": Decimal("5.00")}}
     # It closes: the finer view adds up to the coarser one, category by category.
     coarse = proj.spending_by_category()
     for label, within in tree.items():
@@ -201,8 +203,8 @@ def test_the_category_report_shows_each_subcategory_under_its_parent(tmp_path):
     assert any("entertainment" in ln and "50.00" in ln for ln in section)
     assert any("streaming" in ln and "15.00" in ln for ln in section)
     assert any("movies" in ln and "30.00" in ln for ln in section)
-    assert any("unassigned" in ln and "5.00" in ln for ln in section), (
-        "money the category holds that no subcategory names went unreported")
+    assert any("unclassified" in ln and "5.00" in ln for ln in section), (
+        "the explicit fallback subcategory went unreported")
 
 
 def test_a_category_with_no_name_is_unnamed_in_both_views(tmp_path):
@@ -275,6 +277,30 @@ def test_sync_is_idempotent(tmp_path):
     enrich_merchants(ledger, cat, ext,
                      kind_for=lambda m: m.kind)                    # again, nothing new
     assert len(list(ledger.events())) == n_events         # no duplicate events
+
+
+def test_installed_sync_replaces_matches_and_leaves_unmatched_defaults_reviewable(
+        tmp_path):
+    ledger = _card([
+        ("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00"),
+        ("2026-01-06", "UNMATCHED SHOP", "20.00"),
+    ], tmp_path)
+    catalog = Catalog()
+    catalog.add(MerchantRecord(
+        key="amzn mktp us", canonical_name="Amazon", category="shopping",
+        subcategory="online retail", grade="corroborated"))
+
+    assert sync_merchant_records(
+        ledger, catalog, ["amzn mktp us", "unmatched shop"]) == 1
+    projection = ledger.projection()
+    matched = next(m for m in projection.movements() if "AMZN" in m.description)
+    unmatched = next(m for m in projection.movements() if "UNMATCHED" in m.description)
+    assert projection.derived_category(matched)["category"] == "shopping"
+    assert projection.derived_category(unmatched)["by"] == "default"
+    before = len(list(ledger.events()))
+    assert sync_merchant_records(
+        ledger, catalog, ["amzn mktp us", "unmatched shop"]) == 0
+    assert len(list(ledger.events())) == before
 
 
 def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monkeypatch):

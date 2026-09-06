@@ -66,6 +66,13 @@ def test_reset_drops_model_categorization_but_keeps_my_rulings(tmp_path):
     before = _counts(src)
     assert before["MerchantEnriched"] > 0        # model-made
     assert before["CategoryAssigned"] > 0        # human-made (the Costco ruling)
+    before_human = [
+        e for e in src.events()
+        if e.event_type == "CategoryAssigned"
+        and (e.body.get("by") == "human"
+             or e.body.get("category_by") == "human"
+             or e.body.get("subcategory_by") == "human")
+    ]
 
     reset_vault(tmp_path / "src", tmp_path / "dst", "pw")
 
@@ -76,8 +83,11 @@ def test_reset_drops_model_categorization_but_keeps_my_rulings(tmp_path):
     assert after["MerchantCategorized"] == 0
     # ...but every human ruling survived.
     human = [e for e in clean.events()
-             if e.event_type == "CategoryAssigned" and e.body.get("by") == "human"]
-    assert len(human) == before["CategoryAssigned"]
+        if e.event_type == "CategoryAssigned"
+        and (e.body.get("by") == "human"
+             or e.body.get("category_by") == "human"
+             or e.body.get("subcategory_by") == "human")]
+    assert len(human) == len(before_human)
     # And every OTHER event type survives with an identical count.
     for et, n in before.items():
         if et in CATEGORIZATION_EVENTS:

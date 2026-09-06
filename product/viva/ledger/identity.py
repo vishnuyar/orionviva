@@ -33,7 +33,7 @@ def number_key(account_number: str) -> str:
 
 
 _REFERENCE_LAST4 = re.compile(
-    r"(?:ending(?:\s+in)?|ends?(?:\s+in)?|last\s*4|x{2,}|\*{2,}|•{2,})"
+    r"(?:ending(?:\s+in)?|ends?(?:\s+in)?|last\s*4|x{2,}|\*{2,}|•{2,}|\.{2,})"
     r"\D{0,12}(\d{4})\b",
     re.IGNORECASE,
 )

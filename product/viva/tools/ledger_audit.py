@@ -85,39 +85,31 @@ def check_completeness(proj, args: dict) -> ToolResult:
 
 
 def _attention_summary(proj) -> ToolResult:
-    """Summarize the existing ordered queue."""
-    from ..questions import open_questions
+    """Summarize the whole queue without returning one unbounded row per item."""
+    from ..questions import open_question_counts
 
-    payload = open_questions(proj, limit=3)
-    questions = list(payload["questions"])
-    def label(question):
-        refs = question.get("refs") or {}
-        subject = (refs.get("example") or refs.get("subject")
-                   or refs.get("document")
-                   or str(question["id"]).split(":", 1)[-1])
-        return f"{question.get('kind') or 'open'} — {subject}"
-    figures = [
-        # Figure labels describe the count; ranking stakes remain outside them.
-        figure(1, label(question),
-               quantity=quantity.COUNT, kind=ACTIVITY,
-               record_ids=[str(question["id"])],
-               boundary=bounded(whole=not payload["tail"]["count"]))
-        for question in questions
-    ]
-    if not figures:
-        figures = [figure(0, "open questions needing attention",
-                          quantity=quantity.COUNT, kind=ACTIVITY,
-                          boundary=bounded(whole=True))]
+    payload = open_question_counts(proj)
+    kinds = dict(payload["kinds"])
+    example_ids = dict(payload["example_ids"])
+    figures = [figure(
+        count, f"{name} questions needing attention",
+        quantity=quantity.COUNT, kind=ACTIVITY,
+        record_ids=[example_ids[name]],
+        boundary=bounded(whole=False, cut=[{"kind": BY_KIND, "value": name}]))
+        for name, count in sorted(kinds.items())]
+    figures.append(figure(
+        payload["total"], "open questions needing attention",
+        quantity=quantity.COUNT, kind=ACTIVITY,
+        record_ids=sorted(example_ids.values()),
+        boundary=bounded(whole=True)))
     return ToolResult(
         tool="check_completeness", ok=True, figures=figures,
-        data={"questions": questions, "total": payload["total"],
-              "tail": dict(payload["tail"]),
-              "pending": dict(payload["pending"])},
-        record_ids=[str(question["id"]) for question in questions],
-        caveats=(["More open questions remain below this consequence-ordered "
-                  "preview."] if payload["tail"]["count"] else []),
-        coverage="The highest-consequence open questions, in their existing order.",
-        text="The highest-consequence open questions are summarized by kind.")
+        data={"kinds": kinds, "total": payload["total"],
+              "pending": {"count": payload["pending"]}},
+        record_ids=sorted(example_ids.values()),
+        caveats=[],
+        coverage="Every open question, counted by kind.",
+        text="Every open question is counted by kind.")
 
 
 # ------------------------------------------------------------- get_provenance

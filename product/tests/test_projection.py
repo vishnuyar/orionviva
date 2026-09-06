@@ -128,6 +128,22 @@ def test_the_same_number_is_still_the_same_account(tmp_path):
                         ["ROWAN E VANCE"], kind="depository").verdict == "same"
 
 
+def test_ellipsis_last_four_survives_a_product_name_change(tmp_path):
+    """An ellipsis-masked last four resolves across display-name variants."""
+    proj = _known(
+        tmp_path, account="acct:card:6357", kind="liability",
+        institution="Imprint Payments, Inc.", number="7",
+        name="Store Visa Signature ...6357")
+
+    resolved = proj.resolve(
+        "Imprint Payments, Inc.", "7",
+        "Store Visa Signature Credit Card ...6357", ["ROWAN E VANCE"],
+        kind="liability")
+
+    assert resolved.verdict == "same"
+    assert resolved.account_id == "acct:card:6357"
+
+
 def test_with_no_numbers_two_different_products_are_two_accounts(tmp_path):
     proj = _known(tmp_path, account="acct:everyday-checking",
                   name="Everyday Checking", number="")

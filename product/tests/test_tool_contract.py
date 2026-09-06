@@ -689,6 +689,45 @@ def test_net_worth_currency_view_keeps_only_the_direct_net_figures(registry):
         quantity.NET_WORTH}
 
 
+def test_identity_holds_fail_closed_for_net_worth_and_card_debt():
+    projection = LedgerProjection([
+        *_events(),
+        statement_held("identity-doc", {}, {"kind": "identity"},
+                       "identity", "2026-02-04"),
+    ])
+    registry = default_registry(projection)
+
+    net = registry.call(
+        "query_ledger", {"entity": "aggregate", "metric": "net_worth",
+                         "view": "net_by_currency"})
+    cards = registry.call(
+        "query_ledger", {"entity": "balances",
+                         "filters": {"kind": "card_account"}})
+
+    assert not net.ok and net.refusal == "account_identity_unresolved"
+    assert not cards.ok and cards.refusal == "account_identity_unresolved"
+
+
+def test_investment_identity_hold_does_not_suppress_card_debt():
+    projection = LedgerProjection([
+        *_events(),
+        statement_held(
+            "brokerage-identity-doc", {"doc_type": "brokerage_statement"},
+            {"kind": "identity"}, "identity", "2026-02-04"),
+    ])
+    registry = default_registry(projection)
+
+    cards = registry.call(
+        "query_ledger", {"entity": "balances",
+                         "filters": {"kind": "card_account"}})
+    net = registry.call(
+        "query_ledger", {"entity": "aggregate", "metric": "net_worth",
+                         "view": "net_by_currency"})
+
+    assert cards.refusal != "account_identity_unresolved"
+    assert not net.ok and net.refusal == "account_identity_unresolved"
+
+
 def test_as_of_outside_net_worth_is_refused(registry):
     result = registry.call("query_ledger", {"entity": "balances",
                                             "as_of": "2026-01-15"})

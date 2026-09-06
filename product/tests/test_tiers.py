@@ -262,10 +262,11 @@ def _claim_vault(tmp_path):
     return ledger
 
 
-def test_a_rebuild_replays_claims_through_todays_parsers(tmp_path):
+def test_a_rebuild_replays_claims_through_todays_parsers(tmp_path, monkeypatch):
     """The claims layer's whole promise, cashed: a vault reconstructed from
     stored model replies, with no model call and no money spent."""
     from viva.rebuild import claims_by_doc, rebuild
+    import viva.enrich as enrich_module
 
     src = tmp_path / "src"
     ledger = _claim_vault(src)
@@ -274,6 +275,11 @@ def test_a_rebuild_replays_claims_through_todays_parsers(tmp_path):
 
     claims = claims_by_doc(ledger.store.events())
     assert claims, "the source vault must carry claims to rebuild from"
+
+    synced_docs = []
+    monkeypatch.setattr(
+        enrich_module, "sync_installed_merchants",
+        lambda _vault, doc_id: (synced_docs.append(doc_id) or 0))
 
     dest = tmp_path / "dest"
     counts = rebuild(src, dest, "pw", log=lambda *_: None)
@@ -286,6 +292,8 @@ def test_a_rebuild_replays_claims_through_todays_parsers(tmp_path):
     # ...and the derived overlay did not. That is the point: a queue with
     # pre-answered questions measures nothing.
     assert rebuilt.merchant_categories() == {}
+    assert synced_docs == sorted(rebuilt.posted_doc_ids()), \
+        "every document posted directly or by the final sweep gets local knowledge"
 
 
 def test_a_rebuild_never_touches_the_source(tmp_path):

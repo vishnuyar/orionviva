@@ -398,10 +398,6 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
     for m in proj.movements():
         if not proj._is_expense(m):
             continue
-        # Imported defaults suppress interview questions while remaining correctable.
-        defaulted = proj.derived_category(m) or {}
-        if defaulted.get("by") == "default":
-            continue
         tier = proj.tier_of(m)
         if tier == TIER_SETTLED:
             continue                      # already known; nothing to ask
@@ -451,7 +447,9 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
         # What a payment of this kind is, as a category this vault holds. The
         # counterparty's own words for the relationship it implies are a label a
         # model coined, and a category slot holds a category.
-        what = g["subcategory"] or g["category"]
+        what = (g["subcategory"]
+                if g["subcategory"] != "unclassified"
+                else g["category"])
         head = say("nature_group_head", count=render_count(g["count"]),
                    example=render_merchant({"example": g["example"]}),
                    money=render_money(g["amount"], g["currency"],
@@ -774,7 +772,7 @@ def _expectation_questions(proj, as_of: str, jurisdiction: str,
 # ----------------------------------------------------------------- the queue
 
 
-def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
+def open_questions(source, limit: int | None = DEFAULT_LIMIT, as_of: str = "",
                    jurisdiction: str = "", locale: str = "") -> dict:
     """Everything awaiting the person, ranked by how much money answering moves.
 
@@ -798,19 +796,12 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
         jurisdiction = jurisdiction_from_env().upper()
     locale = locale or _locale()
     proj = getattr(source, "projection", lambda: source)()
-    qs: list[Question] = []
-    qs += _held_questions(proj, locale)
-    qs += _transfer_questions(proj, locale)
-    qs += _merchant_questions(proj, locale)
-    qs += _nature_questions(proj, locale)
-    qs += _rhythm_questions(proj, locale)
-    qs += _corroboration_questions(proj, locale)
-    qs += _expectation_questions(proj, as_of, jurisdiction, locale)
-    qs += _interview_questions(proj, jurisdiction)
+    qs = [question for group in _question_groups(
+        proj, as_of, jurisdiction, locale) for question in group]
     open_qs, pending = _split_declined(proj, qs)
     # Highest stake first; ties broken by id so the order is stable between reads.
     open_qs.sort(key=lambda q: (-q.amount, q.id))
-    shown, rest = open_qs[:limit], open_qs[limit:]
+    shown, rest = (open_qs, []) if limit is None else (open_qs[:limit], open_qs[limit:])
     return {
         "questions": [q.to_dict() for q in shown],
         "total": len(open_qs),
@@ -826,6 +817,47 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
         "invite": say("free_text_invite"),
         "answered_by_document": say("answered_by_document"),
     }
+
+
+def open_question_counts(source, as_of: str = "", jurisdiction: str = "",
+                         locale: str = "") -> dict:
+    """Count the complete queue by kind without serializing every question.
+
+    Builders are consumed one family at a time, so this read never retains the
+    combined queue or converts every question into its transport dictionary.
+    """
+    if not as_of:
+        from datetime import date as _date
+        as_of = _date.today().isoformat()
+    if not jurisdiction:
+        from .env import jurisdiction_from_env
+        jurisdiction = jurisdiction_from_env().upper()
+    locale = locale or _locale()
+    proj = getattr(source, "projection", lambda: source)()
+    kinds: dict[str, int] = {}
+    examples: dict[str, str] = {}
+    pending = 0
+    for group in _question_groups(proj, as_of, jurisdiction, locale):
+        opened, deferred = _split_declined(proj, group)
+        pending += len(deferred)
+        for question in opened:
+            kinds[question.kind] = kinds.get(question.kind, 0) + 1
+            examples.setdefault(question.kind, question.id)
+    return {"kinds": kinds, "total": sum(kinds.values()),
+            "pending": pending, "example_ids": examples}
+
+
+def _question_groups(proj, as_of: str, jurisdiction: str,
+                     locale: str):
+    """Yield each independently authored queue family for bounded consumers."""
+    yield _held_questions(proj, locale)
+    yield _transfer_questions(proj, locale)
+    yield _merchant_questions(proj, locale)
+    yield _nature_questions(proj, locale)
+    yield _rhythm_questions(proj, locale)
+    yield _corroboration_questions(proj, locale)
+    yield _expectation_questions(proj, as_of, jurisdiction, locale)
+    yield _interview_questions(proj, jurisdiction)
 
 
 def find_question(source, question_id: str, as_of: str = "",

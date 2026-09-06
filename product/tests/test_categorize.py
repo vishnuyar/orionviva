@@ -70,7 +70,7 @@ def test_card_purchase_is_expense_not_income(tmp_path):
     assert TRANSFERS_UNCATEGORIZED in proj.accounts()
     assert INCOME_UNCATEGORIZED not in proj.accounts()   # a purchase is NOT income
     # The clean aggregate: the $300 purchase is spending; the $100 payment is not.
-    assert proj.spending_by_category() == {"Uncategorized": Decimal("300.00")}
+    assert proj.spending_by_category() == {"other": Decimal("300.00")}
 
 
 # --- the category overlay + spending ----------------------------------------
@@ -88,18 +88,21 @@ def _checking_with_spend(tmp_path):
 def test_spending_by_category_and_assignment(tmp_path):
     raw, ledger = _checking_with_spend(tmp_path)
     proj = ledger.projection()
-    # Before categorizing, all spending is Uncategorized.
-    assert proj.spending_by_category() == {"Uncategorized": Decimal("140.00")}
+    # Ingestion publishes a reviewable default instead of an empty category.
+    assert proj.spending_by_category() == {"other": Decimal("140.00")}
     assert len(proj.uncategorized_expenses()) == 2
 
     kroger = next(m for m in proj.movements() if "KROGER" in m.description)
     assert assign_category(ledger, kroger.key, "Groceries") is True
     proj2 = ledger.projection()
     assert proj2.spending_by_category() == {"groceries": Decimal("100.00"),
-                                            "Uncategorized": Decimal("40.00")}
-    # The assignment is verified, keyed to the movement, and captured the descriptor.
+                                            "other": Decimal("40.00")}
+    # The chosen category is verified; the explicit fallback subcategory keeps
+    # the combined pair unverified until its finer classification is reviewed.
     cat = proj2.category_of(kroger.key)
-    assert cat["grade"] == "verified" and "KROGER" in cat["descriptor"]
+    assert cat["category_grade"] == "verified"
+    assert cat["subcategory_grade"] == "unverified"
+    assert cat["grade"] == "unverified" and "KROGER" in cat["descriptor"]
 
 
 def test_import_defaults_peer_payments_before_asking_questions(tmp_path):
@@ -128,7 +131,8 @@ def test_import_defaults_peer_payments_before_asking_questions(tmp_path):
         number="000000001111")
     result = _up(raw, ledger, b"defaulted", checking)
 
-    assert assign_default_categories(ledger, result.doc_id) == 3
+    assert assign_default_categories(ledger, result.doc_id) == 0, \
+        "capture_and_ingest finalizes before returning"
     assert assign_default_categories(ledger, result.doc_id) == 0, \
         "the statement-scoped default is idempotent"
     projection = ledger.projection()
@@ -139,6 +143,10 @@ def test_import_defaults_peer_payments_before_asking_questions(tmp_path):
     assert categorized["ZELLE PAYMENT TO JOHN"]["category"] == "transfers"
     assert categorized["MYSTERY SHOP"]["category"] == "other"
     assert categorized["PAYMENT TO IRS"]["category"] == "other"
+    assert all(row["subcategory"] == "unclassified"
+               for row in categorized.values())
+    assert all(row["grade"] == "unverified"
+               for row in categorized.values())
     assert all(row["by"] == "default" for row in categorized.values())
     peer = next(movement for movement in projection.movements()
                 if movement.description == "ZELLE PAYMENT TO JOHN")
@@ -146,8 +154,10 @@ def test_import_defaults_peer_payments_before_asking_questions(tmp_path):
     assert projection.spending_by_category() == {"other": Decimal("100.00")}
     routine = [question for question in open_questions(
         ledger, as_of="2026-02-01")["questions"]
-               if question["kind"] in (MERCHANT, NATURE)]
-    assert routine == [], "a usable default must not turn import into an interview"
+               if question["kind"] == NATURE
+               and question.get("refs", {}).get("descriptor") == "MYSTERY SHOP"]
+    assert routine == [], \
+        "an ordinary usable default alone must not create a nature question"
 
     assign_merchant_category(ledger, "mystery shop", "food", by="model")
     refreshed = ledger.projection()
@@ -155,6 +165,10 @@ def test_import_defaults_peer_payments_before_asking_questions(tmp_path):
                    if movement.description == "MYSTERY SHOP")
     assert refreshed.derived_category(mystery)["category"] == "food", \
         "positive catalog knowledge replaces the import fallback"
+    resolved = refreshed.derived_category(mystery)
+    assert resolved["category_by"] == "model"
+    assert resolved["subcategory_by"] == "default"
+    assert resolved["by"] == "mixed"
 
 
 def test_statement_defaults_do_not_backfill_another_document(tmp_path):
@@ -247,8 +261,13 @@ def test_upload_applies_a_reviewed_commons_alias_before_defaults(
     enriched = [event for event in vault.ledger.events()
                 if event.event_type == "MerchantEnriched"]
     assert len(enriched) == 1 and enriched[0].body["merchant"] == "costco"
-    assert not [event for event in vault.ledger.events()
+    defaults = [event for event in vault.ledger.events()
                 if event.event_type == "CategoryAssigned"]
+    assert len(defaults) == 2
+    assert all(event.body["category"] == "other"
+               and event.body["subcategory"] == "unclassified"
+               and event.body["subcategory_by"] == "default"
+               for event in defaults)
 
 
 @pytest.mark.parametrize("doc_type", [
@@ -311,7 +330,7 @@ def test_upload_defaults_the_connector_and_every_gap_statement_it_releases(
         "MARCH SHOP": "other"}
     routine = [question for question in open_questions(
         vault.ledger, as_of="2026-04-01")["questions"]
-               if question["kind"] in (MERCHANT, NATURE)]
+               if question["kind"] == NATURE]
     assert routine == []
 
 
@@ -351,11 +370,95 @@ def test_model_suggestion_is_unverified_human_confirmation_verified(tmp_path):
                                            "transport": Decimal("40.00")}
     kroger = next(m for m in proj.movements() if "KROGER" in m.description)
     assert proj.category_of(kroger.key)["grade"] == "unverified"
-    # A human confirmation supersedes the model and becomes verified.
+    # A human confirmation supersedes the model for the primary category. The
+    # fallback subcategory remains explicitly unverified.
     assign_category(ledger, kroger.key, "dining")
     proj2 = ledger.projection()
     assert proj2.category_of(kroger.key)["category"] == "dining"
-    assert proj2.category_of(kroger.key)["grade"] == "verified"
+    assert proj2.category_of(kroger.key)["category_grade"] == "verified"
+    assert proj2.category_of(kroger.key)["subcategory_grade"] == "unverified"
+
+
+def test_document_defaults_complete_every_direction_with_reviewable_provenance(
+        tmp_path):
+    from viva.ledger import Provenance, account_opened, simple_transaction
+    from viva.questions import MERCHANT, NATURE, open_questions
+
+    _raw, ledger = _stores(tmp_path)
+    ledger.append(account_opened(
+        "cash", "depository", "Cash", "USD", "2026-01-01"))
+    ledger.append(account_opened(
+        "card", "liability", "Card", "USD", "2026-01-01"))
+    for account, amount, description in (
+            ("cash", "100.00", "Income-shaped"),
+            ("cash", "-40.00", "Spending-shaped"),
+            ("card", "20.00", "Card charge"),
+            ("card", "-10.00", "Card credit")):
+        ledger.append(simple_transaction(
+            account, amount, description, "2026-01-05",
+            provenance=Provenance(doc_id="all-directions")))
+
+    assert assign_default_categories(ledger, "all-directions") == 4
+    projection = ledger.projection()
+    records = [projection.derived_category(movement)
+               for movement in projection.movements()
+               if movement.provenance.doc_id == "all-directions"]
+
+    assert len(records) == 4
+    assert all(record["category"] and record["subcategory"] == "unclassified"
+               for record in records)
+    assert all(record["grade"] == "unverified"
+               and record["subcategory_by"] == "default"
+               for record in records)
+    assert not [question for question in open_questions(
+        ledger, as_of="2026-02-01")["questions"]
+                if question["kind"] == NATURE]
+
+
+def test_document_finalization_completes_a_category_only_direct_writer(tmp_path):
+    from viva.ledger import Provenance, account_opened, simple_transaction
+    from viva.ledger.events import VERIFIED, category_assigned
+
+    _raw, ledger = _stores(tmp_path)
+    ledger.append(account_opened(
+        "cash", "depository", "Cash", "USD", "2026-01-01"))
+    ledger.append(simple_transaction(
+        "cash", "-25.00", "Known category", "2026-01-05",
+        provenance=Provenance(doc_id="direct-writer")))
+    movement = ledger.projection().movements()[0]
+    ledger.append(category_assigned(
+        movement.key, movement.description, "groceries", VERIFIED,
+        movement.date, by="human"))
+
+    assert assign_default_categories(ledger, "direct-writer") == 1
+    record = ledger.projection().derived_category(movement)
+    assert record["category"] == "groceries"
+    assert record["category_grade"] == "verified"
+    assert record["category_by"] == "human"
+    assert record["subcategory"] == "unclassified"
+    assert record["subcategory_grade"] == "unverified"
+    assert record["subcategory_by"] == "default"
+    assert record["grade"] == "unverified" and record["by"] == "mixed"
+
+
+def test_engine_finalizes_posted_movements_without_a_balance_profile(tmp_path):
+    from viva import engine
+    from viva.ledger import Provenance, account_opened, simple_transaction
+    from viva.vault import Vault
+
+    vault = Vault.open(tmp_path / "vault", "pw")
+    vault.ledger.append(account_opened(
+        "other", "depository", "Other", "USD", "2026-01-01"))
+    vault.ledger.append(simple_transaction(
+        "other", "-5.00", "Non-balance movement", "2026-01-05",
+        provenance=Provenance(doc_id="non-balance-doc")))
+
+    engine._finalize_new_documents(vault, set())
+
+    (movement,) = vault.ledger.projection().movements()
+    record = vault.ledger.projection().derived_category(movement)
+    assert record["category"] == "other"
+    assert record["subcategory"] == "unclassified"
 
 
 def test_categorization_survives_a_replay(tmp_path):
@@ -373,4 +476,5 @@ def test_answer_spending_reports_categories(tmp_path):
     assign_category(ledger, kroger.key, "groceries")
     ans = answer_spending(ledger.projection())
     assert ans.answered and ans.amount == Decimal("140.00")
-    assert "groceries" in ans.text.lower() and any("uncategor" in c.lower() for c in ans.caveats)
+    assert "groceries" in ans.text.lower() and "other" in ans.text.lower()
+    assert not any("uncategor" in c.lower() for c in ans.caveats)

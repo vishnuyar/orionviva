@@ -66,7 +66,7 @@ def test_merchant_ruling_fills_all_its_transactions(tmp_path):
     proj2 = ledger.projection()
     # BOTH Amazon transactions are now categorized from the one ruling.
     assert proj2.spending_by_category() == {"shopping": Decimal("80.00"),
-                                            "Uncategorized": Decimal("100.00")}
+                                            "other": Decimal("100.00")}
     assert len(proj2.uncategorized_expenses()) == 1        # only Kroger left
 
 
@@ -81,7 +81,10 @@ def test_per_transaction_override_beats_the_merchant_rule(tmp_path):
     # The overridden one is groceries (verified), the other stays shopping.
     assert proj.spending_by_category() == {"groceries": Decimal("50.00"),
                                            "shopping": Decimal("30.00")}
-    assert proj.derived_category(amazon1)["grade"] == "verified"
+    assigned = proj.derived_category(amazon1)
+    assert assigned["grade"] == "unverified"  # weakest component: fallback finer label
+    assert assigned["category_grade"] == "verified"
+    assert assigned["subcategory_grade"] == "unverified"
 
 
 def test_batched_categorizer_is_one_call_over_deduped_merchants(tmp_path):
@@ -101,7 +104,8 @@ def test_batched_categorizer_is_one_call_over_deduped_merchants(tmp_path):
                                            "groceries": Decimal("100.00")}
     # A batched (model) ruling is corroborated, not verified.
     m = next(mv for mv in proj.movements() if "KROGER" in mv.description)
-    assert proj.derived_category(m)["grade"] == "corroborated"
+    assert proj.derived_category(m)["grade"] == "unverified"
+    assert proj.derived_category(m)["category_grade"] == "corroborated"
 
 
 def test_merchant_ruling_survives_a_replay(tmp_path):

@@ -114,6 +114,10 @@ def test_reingest_can_filter_to_one_document_family_and_cost_nothing_first():
     assert "Do not ship this prompt version" in src
     assert "No document changed outcome" in src, \
         "an unchanged run must say so, rather than looking like a success"
+    assert "sweep(vault.ledger)" in src
+    assert src.index("sweep(vault.ledger)") < src.index(
+        "sync_installed_merchants(vault, doc_id)"), \
+        "the terminal healing cascade must finish before catalog synchronization"
 
 
 def test_one_locale_default_for_every_entry_point(monkeypatch):

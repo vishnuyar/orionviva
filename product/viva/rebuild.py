@@ -10,8 +10,10 @@ one call per document.
 **It writes a NEW vault and never touches the source.**
 
 **Run `python -m viva.export_rulings` first.** A rebuild replays documents, not
-people: rulings, categories and identity confirmations are dropped, and only
-that export brings them back.
+people: personal rulings and identity confirmations are dropped, and only that
+export brings them back. Derived merchant events are reconstructed from the
+installed local catalog after replay; unmatched movements retain explicit
+reviewable defaults.
 
 Replays oldest first; `--hash-order` replays in raw-store order instead. Prints
 what the stored claims contain before starting, then each document's outcome
@@ -199,12 +201,20 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     from .ingest import sweep
 
     swept = sweep(vault.ledger)
+    # Apply installed catalog records after the final healing cascade, including
+    # documents that the sweep posts.
+    from .enrich import sync_installed_merchants
+
+    merchant_syncs = sum(
+        sync_installed_merchants(vault, doc_id)
+        for doc_id in sorted(vault.ledger.projection().posted_doc_ids()))
     proj = vault.ledger.projection()
     # Reported even when it healed nothing, so a zero is distinguishable from a
     # sweep that never ran.
     log(f"\nsweep: healed {swept.get('gaps', 0)} gap(s), corroborated "
         f"{swept.get('corroborated', 0)} conflict(s), linked "
         f"{swept.get('auto', 0)} transfer(s)")
+    log(f"installed merchant knowledge: {merchant_syncs} record(s) applied")
 
     # The final state, not the arrival actions.
     #

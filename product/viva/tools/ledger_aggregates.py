@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 
 from .ledger_common import *
+from .ledger_common import _identity_holds
 from ..ledger.events import CORROBORATED
 
 def _query_holdings(proj, filters: dict) -> ToolResult:
@@ -946,6 +947,11 @@ def _line_word(line: dict) -> str:
 
 def _aggregate_net_worth(proj, as_of: str | None, today: str = "", *,
                          view: str = "") -> ToolResult:
+    if _identity_holds(proj):
+        return refusal(
+            TOOL, "account_identity_unresolved",
+            "I cannot give net worth while a statement's account identity is "
+            "unresolved.")
     # With no day asked for, the day it is asked on. A balance carries forward,
     # so the total is good now; `net_worth` on its own would date the point by
     # its newest input, which is when the evidence was taken rather than when

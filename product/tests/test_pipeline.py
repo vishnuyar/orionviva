@@ -65,6 +65,11 @@ def test_checking_statement_posts_and_reconciles(tmp_path):
     assert ans.amount == Decimal("1457.58") and ans.grade == "corroborated"
     # Raw bytes were captured regardless.
     assert raw.has(RawStore.fingerprint(data))
+    # The public ingestion boundary publishes complete category pairs.
+    for movement in store.projection().movements():
+        assigned = store.projection().derived_category(movement)
+        assert assigned["category"]
+        assert assigned["subcategory"] == "unclassified"
 
 
 def test_reupload_is_duplicate_no_double_post(tmp_path):

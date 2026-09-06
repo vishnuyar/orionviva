@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 from .ledger_common import *
+from .ledger_common import _identity_holds
 from ..ledger.events import CORROBORATED
 
 def _query_balances(proj, filters: dict) -> ToolResult:
+    if (filters.get("kind") == "card_account"
+            and _identity_holds(proj, {LIABILITY})):
+        return refusal(
+            TOOL, "account_identity_unresolved",
+            "I cannot give a complete card-debt total while a statement's "
+            "account identity is unresolved.")
     infos = _real_accounts(proj)
     # How many balance-holding accounts this person has, before any filter
     # narrows the read. It is what a per-account figure is one of, so it is

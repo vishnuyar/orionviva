@@ -17,7 +17,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from merchantcore.descriptor import linted_example
-from merchantcore.taxonomy import subcategory_identity
+from merchantcore.taxonomy import FALLBACK_SUBCATEGORY, subcategory_identity
 
 from ..merchants import is_shareable
 from . import merchants as merchants_view
@@ -35,6 +35,21 @@ def _record_for(core: ProjectionCore, m) -> dict | None:
     merchant = merchants_view.merchant_record(core, m)
     if override is not None and override.get("by") != "default":
         return override
+    if merchant is not None and override is not None and override.get("by") == "default":
+        if not (merchant.get("subcategory") or "").strip():
+            return {
+                **merchant,
+                "subcategory": override.get("subcategory", ""),
+                "category_grade": merchant.get(
+                    "category_grade", merchant.get("grade", "")),
+                "subcategory_grade": override.get(
+                    "subcategory_grade", override.get("grade", "")),
+                "category_by": merchant.get("category_by", merchant.get("by", "")),
+                "subcategory_by": override.get(
+                    "subcategory_by", override.get("by", "")),
+                "by": "mixed",
+                "grade": override.get("grade", ""),
+            }
     return merchant or override
 
 
@@ -197,7 +212,9 @@ def known_subcategories(core: ProjectionCore) -> list[str]:
            for row in list(core._merchant_categories.values())
            + list(core._categories.values())
            for s in [(row.get("subcategory") or "").strip()] if s}
-    return sorted(out - {""})
+    # The ingestion fallback is review state, not a choice to teach or offer as
+    # a meaningful finer label.
+    return sorted(out - {"", FALLBACK_SUBCATEGORY})
 
 
 # What a category holds that no subcategory names. Not a subcategory: it is the
@@ -345,7 +362,8 @@ def uncategorized_expenses(core: ProjectionCore) -> list:
     person's life is never asked about."""
     return [m for m in movements_view.movements(core)
             if movements_view.counts_as_spending(m)
-            and derived_category(core, m) is None]
+            and ((derived_category(core, m) or {}).get("by") == "default"
+                 or derived_category(core, m) is None)]
 
 
 def uncategorized_merchants(core: ProjectionCore,

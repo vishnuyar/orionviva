@@ -59,6 +59,15 @@ from .statement_projector import *
 from .paystub_projector import *
 from .brokerage_projector import *
 
+
+def _finalize_posted_documents(ledger: Ledger, posted_before: set[str]) -> None:
+    """Give every document posted by an ingestion cascade a complete category pair."""
+    from .categorize import assign_default_categories
+
+    newly_posted = ledger.projection().posted_doc_ids() - posted_before
+    for doc_id in sorted(newly_posted):
+        assign_default_categories(ledger, doc_id)
+
 def sweep(ledger: Ledger) -> dict:
     """Run the whole reconciliation + transfer sweep over an existing vault.
 
@@ -73,12 +82,14 @@ def sweep(ledger: Ledger) -> dict:
     # Corroboration re-posts run their own transfer scan, so the trailing
     # link_transfers alone undercounts; diff the projection instead.
     p0 = ledger.projection()
+    posted_before = p0.posted_doc_ids()
     links0, sugg0 = len(p0.transfer_links()), len(p0.transfer_suggestions())
     accounts_merged = repair_asserted_account_aliases(ledger)
     gaps = heal_gaps(ledger)
     corroborated = heal_corroboration(ledger)
     gaps += heal_paystubs(ledger)         # awaiting pay stubs whose deposit is here
     link_transfers(ledger)
+    _finalize_posted_documents(ledger, posted_before)
     p1 = ledger.projection()
     auto = len(p1.transfer_links()) - links0
     # `suggested` is the number of questions open NOW, not a delta: a link
@@ -115,6 +126,7 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
         log.info("ingest: doc_id=%s already posted/held — skipping", doc_id[:12])
         return IngestResult(doc_id=doc_id, action=DUPLICATE, doc_type="",
                             message="Already posted or held (same content); no change.")
+    posted_before = ledger.projection().posted_doc_ids()
 
     try:
         rr = read_fn(data, doc_id)               # (2) the model read (a proposal)
@@ -192,6 +204,7 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
             # already held. The import is deferred to break an ingest cycle.
             from .transfers import link_transfers
             link_transfers(ledger)
+        _finalize_posted_documents(ledger, posted_before)
         log.info("ingest done: doc_id=%s -> %s (%s)", doc_id[:12], res.action, res.grade)
         return res
 

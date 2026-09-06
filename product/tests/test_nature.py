@@ -212,7 +212,7 @@ def test_transfers_never_appear_as_a_spending_line_item(tmp_path):
                "documents": "", "ask": ""}])
     by_cat = ledger.projection().spending_by_category()
     assert "transfers" not in by_cat                # the incoherence is gone
-    assert by_cat == {"Uncategorized": Decimal("50.00")}
+    assert by_cat == {"other": Decimal("50.00")}
 
 
 def test_a_human_ruling_beats_the_implication(tmp_path):

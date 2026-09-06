@@ -111,7 +111,11 @@ def rebuild_log(src_events: pathlib.Path, dst_events: pathlib.Path,
             counts_in[et] += 1
             if et in drop_types:
                 # A person's ruling survives a reset unless explicitly discarded.
-                if not (keep_human and event.get("body", {}).get("by") == HUMAN):
+                body = event.get("body", {})
+                human_authored = (body.get("by") == HUMAN
+                                  or body.get("category_by") == HUMAN
+                                  or body.get("subcategory_by") == HUMAN)
+                if not (keep_human and human_authored):
                     continue
             survivors.append(payload)
             counts_out[et] += 1

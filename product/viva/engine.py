@@ -691,7 +691,7 @@ def confirm_correction(vault: Vault, doc_id: str, field: str, value: str,
     """Apply a person's ruling on a held statement and re-post it."""
     posted_before = vault.ledger.projection().posted_doc_ids()
     res = apply_human_correction(vault.ledger, doc_id, field, value, target_index)
-    _categorize_new_balance_statements(vault, posted_before)
+    _finalize_new_documents(vault, posted_before)
     return {
         "action": res.action, "grade": res.grade, "account": res.account,
         "message": res.message,
@@ -702,14 +702,13 @@ def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
     """Apply a person's account-identity ruling."""
     posted_before = vault.ledger.projection().posted_doc_ids()
     res = apply_identity_ruling(vault.ledger, doc_id, decision)
-    _categorize_new_balance_statements(vault, posted_before)
+    _finalize_new_documents(vault, posted_before)
     return {"ok": res.action == POSTED, "action": res.action, "grade": res.grade,
             "account": res.account, "message": res.message}
 
 
-def _categorize_new_balance_statements(vault: Vault,
-                                       posted_before: set[str]) -> None:
-    """Apply installed merchant priors, then default each new balance statement."""
+def _finalize_new_documents(vault: Vault, posted_before: set[str]) -> None:
+    """Apply priors and require a complete two-level movement classification."""
     projection = vault.ledger.projection()
     captured_types = projection.captured_docs()
     newly_posted = projection.posted_doc_ids() - posted_before
@@ -719,7 +718,7 @@ def _categorize_new_balance_statements(vault: Vault,
         profile = profile_for(captured_types.get(doc_id, ""))
         if profile is not None and profile.identity == BALANCE_IDENTITY:
             sync_installed_merchants(vault, doc_id)
-            assign_default_categories(vault.ledger, doc_id)
+        assign_default_categories(vault.ledger, doc_id)
 
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:
@@ -730,8 +729,8 @@ def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:
     posted_before = vault.ledger.projection().posted_doc_ids()
     res = capture_and_ingest(vault.raw, vault.ledger, data, read_fn,
                              filename=filename, captured_at=_today())
-    # Assign defaults only to balance statements posted by this operation.
-    _categorize_new_balance_statements(vault, posted_before)
+    # Every posted movement leaves ingestion with a complete two-level claim.
+    _finalize_new_documents(vault, posted_before)
     projection = vault.ledger.projection()
     attempted = res.doc_id in projection.read_attempted_docs()
     parsed = res.doc_id in projection.read_parsed_docs()

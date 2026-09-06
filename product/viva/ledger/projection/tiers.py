@@ -37,7 +37,8 @@ def tier_of(core: ProjectionCore, m) -> str:
     # at a time.
     if not is_shareable(m.description):
         return TIER_UNKNOWN
-    if categories_view.derived_category(core, m) is None:
+    category = categories_view.derived_category(core, m)
+    if category is None or category.get("by") == "default":
         return TIER_UNENRICHED
     return (TIER_STRUCTURAL if merchants_view.implication_of(core, m)
             else TIER_SETTLED)

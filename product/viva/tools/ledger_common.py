@@ -78,6 +78,28 @@ MAX_FOLDS = 3
 # are — and what it hid rides a caveat, like everything else a read leaves out.
 MAX_LABELS = 40
 
+
+def _identity_holds(proj, account_kinds: set[str] | None = None) -> list[dict]:
+    """Unresolved statements relevant to the requested account population.
+
+    A hold whose extracted document type is unknown remains relevant: failing
+    closed is required until its kind is knowable.  A known investment hold,
+    however, cannot change the population of card accounts.
+    """
+    from ..ingest.registry import account_kind_for
+
+    holds = [hold for hold in proj.open_holds()
+             if hold.get("reason") == "identity"]
+    if account_kinds is None:
+        return holds
+    relevant = []
+    for hold in holds:
+        doc_type = str((hold.get("facts") or {}).get("doc_type") or "")
+        kind = account_kind_for(doc_type) if doc_type else ""
+        if not kind or kind in account_kinds:
+            relevant.append(hold)
+    return relevant
+
 # What a spending group is called when the movements in it name no
 # counterparty — a description that is blank, or blank once its spaces come
 # off. Every descriptor reaches a merchant key in lower case, so no real

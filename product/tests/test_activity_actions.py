@@ -119,11 +119,13 @@ def test_activity_v3_carries_current_category_tag_choices_and_actions(tmp_path):
     assert read["vocabularies"]["tags"]["items"] == [
         {"id": "japan", "label": "japan"},
         {"id": "shared", "label": "shared"}]
-    assert row["category"] == {"id": None, "label": "Uncategorized"}
+    assert row["category"] == {"id": "other", "label": "other"}
     assert row["account_id"] == second.account
     assert "Checking" in row["account_name"]
-    assert row["subcategory"] == {"id": None, "label": ""}
-    assert row["classification"] is None
+    assert row["subcategory"] == {
+        "id": "unclassified", "label": "unclassified"}
+    assert row["classification"] == {
+        "grade": "unverified", "provenance": "default"}
     assert row["evidence_links"] == [{
         "document_id": second.provenance.doc_id, "label": "",
         "relation": "attests", "page": "", "region": ""}]
@@ -133,8 +135,10 @@ def test_activity_v3_carries_current_category_tag_choices_and_actions(tmp_path):
     advertised = {item["id"]: item
                   for item in read["vocabularies"]["categories"]["items"]}
     assert category["category"] == advertised["groceries"]
+    assert category["subcategory"] == {
+        "id": "unclassified", "label": "unclassified"}
     assert category["classification"] == {
-        "grade": "verified", "provenance": "human"}
+        "grade": "unverified", "provenance": "mixed"}
 
 
 def test_activity_v3_carries_none_suggested_and_exact_reviewed_relationship(tmp_path):
@@ -297,7 +301,9 @@ def test_category_action_appends_one_verified_movement_overlay_and_replays(tmp_p
     assert len(_events(vault, "CategoryAssigned")) == before + 1
     written = vault.ledger.projection().category_of(target.key)
     assert written["category"] == "groceries"
-    assert written["grade"] == "verified"
+    assert written["grade"] == "unverified"
+    assert written["category_grade"] == "verified"
+    assert written["subcategory_grade"] == "unverified"
     assert not written.get("nature"), "category correction cannot smuggle nature"
     replayed = LedgerProjection(vault.events())
     assert replayed.category_of(target.key)["category"] == "groceries"
@@ -471,7 +477,7 @@ def test_compound_classification_assigns_the_exact_selection_atomically(tmp_path
     assert outcome["kind"] == "completed"
     assert len(_events(vault, "CategoryAssigned")) == before + 1
     projection = vault.ledger.projection()
-    assert projection.category_of(first.key) is None
+    assert projection.category_of(first.key)["by"] == "default"
     written = projection.category_of(second.key)
     assert written["category"] == "groceries"
     assert written["subcategory"] == "supermarket"
@@ -498,7 +504,7 @@ def test_compound_classification_can_assign_many_without_generalizing_a_merchant
     })
 
     assert outcome["kind"] == "completed"
-    assert len(_events(vault, "CategoryAssigned")) == len(keys)
+    assert len(_events(vault, "CategoryAssigned")) == 2 * len(keys)
     projection = vault.ledger.projection()
     assert all(projection.category_of(key)["subcategory"] == "restaurant"
                for key in keys)
@@ -513,7 +519,7 @@ def test_matching_merchant_inheritance_still_records_the_exact_movement(tmp_path
     vault.ledger.append(merchant_enriched(
         merchant, "groceries", subcategory="supermarket", grade=VERIFIED,
         occurred_at="2026-03-07", by="human"))
-    assert vault.ledger.projection().category_of(first.key) is None
+    assert vault.ledger.projection().category_of(first.key)["by"] == "default"
     before = len(_events(vault, "CategoryAssigned"))
 
     outcome = ActivityActions(vault).assign_classification({
@@ -823,15 +829,16 @@ def test_classification_durable_prefix_failure_commits_none_and_stays_none(
             "subcategory_id": "supermarket",
         })
 
-    assert all(vault.ledger.projection().category_of(key) is None
+    assert all(vault.ledger.projection().category_of(key)["by"] == "default"
                for key in movement_ids)
     reopened = Vault.open(vault.directory, "pw")
-    assert all(reopened.ledger.projection().category_of(key) is None
+    assert all(reopened.ledger.projection().category_of(key)["by"] == "default"
                for key in movement_ids)
     reopened.ledger.append(account_opened(
         "sentinel", "depository", "Sentinel", "USD", "2026-04-02"))
     replayed = Vault.open(vault.directory, "pw").ledger.projection()
-    assert all(replayed.category_of(key) is None for key in movement_ids)
+    assert all(replayed.category_of(key)["by"] == "default"
+               for key in movement_ids)
 
 
 def test_batch_tag_add_remove_preserves_unrelated_tags_and_normalizes_case(tmp_path):

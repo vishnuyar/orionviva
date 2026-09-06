@@ -38,7 +38,10 @@ HUMAN_EVENTS = (
 
 def _is_human(event) -> bool:
     body = event.body or {}
-    if body.get("by") == "human" or body.get("confirmed_by") == "human":
+    if (body.get("by") == "human"
+            or body.get("category_by") == "human"
+            or body.get("subcategory_by") == "human"
+            or body.get("confirmed_by") == "human"):
         return True
     # Some human events carry no `by` because only a person can produce them.
     return event.event_type in ("AccountAliasConfirmed", "TransferConfirmed",

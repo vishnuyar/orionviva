@@ -365,9 +365,43 @@ class ProjectionCore:
         elif et == "CategoryAssigned":
             key = event.body["movement_key"]
             prior = self._categories.get(key)
-            # A verified (human) ruling wins; otherwise the latest applies.
-            if prior is None or event.body.get("grade") == VERIFIED or prior.get("grade") != VERIFIED:
+            if prior is None:
                 self._categories[key] = event.body
+            else:
+                incoming = dict(event.body)
+                category_prior = prior.get("category_grade", prior.get("grade", ""))
+                category_new = incoming.get(
+                    "category_grade", incoming.get("grade", ""))
+                subcategory_prior = (prior.get(
+                    "subcategory_grade", prior.get("grade", ""))
+                    if prior.get("subcategory") else "")
+                subcategory_new = (incoming.get(
+                    "subcategory_grade", incoming.get("grade", ""))
+                    if incoming.get("subcategory") else "")
+                category_source = (incoming if _grade_rank(category_new)
+                                   >= _grade_rank(category_prior) else prior)
+                subcategory_source = (incoming if _grade_rank(subcategory_new)
+                                      >= _grade_rank(subcategory_prior) else prior)
+                applied = dict(category_source)
+                applied.update({
+                    "subcategory": subcategory_source.get("subcategory", ""),
+                    "subcategory_grade": subcategory_source.get(
+                        "subcategory_grade", subcategory_source.get("grade", "")),
+                    "subcategory_by": subcategory_source.get(
+                        "subcategory_by", subcategory_source.get("by", "")),
+                    "category_grade": category_source.get(
+                        "category_grade", category_source.get("grade", "")),
+                    "category_by": category_source.get(
+                        "category_by", category_source.get("by", "")),
+                })
+                component_grades = [applied["category_grade"],
+                                    applied["subcategory_grade"]]
+                applied["grade"] = min(
+                    component_grades, key=_grade_rank)
+                component_by = {applied["category_by"], applied["subcategory_by"]}
+                applied["by"] = (component_by.pop()
+                                 if len(component_by) == 1 else "mixed")
+                self._categories[key] = applied
 
         elif et == "RulingRecorded":
             key = (event.body["scope"], event.body["subject"])
