@@ -1,4 +1,4 @@
-import { BridgeRefusal, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/contracts";
+import { BridgeRefusal, BridgeTimeout, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/contracts";
 import type { BridgeClient } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
 import { adaptActivity, adaptActivityActionOutcome } from "./adapters/activity";
@@ -49,6 +49,7 @@ async function acted(call: Promise<unknown>): Promise<ActionResult> {
   // amount read out of the vault — vault text reaching a screen ungraded,
   // uncited and through no read model.
   if (replied.status === "rejected") {
+    if (replied.reason instanceof BridgeTimeout) throw replied.reason;
     if (replied.reason instanceof BridgeRefusal) return replied.reason.code === REQUEST_REFUSED ? { state: "unserved" } : { state: "unreadable" };
     if (replied.reason instanceof BridgeUnreadable) return { state: "unreadable" };
     return { state: "unanswered" };
@@ -60,6 +61,7 @@ async function acted(call: Promise<unknown>): Promise<ActionResult> {
 async function activityActed(call: Promise<unknown>): Promise<ActivityActionResult> {
   const [replied] = await Promise.allSettled([call]);
   if (replied.status === "rejected") {
+    if (replied.reason instanceof BridgeTimeout) throw replied.reason;
     if (replied.reason instanceof BridgeRefusal) return replied.reason.code === REQUEST_REFUSED ? { state: "unserved" } : { state: "unreadable" };
     if (replied.reason instanceof BridgeUnreadable) return { state: "unreadable" };
     return { state: "unanswered" };
@@ -82,7 +84,6 @@ export async function readJobsFeature(client: BridgeClient): Promise<FeatureResu
   const [read] = await Promise.allSettled([client.readJobs()]);
   return settled(read, (value) => adaptJobs(value.data));
 }
-
 async function readTrustFeature(client: BridgeClient): Promise<FeatureResult<TrustData>> {
   const [read] = await Promise.allSettled([client.readTrust()]);
   return settled(read, (value) => adaptTrust(value.data));
@@ -172,6 +173,7 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
     // answered has nothing to report about.
     rescan: async () => {
       const [replied] = await Promise.allSettled([client.rescanDocuments()]);
+      if (replied.status === "rejected" && replied.reason instanceof BridgeTimeout) throw replied.reason;
       const result = await acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
       const report = replied.status === "fulfilled" && isRecord(replied.value) ? adaptRescan(replied.value.state) : null;
       return { result, report };
@@ -223,6 +225,7 @@ export function privateSettingsActions(client: BridgeClient): SettingsActions {
     },
     propose: async (kind, fields) => {
       const [replied] = await Promise.allSettled([client.proposeSettings(kind, fields)]);
+      if (replied.status === "rejected" && replied.reason instanceof BridgeTimeout) throw replied.reason;
       const proposal = replied.status === "fulfilled" ? adaptProposal(replied.value) : null;
       if (proposal) return proposal;
       return acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
@@ -267,6 +270,7 @@ export function privatePlanActions(client: BridgeClient): PlanActions {
   return {
     draft: async (payload) => {
       const [reply] = await Promise.allSettled([client.draftPlan(payload)]);
+      if (reply.status === "rejected" && reply.reason instanceof BridgeTimeout) throw reply.reason;
       if (reply.status === "rejected") return { state: "unanswered" };
       return adaptPlanDraftReply(reply.value);
     },

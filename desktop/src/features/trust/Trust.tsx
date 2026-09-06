@@ -13,7 +13,7 @@ import type { CancelActionState, EngineIdentity, FeatureResult, JobView, Outboun
 // than no form.
 // Unattended work, and a file somebody can send. A source that carries neither
 // renders no controls: a control that would have to refuse is worse than none.
-export type MaintenanceControls = { state: TrustActionState; job: JobView | null; cancel: CancelActionState; onRun: (spend: boolean) => void; onDiagnose: (file: string) => void; onStop: ((jobId: string) => void) | null };
+export type MaintenanceControls = { state: TrustActionState; job: JobView | null; jobStatus?: "available" | "unavailable"; jobCheck?: "idle" | "checking" | "failed" | "succeeded"; cancel: CancelActionState; onRun: (spend: boolean) => void; onDiagnose: (file: string) => void; onStop: ((jobId: string) => void) | null; onRecheck?: () => void };
 export type SettingsControls = {
   settings: FeatureResult<SettingsView>;
   state: SettingsActionState;
@@ -83,7 +83,7 @@ function Configuration({ controls }: { controls: SettingsControls }) {
     <form className="trust-settings-form" onSubmit={(event) => { event.preventDefault(); if (!working) controls.onPropose("presentation", presentationFields); }}>
       <label>Write numbers as<input value={locale} onChange={(event) => setLocale(event.target.value)} placeholder="en-US" autoComplete="off" /></label>
       <label>Label totals<input value={currency} onChange={(event) => setCurrency(event.target.value)} placeholder="USD" autoComplete="off" /></label>
-      <button className="secondary-button" type="submit" aria-disabled={working}>Show me what would change</button>
+      <button className="secondary-button" type="submit" aria-disabled={working} aria-describedby={working ? "trust-settings-waiting" : undefined}>Show me what would change</button>
     </form>
     <form className="trust-settings-form" onSubmit={(event) => { event.preventDefault(); if (!working) controls.onPropose("model", modelFields); }}>
       <label>Reach a model through<select value={adapter} onChange={(event) => setAdapter(event.target.value)}><option value="">Choose how</option><option value="anthropic">anthropic</option><option value="openai-compatible">openai-compatible</option></select></label>
@@ -92,14 +92,15 @@ function Configuration({ controls }: { controls: SettingsControls }) {
       <label>Its key<input type="password" value={key} disabled={keyNotNeeded} onChange={(event) => setKey(event.target.value)} placeholder="Paste the key" autoComplete="off" /></label>
       <p>Leave this blank to keep the key already in use. If no key is in use, paste one or say this model needs no key.</p>
       <label><span><input type="checkbox" checked={keyNotNeeded} onChange={(event) => { setKeyNotNeeded(event.target.checked); if (event.target.checked) setKey(""); }} /> This model needs no key</span></label>
-      <button className="secondary-button" type="submit" aria-disabled={working}>Show me what would change</button>
-      <button className="secondary-button" type="button" aria-disabled={working} onClick={() => { if (!working) controls.onPropose("model", { adapter: "", model: "", base_url: "", key_action: "" }); }}>Reach no model</button>
+      <button className="secondary-button" type="submit" aria-disabled={working} aria-describedby={working ? "trust-settings-waiting" : undefined}>Show me what would change</button>
+      <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "trust-settings-waiting" : undefined} onClick={() => { if (!working) controls.onPropose("model", { adapter: "", model: "", base_url: "", key_action: "" }); }}>Reach no model</button>
     </form>
     {proposal ? <div className={proposal.sends ? "trust-settings-proposal sends" : "trust-settings-proposal"}>
       <p>{proposal.message}</p>
       <dl>{Object.entries(proposal.changes).map(([name, value]) => <div key={name}><dt>{fieldLabels[name] || name}</dt><dd>{proposedSettingValue(name, value)}</dd></div>)}</dl>
-      <button className="primary-button" type="button" aria-disabled={working} onClick={() => { if (!working) controls.onConfirm(proposal.kind, proposal.kind === "presentation" ? presentationFields : modelFields, proposal.digest, proposal.kind === "model" ? key : ""); setKey(""); }}>Yes, do that</button>
+      <button className="primary-button" type="button" aria-disabled={working} aria-describedby={working ? "trust-settings-waiting" : undefined} onClick={() => { if (!working) controls.onConfirm(proposal.kind, proposal.kind === "presentation" ? presentationFields : modelFields, proposal.digest, proposal.kind === "model" ? key : ""); setKey(""); }}>Yes, do that</button>
     </div> : null}
+    {working ? <span className="action-explanation" id="trust-settings-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
     <div className="visually-hidden" role="status" aria-live="polite">{said}</div>
     {said ? <p className="trust-settings-answer">{said}</p> : null}
   </section>;
@@ -248,25 +249,29 @@ function Absences({ absences }: { absences: readonly { id: string; sentence: str
 function Maintenance({ controls }: { controls: MaintenanceControls }) {
   const [file, setFile] = useState("");
   const jobRunning = controls.job?.state === "queued" || controls.job?.state === "running";
-  const working = controls.state.state === "working" || jobRunning;
+  const jobUnavailable = controls.jobStatus === "unavailable";
+  const working = controls.state.state === "working";
   const settled = controls.state.state === "settled" ? controls.state.result : null;
   const said = settled ? (settled.state === "settled" ? settled.outcome.message.trim() || UNSPOKEN_REPLY : `${channelPresentation(settled).title}. ${channelPresentation(settled).detail}`) : "";
   return <section className="trust-maintenance" aria-labelledby="trust-maintenance-title">
     <h3 id="trust-maintenance-title">Work this app could do on its own</h3>
     <p>Planning shows what it would do and does none of it. Running it spends model calls, and every one of them lands in the record above.</p>
     <div className="trust-maintenance-controls">
-      <button className="secondary-button" type="button" aria-disabled={working} onClick={() => { if (!working) controls.onRun(false); }}>Show me what it would do</button>
-      <button className="secondary-button" type="button" aria-disabled={working} onClick={() => { if (!working) controls.onRun(true); }}>Run it, and spend</button>
+      <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "trust-maintenance-waiting" : undefined} onClick={() => { if (!working) controls.onRun(false); }}>Show me what it would do</button>
+      <button className="secondary-button" type="button" aria-disabled={working || jobRunning || jobUnavailable} aria-describedby={working ? "trust-maintenance-waiting" : jobUnavailable ? "trust-maintenance-unavailable" : jobRunning ? "trust-maintenance-duplicate" : undefined} onClick={() => { if (!working && !jobRunning && !jobUnavailable) controls.onRun(true); }}>Run it, and spend</button>
     </div>
     <form className="trust-maintenance-form" onSubmit={(event) => { event.preventDefault(); if (!working) controls.onDiagnose(file); }}>
       <label>Write a file I can send<input value={file} onChange={(event) => setFile(event.target.value)} placeholder="/path/to/diagnostic.json" autoComplete="off" /></label>
-      <button className="secondary-button" type="submit" aria-disabled={working}>Write it</button>
+      <button className="secondary-button" type="submit" aria-disabled={working} aria-describedby={working ? "trust-maintenance-waiting" : undefined}>Write it</button>
     </form>
     <p>That file holds what this build is and what has gone through it as counts. No name, no amount, no document and nothing from your records.</p>
     {working ? <span className="action-explanation" id="trust-maintenance-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
+    {jobRunning && !working ? <span className="action-explanation" id="trust-maintenance-duplicate">A maintenance job is already shown as running. Check its progress before starting another paid run.</span> : null}
+    {jobUnavailable ? <div className="action-explanation" id="trust-maintenance-unavailable"><strong>Maintenance status unavailable.</strong> Recheck the job status. If it still cannot be read, reopen this vault before starting another paid run. {controls.onRecheck ? <button className="secondary-button" type="button" aria-disabled={controls.jobCheck === "checking"} aria-describedby={controls.jobCheck === "checking" ? "trust-job-check-status" : undefined} onClick={() => { if (controls.jobCheck !== "checking") controls.onRecheck?.(); }}>Recheck job status</button> : null}</div> : null}
+    {controls.jobCheck && controls.jobCheck !== "idle" ? <div className="visually-hidden" id="trust-job-check-status" role="status" aria-live="polite">{controls.jobCheck === "checking" ? "Checking job status…" : controls.jobCheck === "failed" ? "Job status is still unavailable. Reopen this vault before starting another paid run." : "Job status checked successfully."}</div> : null}
     <div className="visually-hidden" role="status" aria-live="polite">{said}</div>
     {said ? <p className="trust-maintenance-answer">{said}</p> : null}
-    {controls.job ? <MaintenanceProgress job={controls.job} cancel={controls.cancel} onStop={controls.onStop} /> : null}
+    {controls.job && !jobUnavailable ? <MaintenanceProgress job={controls.job} cancel={controls.cancel} onStop={controls.onStop} /> : null}
   </section>;
 }
 
@@ -279,8 +284,8 @@ function MaintenanceProgress({ job, cancel, onStop }: { job: JobView; cancel: Ca
     <p className="document-job-step" role="status" aria-live="polite">{running ? `Step ${job.completed} of ${job.total}${job.step ? ` — ${job.step}` : ""}` : `Finished at step ${job.completed} of ${job.total}`}</p>
     {job.message ? <p className="document-job-message">{job.message}</p> : null}
     <progress className="document-job-bar" value={job.completed} max={job.total || 1} aria-labelledby="maintenance-job-title" />
-    {onStop && running && job.cancellable ? <button className="secondary-button" type="button" aria-disabled={stopping} onClick={() => { if (!stopping) onStop(job.jobId); }}>Stop</button> : null}
-    {stopping ? <span className="action-explanation">Asking your vault to stop. What has already finished is kept.</span> : null}
+    {onStop && running && job.cancellable ? <button className="secondary-button" type="button" aria-disabled={stopping} aria-describedby={stopping ? "maintenance-job-stopping" : undefined} onClick={() => { if (!stopping) onStop(job.jobId); }}>Stop</button> : null}
+    {stopping ? <span className="action-explanation" id="maintenance-job-stopping">Asking your vault to stop. What has already finished is kept.</span> : null}
   </section>;
 }
 

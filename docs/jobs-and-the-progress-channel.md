@@ -11,6 +11,20 @@ executable contracts and tests live with those modules. A future rule block
 belongs here only if jobs acquire a new standing product rule rather than
 another producer using the existing mechanism.
 
+## Desktop interruption boundary
+
+The native desktop supervisor correlates progress with the request that began
+the job. Job initiation has 60 seconds to acknowledge or produce progress;
+120 seconds without correlated progress is an interruption, and 30 minutes is
+the absolute transport cap. An interruption does not invent a terminal job
+state and never replays paid work. The durable job registry remains
+authoritative when it can be read again. Until then the interface may block a
+duplicate paid/job operation, but stale progress must not disable unrelated
+planning, diagnostics, or navigation. It labels the status unavailable, hides
+the stale progress row, and offers a bounded registry recheck; if that cannot
+settle, the direct recovery is to reopen the vault rather than repeat the paid
+operation.
+
 ## Why
 
 ### The channel and its producers
@@ -153,6 +167,14 @@ for projection state.
 - **The jobs read remains operational rather than a registry destination.** It
   is shipped and reviewed, but no navigation capability claims it as a separate
   destination.
+
+If an authoritative jobs read fails or returns no usable registry answer, the
+interface marks job status unavailable and hides stale queued/running rows. A
+late progress frame may update the held row, but it cannot make status available
+again: at that point the interface cannot prove that frame belongs to the
+recovered process generation. Only a successful bounded jobs reread restores
+availability. Until then only duplicate upload, rescan, or paid-job starts are
+blocked; unrelated inspection and navigation remain usable.
 - **How long an open takes has been measured on two vaults and on one machine,
   and on nothing else.** Across the author's own baseline vault and the largest
   vault he holds, an open took roughly four tenths of a second to eight tenths

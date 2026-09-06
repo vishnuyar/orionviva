@@ -1,7 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
-import { BRIDGE_PROTOCOL, JOB_PROGRESS_EVENT } from "./bridge/contracts";
+import { BRIDGE_PROTOCOL, BridgeTimeout, JOB_PROGRESS_EVENT } from "./bridge/contracts";
 import type { BridgeRequest, BridgeResponse, BridgeTransport, DroppedPathsListener, JobProgressFrame, JobProgressListener, RememberedVaultOpen } from "./bridge/contracts";
 
 type TauriInternals = {
@@ -22,14 +22,17 @@ export function installTauriBridge(): boolean {
   const invoke = window.__TAURI_INTERNALS__.invoke;
   const transport: BridgeTransport = {
     request: async <T>(frame: BridgeRequest) => {
-      const response = await invoke<string>("bridge_request", {
-        frame: JSON.stringify({
-          protocol: BRIDGE_PROTOCOL,
-          request_id: frame.requestId,
-          operation: frame.operation,
-          payload: frame.payload,
-        }),
-      });
+      let response: string;
+      try {
+        response = await invoke<string>("bridge_request", { frame: JSON.stringify({ protocol: BRIDGE_PROTOCOL, request_id: frame.requestId, operation: frame.operation, payload: frame.payload }) });
+      } catch (failure) {
+        const said = String(failure);
+        if (said.includes("timed out") || said.includes("maximum running time") || said.includes("interrupted") || said.includes("Outcome unknown")) {
+          const read = frame.operation === "viva.surface.read" || frame.operation.endsWith(".read") || frame.operation === "viva.surface.capabilities" || frame.operation === "bridge.handshake";
+          throw new BridgeTimeout(frame.operation, !read);
+        }
+        throw failure;
+      }
       return JSON.parse(response) as BridgeResponse<T>;
     },
     openRememberedVault: () => invoke<RememberedVaultOpen>("open_remembered_vault"),

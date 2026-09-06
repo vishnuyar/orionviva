@@ -9,7 +9,7 @@ beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("vault", () => {
-  it("lets an explicit local-vault open supersede a pending remembered-vault check", async () => {
+  it("keeps local and remembered vault opens mutually exclusive", async () => {
     const user = userEvent.setup();
     let finishRememberedCheck: (result: { state: "absent" }) => void = () => {};
     const rememberedCheck = new Promise<{ state: "absent" }>((resolve) => {
@@ -39,10 +39,13 @@ describe("vault", () => {
     const { getByLabelText, getByRole } = render(<App />);
     await user.type(getByLabelText("Vault directory"), "/explicit/vault");
     await user.type(getByLabelText("Passphrase"), "secret");
-    await user.click(getByRole("button", { name: "Opening vault..." }));
-
-    await waitFor(() => expect(getByRole("button", { name: "Close this vault" })).toBeVisible());
+    const opening = getByRole("button", { name: "Opening vault..." });
+    expect(opening).toHaveAttribute("aria-disabled", "true");
+    await user.click(opening);
+    expect(getByRole("button", { name: "Opening vault..." })).toBeVisible();
     await act(async () => { finishRememberedCheck({ state: "absent" }); });
+    await user.click(getByRole("button", { name: "Open local vault" }));
+    await waitFor(() => expect(getByRole("button", { name: "Close this vault" })).toBeVisible());
     expect(getByRole("button", { name: "Close this vault" })).toBeVisible();
   });
 
@@ -202,7 +205,7 @@ describe("vault", () => {
     }
   });
 
-  it("keeps a closed vault closed even when its read resolves later", async () => {
+  it("keeps stale-vault actions inert until the replacement read settles", async () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     let releaseReads: () => void = () => {};
@@ -232,16 +235,15 @@ describe("vault", () => {
       expect(getByText("Reading available surfaces from this device…", { selector: ".empty-state span" })).toBeInTheDocument();
 
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
-      expect(getAllByText("No vault open")[0]).toBeInTheDocument();
+      expect(getByText("The vault is opening and its first authoritative read is still pending. Other actions are unavailable until it answers.")).toBeInTheDocument();
       expect(queryByText("Late private account")).not.toBeInTheDocument();
 
-      // The read that was still in flight when the vault was closed lands on a
-      // session that has moved on. It changes nothing: a row from a vault
-      // nobody has open any more is a row about somebody's money on a screen
-      // that says no vault is open.
+      // A stale source cannot be closed or otherwise acted on while the
+      // replacement's first authoritative read is unresolved.
       releaseReads();
-      await waitFor(() => expect(getAllByText("No vault open")[0]).toBeInTheDocument());
-      expect(queryByText("Late private account")).not.toBeInTheDocument();
+      await waitFor(() => expect(getAllByText("Late private account").length).toBeGreaterThan(0));
+      await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
+      expect(getAllByText("No vault open")[0]).toBeInTheDocument();
       expect(queryByText("late-private-document")).not.toBeInTheDocument();
     } finally {
       releaseReads();
@@ -505,7 +507,9 @@ describe("vault", () => {
       // why pressing again does nothing.
       expect(control).toHaveAccessibleDescription("This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there. Your vault is answering the last request. Pressing again does nothing until it has.");
       resolveRequest?.();
-      await waitFor(() => expect(getByRole("button", { name: "Open local vault" })).not.toHaveAttribute("aria-disabled", "true"));
+      // Resolving the open acknowledgement alone does not make the control
+      // available: the initial vault read must settle as well.
+      await waitFor(() => expect(getByRole("button", { name: "Opening vault..." })).toHaveAttribute("aria-disabled", "true"));
     } finally {
       window.orionVivaBridge = previousBridge;
     }

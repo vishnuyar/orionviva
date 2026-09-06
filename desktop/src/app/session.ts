@@ -27,6 +27,8 @@ export type SurfaceSession = {
   // Operational job rows live beside the financial snapshot. Registry reads
   // restore bounded receipts; progress frames replace them during this process.
   jobs: readonly JobView[];
+  jobStatus: "available" | "unavailable";
+  jobCheck: "idle" | "checking" | "failed" | "succeeded";
   // What the engine behind this source says about itself: which build answered,
   // and which destinations its own registry says a read reaches. It is asked
   // once per source, because neither answer changes while one sidecar lives.
@@ -60,8 +62,8 @@ export type SurfaceSession = {
 export type SessionAction =
   | { type: "opening"; requestId: number }
   | { type: "reading"; requestId: number; source: SurfaceSource; snapshot: SurfaceSnapshot }
-  | { type: "loaded"; requestId: number; source?: SurfaceSource; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
-  | { type: "mutation-loaded"; requestId: number; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
+  | { type: "loaded"; requestId: number; source?: SurfaceSource; snapshot: SurfaceSnapshot; jobs?: readonly JobView[]; jobStatus?: "available" | "unavailable" }
+  | { type: "mutation-loaded"; requestId: number; snapshot: SurfaceSnapshot; jobs?: readonly JobView[]; jobStatus?: "available" | "unavailable" }
   | { type: "mutation-refresh-failed"; requestId: number }
   | { type: "open-failed"; requestId: number; said: string }
   | { type: "remembered-open-finished"; requestId: number; said?: string }
@@ -82,6 +84,9 @@ export type SessionAction =
   | { type: "capturing"; requestId: number }
   | { type: "captured"; requestId: number; result: ActionResult }
   | { type: "job-progress"; requestId: number; job: JobView }
+  | { type: "jobs-read"; requestId: number; jobs: readonly JobView[] }
+  | { type: "jobs-unavailable"; requestId: number }
+  | { type: "jobs-checking"; requestId: number }
   | { type: "described"; requestId: number; description: SourceDescription }
   | { type: "trust-working"; requestId: number }
   | { type: "trust-settled"; requestId: number; result: ActionResult }
@@ -231,6 +236,8 @@ export function initialSession(): SurfaceSession {
     captureAction: { state: "idle" },
     cancelAction: { state: "idle" },
     jobs: [],
+    jobStatus: "available",
+    jobCheck: "idle",
     description: unasked(),
     transferAction: { state: "idle" },
     rescanAction: { state: "idle" },
@@ -301,7 +308,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, questionAction: { state: "idle" }, activityAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, questionAction: { state: "idle" }, activityAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], jobStatus: "available", jobCheck: "idle", description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId) return state;
       return {
@@ -347,6 +354,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         source: allFailed ? state.source : action.source ?? state.source,
         snapshot,
         jobs: action.jobs ?? state.jobs,
+        jobStatus: action.jobStatus ?? state.jobStatus,
         selectedDocument: retainSelection(state.selectedDocument, ids.documents),
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
@@ -369,6 +377,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         phase: "settled",
         snapshot,
         jobs: action.jobs ?? state.jobs,
+        jobStatus: action.jobStatus ?? state.jobStatus,
         selectedDocument: retainSelection(state.selectedDocument, ids.documents),
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
@@ -522,6 +531,15 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "job-progress":
       if (action.requestId !== state.requestId) return state;
       return { ...state, jobs: withJob(state.jobs, action.job) };
+    case "jobs-read":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, jobs: action.jobs, jobStatus: "available", jobCheck: "succeeded" };
+    case "jobs-unavailable":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, jobStatus: "unavailable", jobCheck: state.jobCheck === "checking" ? "failed" : "idle" };
+    case "jobs-checking":
+      if (action.requestId !== state.requestId || state.jobCheck === "checking") return state;
+      return { ...state, jobCheck: "checking" };
     case "cancelling":
       if (action.requestId !== state.requestId) return state;
       return { ...state, cancelAction: { state: "working", jobId: action.jobId } };

@@ -372,6 +372,30 @@ describe("what this cannot establish, and what it could do on its own", () => {
     expect(asked).toEqual([job.jobId]);
     expect(getByText("Step 1 of 2 — planned")).toBeInTheDocument();
   });
+
+  it("hides stale progress, blocks only paid duplication, and offers an accessible recheck", () => {
+    const asked: string[] = [];
+    const job = { jobId: "viva.maintenance.run-1", operation: "viva.maintenance.run", state: "running" as const, completed: 1, total: 2, message: "old", step: "planned", attempt: 1, steps: ["planned"], cancellable: true };
+    const { getByRole, getByText, queryByText } = withMaintenance(maintenance({ job, jobStatus: "unavailable", onRun: (spend) => { asked.push(spend ? "paid" : "plan"); }, onDiagnose: () => { asked.push("diagnostic"); }, onRecheck: () => { asked.push("recheck"); } }));
+    const paid = getByRole("button", { name: "Run it, and spend" });
+    expect(paid).toHaveAttribute("aria-disabled", "true");
+    expect(paid).toHaveAccessibleDescription(expect.stringContaining("Maintenance status unavailable"));
+    expect(queryByText("Step 1 of 2 — planned")).not.toBeInTheDocument();
+    fireEvent.click(getByRole("button", { name: "Show me what it would do" }));
+    fireEvent.click(getByRole("button", { name: "Recheck job status" }));
+    expect(getByText(/reopen this vault before starting another paid run/i)).toBeInTheDocument();
+    expect(asked).toEqual(["plan", "recheck"]);
+  });
+
+  it("announces a single in-flight maintenance status recheck", () => {
+    const asked: string[] = [];
+    const { getByRole } = withMaintenance(maintenance({ jobStatus: "unavailable", jobCheck: "checking", onRecheck: () => asked.push("recheck") }));
+    const recheck = getByRole("button", { name: "Recheck job status" });
+    expect(recheck).toHaveAttribute("aria-disabled", "true");
+    expect(recheck).toHaveAccessibleDescription("Checking job status…");
+    fireEvent.click(recheck);
+    expect(asked).toEqual([]);
+  });
 });
 
 describe("what happens when a new version exists", () => {

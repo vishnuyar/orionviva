@@ -15,6 +15,7 @@ export const UNSPOKEN_REPLY = "Your vault recorded no sentence for this reply.";
 // request, because the code carrying a refused request also carries a handler
 // that raised, and a handler can raise after it has written.
 export function channelPresentation(result: UnansweredChannel): ChannelPresentation {
+  if (result.state === "interrupted") return { title: "Outcome could not be established", detail: result.message };
   if (result.state === "unserved") return { title: "Your vault would not take this request", detail: "Your vault refused the request as this screen sent it. Whether anything was recorded is not something this screen can tell you." };
   if (result.state === "unanswered") return { title: "Your vault did not answer", detail: "Nothing came back, so this screen will not say whether anything was recorded." };
   return { title: "The reply could not be read", detail: "Your vault answered in a way this screen does not recognise, so it will not say whether anything was recorded." };

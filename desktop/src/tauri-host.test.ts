@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // The published event shape, so a change to it stops this test compiling
 // rather than leaving a mocked payload asserting a shape nothing sends.
 import type { DragDropEvent } from "@tauri-apps/api/webview";
+import { BridgeTimeout } from "./bridge/contracts";
 import { installTauriBridge } from "./tauri-host";
 
 const opened = vi.fn();
@@ -73,5 +74,27 @@ describe("the host shim", () => {
     expect(landed).toEqual([]);
     handler({ payload: { type: "drop", paths: ["/dropped/first.pdf"], position: somewhere } });
     expect(landed).toEqual([["/dropped/first.pdf"]]);
+  });
+
+  it("turns native write interruption into a typed outcome-unknown timeout", async () => {
+    invoked.mockRejectedValueOnce("OrionViva bridge request timed out. Its outcome may be unknown.");
+    const transport = install();
+    const request = transport.request({ requestId: "write-1", operation: "viva.documents.upload", payload: {} });
+    await expect(request).rejects.toMatchObject({ name: "BridgeTimeout", operation: "viva.documents.upload", mayHaveWritten: true });
+    await request.catch((failure) => expect(failure).toBeInstanceOf(BridgeTimeout));
+  });
+
+  it("marks an interrupted read as safe from an outcome-unknown write warning", async () => {
+    invoked.mockRejectedValueOnce("OrionViva bridge request was interrupted.");
+    const transport = install();
+    await expect(transport.request({ requestId: "read-1", operation: "viva.jobs.read", payload: {} }))
+      .rejects.toMatchObject({ name: "BridgeTimeout", operation: "viva.jobs.read", mayHaveWritten: false });
+  });
+
+  it("types a post-handoff malformed or EOF write as outcome unknown", async () => {
+    invoked.mockRejectedValueOnce("unable to read OrionViva bridge response. Outcome unknown; check the vault before trying again.");
+    const transport = install();
+    await expect(transport.request({ requestId: "write-eof", operation: "viva.documents.upload", payload: {} }))
+      .rejects.toMatchObject({ name: "BridgeTimeout", operation: "viva.documents.upload", mayHaveWritten: true });
   });
 });

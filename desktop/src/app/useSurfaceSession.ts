@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
-import { BridgeRefusal, OPEN_REFUSALS } from "../bridge/contracts";
+import { BridgeRefusal, BridgeTimeout, OPEN_REFUSALS } from "../bridge/contracts";
 import { privateSource, sampleSource } from "../surface/sources";
 import type { AccountLedgerData, ActionResult, ActivityActionResult, ActivityActions, ActivityCorrectionVerb, ConversationActions, DeclineReason, Destination, DocumentActions, EvidenceLink, FeatureResult, JobView, Notice, PlanDraftResult, PlanPayload, QuestionVerb, SettingsProposal, SpendingBreakdownData, SpendingRequest, SurfaceSnapshot, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
 import { hasAuthoritativeReviewConversationPair, initialSession, liveReadingSnapshot, sessionReducer } from "./session";
@@ -21,6 +21,10 @@ function conversationHoldsQuestion(snapshot: SurfaceSnapshot, questionId: string
   return dataBearing(snapshot.conversation) && snapshot.conversation.data.questions.queue.some((question) => question.id === questionId);
 }
 
+function interrupted(message: string): Extract<ActionResult, { state: "interrupted" }> {
+  return { state: "interrupted", message };
+}
+
 // What a gesture carrying files turned out to be. Only `one` reaches the
 // vault; `several` is refused and `none` is a person changing their mind.
 export type CaptureGesture = "none" | "one" | "several";
@@ -29,6 +33,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const [session, dispatch] = useReducer(sessionReducer, undefined, initialSession);
   const [hostBridge] = useState(createDetectedBridgeClient);
   const [settingAsideFindingId, setSettingAsideFindingId] = useState("");
+  const [findingReceipt, setFindingReceipt] = useState<{ findingId: string; result: ActionResult } | null>(null);
   const [rememberedVaultDirectory, setRememberedVaultDirectory] = useState("");
   const requestId = useRef(0);
   const dropped = useRef(onDropped);
@@ -36,6 +41,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const capturing = useRef(false);
   const choosing = useRef(false);
   const cancelling = useRef(false);
+  const recheckingJobs = useRef(false);
   const transferring = useRef(false);
   const sweeping = useRef(false);
   const configuring = useRef(false);
@@ -44,6 +50,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const correctingActivity = useRef(false);
   const settingAsideFinding = useRef(false);
   const planning = useRef(false);
+  const opening = useRef(false);
   const questionGeneration = useRef(0);
   const activityLimit = useRef(50);
   // Full reads advance the revision that bounds asynchronous Activity pages.
@@ -72,7 +79,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     try {
       const [snapshot, jobsRead] = await Promise.all([activeSource.load(activityLimit.current), activeSource.loadJobs?.() ?? Promise.resolve(null)]);
       const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
-      if (requestId.current === activeRequest) dispatch({ type: "loaded", requestId: activeRequest, source: activeSource, snapshot, jobs });
+      const jobStatus = activeSource.loadJobs ? (jobsRead?.state === "ready" ? "available" as const : "unavailable" as const) : undefined;
+      if (requestId.current === activeRequest) dispatch({ type: "loaded", requestId: activeRequest, source: activeSource, snapshot, jobs, jobStatus });
       return requestId.current === activeRequest;
     } catch {
       if (requestId.current === activeRequest) dispatch({ type: "load-failed", requestId: activeRequest });
@@ -114,7 +122,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
         activeSource.loadJobs?.() ?? Promise.resolve(null),
       ]);
       const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
-      if (requestId.current === activeRequest && stillCurrent()) dispatch({ type: "mutation-loaded", requestId: activeRequest, snapshot, jobs });
+      const jobStatus = activeSource.loadJobs ? (jobsRead?.state === "ready" ? "available" as const : "unavailable" as const) : undefined;
+      if (requestId.current === activeRequest && stillCurrent()) dispatch({ type: "mutation-loaded", requestId: activeRequest, snapshot, jobs, jobStatus });
       return snapshot;
     } catch {
       if (requestId.current === activeRequest && stillCurrent()) dispatch({ type: "mutation-refresh-failed", requestId: activeRequest });
@@ -169,6 +178,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     return () => { gone = true; stop?.(); };
   }, [jobStream, source]);
 
+
   // One question verb at a time. The sidecar answers one request before reading
   // the next, so a second press while the first is in flight would queue behind
   // it and report against a queue that has already moved.
@@ -181,7 +191,11 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     dispatch({ type: "question-acting", requestId: nextRequestId, questionId, verb });
     let result: ActionResult;
     try { result = await run(actions); }
-    catch { result = { state: "unanswered" }; }
+    catch (failure) {
+      result = failure instanceof BridgeTimeout && failure.mayHaveWritten
+        ? interrupted("The question response stopped answering and may already have been recorded. Inspect the question queue and its linked movement before trying again. OrionViva did not retry it.")
+        : { state: "unanswered" };
+    }
     if (requestId.current !== nextRequestId || questionGeneration.current !== nextGeneration) return;
     let authoritative = false;
     let resolved = false;
@@ -217,6 +231,9 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
         ]);
         const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
         if (requestId.current === nextRequestId) {
+          if (activeSource.loadJobs) dispatch(jobsRead?.state === "ready"
+            ? { type: "jobs-read", requestId: nextRequestId, jobs: jobsRead.data.jobs }
+            : { type: "jobs-unavailable", requestId: nextRequestId });
           if (!hasAuthoritativeReviewConversationPair(snapshot)) {
             dispatch({ type: "mutation-loaded", requestId: nextRequestId, snapshot });
             dispatch({ type: "activity-refresh-failed", requestId: nextRequestId, movementId, movementIds, verb, result });
@@ -234,6 +251,14 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
         return { result, refresh: "failed" as const };
       }
       return null;
+    } catch (failure) {
+      const result: ActivityActionResult = failure instanceof BridgeTimeout && failure.mayHaveWritten
+        ? interrupted("The activity correction stopped answering and may already have changed the affected movement. Inspect that movement before trying again. OrionViva did not retry it.")
+        : { state: "unanswered" };
+      if (requestId.current === nextRequestId) {
+        dispatch({ type: "activity-refresh-failed", requestId: nextRequestId, movementId, movementIds, verb, result });
+      }
+      return { result, refresh: "failed" as const };
     } finally {
       correctingActivity.current = false;
     }
@@ -242,7 +267,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   // One document, one request, one answer. The vault is read again once the
   // answer is in, and that read is what the screen shows.
   async function capture(actions: DocumentActions, path: string) {
-    if (capturing.current) return;
+    if (session.jobStatus === "unavailable" || capturing.current) return;
     capturing.current = true;
     const nextRequestId = requestId.current;
     dispatch({ type: "capturing", requestId: nextRequestId });
@@ -253,6 +278,11 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       await refreshAfterAction(activeSource, nextRequestId);
       if (requestId.current === nextRequestId) {
         dispatch({ type: "captured", requestId: nextRequestId, result });
+      }
+    } catch (failure) {
+      if (requestId.current === nextRequestId) {
+        dispatch({ type: "captured", requestId: nextRequestId, result: failure instanceof BridgeTimeout && failure.mayHaveWritten ? interrupted("Adding the statement stopped answering and may already have changed the vault. Inspect Statements and the document's activity before trying again. OrionViva did not retry it.") : { state: "unanswered" } });
+        if (failure instanceof BridgeTimeout && failure.mayHaveWritten) dispatch({ type: "jobs-unavailable", requestId: nextRequestId });
       }
     } finally {
       capturing.current = false;
@@ -304,12 +334,19 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     try {
       const result = await run(transferActions);
       if (requestId.current === nextRequestId) dispatch({ type: "transferred", requestId: nextRequestId, verb, result });
+    } catch (failure) {
+      if (requestId.current === nextRequestId) {
+        const message = verb === "export"
+          ? "The export stopped answering. The destination archive may or may not have been written; inspect that archive before trying again. The vault itself was unchanged, and OrionViva did not retry the export."
+          : "Restoring the vault copy stopped answering and may already have changed the vault. Inspect the chosen restored-vault folder before trying again. OrionViva did not retry it.";
+        dispatch({ type: "transferred", requestId: nextRequestId, verb, result: failure instanceof BridgeTimeout ? interrupted(message) : { state: "unanswered" } });
+      }
     } finally {
       transferring.current = false;
     }
   }
 
-  async function runTrust(run: (actions: TrustActions) => Promise<ActionResult>) {
+  async function runTrust(kind: "maintenance" | "diagnostic", run: (actions: TrustActions) => Promise<ActionResult>) {
     const activeSource = source;
     if (!trustActions || !activeSource || maintaining.current) return;
     maintaining.current = true;
@@ -320,6 +357,16 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       await refreshAfterAction(activeSource, nextRequestId);
       if (requestId.current === nextRequestId) {
         dispatch({ type: "trust-settled", requestId: nextRequestId, result });
+      }
+    } catch (failure) {
+      if (requestId.current === nextRequestId) {
+        const message = kind === "maintenance"
+          ? "The maintenance run stopped answering and may already have changed its job or usage record. Inspect the maintenance job and usage record before trying again. OrionViva did not retry it."
+          : "Writing the diagnostic stopped answering. The named diagnostic file may or may not have been written; inspect that file before trying again. The vault itself was unchanged, and OrionViva did not retry the diagnostic.";
+        dispatch({ type: "trust-settled", requestId: nextRequestId, result: failure instanceof BridgeTimeout && failure.mayHaveWritten ? interrupted(message) : { state: "unanswered" } });
+        if (failure instanceof BridgeTimeout && failure.mayHaveWritten) {
+          if (kind === "maintenance") dispatch({ type: "jobs-unavailable", requestId: nextRequestId });
+        }
       }
     } finally {
       maintaining.current = false;
@@ -336,8 +383,10 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       const result = await run(actions);
       await refreshAfterAction(activeSource, nextRequestId);
       return result;
-    } catch {
-      return { state: "unanswered" };
+    } catch (failure) {
+      return failure instanceof BridgeTimeout && failure.mayHaveWritten
+        ? interrupted("The plan change stopped answering and may already have changed the vault. Inspect Plans and its linked evidence before trying again. OrionViva did not retry it.")
+        : { state: "unanswered" };
     } finally {
       planning.current = false;
     }
@@ -382,7 +431,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     filePickerAvailable: Boolean(documentActions && hostBridge?.pickDocumentPaths),
     pickerAvailable: Boolean(hostBridge?.pickVaultDirectory),
     async openVault(vaultDirectory: string, passphrase: string, create: boolean) {
-      if (!hostBridge) return false;
+      if (!hostBridge || opening.current) return false;
+      opening.current = true;
       const nextRequestId = ++requestId.current;
       activityLimit.current = 50;
       ++surfaceRevision.current;
@@ -394,17 +444,21 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
         // a reviewed sentence about a folder. It is what tells a mistyped path
         // apart from a wrong passphrase. Every other code carries machine text
         // out of an engine, which is never repeated here.
-        const said = refused instanceof BridgeRefusal && OPEN_REFUSALS.includes(refused.code) ? refused.message : "";
+        const said = refused instanceof BridgeTimeout && refused.mayHaveWritten
+          ? "Opening or creating this vault stopped answering and may already have changed which vault is active. Inspect the named vault folder, then reopen it before continuing. OrionViva did not retry the open."
+          : refused instanceof BridgeRefusal && OPEN_REFUSALS.includes(refused.code) ? refused.message : "";
         if (requestId.current === nextRequestId) dispatch({ type: "open-failed", requestId: nextRequestId, said });
+        opening.current = false;
         return false;
       }
-      if (requestId.current !== nextRequestId) return false;
+      if (requestId.current !== nextRequestId) { opening.current = false; return false; }
       const source = privateSource(hostBridge);
       let rememberFailed = false;
       try { await hostBridge.rememberVault?.(vaultDirectory, passphrase); }
       catch { rememberFailed = true; }
       const loaded = await readOpenedSource(source, nextRequestId);
       if (loaded && rememberFailed) dispatch({ type: "notice", notice: { kind: "refused", text: "This vault is open, but this device could not protect its vaultphrase. You will need to enter it again after restarting OrionViva." } });
+      opening.current = false;
       return loaded;
     },
     // The one affordance the sample vault is entered from. It names no
@@ -412,7 +466,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // the sample vault lives and what opens it are the engine's, so a person
     // pressing this cannot be pointed anywhere except at the sample.
     async openSampleVault() {
-      if (!hostBridge) return false;
+      if (!hostBridge || opening.current) return false;
+      opening.current = true;
       const nextRequestId = ++requestId.current;
       activityLimit.current = 50;
       ++surfaceRevision.current;
@@ -420,19 +475,23 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       let frame;
       try {
         frame = await hostBridge.openSampleVault();
-      } catch {
+      } catch (failure) {
         // The sidecar's own sentence is not repeated here: the codes a sample
         // open can fail with are about a directory this person never named, so
         // there is nothing in them for them to act on.
-        if (requestId.current === nextRequestId) dispatch({ type: "open-failed", requestId: nextRequestId, said: "" });
+        const said = failure instanceof BridgeTimeout && failure.mayHaveWritten ? "Opening the sample vault stopped answering and may already have changed which vault is active. Close and reopen the sample vault before continuing. OrionViva did not retry the open." : "";
+        if (requestId.current === nextRequestId) dispatch({ type: "open-failed", requestId: nextRequestId, said });
+        opening.current = false;
         return false;
       }
-      if (requestId.current !== nextRequestId) return false;
+      if (requestId.current !== nextRequestId) { opening.current = false; return false; }
       // No frame, no sample vault. A shell that went in anyway would be
       // showing somebody invented money with nothing saying it was invented.
-      if (!frame) { dispatch({ type: "open-failed", requestId: nextRequestId, said: "" }); return false; }
+      if (!frame) { dispatch({ type: "open-failed", requestId: nextRequestId, said: "" }); opening.current = false; return false; }
       const source = sampleSource(hostBridge, frame);
-      return readOpenedSource(source, nextRequestId);
+      const loaded = await readOpenedSource(source, nextRequestId);
+      opening.current = false;
+      return loaded;
     },
     async pickVaultDirectory() { return hostBridge?.pickVaultDirectory?.() ?? null; },
     // One picker at a time, and one capture at a time. The picker being open
@@ -444,7 +503,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // mind, the second is a control that did not work, and only the second is
     // reported back.
     async chooseDocuments(): Promise<CaptureGesture | "unopened"> {
-      if (!documentActions || !hostBridge?.pickDocumentPaths || capturing.current || choosing.current) return "none";
+    if (!documentActions || !hostBridge?.pickDocumentPaths || session.jobStatus === "unavailable" || capturing.current || choosing.current) return "none";
       choosing.current = true;
       let paths: readonly string[] = [];
       try { paths = await hostBridge.pickDocumentPaths(); }
@@ -464,8 +523,17 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       try {
         const result = await actions.cancel(jobId);
         const read = await actions.readJobs();
-        const jobs: readonly JobView[] = read.state === "ready" ? read.data.jobs : [];
-        if (requestId.current === nextRequestId) dispatch({ type: "cancelled", requestId: nextRequestId, jobId, result, jobs });
+        if (requestId.current === nextRequestId) {
+          dispatch({ type: "cancelled", requestId: nextRequestId, jobId, result, jobs: read.state === "ready" ? read.data.jobs : session.jobs });
+          dispatch(read.state === "ready" ? { type: "jobs-read", requestId: nextRequestId, jobs: read.data.jobs } : { type: "jobs-unavailable", requestId: nextRequestId });
+        }
+      } catch (failure) {
+        if (requestId.current === nextRequestId) {
+          dispatch({ type: "cancelled", requestId: nextRequestId, jobId, result: failure instanceof BridgeTimeout
+            ? interrupted("Stopping the job stopped answering and may already have changed that job's stop request. Recheck that job's status before trying again. OrionViva did not retry it.")
+            : { state: "unanswered" }, jobs: session.jobs });
+          if (failure instanceof BridgeTimeout) dispatch({ type: "jobs-unavailable", requestId: nextRequestId });
+        }
       } finally {
         cancelling.current = false;
       }
@@ -474,6 +542,22 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     settingsAvailable: Boolean(settingsActions),
     askAvailable: Boolean(conversationActions),
     trustAvailable: Boolean(trustActions),
+    jobStatus: session.jobStatus,
+    jobCheck: session.jobCheck,
+    async recheckJobs() {
+      const activeSource = source;
+      if (!activeSource?.loadJobs || recheckingJobs.current) return;
+      recheckingJobs.current = true;
+      const activeRequest = requestId.current;
+      dispatch({ type: "jobs-checking", requestId: activeRequest });
+      try {
+        const read = await activeSource.loadJobs();
+        if (requestId.current !== activeRequest) return;
+        if (read.state === "ready") dispatch({ type: "jobs-read", requestId: activeRequest, jobs: read.data.jobs });
+        else dispatch({ type: "jobs-unavailable", requestId: activeRequest });
+      } catch { if (requestId.current === activeRequest) dispatch({ type: "jobs-unavailable", requestId: activeRequest }); }
+      finally { recheckingJobs.current = false; }
+    },
     activityCorrectionAvailable: Boolean(activityActions),
     async loadMoreActivity() {
       const current = session.snapshot.activity;
@@ -497,7 +581,9 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       if (!planActions || planning.current) return { state: "unserved" };
       planning.current = true;
       try { return await planActions.draft(payload); }
-      catch { return { state: "unanswered" }; }
+      catch (failure) { return failure instanceof BridgeTimeout && failure.mayHaveWritten
+        ? interrupted("Drafting the plan stopped answering and may already have recorded a proposal. Inspect Plans before trying again. OrionViva did not retry it.")
+        : { state: "unanswered" }; }
       finally { planning.current = false; }
     },
     proposePlan(payload: PlanPayload) {
@@ -515,6 +601,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       if (!actions || !activeSource || !findingId.trim() || settingAsideFinding.current) return;
       settingAsideFinding.current = true;
       setSettingAsideFindingId(findingId);
+      setFindingReceipt(null);
       const nextRequestId = requestId.current;
       try {
         const result = await actions.setAsideFinding(findingId);
@@ -525,14 +612,19 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
             ? { kind: result.outcome.kind === "set_aside" ? "acknowledged" : "refused", text: result.outcome.message }
             : { kind: "refused", text: "The finding could not be set aside because the vault did not return a readable answer." } });
         }
-      } catch {
-        if (requestId.current === nextRequestId) dispatch({ type: "mutation-refresh-failed", requestId: nextRequestId });
+      } catch (failure) {
+        if (requestId.current === nextRequestId) {
+          setFindingReceipt({ findingId, result: failure instanceof BridgeTimeout && failure.mayHaveWritten
+            ? interrupted("Setting aside the finding stopped answering and may already have changed its review state. Inspect Review and this finding before trying again. OrionViva did not retry it.")
+            : { state: "unanswered" } });
+        }
       } finally {
         settingAsideFinding.current = false;
         setSettingAsideFindingId("");
       }
     },
     settingAsideFindingId,
+    findingReceipt,
     async assignActivityCategory(movementId: string, categoryId: string) {
       if (!categoryId.trim()) return;
       await runActivityCorrection("category", [movementId], (actions) => actions.assignCategory(movementId, categoryId));
@@ -574,12 +666,12 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // the agent reaches a model, so a run nobody said to spend on plans and
     // stops at the line where money starts.
     async runMaintenance(spend: boolean) {
-      if (spend && session.jobs.some((job) => job.operation === "viva.maintenance.run" && (job.state === "queued" || job.state === "running"))) return;
-      await runTrust((actions) => actions.run(spend));
+      if (spend && (session.jobStatus === "unavailable" || session.jobs.some((job) => job.operation === "viva.maintenance.run" && (job.state === "queued" || job.state === "running")))) return;
+      await runTrust("maintenance", (actions) => actions.run(spend));
     },
     async writeDiagnostic(file: string) {
       if (!file.trim()) return;
-      await runTrust((actions) => actions.diagnose(file.trim()));
+      await runTrust("diagnostic", (actions) => actions.diagnose(file.trim()));
     },
     // One question at a time. `mirrored` says the drawer showing the answer is
     // open, which is a fact about this screen rather than a preference: it is
@@ -596,8 +688,13 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
         if (requestId.current === nextRequestId) {
           dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn, authoritative: hasAuthoritativeReviewConversationPair(snapshot) });
         }
-      } catch {
-        if (requestId.current === nextRequestId) dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result: { state: "unanswered" }, turn: null, authoritative: false });
+      } catch (failure) {
+        if (requestId.current === nextRequestId) {
+          const message = planRequest
+            ? "Asking Viva to draft the plan stopped answering and may already have recorded a proposal or conversation turn. Inspect Plans and the conversation before trying again. OrionViva did not retry it."
+            : "Asking Viva stopped answering and may already have recorded a conversation turn. Inspect the conversation before trying again. OrionViva did not retry it.";
+          dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result: failure instanceof BridgeTimeout && failure.mayHaveWritten ? interrupted(message) : { state: "unanswered" }, turn: null, authoritative: false });
+        }
       } finally {
         asking.current = false;
       }
@@ -606,12 +703,24 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // person is shown, or the channel's own answer about why there is none.
     async proposeSettings(kind: "presentation" | "model", fields: Record<string, string>) {
       if (!settingsActions || configuring.current) return;
+      const activeSettings = settingsActions;
+      const activeSource = sourceIdentity.current;
       configuring.current = true;
       dispatch({ type: "settings-working" });
       try {
-        const answered = await settingsActions.propose(kind, fields);
+        const answered = await activeSettings.propose(kind, fields);
+        if (sourceIdentity.current !== activeSource) return;
         if ("digest" in answered) dispatch({ type: "settings-proposed", proposal: answered as SettingsProposal });
-        else dispatch({ type: "settings-settled", result: answered, settings: await settingsActions.read() });
+        else {
+          const reread = await activeSettings.read();
+          if (sourceIdentity.current !== activeSource) return;
+          dispatch({ type: "settings-settled", result: answered, settings: dataBearing(reread) ? reread : session.settings });
+        }
+      } catch (failure) {
+        if (sourceIdentity.current !== activeSource) return;
+        dispatch({ type: "settings-settled", result: failure instanceof BridgeTimeout && failure.mayHaveWritten
+          ? interrupted("The proposal outcome could not be established. Current settings are unchanged unless a proposal was confirmed; reread or reopen settings before preparing a new proposal. OrionViva did not retry it.")
+          : { state: "unanswered" }, settings: session.settings });
       } finally {
         configuring.current = false;
       }
@@ -620,11 +729,21 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // in this one call and is held nowhere on this side afterwards.
     async confirmSettings(kind: "presentation" | "model", fields: Record<string, string>, digest: string, key: string) {
       if (!settingsActions || configuring.current) return;
+      const activeSettings = settingsActions;
+      const activeSource = sourceIdentity.current;
       configuring.current = true;
       dispatch({ type: "settings-working" });
       try {
-        const result = await settingsActions.confirm(kind, fields, digest, key);
-        dispatch({ type: "settings-settled", result, settings: await settingsActions.read() });
+        const result = await activeSettings.confirm(kind, fields, digest, key);
+        if (sourceIdentity.current !== activeSource) return;
+        const reread = await activeSettings.read();
+        if (sourceIdentity.current !== activeSource) return;
+        dispatch({ type: "settings-settled", result, settings: dataBearing(reread) ? reread : session.settings });
+      } catch (failure) {
+        if (sourceIdentity.current !== activeSource) return;
+        dispatch({ type: "settings-settled", result: failure instanceof BridgeTimeout
+          ? interrupted("Saving the settings stopped answering and may already have changed the vault. Inspect the settings currently in force before trying again. OrionViva did not retry it.")
+          : { state: "unanswered" }, settings: session.settings });
       } finally {
         configuring.current = false;
       }
@@ -634,7 +753,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     async rescanDocuments() {
       const actions = documentActions;
       const activeSource = source;
-      if (!actions || !activeSource || sweeping.current) return;
+      if (!actions || !activeSource || session.jobStatus === "unavailable" || sweeping.current) return;
       sweeping.current = true;
       const nextRequestId = requestId.current;
       dispatch({ type: "rescanning", requestId: nextRequestId });
@@ -643,6 +762,11 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
         await refreshAfterAction(activeSource, nextRequestId);
         if (requestId.current === nextRequestId) {
           dispatch({ type: "rescanned", requestId: nextRequestId, result, report });
+        }
+      } catch (failure) {
+        if (requestId.current === nextRequestId) {
+          if (failure instanceof BridgeTimeout) dispatch({ type: "jobs-unavailable", requestId: nextRequestId });
+          dispatch({ type: "rescanned", requestId: nextRequestId, result: failure instanceof BridgeTimeout ? interrupted("Rescanning the vault stopped answering and may already have changed the vault. Inspect Statements, Activity, and Review before trying again. OrionViva did not retry it.") : { state: "unanswered" }, report: null });
         }
       } finally {
         sweeping.current = false;

@@ -14,6 +14,7 @@ export function SpendingBreakdown({ read }: { read: (request: SpendingRequest) =
   const [failed, setFailed] = useState(false);
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [customOpen, setCustomOpen] = useState(false);
   const generation = useRef(0);
   const prior = hasData(result) ? result.data : null;
 
@@ -50,8 +51,9 @@ export function SpendingBreakdown({ read }: { read: (request: SpendingRequest) =
       const startDate = customStart || data.period.startDate;
       const endDate = customEnd || data.period.endDate;
       setCustomStart(startDate); setCustomEnd(endDate);
-      setRequest((current) => ({ ...current, period, startDate, endDate }));
+      setCustomOpen(true);
     } else {
+      setCustomOpen(false);
       setRequest((current) => ({ period, granularity: current.granularity, ...(current.accountId ? { accountId: current.accountId } : {}), ...(current.currency ? { currency: current.currency } : {}) }));
     }
   };
@@ -59,14 +61,14 @@ export function SpendingBreakdown({ read }: { read: (request: SpendingRequest) =
   const describedBy = ["spending-period", "spending-scope", data.coverage.state !== "complete" ? "spending-coverage" : ""].filter(Boolean).join(" ");
 
   return <section className="spending-card" aria-labelledby="spending-title" aria-busy={pending}>
-    <div className="spending-heading"><div><span className="section-kicker">From attested statements</span><h2 id="spending-title">{data.title}</h2></div>{filtered ? <button type="button" className="text-button" onClick={() => setRequest(DEFAULT_REQUEST)}>Reset filters</button> : null}</div>
+    <div className="spending-heading"><div><span className="section-kicker">From attested statements</span><h2 id="spending-title">{data.title}</h2></div>{filtered ? <button type="button" className="text-button" aria-disabled={pending} aria-describedby={pending ? "spending-update" : undefined} onClick={() => { if (pending) return; setCustomOpen(false); setRequest(DEFAULT_REQUEST); }}>Reset filters</button> : null}</div>
     <div className="spending-controls" aria-label="Spending breakdown filters" aria-describedby={pending ? "spending-update" : undefined}>
-      <label><span>Date</span><select aria-label="Spending date range" aria-disabled={pending} value={request.period} onChange={(event) => { if (!pending) choosePeriod(event.target.value as SpendingPeriodId); }}>{data.controls.periods.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label><span>Date</span><select aria-label="Spending date range" aria-disabled={pending} value={customOpen ? "custom" : request.period} onChange={(event) => { if (!pending) choosePeriod(event.target.value as SpendingPeriodId); }}>{data.controls.periods.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label><span>Breakdown</span><select aria-label="Spending breakdown granularity" aria-disabled={pending} value={request.granularity} onChange={(event) => { if (!pending) update({ granularity: event.target.value as SpendingGranularity }); }}>{data.controls.granularities.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       {data.controls.accounts.length ? <label><span>Scope</span><select aria-label="Spending account scope" aria-disabled={pending} value={request.accountId ?? ""} onChange={(event) => { if (pending) return; setRequest((current) => ({ period: current.period, granularity: current.granularity, ...(current.startDate ? { startDate: current.startDate } : {}), ...(current.endDate ? { endDate: current.endDate } : {}), ...(event.target.value ? { accountId: event.target.value } : {}) })); }}><option value="">All accounts</option>{data.controls.accounts.map((option) => <option key={option.id} value={option.id}>{option.label} · {option.currency}</option>)}</select></label> : null}
       {data.controls.currencies.length > 1 ? <label><span>Currency</span><select aria-label="Spending currency" aria-disabled={pending} value={request.currency ?? ""} onChange={(event) => { if (!pending) update({ currency: event.target.value || undefined }); }}><option value="">Separate totals</option>{data.controls.currencies.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label> : null}
     </div>
-    {request.period === "custom" ? <form className="spending-custom-range" onSubmit={(event) => { event.preventDefault(); if (!pending && customStart && customEnd && customStart <= customEnd) update({ startDate: customStart, endDate: customEnd }); }}><label>Start date<input type="date" aria-disabled={pending} value={customStart} max={customEnd || data.asOf} onChange={(event) => { if (!pending) setCustomStart(event.target.value); }} /></label><label>End date<input type="date" aria-disabled={pending} value={customEnd} min={customStart} max={data.asOf} onChange={(event) => { if (!pending) setCustomEnd(event.target.value); }} /></label><button type="submit" className="secondary-button" aria-disabled={pending || !customStart || !customEnd || customStart > customEnd}>Apply dates</button></form> : null}
+    {customOpen ? <form className="spending-custom-range" aria-describedby={pending ? "spending-update" : undefined} onSubmit={(event) => { event.preventDefault(); if (!pending && customStart && customEnd && customStart <= customEnd) setRequest((current) => ({ ...current, period: "custom", startDate: customStart, endDate: customEnd })); }}><label>Start date<input type="date" aria-disabled={pending} aria-describedby={pending ? "spending-update" : undefined} value={customStart} max={customEnd || data.asOf} onChange={(event) => { if (!pending) setCustomStart(event.target.value); }} /></label><label>End date<input type="date" aria-disabled={pending} aria-describedby={pending ? "spending-update" : undefined} value={customEnd} min={customStart} max={data.asOf} onChange={(event) => { if (!pending) setCustomEnd(event.target.value); }} /></label><button type="submit" className="secondary-button" aria-disabled={pending || !customStart || !customEnd || customStart > customEnd} aria-describedby={pending ? "spending-update" : undefined}>Apply dates</button></form> : null}
     <div className="spending-filter-summary" id="spending-period"><strong>{data.period.label}</strong><span id="spending-scope">{data.scopeSummary}</span></div>
     {pending ? <div className="spending-update" id="spending-update" role="status">Updating the breakdown. Filters are unavailable until this authored selection returns; the previous selection remains below.</div> : failed ? <div className="unavailable-callout" role="status">The new breakdown could not be read. The previous authored selection remains below.</div> : null}
     <p className={`spending-coverage spending-coverage-${data.coverage.state}`} id="spending-coverage"><strong>{data.coverage.label}</strong></p>

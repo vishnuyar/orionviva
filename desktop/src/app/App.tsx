@@ -92,6 +92,7 @@ export function App() {
   const [reviewTransaction, setReviewTransaction] = useState<{ target: ReviewTransactionTarget; itemId: string } | null>(null);
   const pendingFocusNonce = useRef(0);
   const explicitVaultOpen = useRef(false);
+  const anyVaultOpen = useRef(false);
   const activePendingFocusNonce = useRef<number | null>(null);
   const reviewFocusNonce = useRef(0);
   const activeReviewFocusNonce = useRef<number | null>(null);
@@ -107,7 +108,11 @@ export function App() {
   const evidenceCloseRef = useRef<HTMLButtonElement>(null);
   const conversationDrawerRef = useRef<HTMLElement>(null);
   const conversationCloseRef = useRef<HTMLButtonElement>(null);
-  const openingVault = session.phase === "opening";
+  // The open remains pending through the first authoritative read. The hook's
+  // mutual-exclusion guard has not released yet, so every visible entry point
+  // must tell the same truth instead of looking actionable and silently doing
+  // nothing.
+  const openingVault = session.phase === "opening" || session.phase === "reading";
   // The one job this screen has a control for: the newest capture the sidecar
   // has said anything about. The registry holds more than one, and a screen
   // that showed all of them would be showing work a person did not start from
@@ -236,26 +241,33 @@ export function App() {
   }, [isNarrow, mobileNav]);
 
   function closeNavigation(restoreFocus = true) { setOverlay(null); if (restoreFocus) requestAnimationFrame(() => navigationTriggerRef.current?.focus()); }
-  function openNavigation() { if (!isNarrow) return; setOverlay({ kind: "navigation" }); }
-  function navigate(destination: Destination) { const focusHeading = isNarrow && mobileNav; if (destination === "accounts") { setOpenedAccount(""); setAccountOrigin(null); setReviewTransaction(null); } control.navigate(destination); if (mobileNav) setOverlay(null); if (focusHeading) requestAnimationFrame(() => pageTitleRef.current?.focus()); }
+  function openNavigation() { if (openingVault || !isNarrow) return; setOverlay({ kind: "navigation" }); }
+  function navigate(destination: Destination) { if (openingVault) return; const focusHeading = isNarrow && mobileNav; if (destination === "accounts") { setOpenedAccount(""); setAccountOrigin(null); setReviewTransaction(null); } control.navigate(destination); if (mobileNav) setOverlay(null); if (focusHeading) requestAnimationFrame(() => pageTitleRef.current?.focus()); }
   function openDocuments() {
+    if (openingVault) return;
     setPendingDocumentFocus({ target: "capture", requestId: session.requestId, nonce: ++pendingFocusNonce.current });
     control.navigate("documents");
   }
   // Leaving a vault is one action, and it takes everything with it: the
   // overlays go, the session is rebuilt from nothing, and no row from the
   // vault that was open survives into the one that is not.
-  function leaveVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setConversationPlanDraft(null); setPlanActionReceipt(null); control.resetDemo(); setOverlay(null); }
+  function leaveVault() { if (openingVault) return; evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setConversationPlanDraft(null); setPlanActionReceipt(null); control.resetDemo(); setOverlay(null); }
   async function openSampleVault() {
+    if (anyVaultOpen.current || openingVault) return;
+    anyVaultOpen.current = true;
     evidenceDialog.cancelPendingRestore();
     conversationDialog.cancelPendingRestore();
     setConversationPlanDraft(null);
     setPlanActionReceipt(null);
     setOverlay(null);
-    const opened = await control.openSampleVault();
-    if (opened) requestAnimationFrame(() => pageTitleRef.current?.focus());
+    try {
+      const opened = await control.openSampleVault();
+      if (opened) requestAnimationFrame(() => pageTitleRef.current?.focus());
+    } finally {
+      anyVaultOpen.current = false;
+    }
   }
-  function openAskViva() { conversationReturn.current = null; setOverlay({ kind: "conversation", requestId: session.requestId, mode: "ask" }); }
+  function openAskViva() { if (openingVault) return; conversationReturn.current = null; setOverlay({ kind: "conversation", requestId: session.requestId, mode: "ask" }); }
   function openReviewQuestion(questionId: string, itemId = "", movementId = "") {
     conversationReturn.current = movementId ? { kind: "ledger", accountId: openedAccount, movementId, reviewItemId: reviewTransaction?.itemId ?? itemId }
       : itemId ? { kind: "review", itemId } : null;
@@ -380,9 +392,10 @@ export function App() {
   // while it waits is the words beside it.
   async function openVault(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (explicitVaultOpen.current) return;
+    if (explicitVaultOpen.current || anyVaultOpen.current || openingVault) return;
     if (!control.hostAvailable || !vaultDirectory.trim() || !passphrase) { control.setNotice({ kind: "refused", text: "Enter a vault directory and passphrase to open a local vault." }); return; }
     explicitVaultOpen.current = true;
+    anyVaultOpen.current = true;
     control.setNotice(null);
     setConversationPlanDraft(null);
     setPlanActionReceipt(null);
@@ -391,6 +404,7 @@ export function App() {
       setPassphrase("");
     } finally {
       explicitVaultOpen.current = false;
+      anyVaultOpen.current = false;
     }
   }
   async function pickVaultDirectory() {
@@ -431,9 +445,10 @@ export function App() {
         this product ends up reading our disclaimers instead of the picture we
         say we can draw. Its words are the engine's, and leaving is the one
         action beside them. */}
-    {frame ? <div className="sample-frame" role="note" aria-label={frame.title}><div className="sample-frame-copy"><strong>{frame.title}</strong><span>{frame.detail}</span></div><button className="secondary-button sample-frame-leave" type="button" onClick={leaveVault}>{frame.leave}</button></div> : null}
+    {openingVault ? <div className="action-explanation" id="vault-application-waiting" role="status">The vault is opening and its first authoritative read is still pending. Other actions are unavailable until it answers.</div> : null}
+    {frame ? <div className="sample-frame" role="note" aria-label={frame.title}><div className="sample-frame-copy"><strong>{frame.title}</strong><span>{frame.detail}</span></div><button className="secondary-button sample-frame-leave" type="button" aria-disabled={openingVault} aria-describedby={openingVault ? "vault-application-waiting" : undefined} onClick={leaveVault}>{frame.leave}</button></div> : null}
     {isNarrow && mobileNav && <div className="navigation-backdrop" aria-hidden="true" onClick={() => closeNavigation()} />}
-    <aside ref={navigationDrawerRef} id="primary-navigation-drawer" className={mobileNav ? "sidebar sidebar-open" : "sidebar"} role={isNarrow && mobileNav ? "dialog" : undefined} aria-modal={isNarrow && mobileNav ? true : undefined} aria-labelledby={isNarrow && mobileNav ? "primary-navigation-title" : undefined} aria-hidden={isNarrow ? !mobileNav : accountTransactionOpen ? true : undefined} inert={Boolean(evidenceSelection) || conversationOpen || accountTransactionOpen || (isNarrow && !mobileNav) ? true : undefined} tabIndex={-1}>
+    <aside ref={navigationDrawerRef} id="primary-navigation-drawer" className={mobileNav ? "sidebar sidebar-open" : "sidebar"} role={isNarrow && mobileNav ? "dialog" : undefined} aria-modal={isNarrow && mobileNav ? true : undefined} aria-labelledby={isNarrow && mobileNav ? "primary-navigation-title" : undefined} aria-hidden={isNarrow ? !mobileNav : accountTransactionOpen ? true : undefined} inert={openingVault || Boolean(evidenceSelection) || conversationOpen || accountTransactionOpen || (isNarrow && !mobileNav) ? true : undefined} tabIndex={-1}>
       <h2 className="visually-hidden" id="primary-navigation-title">Main navigation</h2>
       <div className="brand-row"><div className="brand-mark">O</div><div><div className="brand-name">OrionViva</div><div className="brand-subtitle">Private financial picture</div></div><button ref={navigationCloseRef} className="icon-button mobile-close" onClick={() => closeNavigation()} aria-label="Close navigation"><X size={18} /></button></div>
       <div className="preview-badge"><span className="status-dot" />Preview build</div>
@@ -441,7 +456,7 @@ export function App() {
       <details className="vault-source-disclosure" open={!session.source}>
         <summary><span>Vault & privacy</span><small>Source and access</small></summary>
       <div className="vault-source-card">
-        <div className="vault-source-topline"><span>Vault source</span>{session.source ? null : <button className="text-button" type="button" aria-disabled={openingVault} onClick={openSampleVault}>Open the sample vault</button>}</div>
+        <div className="vault-source-topline"><span>Vault source</span>{session.source ? null : <button className="text-button" type="button" aria-disabled={openingVault} aria-describedby={openingVault ? "vault-open-waiting" : undefined} onClick={openSampleVault}>{openingVault ? "Opening sample vault…" : "Open the sample vault"}</button>}</div>
         <strong>{surface.disclosure.title}</strong><span className="vault-source-subtitle">{surface.disclosure.subtitle}</span><p>{surface.disclosure.detail}</p>
         {control.hostAvailable ? <form className="vault-open-form" onSubmit={openVault}><label>Vault directory<span className="vault-directory-control"><input value={vaultDirectory} onChange={(event) => setVaultDirectory(event.target.value)} placeholder="/path/to/vault" autoComplete="off" />{control.pickerAvailable && <button className="vault-picker-button" type="button" onClick={pickVaultDirectory} aria-disabled={openingVault} aria-describedby={openingVault ? "vault-open-waiting" : undefined}><FolderOpen size={14} />{pickingVaultDirectory ? "Choosing..." : "Choose folder"}</button>}</span></label><label>Passphrase<input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="current-password" aria-describedby="vault-passphrase-consequence" /></label><label className="vault-create-choice"><input type="checkbox" checked={makeVault} onChange={(event) => setMakeVault(event.target.checked)} />Make a new vault in that folder</label><p className="vault-passphrase-consequence" id="vault-passphrase-consequence">This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there.</p><button className="secondary-button vault-open-button" type="submit" aria-disabled={openingVault} aria-describedby={openingVault ? "vault-passphrase-consequence vault-open-waiting" : "vault-passphrase-consequence"}>{openingVault ? "Opening vault..." : makeVault ? "Make and open vault" : "Open local vault"}</button>{openingVault ? <span className="action-explanation" id="vault-open-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}</form> : <span className="vault-host-note">Preview mode. A desktop host bridge will enable local vault opening.</span>}
       </div>
@@ -459,19 +474,19 @@ export function App() {
       <nav className="utility-navigation" aria-label="Vault and privacy">{utilityDestinations.map((item) => <button key={item.id} className={session.destination === item.id ? "nav-item utility-nav-item active" : "nav-item utility-nav-item"} aria-current={session.destination === item.id ? "page" : undefined} onClick={() => navigate(item.id)}><Info aria-hidden="true" size={16} /><strong>{item.label}</strong></button>)}</nav>
       <div className="sidebar-footer"><div className="privacy-lock"><Info aria-hidden="true" size={16} /><span>Local source</span></div><p>Vaults stay on this machine unless an action explicitly says otherwise.</p></div>
     </aside>
-    <main className="main-content" aria-hidden={accountTransactionOpen ? true : undefined} inert={Boolean(evidenceSelection) || conversationOpen || accountTransactionOpen || (isNarrow && mobileNav) ? true : undefined}>
+    <main className="main-content" aria-hidden={accountTransactionOpen ? true : undefined} inert={openingVault || Boolean(evidenceSelection) || conversationOpen || accountTransactionOpen || (isNarrow && mobileNav) ? true : undefined}>
       <header className="topbar"><button ref={navigationTriggerRef} id="mobile-navigation-trigger" className="icon-button mobile-menu" type="button" onClick={openNavigation} aria-label="Open navigation" aria-controls="primary-navigation-drawer" aria-expanded={isNarrow ? mobileNav : false}><Menu size={20} /></button><div className="breadcrumbs"><span>OrionViva</span><ChevronRight size={14} /><strong>{pageCopy[session.destination].title}</strong></div><div className="topbar-actions"><button className="primary-button add-statement-button" type="button" onClick={openDocuments}><FilePlus2 className="action-icon" />Add statement</button><button className="ask-button" type="button" onClick={openAskViva}><Sparkles size={16} />Ask Viva</button></div></header>
       <StatusNotice notice={session.notice} onDismiss={() => control.setNotice(null)} icons={noticeIcons} dismissIcon={<X size={15} />} />
       <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div></div>
         <SourceDisclosure disclosure={surface.disclosure} />
         {session.phase === "reading" ? <section className="feature-panel" aria-live="polite"><div className="empty-state"><strong>Reading private vault</strong><span>Reading available surfaces from this device…</span></div></section> : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
-          {session.destination === "overview" && <Overview result={surface.overview} reviewResult={reviewResult} activityResult={surface.activity} readSpendingBreakdown={control.readSpendingBreakdown} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? openAskViva : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} onExploreSample={openSampleVault} />}
+          {session.destination === "overview" && <Overview result={surface.overview} reviewResult={reviewResult} activityResult={surface.activity} readSpendingBreakdown={control.readSpendingBreakdown} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? openAskViva : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} findingReceipt={control.findingReceipt} onExploreSample={openSampleVault} openingSample={openingVault} />}
           {session.destination === "review" && <Review result={reviewResult} onOpenQuestion={openReviewQuestion} onOpenTransaction={openReviewTransaction} />}
-          {session.destination === "accounts" && openedAccount && (surface.overview.state === "ready" || surface.overview.state === "partial" || surface.overview.state === "needs_input") ? <AccountLedger accountId={openedAccount} loadingAccountName={surface.overview.data.accounts.find((account) => account.id === openedAccount)?.name} requestedReviewTarget={reviewTransaction?.target} backLabel={reviewTransaction ? "Back to Review" : accountOrigin?.kind === "overview" ? "Back to Overview" : undefined} read={control.readAccountLedger} activityResult={surface.activity} conversationResult={surface.conversation} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignClassification: async (movementIds, categoryId, subcategoryId) => await control.assignActivityClassification(movementIds, categoryId, subcategoryId) ?? null, onAddTags: async (movementIds, tagIds) => await control.addActivityTags(movementIds, tagIds) ?? null, onRemoveTags: async (movementIds, tagIds) => await control.removeActivityTags(movementIds, tagIds) ?? null } : null} onBack={reviewTransaction ? returnToReview : returnFromAccount} onOpenEvidence={openEvidenceDocument} onOpenQuestion={(questionId, movementId) => openReviewQuestion(questionId, reviewTransaction?.itemId ?? "", movementId)} onReviewTransfer={reviewMovement} onDrawerOpenChange={setAccountTransactionOverlay} drawerActive={accountTransactionOpen} renderOverlay={(content) => createPortal(content, document.body)} pageTitleRef={pageTitleRef} /> : session.destination === "accounts" ? <Accounts result={surface.overview} selectedAccount={session.selectedAccount} onOpenAccount={(accountId) => { setAccountOrigin({ kind: "accounts", accountId }); setOpenedAccount(accountId); }} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} /> : null}
-          {session.destination === "documents" && <Documents result={surface.documents} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} rescan={control.captureAvailable ? { state: session.rescanAction, onRescan: () => void control.rescanDocuments(), onReviewMovement: reviewMovement } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={openSampleVault} />}
+          {session.destination === "accounts" && openedAccount && (surface.overview.state === "ready" || surface.overview.state === "partial" || surface.overview.state === "needs_input") ? <AccountLedger accountId={openedAccount} loadingAccountName={surface.overview.data.accounts.find((account) => account.id === openedAccount)?.name} requestedReviewTarget={reviewTransaction?.target} backLabel={reviewTransaction ? "Back to Review" : accountOrigin?.kind === "overview" ? "Back to Overview" : undefined} read={control.readAccountLedger} activityResult={surface.activity} conversationResult={surface.conversation} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignClassification: async (movementIds, categoryId, subcategoryId) => await control.assignActivityClassification(movementIds, categoryId, subcategoryId) ?? null, onAddTags: async (movementIds, tagIds) => await control.addActivityTags(movementIds, tagIds) ?? null, onRemoveTags: async (movementIds, tagIds) => await control.removeActivityTags(movementIds, tagIds) ?? null } : null} onBack={reviewTransaction ? returnToReview : returnFromAccount} onOpenEvidence={openEvidenceDocument} onOpenQuestion={(questionId, movementId) => openReviewQuestion(questionId, reviewTransaction?.itemId ?? "", movementId)} onReviewTransfer={reviewMovement} onDrawerOpenChange={setAccountTransactionOverlay} drawerActive={accountTransactionOpen} renderOverlay={(content) => createPortal(content, document.body)} pageTitleRef={pageTitleRef} /> : session.destination === "accounts" ? <Accounts result={surface.overview} selectedAccount={session.selectedAccount} onOpenAccount={(accountId) => { setAccountOrigin({ kind: "accounts", accountId }); setOpenedAccount(accountId); }} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} openingSample={openingVault} /> : null}
+          {session.destination === "documents" && <Documents result={surface.documents} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} rescan={control.captureAvailable ? { state: session.rescanAction, onRescan: () => void control.rescanDocuments(), onReviewMovement: reviewMovement } : null} jobStatus={control.jobStatus} jobCheck={control.jobCheck} onRecheckJobs={() => void control.recheckJobs()} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={openSampleVault} openingSample={openingVault} />}
           {session.destination === "activity" && <Activity result={surface.activity} selectedMovement={selectedMovement} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignCategory: (movementId, categoryId) => void control.assignActivityCategory(movementId, categoryId), onAssignMeaning: (movementId, meaning, counterparty) => void control.assignActivityMeaning(movementId, meaning, counterparty), onReplaceTags: (movementId, tagIds) => void control.replaceActivityTags(movementId, tagIds), onConfirmTransfer: (movementId, counterpartId) => void control.confirmActivityTransfer(movementId, counterpartId), onRejectTransfer: (movementId) => void control.rejectActivityTransfer(movementId), onUnlinkTransfer: (movementId, counterpartId) => void control.unlinkActivityTransfer(movementId, counterpartId) } : null} onOpenEvidence={openEvidenceDocument} onLoadMore={() => void control.loadMoreActivity()} />}
           {session.destination === "plans" && <Plans result={plansResult} controls={planControls} initialDraft={conversationPlanDraft} receipt={planActionReceipt} onOpenEvidence={openEvidenceDocument} />}
-          {session.destination === "trust" && <Trust result={surface.trust} identity={session.description.identity} lifecycle={session.description.lifecycle} displayPreference={{ showVerificationDetails: proofPreference.showVerificationDetails, onChange: proofPreference.setShowVerificationDetails }} transfer={control.transferAvailable ? { state: session.transferAction, onExport: (archive: string) => void control.exportVault(archive), onRestore: (archive: string, directory: string, passphrase: string) => void control.restoreVault(archive, directory, passphrase) } : null} settings={control.settingsAvailable ? { settings: session.settings, state: session.settingsAction, onPropose: (kind, fields) => void control.proposeSettings(kind, fields), onConfirm: (kind, fields, digest, key) => void control.confirmSettings(kind, fields, digest, key) } : null} maintenance={control.trustAvailable ? { state: session.trustAction, job: maintenanceJob, cancel: session.cancelAction, onRun: (spend: boolean) => void control.runMaintenance(spend), onDiagnose: (file: string) => void control.writeDiagnostic(file), onStop: (jobId: string) => void control.cancelJob(jobId) } : null} />}
+          {session.destination === "trust" && <Trust result={surface.trust} identity={session.description.identity} lifecycle={session.description.lifecycle} displayPreference={{ showVerificationDetails: proofPreference.showVerificationDetails, onChange: proofPreference.setShowVerificationDetails }} transfer={control.transferAvailable ? { state: session.transferAction, onExport: (archive: string) => void control.exportVault(archive), onRestore: (archive: string, directory: string, passphrase: string) => void control.restoreVault(archive, directory, passphrase) } : null} settings={control.settingsAvailable ? { settings: session.settings, state: session.settingsAction, onPropose: (kind, fields) => void control.proposeSettings(kind, fields), onConfirm: (kind, fields, digest, key) => void control.confirmSettings(kind, fields, digest, key) } : null} maintenance={control.trustAvailable ? { state: session.trustAction, job: maintenanceJob, jobStatus: control.jobStatus, jobCheck: control.jobCheck, cancel: session.cancelAction, onRun: (spend: boolean) => void control.runMaintenance(spend), onDiagnose: (file: string) => void control.writeDiagnostic(file), onStop: (jobId: string) => void control.cancelJob(jobId), onRecheck: () => void control.recheckJobs() } : null} />}
         </FeatureBoundary>}
       </div>
     </main>

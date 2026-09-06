@@ -202,10 +202,7 @@ COMPLETE_PAYLOADS: dict[str, dict[str, object]] = {
 # surface read that first requires the remembered private vault to be reopened.
 # Both paths replay the original operation, so both declarations belong to the
 # sidecar-operation compatibility gate.
-RETRY_DECLARATIONS = (
-    "fn operation_can_restart_and_replay(",
-    "fn operation_can_reopen_vault_and_replay(",
-)
+RETRY_DECLARATIONS = ("fn operation_can_reopen_vault_and_replay(",)
 
 
 def _served_operations() -> set[str]:
@@ -381,6 +378,11 @@ def test_the_host_only_retries_operations_the_sidecar_serves():
         "the host would replay operations the sidecar does not serve: "
         f"{sorted(unserved)}"
     )
+    # Opens and mutations are specifically outside the once-only safe-read
+    # recovery set. This counterfactual makes the gate fail if either leaks in.
+    assert BRIDGE_OPEN_VAULT not in retried
+    assert BRIDGE_OPEN_DEMO_VAULT not in retried
+    assert DOCUMENTS_OPERATIONS["upload"] not in retried
 
 
 def _refusing_handler(payload: dict[str, object]) -> object:

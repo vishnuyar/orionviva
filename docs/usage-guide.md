@@ -4,6 +4,16 @@ OrionViva turns financial statements into a local, evidence-backed financial
 picture. The application separates currencies, shows what each figure rests on,
 and exposes uncertainty rather than filling gaps silently.
 
+## If a request stops answering
+
+The desktop app stops waiting at a bounded deadline instead of leaving a
+spinner indefinitely. A timed-out read keeps the last valid information on
+screen, or says that an initial read is unavailable and can be reopened. A
+timed-out action that could have changed the vault is reported as outcome
+unknown: check the vault before trying again. OrionViva does not automatically
+repeat writes, paid model work, exports, restores, or vault opens after an
+interruption.
+
 ## Explore safely with the sample vault
 
 Choose **Open the sample vault** from the first screen. Everything inside it is

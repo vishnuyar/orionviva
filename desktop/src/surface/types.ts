@@ -24,7 +24,8 @@ export type ActionResult =
   | { state: "settled"; outcome: ActionOutcomeView }
   | { state: "unserved" }
   | { state: "unanswered" }
-  | { state: "unreadable" };
+  | { state: "unreadable" }
+  | { state: "interrupted"; message: string };
 // Where one piece of the sidecar's work stands. The set is the sidecar's and
 // is closed on both sides; a word outside it is a job this interface has not
 // been taught to render, and is read as no job rather than as the nearest one.

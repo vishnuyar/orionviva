@@ -247,8 +247,38 @@ describe("what the sidecar says it is doing", () => {
 
   it("names the step the sidecar named and counts the steps the job declared", () => {
     const capture = { ...idle(), job: runningJob() };
-    const { getByText } = render(<Documents {...props} capture={capture} result={ready([])} />);
+    const { getByRole, getByText, queryByText } = render(<Documents {...props} capture={capture} result={ready([])} />);
+    expect(getByRole("heading", { name: "Adding your statement" })).toBeInTheDocument();
+    expect(queryByText("viva.documents.upload")).not.toBeInTheDocument();
     expect(getByText("Step 1 of 3 — checked")).toBeInTheDocument();
+  });
+
+  it("hides stale progress and blocks only duplicate job triggers until recheck", () => {
+    const asked: string[] = [];
+    const capture = { ...idle(), job: runningJob(), onChoose: () => asked.push("upload") };
+    const rescan = { state: { state: "idle" as const }, onRescan: () => asked.push("rescan") };
+    const { getByRole, queryByText } = render(<Documents {...props} capture={capture} rescan={rescan} jobStatus="unavailable" onRecheckJobs={() => asked.push("recheck")} result={ready([document("kept")])} />);
+    const choose = getByRole("button", { name: "Choose statement file" });
+    const look = getByRole("button", { name: "Look again" });
+    expect(choose).toHaveAttribute("aria-disabled", "true");
+    expect(look).toHaveAttribute("aria-disabled", "true");
+    expect(choose).toHaveAccessibleDescription(expect.stringContaining("Job status unavailable"));
+    fireEvent.click(choose);
+    fireEvent.click(look);
+    fireEvent.click(getByRole("button", { name: "Recheck job status" }));
+    expect(asked).toEqual(["recheck"]);
+    expect(queryByText("Step 1 of 3 — checked")).not.toBeInTheDocument();
+    expect(getByRole("button", { name: /sample\.pdf/i })).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("keeps a repeated recheck focusable but inert while job status is checking", () => {
+    const asked: string[] = [];
+    const { getByRole } = render(<Documents {...props} capture={idle()} result={ready([])} jobStatus="unavailable" jobCheck="checking" onRecheckJobs={() => asked.push("recheck")} />);
+    const recheck = getByRole("button", { name: "Recheck job status" });
+    expect(recheck).toHaveAttribute("aria-disabled", "true");
+    expect(recheck).toHaveAccessibleDescription("Checking job status…");
+    fireEvent.click(recheck);
+    expect(asked).toEqual([]);
   });
 
   it("offers a stop only while the sidecar says the job can still be stopped", () => {
@@ -330,6 +360,6 @@ describe("going back over what is already here", () => {
   it("will not say what a pass did when the reply carried no report", () => {
     const settled: RescanActionState = { state: "settled", result: { state: "unanswered" }, report: null };
     const { getByText } = render(<Documents {...props} rescan={controls(settled)} result={ready([])} />);
-    expect(getByText(/does not recognise/)).toBeInTheDocument();
+    expect(getByText(/Nothing came back, so this screen will not say whether anything was recorded/)).toBeInTheDocument();
   });
 });

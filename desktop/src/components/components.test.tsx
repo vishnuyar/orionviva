@@ -315,6 +315,7 @@ describe("the words every screen uses for a request that never reached an answer
     expect(channelPresentation({ state: "unserved" })).toEqual({ title: "Your vault would not take this request", detail: "Your vault refused the request as this screen sent it. Whether anything was recorded is not something this screen can tell you." });
     expect(channelPresentation({ state: "unanswered" })).toEqual({ title: "Your vault did not answer", detail: "Nothing came back, so this screen will not say whether anything was recorded." });
     expect(channelPresentation({ state: "unreadable" })).toEqual({ title: "The reply could not be read", detail: "Your vault answered in a way this screen does not recognise, so it will not say whether anything was recorded." });
+    expect(channelPresentation({ state: "interrupted", message: "Inspect this exact object. OrionViva did not retry it." })).toEqual({ title: "Outcome could not be established", detail: "Inspect this exact object. OrionViva did not retry it." });
     expect(UNSPOKEN_REPLY).toBe("Your vault recorded no sentence for this reply.");
   });
 
@@ -324,5 +325,6 @@ describe("the words every screen uses for a request that never reached an answer
       expect(said.title.trim()).not.toBe("");
       expect(said.detail.trim()).not.toBe("");
     }
+    expect(channelPresentation({ state: "interrupted", message: "Persistent local receipt" }).detail).toBe("Persistent local receipt");
   });
 });

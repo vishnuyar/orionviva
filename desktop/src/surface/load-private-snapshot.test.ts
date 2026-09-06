@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { BridgeTimeout } from "../bridge/contracts";
 import type { BridgeClient, SurfaceName } from "../bridge/contracts";
-import { loadPrivateSnapshot } from "./load-private-snapshot";
+import { loadPrivateSnapshot, privateActivityActions, privateDocumentActions, privateSettingsActions, privateTransferActions, privateTrustActions } from "./load-private-snapshot";
 import { privateSource } from "./sources";
 
 const read = (surface: SurfaceName, data: unknown) => Promise.resolve({ surface, job_id: `job-${surface}`, data });
@@ -80,5 +81,33 @@ describe("private conversation surface", () => {
   it("keeps a partial Plans read partial at the panel boundary", async () => {
     const snapshot = await loadPrivateSnapshot(client(undefined, { state: "partial", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }));
     expect(snapshot.plans?.state).toBe("partial");
+  });
+
+  it("preserves typed timeouts through every action adapter", async () => {
+    const timeout = new BridgeTimeout("test.write", true);
+    const rejected = Object.assign(client(), {
+      uploadDocument: async () => { throw timeout; },
+      rescanDocuments: async () => { throw timeout; },
+      cancelJob: async () => { throw timeout; },
+      assignActivityCategory: async () => { throw timeout; },
+      runMaintenance: async () => { throw timeout; },
+      writeDiagnostic: async () => { throw timeout; },
+      proposeSettings: async () => { throw timeout; },
+      confirmSettings: async () => { throw timeout; },
+      exportVault: async () => { throw timeout; },
+      restoreVault: async () => { throw timeout; },
+    });
+    const documents = privateDocumentActions(rejected);
+    const activity = privateActivityActions(rejected);
+    const trust = privateTrustActions(rejected);
+    const settings = privateSettingsActions(rejected);
+    const transfer = privateTransferActions(rejected);
+    const calls = [documents.upload("/statement.pdf"), documents.rescan(), documents.cancel("job"), activity.assignCategory("movement", "category"), trust.run(false), trust.diagnose("/diagnostic.json"), settings.propose("presentation", {}), settings.confirm("presentation", {}, "digest", ""), transfer.export("/copy.viva"), transfer.restore("/copy.viva", "/restored", "secret")];
+    await Promise.all(calls.map((call) => expect(call).rejects.toBe(timeout)));
+  });
+
+  it("still maps ordinary rejected action calls to terminal unanswered results", async () => {
+    const rejected = Object.assign(client(), { uploadDocument: async () => { throw new Error("offline"); } });
+    await expect(privateDocumentActions(rejected).upload("/statement.pdf")).resolves.toEqual({ state: "unanswered" });
   });
 });

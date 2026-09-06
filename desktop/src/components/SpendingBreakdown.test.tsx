@@ -52,6 +52,23 @@ describe("SpendingBreakdown", () => {
     expect(screen.getByRole("status")).toHaveTextContent("could not be read");
   });
 
+  it("keeps Reset filters focusable but prevents a second read while an update is pending", async () => {
+    let release: ((result: FeatureResult<SpendingBreakdownData>) => void) | undefined;
+    const read = vi.fn()
+      .mockResolvedValueOnce(ready(data()))
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    render(<SpendingBreakdown read={read} />);
+    await screen.findByText("groceries");
+    await userEvent.selectOptions(screen.getByLabelText("Spending breakdown granularity"), "subcategory");
+    const reset = screen.getByRole("button", { name: "Reset filters" });
+    expect(reset).not.toHaveAttribute("disabled");
+    expect(reset).toHaveAttribute("aria-disabled", "true");
+    expect(reset).toHaveAccessibleDescription(expect.stringContaining("Updating the breakdown"));
+    fireEvent.click(reset);
+    expect(read).toHaveBeenCalledTimes(2);
+    await act(async () => release?.(ready(data("updated"))));
+  });
+
   it("prevents dependent account changes until the authored scope returns", async () => {
     let release: ((result: FeatureResult<SpendingBreakdownData>) => void) | undefined;
     let releaseAll: ((result: FeatureResult<SpendingBreakdownData>) => void) | undefined;
@@ -112,10 +129,33 @@ describe("SpendingBreakdown", () => {
     render(<SpendingBreakdown read={read} />);
     await screen.findByText("groceries");
     await userEvent.selectOptions(screen.getByLabelText("Spending date range"), "custom");
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Start date")).toHaveAttribute("aria-disabled", "false");
+    expect(screen.getByLabelText("End date")).toHaveAttribute("aria-disabled", "false");
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-08-03" } });
     fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-08-17" } });
     await userEvent.click(screen.getByRole("button", { name: "Apply dates" }));
+    expect(read).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(read).toHaveBeenLastCalledWith(expect.objectContaining({ period: "custom", startDate: "2026-08-03", endDate: "2026-08-17" })));
+  });
+
+  it("describes applied custom-date controls with the pending update", async () => {
+    let release: ((result: FeatureResult<SpendingBreakdownData>) => void) | undefined;
+    const read = vi.fn()
+      .mockResolvedValueOnce(ready(data()))
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    const { container } = render(<SpendingBreakdown read={read} />);
+    await screen.findByText("groceries");
+    await userEvent.selectOptions(screen.getByLabelText("Spending date range"), "custom");
+    fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-08-03" } });
+    fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-08-17" } });
+    await userEvent.click(screen.getByRole("button", { name: "Apply dates" }));
+    const form = container.querySelector(".spending-custom-range");
+    expect(form).toHaveAttribute("aria-describedby", "spending-update");
+    expect(screen.getByLabelText("Start date")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByLabelText("End date")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "Apply dates" })).toHaveAttribute("aria-disabled", "true");
+    await act(async () => release?.(ready(data("custom"))));
   });
 
   it("keeps multiple currencies in separately labelled figures", async () => {

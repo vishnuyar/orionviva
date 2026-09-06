@@ -24,6 +24,7 @@ describe("documents", () => {
           return { protocol: "1.0", request_id: "upload", ok: true, result: { kind: "completed", message: SAVED_NO_READER, state: null, reason: null } as T };
         }
         const surface = payload.surface;
+        if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? (captured
             ? { documents: [{ id: "captured-identity", doc_type: "statement", filename: "quarter-close.pdf", resolved: false, raw_available: true, reading: "never_read" }], reading_sentence: SAVED_NO_READER }
@@ -104,6 +105,7 @@ describe("documents", () => {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
         const surface = payload.surface;
+        if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },
@@ -140,6 +142,7 @@ describe("documents", () => {
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
         if (operation === "viva.documents.upload") return { protocol: "1.0", request_id: "upload", ok: true, result: { kind: "completed", message: SAVED_NO_READER, state: null, reason: null } as T };
         const surface = payload.surface;
+        if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },
@@ -179,6 +182,7 @@ describe("documents", () => {
         operations.push(operation);
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
         const surface = payload.surface;
+        if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },
@@ -248,6 +252,7 @@ describe("documents", () => {
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
         if (operation === "viva.documents.upload") return { protocol: "1.0", request_id: "upload", ok: true, result: { kind: "completed", message: SAVED_NO_READER, state: null, reason: null } as T };
         const surface = payload.surface;
+        if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },

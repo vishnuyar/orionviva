@@ -12,6 +12,20 @@ buildable record, and a person arriving fresh still needs one page that says
 where everything sits before choosing which record to open. Its companion is
 [data-flow.md](data-flow.md), which walks the same machine in motion.
 
+## Desktop request supervision
+
+The native desktop host owns each sidecar request and routes replies by request
+identity. It bounds reads at 15 seconds, normal actions at 30 seconds, vault
+and credential work at 60 seconds, model conversation at 120 seconds, and
+export or restore at 10 minutes. A long job must acknowledge within 60 seconds,
+must then produce correlated progress within each 120-second window, and has a
+30-minute transport cap.
+
+After an interruption the host releases the caller and terminates the stuck
+sidecar. It never replays a write. It may reconstruct only the exact previously
+active vault to retry one safe interrupted read; sample recovery remains sample
+recovery, and private recovery never falls back to a remembered default.
+
 ## The shape in one paragraph
 
 OrionViva is an installed desktop application over a local, encrypted,

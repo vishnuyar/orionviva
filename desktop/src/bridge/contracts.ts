@@ -55,6 +55,16 @@ export class BridgeUnreadable extends Error {
     this.name = "BridgeUnreadable";
   }
 }
+export class BridgeTimeout extends Error {
+  readonly operation: string;
+  readonly mayHaveWritten: boolean;
+  constructor(operation: string, mayHaveWritten: boolean) {
+    super(operation);
+    this.name = "BridgeTimeout";
+    this.operation = operation;
+    this.mayHaveWritten = mayHaveWritten;
+  }
+}
 // One progress frame, as the host delivers it. The shell reads the frame and
 // nothing else about the transport: what a job is doing is the sidecar's to
 // say, and a shell that computed a step from a reply would be a second author

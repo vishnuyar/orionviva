@@ -19,7 +19,7 @@ export type CaptureControls = { state: CaptureActionState; onChoose: (() => void
 // What a screen needs to send this vault back over what it already holds, and
 // to say what came of it. A source that cannot do it carries none of this.
 export type RescanControls = { state: RescanActionState; onRescan: () => void; onReviewMovement?: (movementId: string) => void };
-type DocumentsProps = { rescan: RescanControls | null; result: FeatureResult<DocumentsData>; selectedDocument: string; capture: CaptureControls | null; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void };
+type DocumentsProps = { rescan: RescanControls | null; result: FeatureResult<DocumentsData>; selectedDocument: string; capture: CaptureControls | null; jobStatus?: "available" | "unavailable"; jobCheck?: "idle" | "checking" | "failed" | "succeeded"; onRecheckJobs?: () => void; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void; openingSample?: boolean };
 
 // The one sentence this panel says, and the only place it is said. What the
 // vault answered the last capture with stands until the next capture; where
@@ -42,14 +42,14 @@ function panelSentence(result: FeatureResult<DocumentsData>): string {
 // The control a person pressed keeps its place in the tab order for as long as
 // the vault is answering. A second press is refused in the handler and said in
 // words beside it.
-function CapturePanel({ state, onChoose }: { state: CaptureActionState; onChoose: () => void }) {
+function CapturePanel({ state, onChoose, jobUnavailable }: { state: CaptureActionState; onChoose: () => void; jobUnavailable: boolean }) {
   const working = state.state === "working";
   const choose = () => { if (!working) onChoose(); };
   return <section className="document-capture-status" id="document-capture-status" tabIndex={-1} aria-labelledby="document-capture-title">
     <div className="detail-panel-label">Capture</div>
     <h2 id="document-capture-title">Add a statement</h2>
     <p>Choose one statement or financial document. It is encrypted and saved in this vault on this machine.</p>
-    <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "document-capture-waiting" : undefined} onClick={choose}>Choose statement file</button>
+    <button className="secondary-button" type="button" aria-disabled={working || jobUnavailable} aria-describedby={working ? "document-capture-waiting" : jobUnavailable ? "document-job-unavailable" : undefined} onClick={() => { if (!jobUnavailable) choose(); }}>Choose statement file</button>
     {working ? <span className="action-explanation" id="document-capture-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
   </section>;
 }
@@ -64,7 +64,7 @@ function JobProgress({ job, cancel, onStop }: { job: JobView; cancel: CancelActi
   const running = job.state === "running" || job.state === "queued";
   return <section className="document-job" aria-labelledby="document-job-title">
     <div className="detail-panel-label">Progress</div>
-    <h2 id="document-job-title">{job.operation || "Work in progress"}</h2>
+    <h2 id="document-job-title">{job.operation === "viva.documents.upload" ? "Adding your statement" : "Work in progress"}</h2>
     <p className="document-job-step" role="status" aria-live="polite">{running ? `Step ${job.completed} of ${job.total}${job.step ? ` — ${job.step}` : ""}` : `Finished at step ${job.completed} of ${job.total}`}</p>
     {job.attempt > 1 ? <p className="document-job-attempt">This is attempt {job.attempt}. The earlier one did not finish.</p> : null}
     {job.message ? <p className="document-job-message">{job.message}</p> : null}
@@ -78,15 +78,15 @@ function JobProgress({ job, cancel, onStop }: { job: JobView; cancel: CancelActi
 // nothing and asks for nothing — which is why the control says what it does
 // rather than warning about it. What came of it is the backend's own sentences,
 // one per kind of change; this composes none of them and counts nothing.
-function RescanPanel({ rescan }: { rescan: RescanControls }) {
+function RescanPanel({ rescan, jobUnavailable }: { rescan: RescanControls; jobUnavailable: boolean }) {
   const working = rescan.state.state === "working";
   const report = rescan.state.state === "settled" ? rescan.state.report : null;
-  const unread = rescan.state.state === "settled" && !report;
+  const unanswered = rescan.state.state === "settled" && !report && rescan.state.result.state !== "settled" ? channelPresentation(rescan.state.result) : null;
   return <section className="document-rescan" aria-labelledby="document-rescan-title">
     <div className="detail-panel-label">Go back over this vault</div>
     <h2 id="document-rescan-title">Look again at what is already here</h2>
     <p>This looks for records that close each other, statements a second document now agrees with, and movements that are two halves of one transfer. It reads no document, so it costs nothing and sends nothing.</p>
-    <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "document-rescan-waiting" : undefined} onClick={() => { if (!working) rescan.onRescan(); }}>Look again</button>
+    <button className="secondary-button" type="button" aria-disabled={working || jobUnavailable} aria-describedby={working ? "document-rescan-waiting" : jobUnavailable ? "document-job-unavailable" : undefined} onClick={() => { if (!working && !jobUnavailable) rescan.onRescan(); }}>Look again</button>
     {working ? <span className="action-explanation" id="document-rescan-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
     <div className="visually-hidden" role="status" aria-live="polite">{report ? report.sentence : ""}</div>
     {report ? <div className="document-rescan-answer">
@@ -94,7 +94,7 @@ function RescanPanel({ rescan }: { rescan: RescanControls }) {
       {report.changes.length ? <ul>{report.changes.map((change) => <li key={change.id}>{change.sentence}</li>)}</ul> : null}
       {report.standing.length ? <ul className="document-rescan-standing">{report.standing.map((item) => <li key={item.id}><span>{item.sentence}</span>{rescan.onReviewMovement ? (item.movementIds ?? []).map((movementId) => <button key={movementId} className="secondary-button" type="button" onClick={() => rescan.onReviewMovement?.(movementId)}>Review transfer</button>) : null}</li>)}</ul> : null}
     </div> : null}
-    {unread ? <p className="document-rescan-answer">Your vault answered in a way this screen does not recognise, so it will not say what that pass did.</p> : null}
+    {unanswered ? <p className="document-rescan-answer"><strong>{unanswered.title}</strong> {unanswered.detail}</p> : null}
   </section>;
 }
 
@@ -151,22 +151,24 @@ function DocumentDetail({ document, onOpenEvidence }: { document: SurfaceDocumen
 // The region announcing it is mounted for the life of the screen and only its
 // text changes, because a live region that arrives with its words is one
 // several screen readers never announce.
-export function Documents({ result, selectedDocument, capture, rescan, onSelectDocument, onOpenEvidence, onExploreSample }: DocumentsProps) {
+export function Documents({ result, selectedDocument, capture, rescan, jobStatus = "available", jobCheck = "idle", onRecheckJobs, onSelectDocument, onOpenEvidence, onExploreSample, openingSample = false }: DocumentsProps) {
   const said = capturePresentation(capture ? capture.state : { state: "idle" }, panelSentence(result));
-  const captureRegion = capture?.onChoose ? <CapturePanel state={capture.state} onChoose={capture.onChoose} /> : null;
+  const captureRegion = capture?.onChoose ? <CapturePanel state={capture.state} onChoose={capture.onChoose} jobUnavailable={jobStatus === "unavailable"} /> : null;
   const job = capture?.job ?? null;
-  if (result.state === "absent" && !captureRegion && !said && !job && !rescan) return null;
+  if (result.state === "absent" && !captureRegion && !said && !job && !rescan && jobStatus !== "unavailable") return null;
   return <section className="feature-panel documents-surface">
     {captureRegion}
-    {rescan ? <RescanPanel rescan={rescan} /> : null}
-    {capture && job ? <JobProgress job={job} cancel={capture.cancel} onStop={capture.onStop} /> : null}
+    {jobStatus === "unavailable" ? <div className="action-explanation" id="document-job-unavailable"><strong>Job status unavailable.</strong> Recheck the job status. If it still cannot be read, reopen this vault before adding or rescanning statements. {onRecheckJobs ? <button className="secondary-button" type="button" aria-disabled={jobCheck === "checking"} aria-describedby={jobCheck === "checking" ? "document-job-check-status" : undefined} onClick={() => { if (jobCheck !== "checking") onRecheckJobs(); }}>Recheck job status</button> : null}</div> : null}
+    {jobCheck !== "idle" ? <div className="visually-hidden" id="document-job-check-status" role="status" aria-live="polite">{jobCheck === "checking" ? "Checking job status…" : jobCheck === "failed" ? "Job status is still unavailable. Reopen this vault before starting the job again." : "Job status checked successfully."}</div> : null}
+    {rescan ? <RescanPanel rescan={rescan} jobUnavailable={jobStatus === "unavailable"} /> : null}
+    {capture && job && jobStatus !== "unavailable" ? <JobProgress job={job} cancel={capture.cancel} onStop={capture.onStop} /> : null}
     {capture ? <div className="visually-hidden" role="status" aria-live="polite">{said ? `${said.title ? `${said.title}. ` : ""}${said.detail}` : ""}</div> : null}
     {said ? <div className="document-capture-answer">{said.title ? <strong>{said.title}</strong> : null}<p>{said.detail}</p></div> : null}
     <PanelStateView result={result} copy={{ partial: "Some document details are unavailable. Available documents are shown below.", needsInput: "Some documents need review. Available document details are shown below.", unavailable: { title: "Documents unavailable", detail: "Document details are not available in this build." }, failed: { title: "Documents could not be read", detail: "The documents section could not be read. The private vault is still open." } }}>{(data) => {
     const selection = resolveDocumentSelection(data.documents, selectedDocument);
     const activeId = selection.state === "ready" ? selection.document.id : selectedDocument;
     return <><ReadScope />
-      {!data.documents.length ? <div className="empty-state"><strong>No statements or documents yet</strong><span>Add a statement to begin, or open the sample vault to see a populated document index.</span><button className="secondary-button" onClick={onExploreSample}>Open the sample vault</button></div> : <><div className="document-library-layout"><DocumentLibrary documents={data.documents} selectedDocument={activeId} onSelectDocument={onSelectDocument} />{selection.state === "ready" ? <DocumentDetail document={selection.document} onOpenEvidence={onOpenEvidence} /> : selection.state === "missing" ? <div className="empty-state"><strong>Selected document unavailable</strong><span>The selected document is no longer present in the current vault read.</span></div> : selection.state === "conflicted_identity" ? <div className="empty-state"><strong>Document selection unavailable</strong><span>More than one document in this read uses the selected identity, so the interface will not choose between them.</span></div> : <div className="empty-state"><strong>Document identity unavailable</strong><span>No document with a unique stable identity can be selected from this read.</span></div>}</div></>}
+      {!data.documents.length ? <div className="empty-state"><strong>No statements or documents yet</strong><span>Add a statement to begin, or open the sample vault to see a populated document index.</span><button className="secondary-button" aria-disabled={openingSample} aria-describedby={openingSample ? "vault-opening-from-documents" : undefined} onClick={() => { if (!openingSample) onExploreSample(); }}>{openingSample ? "Opening sample vault…" : "Open the sample vault"}</button>{openingSample ? <span className="action-explanation" id="vault-opening-from-documents">The sample vault is opening and its first read is still pending.</span> : null}</div> : <><div className="document-library-layout"><DocumentLibrary documents={data.documents} selectedDocument={activeId} onSelectDocument={onSelectDocument} />{selection.state === "ready" ? <DocumentDetail document={selection.document} onOpenEvidence={onOpenEvidence} /> : selection.state === "missing" ? <div className="empty-state"><strong>Selected document unavailable</strong><span>The selected document is no longer present in the current vault read.</span></div> : selection.state === "conflicted_identity" ? <div className="empty-state"><strong>Document selection unavailable</strong><span>More than one document in this read uses the selected identity, so the interface will not choose between them.</span></div> : <div className="empty-state"><strong>Document identity unavailable</strong><span>No document with a unique stable identity can be selected from this read.</span></div>}</div></>}
     </>;
   }}</PanelStateView>
   </section>;
