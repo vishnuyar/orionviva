@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { BridgeRefusal, OPEN_REFUSALS } from "../bridge/contracts";
 import { privateSource, sampleSource } from "../surface/sources";
@@ -343,6 +343,20 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     }
   }
 
+  const readSpendingBreakdown = useCallback(async (request: SpendingRequest): Promise<FeatureResult<SpendingBreakdownData>> => {
+    if (!spendingBreakdownReader) return { state: "absent", reason: "not_available" };
+    const activeRequest = requestId.current;
+    const activeRevision = surfaceRevision.current;
+    const activeSource = source;
+    const result = await spendingBreakdownReader.read(request);
+    if (requestId.current !== activeRequest
+        || surfaceRevision.current !== activeRevision
+        || sourceIdentity.current !== activeSource) {
+      return { state: "absent", reason: "stale_read" };
+    }
+    return result;
+  }, [source, spendingBreakdownReader]);
+
   return {
     session,
     // Navigation can request the selected account on demand without placing a
@@ -361,19 +375,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       }
       return result;
     },
-    async readSpendingBreakdown(request: SpendingRequest): Promise<FeatureResult<SpendingBreakdownData>> {
-      if (!spendingBreakdownReader) return { state: "absent", reason: "not_available" };
-      const activeRequest = requestId.current;
-      const activeRevision = surfaceRevision.current;
-      const activeSource = source;
-      const result = await spendingBreakdownReader.read(request);
-      if (requestId.current !== activeRequest
-          || surfaceRevision.current !== activeRevision
-          || sourceIdentity.current !== activeSource) {
-        return { state: "absent", reason: "stale_read" };
-      }
-      return result;
-    },
+    readSpendingBreakdown,
     rememberedVaultDirectory,
     hostAvailable: Boolean(hostBridge),
     captureAvailable: Boolean(documentActions),

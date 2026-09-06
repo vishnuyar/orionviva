@@ -1,6 +1,11 @@
 # WORKFLOW — how this project is built
 
-**Status:** Living · **Last updated:** 2026-08-20 (the Director added to the
+**Status:** Living · **Last updated:** 2026-09-06 (the small bug lane added for
+localized deterministic defects whose intended behavior is already settled,
+with full affected-package evidence and independent review retaining the
+ordinary owner and commit gates. The independent end-to-end acceptance pack
+remains informative for that lane and remains a gate for full-lane work.
+Before that, 2026-08-20: the Director added to the
 crew and its warrant written down, because a stand-in was already ruling at the
 checkpoints in practice while this file said only the product owner ever does —
 a contract describing a loop nobody is running is worse than no contract.
@@ -135,7 +140,8 @@ later as its own full-lane cycle ("design phase: issue #N").
    run's own branch. Never main, never a push, never a merge, never anything
    that leaves this machine. Everything else about this sentence stands.
 
-Every bug found in use goes through this full lane. Its intake is the
+Every bug found in use goes through this full lane unless it satisfies every
+condition of the small bug lane below. A full-lane bug's intake is the
 Reporter: the bug becomes a scrubbed public issue first, so known problems
 are record rather than memory, and the Design Partner step then starts from
 the issue — a bug whose cause is understood is a design decision about what
@@ -253,6 +259,34 @@ Builder → Verifier → commit gate. The Verifier's scope check applies with fu
 force — the moment a "small fix" turns out to touch behavior, an event, a
 schema, a prompt, or an invariant, it bounces up to the full lane. When in
 doubt, full lane.
+
+## The small bug lane
+
+For a localized, deterministic product defect whose intended behavior is
+already settled. This lane changes behavior, so it is narrower than a judgment
+that the diff is small. It is available only when every condition below holds:
+
+- the repair does not alter financial meaning, a persisted or bridge schema,
+  security or privacy behavior, model behavior or prompts, a public promise,
+  or a design invariant;
+- the affected package and files are known before editing, and the scope does
+  not expand while building;
+- a regression test demonstrates the defect and passes with the repair; and
+- the affected package's complete tests, build, architecture checks, style
+  checks, and privacy/denylist checks pass.
+
+The product owner approves that classification and its scope fence. Then the
+Builder implements, a fresh Verifier checks the regression, complete affected-
+package evidence, and scope, and an Interface Designer runs beside it when the
+interface changed. After the owner accepts their reports, the Steward performs
+the ordinary ship-time rituals and stops at the ordinary commit gate.
+
+The independent end-to-end acceptance pack is not a gate for this lane. Any
+deterministic acceptance failure in affected behavior, any missing required
+package evidence, a regression test that cannot be made to fail against the
+defect, or any discovered expansion beyond the conditions above immediately
+bounces the work to the full lane. Acceptance gaps unrelated to the bounded
+repair are reported but do not turn this lane into the full lane.
 
 ## The hard gates (scripts, not promises)
 

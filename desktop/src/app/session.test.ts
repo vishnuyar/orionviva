@@ -116,6 +116,15 @@ function pairedTransactionSnapshot(): SurfaceSnapshot {
 }
 
 describe("surface session", () => {
+  it("keeps the spending reader stable across ordinary rerenders", () => {
+    const view = renderHook(() => useSurfaceSession());
+    const firstReader = view.result.current.readSpendingBreakdown;
+
+    view.rerender();
+
+    expect(view.result.current.readSpendingBreakdown).toBe(firstReader);
+  });
+
   afterEach(() => { delete window.orionVivaBridge; });
 
   it("owns shell navigation and stable selection behavior", () => {
