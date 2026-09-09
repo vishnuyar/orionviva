@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:sidecar": "python3 ../scripts/build_desktop_sidecar.py --output-dir src-tauri/binaries",
+    "build:sidecar": "../.venv/bin/python ../scripts/build_desktop_sidecar.py --output-dir src-tauri/binaries",
     "build:native": "npm run build && npm run build:sidecar",
     "desktop:build": "npm run build:native && tauri build",
     "release:validate": "python3 ../scripts/prepare_native_release.py --metadata-only",

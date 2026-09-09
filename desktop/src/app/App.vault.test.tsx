@@ -9,6 +9,21 @@ beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("vault", () => {
+  it("announces an automatic-open timeout and restores the manual recovery control", async () => {
+    vi.useFakeTimers();
+    window.orionVivaBridge = {
+      openRememberedVault: () => new Promise(() => undefined),
+      request: async () => { throw new Error("not reached"); },
+    };
+    const view = render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_001); });
+    expect(view.getByRole("status")).toHaveTextContent("Automatic opening stopped answering");
+    const manual = view.getByRole("button", { name: "Open local vault" });
+    expect(manual).not.toHaveAttribute("aria-disabled", "true");
+    expect(view.getByLabelText("Passphrase")).toBeEnabled();
+    expect(view.getByLabelText("Passphrase")).toHaveFocus();
+    vi.useRealTimers();
+  });
   it("keeps local and remembered vault opens mutually exclusive", async () => {
     const user = userEvent.setup();
     let finishRememberedCheck: (result: { state: "absent" }) => void = () => {};

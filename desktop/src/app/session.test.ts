@@ -359,6 +359,43 @@ describe("surface session", () => {
     expect(result.current.session.snapshot.overview.state).toBe("ready");
   });
 
+  it("settles a never-answering remembered lookup back to manual controls", async () => {
+    vi.useFakeTimers();
+    window.orionVivaBridge = {
+      openRememberedVault: () => new Promise(() => undefined),
+      request: async () => { throw new Error("not reached"); },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    expect(result.current.session.phase).toBe("opening");
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_001); });
+    expect(result.current.session.phase).toBe("settled");
+    expect(result.current.session.source).toBeNull();
+    expect(result.current.session.notice?.text).toContain("Automatic opening stopped answering");
+  });
+
+  it("ignores a remembered result that arrives after a newer manual session", async () => {
+    vi.useFakeTimers();
+    const remembered = deferred<{ state: "opened"; directory: string }>();
+    window.orionVivaBridge = {
+      openRememberedVault: () => remembered.promise,
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+        const surface = frame.payload.surface as SurfaceName;
+        const account = surface === "overview" ? { accounts: [{ account: "manual-account", name: "Manual" }] } : completeSurfacePayload(surface);
+        return ok(frame.requestId, { surface, job_id: "manual", data: account } as T);
+      },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_001); });
+    await act(async () => { await result.current.openVault("/manual", "secret", false); });
+    remembered.resolve({ state: "opened", directory: "/stale" });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.rememberedVaultDirectory).toBe("");
+    if (result.current.session.snapshot.overview.state === "ready") {
+      expect(result.current.session.snapshot.overview.data.accounts[0].id).toBe("manual-account");
+    }
+  });
+
   it("keeps a remembered vault selected and exposes its directory when automatic unlock fails", async () => {
     window.orionVivaBridge = {
       openRememberedVault: async () => ({ state: "locked", directory: "/remembered/locked" }),
@@ -407,6 +444,61 @@ describe("surface session", () => {
     expect(result.current.session.source?.label).toBe("Private vault");
     expect(result.current.session.snapshot.overview.state).toBe("ready");
     expect(result.current.session.notice?.text).toContain("could not protect its vaultphrase");
+  });
+
+  it("does not wait for a never-answering credential protection call", async () => {
+    window.orionVivaBridge = {
+      rememberVault: () => new Promise(() => undefined),
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+        const surface = frame.payload.surface as SurfaceName;
+        return ok(frame.requestId, { surface, job_id: "manual", data: completeSurfacePayload(surface) } as T);
+      },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    await expect(act(async () => result.current.openVault("/vault", "secret", false))).resolves.toBe(true);
+    expect(result.current.session.phase).toBe("settled");
+    expect(result.current.session.snapshot.overview.state).toBe("ready");
+  });
+
+  it("reports a credential-protection timeout as outcome unknown", async () => {
+    vi.useFakeTimers();
+    window.orionVivaBridge = {
+      rememberVault: () => new Promise(() => undefined),
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+        const surface = frame.payload.surface as SurfaceName;
+        return ok(frame.requestId, { surface, job_id: "manual", data: completeSurfacePayload(surface) } as T);
+      },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_001); });
+    expect(result.current.session.notice?.text).toContain("may still finish");
+    expect(result.current.session.notice?.text).toContain("enter it again here");
+  });
+
+  it("serializes detached credential writes so an older completion cannot overwrite the newest vault", async () => {
+    const first = deferred<void>();
+    const remembered: string[] = [];
+    window.orionVivaBridge = {
+      rememberVault: async (directory) => {
+        remembered.push(directory);
+        if (directory === "/vault/a") await first.promise;
+      },
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+        const surface = frame.payload.surface as SurfaceName;
+        return ok(frame.requestId, { surface, job_id: "manual", data: completeSurfacePayload(surface) } as T);
+      },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault/a", "first", false); });
+    act(() => { result.current.resetDemo(); });
+    await act(async () => { await result.current.openVault("/vault/b", "second", false); });
+    expect(remembered).toEqual(["/vault/a"]);
+    first.resolve();
+    await waitFor(() => expect(remembered).toEqual(["/vault/a", "/vault/b"]));
   });
 
   it("does not replace a private vault while its initial reads are pending", async () => {

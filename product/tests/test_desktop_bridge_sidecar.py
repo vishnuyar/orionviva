@@ -43,6 +43,9 @@ def test_sidecar_opens_vault_and_enables_only_surface_reads(tmp_path):
     assert response["ok"] is True
     assert response["result"]["surface"] == "overview"
     assert 'test-passphrase' not in output.getvalue()
+    progress = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert progress
+    assert {event["request_id"] for event in progress} == {"req-2"}
 
 
 def test_sidecar_opens_demo_vault_only_with_an_empty_payload(monkeypatch):

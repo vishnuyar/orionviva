@@ -25,6 +25,20 @@ function interrupted(message: string): Extract<ActionResult, { state: "interrupt
   return { state: "interrupted", message };
 }
 
+const REMEMBERED_OPEN_DEADLINE_MS = 2_000;
+const REMEMBER_CREDENTIAL_DEADLINE_MS = 2_000;
+const REMEMBER_OUTCOME_UNKNOWN = "This vault is open, but protecting its vaultphrase stopped answering. The protection may still finish. Before restarting OrionViva, keep the vaultphrase available; if automatic opening does not work next time, enter it again here.";
+
+function bounded<T>(work: Promise<T>, milliseconds: number): Promise<T | null> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(null), milliseconds);
+    work.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (failure) => { clearTimeout(timer); reject(failure); },
+    );
+  });
+}
+
 // What a gesture carrying files turned out to be. Only `one` reaches the
 // vault; `several` is refused and `none` is a person changing their mind.
 export type CaptureGesture = "none" | "one" | "several";
@@ -35,6 +49,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const [settingAsideFindingId, setSettingAsideFindingId] = useState("");
   const [findingReceipt, setFindingReceipt] = useState<{ findingId: string; result: ActionResult } | null>(null);
   const [rememberedVaultDirectory, setRememberedVaultDirectory] = useState("");
+  const [automaticOpenTimedOut, setAutomaticOpenTimedOut] = useState(false);
   const requestId = useRef(0);
   const dropped = useRef(onDropped);
   dropped.current = onDropped;
@@ -72,6 +87,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const source = session.source;
   const sourceIdentity = useRef(source);
   const rememberedOpenStarted = useRef(false);
+  const rememberWrites = useRef<Promise<void>>(Promise.resolve());
   sourceIdentity.current = source;
 
   async function readOpenedSource(activeSource: NonNullable<typeof source>, activeRequest: number) {
@@ -93,9 +109,14 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     rememberedOpenStarted.current = true;
     const activeRequest = ++requestId.current;
     dispatch({ type: "opening", requestId: activeRequest });
-    void hostBridge.openRememberedVault()
+    void bounded(hostBridge.openRememberedVault(), REMEMBERED_OPEN_DEADLINE_MS)
       .then((result) => {
         if (requestId.current !== activeRequest) return;
+        if (result === null) {
+          setAutomaticOpenTimedOut(true);
+          dispatch({ type: "remembered-open-finished", requestId: activeRequest, said: "Automatic opening stopped answering. Enter the vault directory and vaultphrase below to open it manually; trying manually also replaces the protected default on this device." });
+          return;
+        }
         if (result.state === "absent") {
           dispatch({ type: "remembered-open-finished", requestId: activeRequest });
           return;
@@ -426,6 +447,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     },
     readSpendingBreakdown,
     rememberedVaultDirectory,
+    automaticOpenTimedOut,
     hostAvailable: Boolean(hostBridge),
     captureAvailable: Boolean(documentActions),
     filePickerAvailable: Boolean(documentActions && hostBridge?.pickDocumentPaths),
@@ -453,12 +475,19 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       }
       if (requestId.current !== nextRequestId) { opening.current = false; return false; }
       const source = privateSource(hostBridge);
-      let rememberFailed = false;
-      try { await hostBridge.rememberVault?.(vaultDirectory, passphrase); }
-      catch { rememberFailed = true; }
       const loaded = await readOpenedSource(source, nextRequestId);
-      if (loaded && rememberFailed) dispatch({ type: "notice", notice: { kind: "refused", text: "This vault is open, but this device could not protect its vaultphrase. You will need to enter it again after restarting OrionViva." } });
       opening.current = false;
+      if (hostBridge.rememberVault) {
+        const write = rememberWrites.current.then(() => hostBridge.rememberVault!(vaultDirectory, passphrase));
+        rememberWrites.current = write.catch(() => undefined);
+        void bounded(write, REMEMBER_CREDENTIAL_DEADLINE_MS)
+          .then((remembered) => {
+            if (remembered === null && requestId.current === nextRequestId) dispatch({ type: "notice", notice: { kind: "refused", text: REMEMBER_OUTCOME_UNKNOWN } });
+          })
+          .catch(() => {
+            if (requestId.current === nextRequestId) dispatch({ type: "notice", notice: { kind: "refused", text: "This vault is open, but this device could not protect its vaultphrase. You will need to enter it again after restarting OrionViva." } });
+          });
+      }
       return loaded;
     },
     // The one affordance the sample vault is entered from. It names no

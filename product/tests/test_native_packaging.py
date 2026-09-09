@@ -29,6 +29,14 @@ def test_sidecar_build_script_has_reproducible_target_and_output_contract():
     assert "build_revision()" in source
 
 
+def test_sidecar_build_uses_a_run_owned_pyinstaller_cache():
+    source = SIDECAR_SCRIPT.read_text()
+
+    assert 'if not build_environment.get("PYINSTALLER_CONFIG_DIR", "").strip()' in source
+    assert '"PYINSTALLER_CONFIG_DIR"' in source
+    assert 'temporary_root / "pyinstaller-config"' in source
+
+
 def test_sidecar_build_script_emits_tauri_external_bin_name():
     assert SIDECAR_SCRIPT.is_file()
     source = SIDECAR_SCRIPT.read_text()

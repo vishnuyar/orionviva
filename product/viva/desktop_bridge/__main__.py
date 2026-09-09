@@ -135,6 +135,7 @@ class Sidecar:
         # would have been served at anyway.
         self._held: list[str] = []
         self._output_lock = RLock()
+        self._active_request_id: str | None = None
 
     @property
     def handlers(self) -> BridgeDispatcher:
@@ -147,7 +148,13 @@ class Sidecar:
             sample = request["operation"] == BRIDGE_OPEN_DEMO_VAULT
             return [self._open(request["request_id"], request["payload"],
                                open_it, sample)]
-        return [dispatch_frame(frame, self._dispatcher.handlers)]
+        if request is None:
+            return [dispatch_frame(frame, self._dispatcher.handlers)]
+        self._active_request_id = request["request_id"]
+        try:
+            return [dispatch_frame(frame, self._dispatcher.handlers)]
+        finally:
+            self._active_request_id = None
 
     # --------------------------------------------------------------- pumping
 
@@ -226,7 +233,8 @@ class Sidecar:
         self._vault = vault
         self._dispatcher = handlers_for_opened_vault(
             vault,
-            lambda event: self._write_event(request_id, event.as_dict()),
+            lambda event: self._write_event(
+                self._active_request_id or request_id, event.as_dict()),
             self.pump,
         )
         return encode_frame({
@@ -316,7 +324,7 @@ def _decode_request_id(frame: str) -> dict[str, Any] | None:
         return None
     operation = payload.get("operation")
     request_id = payload.get("request_id")
-    if operation in OPEN_OPERATIONS and isinstance(request_id, str):
+    if isinstance(operation, str) and isinstance(request_id, str):
         return {"operation": operation, "request_id": request_id, "payload": payload.get("payload", {})}
     return None
 

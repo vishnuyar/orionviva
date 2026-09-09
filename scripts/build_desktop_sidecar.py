@@ -87,6 +87,13 @@ def main() -> int:
         revision_file.write_text(build_revision() + "\n", encoding="utf-8")
         build_environment = dict(os.environ)
         build_environment["VIVA_BUILD_REVISION_FILE"] = str(revision_file)
+        # A release build owns its cache just as it owns its work and dist
+        # directories. A shared cache may belong to another sandbox or process;
+        # `--clean` must not make that unrelated state part of this build.
+        if not build_environment.get("PYINSTALLER_CONFIG_DIR", "").strip():
+            build_environment["PYINSTALLER_CONFIG_DIR"] = str(
+                temporary_root / "pyinstaller-config"
+            )
         subprocess.run(
             [
                 *pyinstaller,
