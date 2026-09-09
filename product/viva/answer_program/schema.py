@@ -29,7 +29,7 @@ NODE_KINDS = ("tool_read", "resolve_entity", "compute", "financial_query",
 IMPORTANCE = ("required", "supporting", "optional")
 CARDINALITIES = ("one", "all")
 REFERENCE_KINDS = ("figure", "entity", "period", "date", "date_of", "read",
-                   "read_figures", "supposed")
+                   "read_figures", "read_labels", "supposed")
 
 
 class ContractError(ValueError):

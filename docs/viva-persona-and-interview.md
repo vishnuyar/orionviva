@@ -7,7 +7,7 @@
 
 ### VOICE-25 — the butler is Viva, and the persona guide is seed content for data packs
 **State:** enforced
-**Code:** product/viva/persona/pack-v43/ (each newer pack copies the prior reviewed voice; pack-v43 adds explicit wording for choosing among several account identities or confirming a new account)
+**Code:** product/viva/persona/pack-v44/ (each newer pack copies the prior reviewed voice; pack-v43 added explicit wording for choosing among several account identities or confirming a new account, and pack-v44 adds the reviewed diagnosis that an unresolved statement-to-account identity prevents a complete total and directs the person to review the open questions)
 **Test:** product/tests/test_persona_pack.py::test_every_intent_has_a_phrasing_and_no_orphans
 
 1. [viva-persona.md](viva-persona.md) is the standing definition of traits, principles, question content and "I don't know" handling.

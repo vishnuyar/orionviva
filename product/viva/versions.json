@@ -2,7 +2,7 @@
   "in_force": {
     "answer_program_schema": {
       "in": "schemas",
-      "active": "answer-program-schema-v1"
+      "active": "answer-program-schema-v2"
     },
     "financial_query_schema": {
       "in": "schemas",
@@ -22,7 +22,7 @@
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v23"
+      "active": "tools-v24"
     },
     "goal_binding": {
       "in": "prompts",
@@ -42,7 +42,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v43"
+      "active": "pack-v44"
     },
     "schema_pack": {
       "in": "schemas",
@@ -59,6 +59,7 @@
   },
   "released": {
     "answer-program-schema-v1": "ce0d4099a18f6dd1",
+    "answer-program-schema-v2": "0a486abf202a6676",
     "financial-query-schema-v1": "0e4da54baab1147a",
     "answer-program-v1": "90c6407442f0203f",
     "answer-program-v2": "a36c73a5894f9243",
@@ -204,6 +205,7 @@
     "tools-v21": "03b572dd133d70e1",
     "tools-v22": "7e8b48d959a22f5c",
     "tools-v23": "85c9b19a428c54ad",
+    "tools-v24": "f4087f1bde4bf281",
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",
@@ -233,6 +235,7 @@
     "pack-v40": "23635571e7912ba5",
     "pack-v41": "0d16d1df2252a9a2",
       "pack-v42": "572cf601a62fcd1e",
-      "pack-v43": "5f409d119e08c06d"
+      "pack-v43": "5f409d119e08c06d",
+      "pack-v44": "4104975265aa9c7e"
   }
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .ledger_common import *
+from .envelope import ENTITY_DOCUMENT
 
 # ---------------------------------------------------------- check_completeness
 
@@ -85,31 +86,58 @@ def check_completeness(proj, args: dict) -> ToolResult:
 
 
 def _attention_summary(proj) -> ToolResult:
-    """Summarize the whole queue without returning one unbounded row per item."""
-    from ..questions import open_question_counts
+    """Return the bounded queue as one activity row per shown question."""
+    from ..questions import open_questions
 
-    payload = open_question_counts(proj)
-    kinds = dict(payload["kinds"])
-    example_ids = dict(payload["example_ids"])
+    payload = open_questions(proj)
+    account_refs = []
+    document_refs = set()
+    captured = proj.captured_docs()
+    for item in payload["questions"]:
+        refs = dict(item.get("refs") or {})
+        if refs.get("account"):
+            account_refs.append(refs["account"])
+        for key in ("document", "doc_id"):
+            candidate = refs.get(key)
+            if candidate in captured:
+                document_refs.add(candidate)
     figures = [figure(
-        count, f"{name} questions needing attention",
-        quantity=quantity.COUNT, kind=ACTIVITY,
-        record_ids=[example_ids[name]],
-        boundary=bounded(whole=False, cut=[{"kind": BY_KIND, "value": name}]))
-        for name, count in sorted(kinds.items())]
-    figures.append(figure(
-        payload["total"], "open questions needing attention",
-        quantity=quantity.COUNT, kind=ACTIVITY,
-        record_ids=sorted(example_ids.values()),
-        boundary=bounded(whole=True)))
+        1, item["text"], quantity=quantity.COUNT, kind=ACTIVITY,
+        record_ids=[item["id"]], boundary=bounded(whole=True))
+        for item in payload["questions"]]
+    identifiers = _identifiers(proj, account_refs)
+    identifiers.extend(entity(ENTITY_DOCUMENT, label=doc_id)
+                       for doc_id in sorted(document_refs))
+    question_ids = sorted(item["id"] for item in payload["questions"])
+    total = int(payload["total"])
+    shown = len(payload["questions"])
+    omitted = int(payload["tail"]["count"])
+    deferred = int(payload["pending"]["count"])
+    figures.extend([
+        figure(shown, "questions shown", quantity=quantity.COUNT,
+               kind=ACTIVITY, record_ids=question_ids,
+               boundary=bounded(whole=False, cut=[
+                   {"kind": BY_KIND, "value": "attention_shown"}])),
+        figure(omitted, "more open questions not shown",
+               quantity=quantity.COUNT, kind=ACTIVITY,
+               boundary=bounded(whole=False, cut=[
+                   {"kind": BY_KIND, "value": "attention_omitted"}])),
+        figure(deferred, "deferred questions", quantity=quantity.COUNT,
+               kind=ACTIVITY, boundary=bounded(whole=False, cut=[
+                   {"kind": BY_KIND, "value": "attention_deferred"}])),
+    ])
     return ToolResult(
         tool="check_completeness", ok=True, figures=figures,
-        data={"kinds": kinds, "total": payload["total"],
-              "pending": {"count": payload["pending"]}},
-        record_ids=sorted(example_ids.values()),
+        identifiers=identifiers,
+        data={"total": total, "shown": shown,
+              "pending": {"count": deferred},
+              "tail": {"count": omitted}},
+        record_ids=question_ids,
         caveats=[],
-        coverage="Every open question, counted by kind.",
-        text="Every open question is counted by kind.")
+        coverage=(f"{shown} of {total} open questions, in queue order; "
+                  f"{total - shown} omitted from this bounded preview."),
+        text=(f"{shown} open question row(s) are shown."
+              if shown else ""))
 
 
 # ------------------------------------------------------------- get_provenance

@@ -38,7 +38,7 @@ runtime entry. The retained lower runtime is used by the current design.
 
 ### AP-3 — The executable wire contract is frozen and digested
 **State:** enforced
-**Code:** product/viva/answer_program/schema.py, product/viva/schemas/answer-program-schema-v1.json, product/viva/versions.json
+**Code:** product/viva/answer_program/schema.py, product/viva/schemas/answer-program-schema-v1.json, product/viva/schemas/answer-program-schema-v2.json, product/viva/versions.json
 **Test:** product/tests/test_answer_program_contracts.py::test_packaged_program_schema_is_the_complete_executable_contract
 
 1. The schema supplied to the provider is loaded from the immutable packaged artifact.
@@ -352,7 +352,7 @@ Each capability declares:
 ```json
 {
   "name": "query_ledger",
-  "version": "tools-v23",
+  "version": "tools-v24",
   "local_only": true,
   "read_only": true,
   "input_schema": {},
@@ -638,6 +638,12 @@ For each hole it must:
 The binder never chooses a semantically convenient alternative. A selector that
 does not resolve uniquely produces a clause gap or clarification according to the
 program's policy.
+
+Schema v2 adds `read_labels` for a rows hole. It renders only the nonempty
+tool-authored labels of cited activity/count figures whose value is exactly one;
+every other figure refuses as the wrong kind. `read_labels` and `read_figures`
+apply an explicitly declared scope by exact boundary-axis equality before
+ordering or limiting, while bindings with no scope retain their earlier behavior.
 
 ### 6.9 Delivery and rendering
 

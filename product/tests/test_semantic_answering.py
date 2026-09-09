@@ -18,7 +18,9 @@ from viva.answer_program.schema import ContractError
 from viva.answer_program.runtime import AnswerProgramRuntime
 from viva.ledger import LedgerProjection
 from viva.ledger.events import (MAJOR_ASSET, SCOPE_MOVEMENT,
-                                merchant_enriched, ruling_recorded)
+                                merchant_enriched, ruling_recorded,
+                                statement_held)
+from viva.persona import moment
 from viva.tools import default_registry
 
 
@@ -616,8 +618,9 @@ def test_unsupported_meaning_is_a_structured_capability_gap():
 def test_attention_reads_the_existing_ordered_queue_and_classification_is_proved():
     registry = _registry()
     attention = registry.call("check_completeness", {"view": "attention"})
-    assert attention.ok and attention.data["kinds"]
-    assert sum(attention.data["kinds"].values()) == attention.data["total"]
+    assert attention.ok and attention.figures
+    assert len(attention.figures) == attention.data["shown"] + 3
+    assert set(attention.data) == {"total", "shown", "pending", "tail"}
 
     treatment = registry.call("get_provenance", {
         "movement_phrase": "greenfield market", "from": "2026-01-01",
@@ -627,26 +630,118 @@ def test_attention_reads_the_existing_ordered_queue_and_classification_is_proved
     assert all("treated as" in item["what"] for item in treatment.figures)
 
 
-def test_attention_tool_returns_the_whole_queue(monkeypatch):
+def test_attention_known_intent_delivers_each_reviewed_question(monkeypatch):
     from viva.tools import ledger_audit
+    from viva.tools import runner_binding
+    from viva import render
 
     questions = [
-        {"id": f"identity:{index}", "kind": "identity", "amount": str(index),
-         "refs": {"subject": f"Account {index}"}}
-        for index in range(5, 0, -1)
+        {"id": f"identity:{index}", "kind": "identity",
+         "text": f"Reviewed question {index}", "why": "Reviewed reason",
+         "amount": str(index), "currency": "USD", "count": 1,
+         "scope": "one", "slots": [], "refs": {}}
+        for index in range(2, 0, -1)
     ]
 
     def complete(_projection):
-        return {"kinds": {"identity": 5}, "total": len(questions),
-                "pending": 0, "example_ids": {"identity": "identity:5"}}
+        return {"questions": questions, "total": len(questions),
+                "pending": {"count": 0},
+                "tail": {"count": 0, "amount": "0"}}
 
-    monkeypatch.setattr("viva.questions.open_question_counts", complete)
-    result = ledger_audit._attention_summary(object())
+    monkeypatch.setattr("viva.questions.open_questions", complete)
+    count_writes = []
+    count_writer = runner_binding._MAGNITUDE_WRITERS[render.COUNT]
 
-    assert result.ok
-    assert result.data["kinds"] == {"identity": 5}
-    assert result.data["total"] == 5
-    assert result.coverage == "Every open question, counted by kind."
+    def write_count(value, figure, locale):
+        count_writes.append(figure["id"])
+        return count_writer(value, figure, locale)
+
+    monkeypatch.setitem(
+        runner_binding._MAGNITUDE_WRITERS, render.COUNT, write_count)
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry()
+    program = families.lower(_request(families, "needs_attention", {}), manifest)
+    execution = ProgramExecutor(registry, AnswerResourcePolicy()).execute(
+        program, "What needs attention?")
+    delivered = DeterministicBinder(registry, "en-US").bind(program, execution)
+
+    assert delivered.result.answered
+    assert delivered.result.text == (
+        "These open questions need your attention: Reviewed question 2\n"
+        "Reviewed question 1.\nAbout this list: \nquestions shown — 2\n"
+        "more open questions not shown — 0\ndeferred questions — 0.")
+    from viva.speak import _shown
+    shown = _shown(delivered.result)
+    coverage_names = {"questions shown", "more open questions not shown",
+                      "deferred questions"}
+    coverage = [figure for figure in delivered.result.figures
+                if figure.get("what") in coverage_names]
+    assert count_writes == [figure["id"] for figure in coverage]
+    assert [(figure["what"], shown.get(figure["id"]))
+            for figure in coverage] == [
+        ("questions shown", "2"),
+        ("more open questions not shown", "0"),
+        ("deferred questions", "0"),
+    ]
+    assert set(shown) == {figure["id"] for figure in coverage}
+
+
+def test_empty_attention_known_intent_keeps_the_existing_non_answer(monkeypatch):
+    monkeypatch.setattr("viva.questions.open_questions", lambda _projection: {
+        "questions": [], "total": 0, "pending": {"count": 0},
+        "tail": {"count": 0, "amount": "0"}})
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry()
+    program = families.lower(_request(families, "needs_attention", {}), manifest)
+
+    execution = ProgramExecutor(registry, AnswerResourcePolicy()).execute(
+        program, "What needs attention?")
+    delivered = DeterministicBinder(registry, "en-US").bind(program, execution)
+
+    assert delivered.result.answered
+    assert delivered.result.text == (
+        "About this list: \nquestions shown — 0\n"
+        "more open questions not shown — 0\ndeferred questions — 0.")
+
+
+@pytest.mark.parametrize("family", ["net_worth", "credit_card_debt"])
+def test_identity_blocked_known_answers_preserve_the_source_outcome(family):
+    projection = LedgerProjection([
+        *_events(),
+        statement_held("identity-doc", {}, {"kind": "identity"},
+                       "identity", "2026-02-04"),
+    ])
+    registry = default_registry(projection)
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+    families = SemanticFamilyRegistry()
+
+    class Adapter:
+        def converse(self, messages, tools):
+            return _turn(f"select_{family}", {
+                "parameters": {},
+                "requested_claims": list(families.get(family).claims)})
+
+    runtime = AnswerProgramRuntime(
+        AnswerProgramCompiler(
+            Adapter(), ProgramValidator(manifest, policy), manifest, policy),
+        ProgramExecutor(registry, policy, query_executor=registry.query_executor),
+        DeterministicBinder(registry))
+    answered = runtime.answer(QuestionContext(
+        question="Give me the supported total", today="2026-03-01",
+        capability_manifest_digest=manifest.digest))
+
+    assert not answered.result.answered
+    assert answered.result.figures == []
+    assert answered.result.status == "missing_data"
+    assert answered.result.outcome_tag == "account_identity_unresolved"
+    assert answered.outcome.tag == "account_identity_unresolved"
+    assert answered.result.text == " ".join([
+        moment("refusal_nothing_established"),
+        moment("diagnosis_account_identity_unresolved"),
+    ])
 
 
 def test_materially_different_classification_matches_request_clarification():

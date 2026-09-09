@@ -20,7 +20,7 @@ from .shape import WHOLE
 # caveat is not among them: this module places what a stated figure owes, so
 # there is no hole for one to fill and nothing to refer to it by.
 BINDING_KEYS = ("figure", "entity", "period", "date", "date_of", "supposed",
-                "read", "read_figures")
+                "read", "read_figures", "read_labels")
 
 # The one kind of reference a hole of each type can hold. Where a type admits
 # exactly one, the type has already said what a bare value refers to, and a
@@ -149,7 +149,7 @@ def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
                 "span.")
         return render.period(span["from"], span["to"]), "", ""
 
-    if key in ("read", "read_figures"):
+    if key in ("read", "read_figures", "read_labels"):
         rows = ground.readings.get(str(value))
         if rows is None:
             return None, "unknown_reading", (
@@ -159,8 +159,11 @@ def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
             return None, "wrong_kind", (
                 f"The hole {slot.name!r} wants {slot.type}, and a read is every "
                 "figure of one reading at once.")
-        return (_rows_bound(slot, rows, ground, locale) if key == "read"
-                else _figures_bound(slot, rows, ground, locale))
+        if key == "read":
+            return _rows_bound(slot, rows, ground, locale)
+        if key == "read_labels":
+            return _labels_bound(slot, rows, ground)
+        return _figures_bound(slot, rows, ground, locale)
 
     if key == "date":
         if slot.type != render.DATE:
@@ -478,9 +481,13 @@ def _rows_bound(slot, rows, ground: _Ground, locale: str):
         f["grade"] for f in cited if f["kind"] in MONEY_KINDS)), "", ""
 
 
-def _figures_bound(slot, rows, ground: _Ground, locale: str):
-    """Render a preselected finite figure list by tool-authored figure label."""
-    lines, cited = [], []
+class _FigureRows(render.Rows):
+    """A rendered row block carrying its already-validated figure forms."""
+
+
+def _figure_forms(rows, ground: _Ground, locale: str):
+    """Validate selected figures and retain each exact delivered magnitude."""
+    forms, cited = [], []
     for fid in rows:
         fig = ground.book.get(fid)
         if fig is None:
@@ -492,13 +499,44 @@ def _figures_bound(slot, rows, ground: _Ground, locale: str):
             return None, "wrong_kind", (
                 f"The row {fig.get('what')!r} holds no magnitude anything can write.")
         written = _MAGNITUDE_WRITERS[kind](value, fig, locale)
-        lines.append((str(fig.get("what") or "Supported figure"),
-                      _hedged(written, fig, kind)))
+        forms.append((str(fid), str(fig.get("what") or "Supported figure"),
+                      str(_hedged(written, fig, kind))))
         cited.append(fig)
-    if not lines:
+    if not forms:
         return None, "wrong_kind", "The selected read contains no figures."
-    return render.rows(lines, grade=weakest(
-        f["grade"] for f in cited if f["kind"] in MONEY_KINDS)), "", ""
+    return forms, "", ""
+
+
+def _figures_bound(slot, rows, ground: _Ground, locale: str):
+    """Render a preselected finite figure list by tool-authored figure label."""
+    forms, tag, detail = _figure_forms(rows, ground, locale)
+    if forms is None:
+        return None, tag, detail
+    cited = [ground.book[fid] for fid, _label, _written in forms]
+    lines = [(label, written) for _fid, label, written in forms]
+    block = _FigureRows(render.rows(lines, grade=weakest(
+        f["grade"] for f in cited if f["kind"] in MONEY_KINDS)))
+    block.figure_forms = tuple(forms)
+    return block, "", ""
+
+
+def _labels_bound(slot, rows, ground: _Ground):
+    """Render cited unit activity figures as labels, never magnitudes."""
+    labels = []
+    for fid in rows:
+        fig = ground.book.get(fid)
+        if fig is None:
+            return None, "unknown_figure", (
+                f"The answer refers to figure {fid!r} this turn never established.")
+        if (fig.get("kind") != "activity" or fig.get("quantity") != "count"
+                or _decimal(fig.get("value")) != 1 or not fig.get("what")):
+            return None, "wrong_kind", (
+                "A label row requires a named unit activity count; the selected "
+                "figure is another kind of claim.")
+        labels.append(str(fig["what"]))
+    if not labels:
+        return None, "wrong_kind", "The selected read contains no labels."
+    return "\n".join(labels), "", ""
 
 
 # How a magnitude is written where no hole above it said which shape to take.

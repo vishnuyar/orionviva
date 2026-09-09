@@ -446,6 +446,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "diagnosis_unknown_tag":         frozenset(),
     "diagnosis_unknown_merchant":    frozenset(),
     "diagnosis_unknown_currency":    frozenset(),
+    "diagnosis_account_identity_unresolved": frozenset(),
     # What is said about a document the vault has just taken in. Capture and
     # reading are two different things, so the first three tell apart three
     # states a person would otherwise read as one: nothing has been chosen to

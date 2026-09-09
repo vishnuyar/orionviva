@@ -455,6 +455,16 @@ def test_question_ids_are_stable_across_reads(tmp_path):
     assert first == second and first        # doesn't churn between projections
 
 
+def test_generated_open_question_ids_are_unique(tmp_path):
+    ledger = _checking(tmp_path, [
+        ("2026-03-05", "ACME HARDWARE", "-100.00"),
+        ("2026-03-06", "OTHER SHOP", "-75.00"),
+    ])
+    ids = [q["id"] for q in open_questions(
+        ledger, limit=None, as_of="2026-04-01")["questions"]]
+    assert ids and len(ids) == len(set(ids))
+
+
 def test_a_transfer_suggestion_becomes_a_one_off_question(tmp_path):
     """An ambiguous pair generalizes to nothing, so it is scoped to itself."""
     raw = RawStore.open(tmp_path / "raw", "pw")

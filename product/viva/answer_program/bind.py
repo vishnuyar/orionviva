@@ -89,7 +89,7 @@ class DeterministicBinder:
             dates = sorted(ids, reverse=selector.order == "newest")
             chosen, reason = self._one(dates, selector)
             return ({"date": chosen}, "") if chosen else (None, reason)
-        if kind in ("read", "read_figures"):
+        if kind in ("read", "read_figures", "read_labels"):
             chosen, reason = self._one(ids, selector)
             if not chosen:
                 return None, reason
@@ -104,14 +104,19 @@ class DeterministicBinder:
             if selector.currency:
                 figures = [item for item in figures
                            if item.get("currency") == selector.currency]
+            if selector.scope:
+                figures = [item for item in figures
+                           if self._scope(item) == set(selector.scope)]
             figures = self._ordered(figures, selector.order)
             if selector.limit is not None:
                 figures = figures[:selector.limit]
             if not figures:
                 return None, "no_compatible_evidence"
-            virtual = f"{chosen}:figures:{binding.hole}"
+            virtual = (f"{chosen}:figures:{binding.hole}"
+                       if kind == "read_figures"
+                       else f"{chosen}:labels:{binding.hole}")
             graph.ground.readings[virtual] = [item["id"] for item in figures]
-            return {"read_figures": virtual}, ""
+            return {kind: virtual}, ""
         return None, "unsupported_reference_kind"
 
     @staticmethod

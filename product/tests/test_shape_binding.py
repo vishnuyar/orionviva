@@ -2,6 +2,25 @@
 
 from _shape_test_support import *
 
+
+def test_read_labels_only_writes_named_unit_activity_counts():
+    from types import SimpleNamespace
+    from viva.tools.runner import _Ground
+    from viva.tools.runner_binding import _labels_bound
+
+    slot = SimpleNamespace(name="items")
+    good = {"id": "f1", "kind": "activity", "quantity": "count",
+            "value": "1", "what": "Review this question"}
+    ground = _Ground(book={"f1": good})
+    assert _labels_bound(slot, ["f1"], ground) == (
+        "Review this question", "", "")
+    for changed in (
+            {"kind": "money"}, {"quantity": "balance"}, {"value": "2"},
+            {"what": ""}):
+        ground.book["f1"] = {**good, **changed}
+        written, tag, _detail = _labels_bound(slot, ["f1"], ground)
+        assert written is None and tag == "wrong_kind"
+
 # ------------------------------------------------------------- the checks
 
 

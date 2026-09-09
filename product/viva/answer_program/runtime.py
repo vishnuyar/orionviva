@@ -170,6 +170,8 @@ class AnswerProgramRuntime:
             return "needs_clarification", "selector_not_unique"
         missing = {"missing_entity", "no_data", "not_found", "empty_result",
                    "insufficient_history"}
+        if "account_identity_unresolved" in refusals:
+            return "missing_data", "account_identity_unresolved"
         if refusals & missing or binding.unbound:
             return "missing_data", next(iter(sorted(refusals & missing)),
                                         "unbound_evidence")

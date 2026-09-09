@@ -53,7 +53,7 @@ class EvidenceGraph:
     def references(self, node_id: str, kind: str) -> tuple[str, ...]:
         plural = {"figure": "figures", "entity": "entities", "period": "periods",
                   "date": "dates", "date_of": "figures", "read": "readings",
-                  "read_figures": "readings"}.get(
+                  "read_figures": "readings", "read_labels": "readings"}.get(
                       kind, kind)
         return tuple(self.by_node.get(node_id, {}).get(plural, ()))
 

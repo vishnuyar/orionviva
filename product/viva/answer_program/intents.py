@@ -118,15 +118,19 @@ def _program(manifest, family, clauses, nodes, bindings, *, required,
     })
 
 
-def _rows_clause(clause_id, text, hole):
-    return {"id": clause_id, "text": text,
-            "slots": [{"name": hole, "type": "rows"}]}
+def _rows_clause(clause_id, text, hole, *, scope=()):
+    slot = {"name": hole, "type": "rows"}
+    if scope:
+        slot["scope"] = list(scope)
+    return {"id": clause_id, "text": text, "slots": [slot]}
 
 
-def _rows_binding(hole, source, *, quantity="", kind="read_figures"):
+def _rows_binding(hole, source, *, quantity="", kind="read_figures", scope=()):
     selector = {"cardinality": "one"}
     if quantity:
         selector["quantity"] = quantity
+    if scope:
+        selector["scope"] = list(scope)
     return {"hole": hole, "source": source, "reference_kind": kind,
             "selector": selector}
 
@@ -164,15 +168,21 @@ def _named_account(request, manifest):
 
 
 def _attention(request, manifest):
-    clauses = [_rows_clause(
-        "attention_summary",
-        "These are the kinds of open questions needing attention: {items}.",
-        "items")]
+    clauses = [
+        _rows_clause("attention_items",
+                     "These open questions need your attention: {items}.",
+                     "items"),
+        _rows_clause("attention_coverage", "About this list: {coverage}.",
+                     "coverage"),
+    ]
     nodes = [_read("attention", "check_completeness", {"view": "attention"})]
     return _program(
         manifest, request.family, clauses, nodes,
-        [_rows_binding("items", "attention", quantity="count")],
-        required=_required(request, {"attention_items": "attention_summary"}))
+        [_rows_binding("items", "attention", quantity="count",
+                       kind="read_labels", scope=("whole",)),
+         _rows_binding("coverage", "attention", quantity="count",
+                       scope=("kind",))],
+        required=["attention_coverage"], allow_partial=True)
 
 
 def _category_period(request, manifest):

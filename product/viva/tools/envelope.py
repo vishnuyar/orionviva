@@ -269,6 +269,7 @@ _TWO_ENDED = (BY_PERIOD,)
 SPEAKABLE_REFUSALS = frozenset({
     "too_broad", "filter_unsupported", "unknown_account", "unknown_category",
     "unknown_tag", "unknown_merchant", "unknown_currency",
+    "account_identity_unresolved",
 })
 
 # Why something a figure claims to measure is not in it. The two differ in

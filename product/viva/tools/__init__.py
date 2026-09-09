@@ -104,7 +104,7 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     registry.register(ToolSpec(
         name="check_completeness", params=ledger_tools.COMPLETENESS_PARAMS,
         fn=lambda args: ledger_tools.check_completeness(proj, args),
-        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "date_of", "period"],
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "read_labels", "date", "date_of", "period"],
                "figure_types": ["count"], "quantities": ["count"],
                "entity_kinds": ["account", "document"]},
         bounds={"max_figures": 80, "max_payload_bytes": 5000,

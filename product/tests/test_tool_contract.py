@@ -1,6 +1,10 @@
 """Tool contract contracts."""
 
+import json
+from types import SimpleNamespace
+
 from _tool_test_support import *
+from viva.ledger.projection import UnknownAccountError
 
 # ------------------------------------------------------------- the contract
 
@@ -26,6 +30,22 @@ def test_the_description_version_in_force_is_pinned():
     assert DESCRIPTIONS_VERSION in FROZEN_DESCRIPTIONS, (
         f"{DESCRIPTIONS_VERSION} is in force and unpinned — add its digest to "
         "FROZEN_DESCRIPTIONS in the same commit that releases the text")
+
+
+def test_active_attention_description_names_the_bounded_row_contract():
+    from viva.tools.registry import DESCRIPTIONS_VERSION
+
+    named, version = descriptions()
+    attention = named["check_completeness"]
+
+    assert version == DESCRIPTIONS_VERSION == "tools-v24"
+    assert "bounded" in attention
+    assert "consequence-ordered" in attention
+    assert "each shown open question" in attention
+    assert "account or document subjects" in attention
+    assert "omitted tail" in attention and "deferred" in attention
+    assert "not a full question reply schema" in attention
+    assert "summarized by kind" not in attention
 
 
 def test_every_registered_tool_is_described(registry):
@@ -823,6 +843,122 @@ def test_the_completeness_read_offers_one_account_of_what_is_unidentified(
     assert "counterparties with no category yet" in named
 
 
+def test_attention_emits_one_bounded_question_figure_and_validated_subjects(
+        monkeypatch):
+    from viva.tools import ledger_audit
+
+    questions = [
+        {"id": "identity:first", "kind": "identity",
+         "text": "Which account is the first statement for?",
+         "why": "Its identity is unresolved.", "amount": "900.00",
+         "currency": "USD", "count": 1, "scope": "one",
+         "slots": [{"name": "same_account", "type": "yes_no"}],
+         "refs": {"account": "chk", "document": "doc-one",
+                  "doc_id": "doc-two", "subject": "not-an-account"}},
+        {"id": "expectation:second", "kind": "expectation",
+         "text": "Do you have the second statement?",
+         "why": "It would corroborate the balance.", "amount": "100.00",
+         "currency": "USD", "count": 1, "scope": "one", "slots": [],
+         "refs": {"account": "missing", "document": "missing-doc",
+                  "doc_id": "doc-one"}},
+    ]
+    def opened(_projection):
+        return {"questions": questions, "total": 12,
+                "tail": {"count": 10, "amount": "5432.10"},
+                "pending": {"count": 3}, "invite": "Ask here",
+                "answered_by_document": "Add the document"}
+
+    class Projection:
+        def captured_docs(self):
+            return {"doc-one": "bank_statement",
+                    "doc-two": "credit_card_statement"}
+
+        def account_info(self, account):
+            if account != "chk":
+                raise UnknownAccountError(account)
+            return SimpleNamespace(account="chk", name="Everyday Checking",
+                                   number="XX4417", kind="depository",
+                                   currency="USD")
+
+    monkeypatch.setattr("viva.questions.open_questions", opened)
+    result = ledger_audit._attention_summary(Projection())
+
+    assert result.ok
+    item_figures = [figure for figure in result.figures
+                    if figure["boundary"] == {"whole": True}]
+    assert [figure["what"] for figure in item_figures] == [
+        question["text"] for question in questions]
+    assert all(figure["value"] == "1" for figure in item_figures)
+    assert all(figure["quantity"] == quantity.COUNT
+               and figure["kind"] == "activity"
+               for figure in item_figures)
+    assert [figure["record_ids"] for figure in item_figures] == [
+        ["identity:first"], ["expectation:second"]]
+    coverage = result.figures[2:]
+    assert [(figure["what"], figure["value"],
+             figure["boundary"]["cut"][0]["value"])
+            for figure in coverage] == [
+                ("questions shown", "2", "attention_shown"),
+                ("more open questions not shown", "10", "attention_omitted"),
+                ("deferred questions", "3", "attention_deferred")]
+    assert result.data == {"total": 12, "shown": 2,
+                           "pending": {"count": 3},
+                           "tail": {"count": 10}}
+    assert {(item["kind"], item.get("account") or item.get("label"))
+            for item in result.identifiers} == {
+                ("account", "chk"), ("document", "doc-one"),
+                ("document", "doc-two")}
+    assert result.record_ids == ["expectation:second", "identity:first"]
+    assert "5432.10" not in json.dumps(result.to_dict())
+
+
+def test_attention_established_bound_stays_within_the_result_budget(monkeypatch):
+    from viva.questions import DEFAULT_LIMIT
+    from viva.tools import ledger_audit
+    from viva.tools.envelope import PAYLOAD_TARGET
+
+    questions = [{
+        "id": f"merchant:{index}", "kind": "merchant",
+        "text": "A" * 120, "why": "B" * 120, "amount": "999999.99",
+        "currency": "USD", "count": 999, "scope": "pattern",
+        "slots": [{"name": "category", "type": "choice",
+                   "choices": ["C" * 100] * 4}],
+        "refs": {"movements": [f"movement-{n}" for n in range(20)]},
+    } for index in range(DEFAULT_LIMIT)]
+
+    def opened(_projection):
+        return {"questions": questions, "total": 30,
+                "tail": {"count": 20, "amount": "9999999.90"},
+                "pending": {"count": 4}}
+
+    monkeypatch.setattr("viva.questions.open_questions", opened)
+    result = ledger_audit._attention_summary(SimpleNamespace(
+        captured_docs=lambda: {}))
+
+    assert len(result.figures) == DEFAULT_LIMIT + 3
+    assert result.data == {"total": 30, "shown": DEFAULT_LIMIT,
+                           "pending": {"count": 4},
+                           "tail": {"count": 20}}
+    assert len(json.dumps(result.to_dict())) <= PAYLOAD_TARGET
+
+
+def test_attention_empty_queue_is_success_without_a_positive_claim(monkeypatch):
+    from viva.tools import ledger_audit
+
+    monkeypatch.setattr("viva.questions.open_questions", lambda _projection: {
+        "questions": [], "total": 0, "tail": {"count": 0, "amount": "0"},
+        "pending": {"count": 0}, "invite": "Ask here",
+        "answered_by_document": "Add the document"})
+
+    result = ledger_audit._attention_summary(SimpleNamespace(
+        captured_docs=lambda: {}))
+
+    assert result.ok and len(result.figures) == 3
+    assert result.data == {"total": 0, "shown": 0,
+                           "pending": {"count": 0},
+                           "tail": {"count": 0}}
+
+
 def test_provenance_states_say_what_actually_happened(registry):
     """posted: in the ledger. held: read and set aside for review.
     captured: received, not yet processed. Each must report as itself."""
@@ -988,6 +1124,12 @@ def _every_figure(factor="1", more=0, stable_only=False) -> dict:
         if (stable_only and name == "query_ledger"
                 and args.get("metric") in {
                     "weakest_evidence", "stalest_balance"}):
+            continue
+        # Attention row labels are reviewed question text. Some established
+        # templates intentionally render the question's financial stake, so
+        # scaling a vault can change the label while the row remains a count.
+        # The dedicated attention contract above proves that quantity directly.
+        if name == "check_completeness" and args.get("view") == "attention":
             continue
         for fig in result.figures:
             out[fig["what"]] = fig

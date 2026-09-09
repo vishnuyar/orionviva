@@ -228,7 +228,8 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         here: dict = {}
         for slot in clause.slots:
             reference = references[slot.name]
-            as_rows = "read" in reference or "read_figures" in reference
+            as_rows = any(key in reference for key in (
+                "read", "read_figures", "read_labels"))
             # A block of rows states every figure it wrote a line for, and
             # those are answerable exactly as a figure named in a sentence is:
             # for their records, for their caveats and for the answer's grade.
@@ -236,7 +237,8 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
             # total and its count — are not stated and are not cited.
             if as_rows:
                 reading = str(reference.get("read")
-                              or reference.get("read_figures"))
+                              or reference.get("read_figures")
+                              or reference.get("read_labels"))
                 stated = list(ground.readings[reading])
                 if "read" in reference:
                     stated = [fid for fid in stated
@@ -328,21 +330,38 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     if owed:
         parts.append((moment("answer_limits", limits=render.caveat(
             " ".join(ground.caveats[cid] for cid in owed))), False))
-    for kind in dropped:
+    reported_dropped = ([] if policy.get("allow_partial", False) else dropped)
+    for kind in reported_dropped:
         # A clause nothing could fill is a disclosed gap, never a zero and
         # never a silence. What is missing is named by its kind, in the pack's
         # own words.
         parts.append((moment("answer_gap", what=moment(f"gap_{kind}")), False))
+    result_bindings = {n: references[n] for n in said}
+    result_written = {n: str(written[n]) for n in said}
+    # Row blocks are one spoken hole but the surface receipt is per figure.
+    # Preserve the exact magnitude already rendered for each read_figures row;
+    # read_labels deliberately has no magnitude receipt.
+    for clause in spoken:
+        for slot in clause.slots:
+            reference = references[slot.name]
+            reading = reference.get("read_figures")
+            if not reading:
+                continue
+            forms = getattr(written[slot.name], "figure_forms", ())
+            for index, (fid, _label, form) in enumerate(forms):
+                receipt = f"{slot.name}:figure:{index}"
+                result_bindings[receipt] = {"figure": fid}
+                result_written[receipt] = form
     return RunResult(
         answered=True, text=_written_out(parts),
         figures=[dict(f) for f in cited],
         grade=stood_behind,
         transcript=dicts, calls=len(transcript),
         shape=shape.to_dict(),
-        bindings={n: references[n] for n in said},
-        written={n: str(written[n]) for n in said}, gaps=gaps,
+        bindings=result_bindings,
+        written=result_written, gaps=gaps,
         caveats=[ground.caveats[cid] for cid in owed],
         disclosures=([
             f"evidence_grade:{stood_behind}"] if stood_behind else [])
         + [f"caveat:{cid}" for cid in owed]
-        + [f"unbound:{kind}" for kind in dropped])
+        + [f"unbound:{kind}" for kind in reported_dropped])

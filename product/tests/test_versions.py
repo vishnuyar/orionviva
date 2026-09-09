@@ -58,6 +58,14 @@ def test_the_manifest_and_the_files_agree():
     assert versions.audit(PACKAGE) == []
 
 
+def test_tools_v24_is_active_and_v23_remains_resolvable():
+    assert versions.active(PACKAGE, "tools") == "tools-v24"
+    assert versions.path_of(PACKAGE, "tools-v23").is_file()
+    assert versions.path_of(PACKAGE, "tools-v24").is_file()
+    assert versions.manifest(PACKAGE)["released"]["tools-v24"] == \
+        versions.fingerprint(versions.path_of(PACKAGE, "tools-v24"))
+
+
 def test_every_family_in_force_resolves_to_something_on_disk():
     for family in versions.manifest(PACKAGE)["in_force"]:
         active = versions.active(PACKAGE, family)

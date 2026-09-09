@@ -83,7 +83,7 @@ def _fully_validated_forged_report(manifest):
 
 def _program(manifest):
     return {
-        "program_version": "answer-program-schema-v1",
+        "program_version": "answer-program-schema-v2",
         "capability_manifest_version": "capability-manifest-v1",
         "capability_manifest_digest": manifest.digest,
         "mode": "answer",
@@ -577,7 +577,7 @@ def test_session_capture_records_program_validation_execution_and_outcome():
     assert turn.result.status == "answered"
     assert len(log.events) == 1
     payload = json.loads(log.events[0].body["response_text"])
-    assert payload["program"]["program_version"] == "answer-program-schema-v1"
+    assert payload["program"]["program_version"] == "answer-program-schema-v2"
     assert payload["validation"]["defects"] == []
     assert payload["execution"]["nodes"][0]["status"] == "completed"
     assert payload["verdict"]["status"] == "answered"
@@ -588,8 +588,10 @@ def test_session_capture_records_program_validation_execution_and_outcome():
     assert payload["lowered_program_digest"]
     assert {"semantic_request", "semantic_request_schema",
             "semantic_family_registry", "answer_program_schema",
-            "financial_query_schema", "capability_manifest", "persona"} <= set(
+            "financial_query_schema", "capability_manifest", "persona",
+            "tools"} <= set(
                 payload["prompt_versions"])
+    assert payload["prompt_versions"]["tools"].startswith("tools-v24@")
 
 
 def test_the_frozen_admission_corpus_has_35_exact_turns_and_paraphrases():
@@ -1118,7 +1120,13 @@ def test_all_six_families_and_separate_inventory_use_the_one_runtime():
         delivery = DeterministicBinder(family_registry).bind(program, execution)
         assert delivery.result.answered, (family_id, delivery.unbound)
         assert delivery.result.figures
-        assert all(figure["record_ids"] for figure in delivery.result.figures)
+        if family_id == "needs_attention":
+            assert all(figure["record_ids"] for figure in
+                       delivery.result.figures
+                       if figure["boundary"].get("whole"))
+        else:
+            assert all(figure["record_ids"] for figure in
+                       delivery.result.figures)
 
 
 def test_installed_fqir_sources_statically_admit_category_share_of_income():
@@ -1166,6 +1174,28 @@ def test_installed_fqir_sources_statically_admit_category_share_of_income():
     checked = ProgramValidator(manifest, AnswerResourcePolicy()).validate(
         AnswerProgram.from_dict(raw))
     assert checked.ok, checked.defects
+
+
+def test_read_labels_is_reachable_only_from_completeness():
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry()
+    request = families.get("needs_attention")
+    semantic = SemanticOutcome("request", SemanticRequest(
+        "needs_attention", {}, request.claims, families.catalog_digest))
+    program = families.lower(semantic, manifest)
+
+    assert ProgramValidator(manifest, AnswerResourcePolicy()).validate(program).ok
+    advertised = {item.name for item in manifest.capabilities
+                  if "read_labels" in item.emits.get("reference_kinds", [])}
+    assert advertised == {"check_completeness"}
+
+    raw = program.to_dict()
+    raw["nodes"][0]["tool"] = "query_ledger"
+    raw["nodes"][0]["args"] = {"entity": "balances"}
+    checked = ProgramValidator(manifest, AnswerResourcePolicy()).validate(
+        AnswerProgram.from_dict(raw))
+    assert "unreachable_binding" in {defect.tag for defect in checked.defects}
 
 
 def test_semantic_scoring_rejects_a_broadened_lowered_program():

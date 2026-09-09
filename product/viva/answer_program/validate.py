@@ -590,7 +590,7 @@ class ProgramValidator:
         if slot_type == render.PERIOD:
             return ("period",)
         if slot_type == render.ROWS:
-            return ("read", "read_figures")
+            return ("read", "read_figures", "read_labels")
         return ()
 
     def _cost(self, program, depths) -> dict:
