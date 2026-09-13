@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import nullcontext
 import importlib
 from types import SimpleNamespace
 
@@ -131,7 +132,6 @@ def test_consistent_document_alias_and_member_candidate_remain_valid(tmp_path):
 
 def test_review_and_conversation_share_the_same_actionable_question_window(monkeypatch):
     review_module = importlib.import_module("viva.surface.review")
-    vault_surface_module = importlib.import_module("viva.desktop_bridge.vault_surface")
     limits = []
 
     for size in (15, ACTIONABLE_QUESTION_WINDOW + 7):
@@ -139,15 +139,19 @@ def test_review_and_conversation_share_the_same_actionable_question_window(monke
             limits.append(limit)
             return _synthetic_queue(size, limit)
 
-        monkeypatch.setattr(review_module, "open_questions", authored)
-        monkeypatch.setattr(vault_surface_module, "open_questions", authored)
-        review_read = review_module.review(object(), "en-US")
+        review_read = review_module.review(
+            SimpleNamespace(open_questions=lambda **kwargs: authored(None, **kwargs)),
+            "en-US")
 
         projection = SimpleNamespace(
             conversation_proposals=lambda: [], conversation_turns=lambda: [])
+        revision = SimpleNamespace(
+            open_questions=lambda **kwargs: authored(None, **kwargs),
+            conversation_projection=lambda **_kwargs: projection)
         provider = object.__new__(OpenedVaultSurfaceProvider)
         provider._vault = SimpleNamespace(
-            ledger=SimpleNamespace(projection=lambda: projection))
+            poll_read_store_worker=lambda: None, read_store_lifecycle="equal",
+            read_store=SimpleNamespace(open_reader=lambda: nullcontext(revision)))
         conversation_read = provider._conversation({})
 
         review_ids = [item["target"]["question_id"]

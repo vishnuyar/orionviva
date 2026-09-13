@@ -94,8 +94,10 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # A question, and whether its text will be in front of the person. The
     # second is a fact about the caller's own screen and the input to the rule
     # that a figure is never spoken with nowhere to check it. `plan_request`
-    # marks an explicit request for a plan draft.
-    CONVERSATION_OPERATIONS["ask"]: {"question", "mirrored", "plan_request"},
+    # marks an explicit request for a plan draft. `context_mode` names the
+    # durable boundary used for prior Ask text.
+    CONVERSATION_OPERATIONS["ask"]: {
+        "question", "mirrored", "plan_request", "context_mode"},
     # Spending is a word rather than a default, and a budget is a number of
     # model calls. There is no field naming what to work on: a wake goes over
     # the whole vault, and a caller pointing it somewhere would be asserting a

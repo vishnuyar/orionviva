@@ -3,6 +3,7 @@ import { createDetectedBridgeClient } from "../bridge/client";
 import { BridgeRefusal, BridgeTimeout, OPEN_REFUSALS } from "../bridge/contracts";
 import { privateSource, sampleSource } from "../surface/sources";
 import type { AccountLedgerData, ActionResult, ActivityActionResult, ActivityActions, ActivityCorrectionVerb, ConversationActions, DeclineReason, Destination, DocumentActions, EvidenceLink, FeatureResult, JobView, Notice, PlanDraftResult, PlanPayload, QuestionVerb, SettingsProposal, SpendingBreakdownData, SpendingRequest, SurfaceSnapshot, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
+import type { LazyDestination } from "./session";
 import { hasAuthoritativeReviewConversationPair, initialSession, liveReadingSnapshot, sessionReducer } from "./session";
 
 function dataBearing<T>(result: FeatureResult<T> | undefined): result is Extract<FeatureResult<T>, { data: T }> {
@@ -11,6 +12,15 @@ function dataBearing<T>(result: FeatureResult<T> | undefined): result is Extract
 
 export function authoritativeQuestionReread(snapshot: SurfaceSnapshot | null): snapshot is SurfaceSnapshot {
   return hasAuthoritativeReviewConversationPair(snapshot);
+}
+
+export function priorityAttemptCanPublish(activeGeneration: number, latestGeneration: number, activeRequest: number, latestRequest: number, sameSource: boolean): boolean {
+  return activeGeneration === latestGeneration && activeRequest === latestRequest && sameSource;
+}
+
+function destinationReadFailed(destination: LazyDestination, snapshot: Partial<SurfaceSnapshot>): boolean {
+  if (destination === "review") return snapshot.review?.state === "failed" || snapshot.conversation?.state === "failed";
+  return snapshot[destination]?.state === "failed";
 }
 
 function reviewHoldsQuestion(snapshot: SurfaceSnapshot, questionId: string): boolean {
@@ -70,6 +80,12 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const activityLimit = useRef(50);
   // Full reads advance the revision that bounds asynchronous Activity pages.
   const surfaceRevision = useRef(0);
+  const priorityGeneration = useRef(0);
+  const secondaryGeneration = useRef(0);
+  const jobsGeneration = useRef(0);
+  const destinationGeneration = useRef(0);
+  const retryingDestination = useRef<{ destination: LazyDestination; source: NonNullable<typeof session.source>; request: number; generation: number } | null>(null);
+  const retryingPriority = useRef<{ request: number; generation: number } | null>(null);
   // Every verb this session has comes from the source, and before a vault is
   // open there is no source and therefore no verb. A screen asks whether it
   // has one; nothing here invents a verb that would have to refuse.
@@ -91,13 +107,48 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   sourceIdentity.current = source;
 
   async function readOpenedSource(activeSource: NonNullable<typeof source>, activeRequest: number) {
+    sourceIdentity.current = activeSource;
+    retryingDestination.current = null;
+    ++destinationGeneration.current;
     dispatch({ type: "reading", requestId: activeRequest, source: activeSource, snapshot: liveReadingSnapshot() });
     try {
-      const [snapshot, jobsRead] = await Promise.all([activeSource.load(activityLimit.current), activeSource.loadJobs?.() ?? Promise.resolve(null)]);
-      const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
-      const jobStatus = activeSource.loadJobs ? (jobsRead?.state === "ready" ? "available" as const : "unavailable" as const) : undefined;
-      if (requestId.current === activeRequest) dispatch({ type: "loaded", requestId: activeRequest, source: activeSource, snapshot, jobs, jobStatus });
-      return requestId.current === activeRequest;
+      if (!activeSource.loadPriority || !activeSource.loadSecondary) throw new Error("priority_contract_unavailable");
+      const loadSecondary = activeSource.loadSecondary;
+      const activePriority = ++priorityGeneration.current;
+      const activeSecondary = ++secondaryGeneration.current;
+      // The active financial read is requested before supporting reads.
+      const priorityWork = activeSource.loadPriority();
+      const priority = await priorityWork;
+      if (!priorityAttemptCanPublish(activePriority, priorityGeneration.current, activeRequest, requestId.current, sourceIdentity.current === activeSource)) return false;
+      dispatch({ type: "priority-loaded", requestId: activeRequest, source: activeSource, overview: priority.snapshot.overview, disclosure: priority.snapshot.disclosure, revision: priority.revision, freshness: priority.freshness, lifecycle: priority.lifecycle, retryable: priority.retryable });
+      if (priority.lifecycle === "rebuilding") {
+        const watchGeneration = activePriority;
+        void (async () => {
+          for (let attempt = 0; attempt < 240; attempt += 1) {
+            await new Promise((resolve) => globalThis.setTimeout(resolve, 250));
+            if (!priorityAttemptCanPublish(watchGeneration, priorityGeneration.current, activeRequest, requestId.current, sourceIdentity.current === activeSource)) return;
+            const refreshed = await activeSource.loadPriority!();
+            if (!priorityAttemptCanPublish(watchGeneration, priorityGeneration.current, activeRequest, requestId.current, sourceIdentity.current === activeSource)) return;
+            dispatch({ type: "priority-loaded", requestId: activeRequest, source: activeSource, overview: refreshed.snapshot.overview, disclosure: refreshed.snapshot.disclosure, revision: refreshed.revision, freshness: refreshed.freshness, lifecycle: refreshed.lifecycle, retryable: refreshed.retryable });
+            if (refreshed.lifecycle !== "rebuilding") return;
+          }
+        })().catch(() => undefined);
+      }
+      void loadSecondary(activityLimit.current)
+        .then((snapshot) => { if (requestId.current === activeRequest && secondaryGeneration.current === activeSecondary && sourceIdentity.current === activeSource) dispatch({ type: "secondary-loaded", requestId: activeRequest, snapshot }); })
+        .catch(() => undefined);
+      const activeJobs = ++jobsGeneration.current;
+      const jobsWork = activeSource.loadJobs
+        ? Promise.resolve().then(() => activeSource.loadJobs!()).catch(() => null)
+        : Promise.resolve(null);
+      void jobsWork.then((jobsRead) => {
+        if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource
+            || jobsGeneration.current !== activeJobs || !activeSource.loadJobs) return;
+        dispatch(jobsRead?.state === "ready"
+          ? { type: "jobs-read", requestId: activeRequest, jobs: jobsRead.data.jobs }
+          : { type: "jobs-unavailable", requestId: activeRequest });
+      }).catch(() => { if (requestId.current === activeRequest && sourceIdentity.current === activeSource && jobsGeneration.current === activeJobs) dispatch({ type: "jobs-unavailable", requestId: activeRequest }); });
+      return true;
     } catch {
       if (requestId.current === activeRequest) dispatch({ type: "load-failed", requestId: activeRequest });
       return false;
@@ -138,13 +189,34 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   async function refreshAfterAction(activeSource: NonNullable<typeof source>, activeRequest: number, stillCurrent: () => boolean = () => true) {
     ++surfaceRevision.current;
     try {
-      const [snapshot, jobsRead] = await Promise.all([
-        activeSource.load(activityLimit.current),
-        activeSource.loadJobs?.() ?? Promise.resolve(null),
-      ]);
-      const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
-      const jobStatus = activeSource.loadJobs ? (jobsRead?.state === "ready" ? "available" as const : "unavailable" as const) : undefined;
-      if (requestId.current === activeRequest && stillCurrent()) dispatch({ type: "mutation-loaded", requestId: activeRequest, snapshot, jobs, jobStatus });
+      const snapshotWork = activeSource.loadCoherent
+        ? activeSource.loadCoherent(activityLimit.current)
+        : activeSource.load(activityLimit.current).then((snapshot) => ({ snapshot, revision: "" }));
+      const activeJobs = activeSource.loadJobs ? ++jobsGeneration.current : 0;
+      const jobsWork = activeSource.loadJobs
+        ? Promise.resolve().then(() => activeSource.loadJobs!()).catch(() => null)
+        : null;
+      const { snapshot, revision } = await snapshotWork;
+      if (requestId.current === activeRequest && stillCurrent()
+          && sourceIdentity.current === activeSource) {
+        dispatch({ type: "mutation-loaded", requestId: activeRequest, snapshot, revision });
+      }
+      if (jobsWork) {
+        void jobsWork.then((jobsRead) => {
+          if (requestId.current !== activeRequest || !stillCurrent()
+              || sourceIdentity.current !== activeSource
+              || jobsGeneration.current !== activeJobs) return;
+          dispatch(jobsRead?.state === "ready"
+            ? { type: "jobs-read", requestId: activeRequest, jobs: jobsRead.data.jobs }
+            : { type: "jobs-unavailable", requestId: activeRequest });
+        }).catch(() => {
+          if (requestId.current === activeRequest && stillCurrent()
+              && sourceIdentity.current === activeSource
+              && jobsGeneration.current === activeJobs) {
+            dispatch({ type: "jobs-unavailable", requestId: activeRequest });
+          }
+        });
+      }
       return snapshot;
     } catch {
       if (requestId.current === activeRequest && stillCurrent()) dispatch({ type: "mutation-refresh-failed", requestId: activeRequest });
@@ -187,17 +259,73 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     if (!jobStream) return undefined;
     let stop: (() => void) | null = null;
     let gone = false;
+    const subscribedRequest = requestId.current;
+    const subscribedSource = source;
     void jobStream((job) => {
-      const activeRequest = requestId.current;
-      dispatch({ type: "job-progress", requestId: activeRequest, job });
-      if (source && ["completed", "failed", "cancelled"].includes(job.state)) {
-        void refreshAfterAction(source, activeRequest);
+      if (gone || requestId.current !== subscribedRequest
+          || sourceIdentity.current !== subscribedSource) return;
+      ++jobsGeneration.current;
+      dispatch({ type: "job-progress", requestId: subscribedRequest, job });
+      if (subscribedSource && ["completed", "failed", "cancelled"].includes(job.state)) {
+        const activePriority = ++priorityGeneration.current;
+        void (async () => {
+          if (!subscribedSource.loadPriority) return;
+          const current = () => priorityAttemptCanPublish(activePriority, priorityGeneration.current,
+            subscribedRequest, requestId.current, sourceIdentity.current === subscribedSource);
+          const latest = await subscribedSource.loadPriority(true);
+          if (!current()) return;
+          dispatch({ type: "priority-loaded", requestId: subscribedRequest,
+                     source: subscribedSource, overview: latest.snapshot.overview,
+                     disclosure: latest.snapshot.disclosure, revision: latest.revision,
+                     freshness: latest.freshness, lifecycle: latest.lifecycle,
+                     retryable: latest.retryable });
+          if (latest.freshness !== "current" || !latest.revision) {
+            dispatch({ type: "mutation-refresh-failed", requestId: subscribedRequest });
+            return;
+          }
+          const reread = subscribedSource.loadCoherent
+            ? await subscribedSource.loadCoherent(activityLimit.current, undefined, latest)
+            : { snapshot: await subscribedSource.load(activityLimit.current), revision: latest.revision };
+          if (!current()) return;
+          if (reread.revision !== latest.revision) {
+            dispatch({ type: "mutation-refresh-failed", requestId: subscribedRequest });
+            return;
+          }
+          dispatch({ type: "mutation-loaded", requestId: subscribedRequest, snapshot: reread.snapshot, revision: reread.revision });
+        })().catch(() => {
+          if (priorityAttemptCanPublish(activePriority, priorityGeneration.current,
+              subscribedRequest, requestId.current, sourceIdentity.current === subscribedSource)) {
+            dispatch({ type: "mutation-refresh-failed", requestId: subscribedRequest });
+          }
+        });
       }
     })
       .then((unlisten) => { if (gone) unlisten(); else stop = unlisten; })
       .catch(() => undefined);
     return () => { gone = true; stop?.(); };
   }, [jobStream, source]);
+
+  // These reads are destination-local: opening a vault never queues them.
+  useEffect(() => {
+    if (!source?.loadDestination || !["documents", "review", "trust", "activity", "plans"].includes(session.destination)) return undefined;
+    const destination = session.destination as LazyDestination;
+    const activeRequest = requestId.current;
+    const activeGeneration = ++destinationGeneration.current;
+    let gone = false;
+    dispatch({ type: "destination-loading", requestId: activeRequest, destination });
+    void source.loadDestination(destination, activityLimit.current).then((snapshot) => {
+      if (!gone && requestId.current === activeRequest && sourceIdentity.current === source && destinationGeneration.current === activeGeneration) {
+        dispatch(destinationReadFailed(destination, snapshot)
+          ? { type: "destination-failed", requestId: activeRequest, destination, snapshot }
+          : { type: "destination-loaded", requestId: activeRequest, destination, snapshot });
+      }
+    }).catch(() => {
+      if (!gone && requestId.current === activeRequest && sourceIdentity.current === source && destinationGeneration.current === activeGeneration) {
+        dispatch({ type: "destination-failed", requestId: activeRequest, destination });
+      }
+    });
+    return () => { gone = true; };
+  }, [session.destination, source]);
 
 
   // One question verb at a time. The sidecar answers one request before reading
@@ -246,21 +374,35 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       if (requestId.current === nextRequestId) dispatch({ type: "activity-outcome", requestId: nextRequestId, movementId, movementIds, verb, result });
       try {
         ++surfaceRevision.current;
-        const [snapshot, jobsRead] = await Promise.all([
-          activeSource.load(activityLimit.current, movementId),
-          activeSource.loadJobs?.() ?? Promise.resolve(null),
-        ]);
-        const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
+        const snapshotWork = activeSource.loadCoherent
+          ? activeSource.loadCoherent(activityLimit.current, movementId)
+          : activeSource.load(activityLimit.current, movementId).then((snapshot) => ({ snapshot, revision: "" }));
+        const activeJobs = activeSource.loadJobs ? ++jobsGeneration.current : 0;
+        const jobsWork = activeSource.loadJobs
+          ? Promise.resolve().then(() => activeSource.loadJobs!()).catch(() => null)
+          : null;
+        const { snapshot, revision } = await snapshotWork;
         if (requestId.current === nextRequestId) {
-          if (activeSource.loadJobs) dispatch(jobsRead?.state === "ready"
-            ? { type: "jobs-read", requestId: nextRequestId, jobs: jobsRead.data.jobs }
-            : { type: "jobs-unavailable", requestId: nextRequestId });
           if (!hasAuthoritativeReviewConversationPair(snapshot)) {
-            dispatch({ type: "mutation-loaded", requestId: nextRequestId, snapshot });
+            dispatch({ type: "mutation-loaded", requestId: nextRequestId, snapshot, revision });
             dispatch({ type: "activity-refresh-failed", requestId: nextRequestId, movementId, movementIds, verb, result });
             return { result, refresh: "failed" as const };
           } else {
-            dispatch({ type: "activity-refreshed", requestId: nextRequestId, movementId, movementIds, verb, result, snapshot, jobs });
+            dispatch({ type: "activity-refreshed", requestId: nextRequestId, movementId, movementIds, verb, result, snapshot, revision });
+            if (jobsWork) {
+              void jobsWork.then((jobsRead) => {
+                if (requestId.current !== nextRequestId || sourceIdentity.current !== activeSource
+                    || jobsGeneration.current !== activeJobs) return;
+                dispatch(jobsRead?.state === "ready"
+                  ? { type: "jobs-read", requestId: nextRequestId, jobs: jobsRead.data.jobs }
+                  : { type: "jobs-unavailable", requestId: nextRequestId });
+              }).catch(() => {
+                if (requestId.current === nextRequestId && sourceIdentity.current === activeSource
+                    && jobsGeneration.current === activeJobs) {
+                  dispatch({ type: "jobs-unavailable", requestId: nextRequestId });
+                }
+              });
+            }
             return { result, refresh: "refreshed" as const };
           }
         }
@@ -429,6 +571,61 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
 
   return {
     session,
+    async retryDestinationRead(destination: LazyDestination) {
+      const activeSource = source;
+      const activeRequest = requestId.current;
+      const held = retryingDestination.current;
+      if (!activeSource?.loadDestination || session.destination !== destination || session.destinationReads[destination] !== "failed"
+          || (held?.destination === destination && held.source === activeSource && held.request === activeRequest && held.generation === destinationGeneration.current)) return "ignored" as const;
+      const activeGeneration = ++destinationGeneration.current;
+      const retryToken = { destination, source: activeSource, request: activeRequest, generation: activeGeneration };
+      retryingDestination.current = retryToken;
+      dispatch({ type: "destination-retrying", requestId: activeRequest, destination });
+      try {
+        const snapshot = await activeSource.loadDestination(destination, activityLimit.current);
+        if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration) return "ignored" as const;
+        if (destinationReadFailed(destination, snapshot)) {
+          dispatch({ type: "destination-failed", requestId: activeRequest, destination, snapshot });
+          return "failed" as const;
+        }
+        dispatch({ type: "destination-loaded", requestId: activeRequest, destination, snapshot });
+        return "succeeded" as const;
+      } catch {
+        if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration) return "ignored" as const;
+        dispatch({ type: "destination-failed", requestId: activeRequest, destination });
+        return "failed" as const;
+      } finally {
+        if (retryingDestination.current === retryToken) retryingDestination.current = null;
+      }
+    },
+    async retryPriorityRead() {
+      const activeSource = source;
+      if (!activeSource?.loadPriority || !session.priorityRetryable || retryingPriority.current?.request === requestId.current) return "ignored" as const;
+      const activeRequest = requestId.current;
+      const activePriority = ++priorityGeneration.current;
+      const retryToken = { request: activeRequest, generation: activePriority };
+      retryingPriority.current = retryToken;
+      dispatch({ type: "priority-retrying", requestId: activeRequest });
+      try {
+        const priority = await activeSource.loadPriority(true);
+        if (!priorityAttemptCanPublish(activePriority, priorityGeneration.current, activeRequest, requestId.current, sourceIdentity.current === activeSource)) return "ignored" as const;
+        dispatch({ type: "priority-loaded", requestId: activeRequest, source: activeSource, overview: priority.snapshot.overview, disclosure: priority.snapshot.disclosure, revision: priority.revision, freshness: priority.freshness, lifecycle: priority.lifecycle, retryable: priority.retryable });
+        if (priority.freshness === "current") {
+          dispatch({ type: "priority-retry-succeeded", requestId: activeRequest });
+          return "succeeded" as const;
+        }
+        dispatch({ type: "priority-retry-failed", requestId: activeRequest });
+        return "failed" as const;
+      } catch {
+        if (priorityAttemptCanPublish(activePriority, priorityGeneration.current, activeRequest, requestId.current, sourceIdentity.current === activeSource)) {
+          dispatch({ type: "priority-retry-failed", requestId: activeRequest });
+          return "failed" as const;
+        }
+        return "ignored" as const;
+      } finally {
+        if (retryingPriority.current === retryToken) retryingPriority.current = null;
+      }
+    },
     // Navigation can request the selected account on demand without placing a
     // potentially large ledger in the all-surface startup snapshot. Pages are
     // returned separately; this layer never merges or de-duplicates rows.
@@ -475,8 +672,9 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       }
       if (requestId.current !== nextRequestId) { opening.current = false; return false; }
       const source = privateSource(hostBridge);
-      const loaded = await readOpenedSource(source, nextRequestId);
+      const reading = readOpenedSource(source, nextRequestId);
       opening.current = false;
+      void reading;
       if (hostBridge.rememberVault) {
         const write = rememberWrites.current.then(() => hostBridge.rememberVault!(vaultDirectory, passphrase));
         rememberWrites.current = write.catch(() => undefined);
@@ -488,7 +686,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
             if (requestId.current === nextRequestId) dispatch({ type: "notice", notice: { kind: "refused", text: "This vault is open, but this device could not protect its vaultphrase. You will need to enter it again after restarting OrionViva." } });
           });
       }
-      return loaded;
+      return true;
     },
     // The one affordance the sample vault is entered from. It names no
     // directory and no passphrase, because the request carries neither: where
@@ -518,9 +716,10 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       // showing somebody invented money with nothing saying it was invented.
       if (!frame) { dispatch({ type: "open-failed", requestId: nextRequestId, said: "" }); opening.current = false; return false; }
       const source = sampleSource(hostBridge, frame);
-      const loaded = await readOpenedSource(source, nextRequestId);
+      const reading = readOpenedSource(source, nextRequestId);
       opening.current = false;
-      return loaded;
+      void reading;
+      return true;
     },
     async pickVaultDirectory() { return hostBridge?.pickVaultDirectory?.() ?? null; },
     // One picker at a time, and one capture at a time. The picker being open
@@ -705,14 +904,14 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // One question at a time. `mirrored` says the drawer showing the answer is
     // open, which is a fact about this screen rather than a preference: it is
     // what decides whether anything may be spoken.
-    async askViva(question: string, mirrored: boolean, planRequest = false) {
+    async askViva(question: string, mirrored: boolean, planRequest = false, contextMode: import("../surface/types").AskContextMode = "new_question") {
       const activeSource = source;
       if (!conversationActions || !activeSource || !question.trim() || asking.current) return;
       asking.current = true;
       const nextRequestId = requestId.current;
       dispatch({ type: "asking", requestId: nextRequestId, question: question.trim() });
       try {
-        const { result, turn } = await conversationActions.ask(question.trim(), mirrored, planRequest);
+        const { result, turn } = await conversationActions.ask(question.trim(), mirrored, planRequest, contextMode);
         const snapshot = await refreshAfterAction(activeSource, nextRequestId);
         if (requestId.current === nextRequestId) {
           dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn, authoritative: hasAuthoritativeReviewConversationPair(snapshot) });
@@ -811,11 +1010,32 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     },
     resetDemo() {
       const nextRequestId = ++requestId.current;
+      sourceIdentity.current = null;
+      retryingDestination.current = null;
+      ++destinationGeneration.current;
+      retryingPriority.current = null;
+      ++priorityGeneration.current;
+      ++secondaryGeneration.current;
       activityLimit.current = 50;
       ++surfaceRevision.current;
       dispatch({ type: "reset", requestId: nextRequestId });
     },
-    navigate(destination: Destination) { questionGeneration.current += 1; dispatch({ type: "navigate", destination }); },
+    navigate(destination: Destination) { questionGeneration.current += 1; ++destinationGeneration.current; retryingDestination.current = null; dispatch({ type: "navigate", destination }); },
+    async ensureDestination(destination: "documents" | "review" | "trust" | "activity" | "plans") {
+      const activeSource = source;
+      const activeRequest = requestId.current;
+      if (!activeSource?.loadDestination) return false;
+      try {
+        const snapshot = await activeSource.loadDestination(destination, activityLimit.current);
+        if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource) return false;
+        if (destinationReadFailed(destination, snapshot)) {
+          dispatch({ type: "destination-failed", requestId: activeRequest, destination, snapshot });
+          return false;
+        }
+        dispatch({ type: "destination-loaded", requestId: activeRequest, destination, snapshot });
+        return snapshot;
+      } catch { return false; }
+    },
     openEvidence(link: EvidenceLink) { dispatch({ type: "select-document", id: link.targetDocumentId }); dispatch({ type: "navigate", destination: "documents" }); },
     selectDocument(id: string) { dispatch({ type: "select-document", id }); },
     selectQueue(id: string) { questionGeneration.current += 1; dispatch({ type: "select-queue", id }); },

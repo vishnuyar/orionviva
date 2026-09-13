@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import textwrap
+from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
 
@@ -11,7 +12,8 @@ import pytest
 
 from viva.crypto import (HEAD_BOUND_HEADER_VERSION, VERSION, CryptoError,
                          open_vault_header, rebind_vault_header)
-from viva.ledger import (EventStore, Ledger, account_opened,
+from viva.ledger import (CommittedIdentity, CommittedPrefixMismatch, EventStore,
+                         Ledger, account_opened,
                          opening_balance_observed, simple_transaction)
 
 # The vault is this file's subject, so it pays the real scrypt cost rather than
@@ -68,6 +70,212 @@ def test_reload_from_disk_resumes_chain(tmp_path):
     store2.append(simple_transaction("chk", "500.00", "paycheck", "2026-01-10"))
     intact, count = store2.verify_chain()
     assert intact and count == 4
+
+
+def test_committed_suffix_authenticates_cursor_and_sees_external_writer(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    store = EventStore.open(path, PW)
+    _seed(store)
+    snapshot = store.committed_snapshot()
+    assert snapshot.identity.count == 3
+    assert [item.sequence for item in snapshot.events] == [0, 1, 2]
+
+    EventStore.open(path, PW).append(
+        simple_transaction("chk", "5", "refund", "2026-01-06"))
+    suffix = store.committed_suffix_after(snapshot.identity)
+    assert suffix.identity.count == 4
+    assert [item.sequence for item in suffix.events] == [3]
+    assert store.committed_suffix_after(suffix.identity).events == ()
+
+    with pytest.raises(CommittedPrefixMismatch, match="does not match"):
+        store.committed_suffix_after(CommittedIdentity(2, "f" * 64))
+    with pytest.raises(CommittedPrefixMismatch, match="ahead"):
+        store.committed_suffix_after(CommittedIdentity(99, "f" * 64))
+
+
+def test_fork_advances_from_trusted_cursor_and_sees_external_append(
+        tmp_path, monkeypatch):
+    path = tmp_path / "fork-external.jsonl"
+    store = EventStore.open(path, PW)
+    _seed(store)
+    prefix = store.committed_snapshot().identity
+    external = store.fork()
+    external.append(simple_transaction(
+        "chk", "5", "refund", "2026-01-06"))
+
+    def scanned(*_args, **_kwargs):
+        raise AssertionError("fork scanned the trusted prefix")
+
+    monkeypatch.setattr(EventStore, "_iter_raw", scanned)
+    advanced = store.fork()
+    assert advanced._cached_identity()[0] == 4
+    suffix = advanced.committed_suffix_after(prefix)
+    assert suffix.identity.count == 4
+    assert [item.sequence for item in suffix.events] == [3]
+
+
+def test_fork_refuses_a_handle_with_an_uncertain_write(tmp_path):
+    store = EventStore.open(tmp_path / "uncertain-fork.jsonl", PW)
+    store._write_failed = True
+
+    with pytest.raises(CryptoError, match="cannot be forked after an uncertain write"):
+        store.fork()
+
+
+def test_genesis_suffix_requires_a_cursor_minted_by_this_store(tmp_path):
+    first = EventStore.open(tmp_path / "first.jsonl", PW)
+    second = EventStore.open(tmp_path / "second.jsonl", PW)
+    genuine = first.committed_snapshot().identity
+
+    assert first.committed_suffix_after(genuine).events == ()
+    for forged in (
+        CommittedIdentity(0, "0" * 64),
+        replace(genuine, end_offset=(genuine.end_offset or 0) + 1),
+        replace(genuine, cursor_mac="f" * 64),
+        second.committed_snapshot().identity,
+    ):
+        with pytest.raises(CommittedPrefixMismatch, match="valid EventStore cursor"):
+            first.committed_suffix_after(forged)
+
+
+def test_full_committed_log_audit_detects_same_length_sealed_prefix_mutation(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    store = EventStore.open(path, PW)
+    _seed(store)
+    identity = store.committed_snapshot().identity
+
+    lines = path.read_bytes().splitlines(keepends=True)
+    record = bytearray(lines[1])
+    sealed_at = record.index(b'"sealed"')
+    mutation_at = record.index(b'"ct"', sealed_at) + len(b'"ct":"')
+    record[mutation_at] = ord("A") if record[mutation_at] != ord("A") else ord("B")
+    lines[1] = bytes(record)
+    path.write_bytes(b"".join(lines))
+
+    # Warm equality authenticates the saved cursor and current head without
+    # scanning already-applied physical bytes.
+    assert store.committed_suffix_after(identity).events == ()
+    with pytest.raises(CryptoError):
+        store.verify_committed_log()
+
+
+def test_committed_api_owns_legacy_head_semantics(tmp_path):
+    path = tmp_path / "legacy.jsonl"
+    store = EventStore.open(path, PW)
+    _seed(store)
+    _make_genuine_legacy(path)
+
+    legacy = EventStore.open(path, PW)
+    snapshot = legacy.committed_snapshot()
+    assert snapshot.identity.count == 3
+    assert legacy.committed_suffix_after(snapshot.identity).events == ()
+    before = path.read_bytes()
+    legacy.committed_snapshot()
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("field,value", [
+    ("seq", 9), ("prev_hash", "f" * 64), ("record_hash", "e" * 64),
+])
+def test_committed_snapshot_strictly_validates_forged_legacy_records(
+        tmp_path, field, value):
+    path = tmp_path / "legacy-forged.jsonl"
+    _seed(EventStore.open(path, PW))
+    _make_genuine_legacy(path)
+    lines = path.read_text().splitlines(True)
+    record = json.loads(lines[1])
+    record[field] = value
+    lines[1] = json.dumps(record) + "\n"
+    path.write_text("".join(lines))
+
+    legacy = EventStore.open(path, PW)
+    with pytest.raises(CryptoError, match="chain broken|record hash mismatch"):
+        legacy.committed_snapshot()
+
+
+def test_committed_events_are_deeply_immutable(tmp_path):
+    store = EventStore.open(tmp_path / "ledger.jsonl", PW)
+    store.append(account_opened(
+        "chk", "depository", "Checking", "USD", "2026-01-01",
+        account_names=["Primary", "Household"]))
+    event = store.committed_snapshot().events[0].event
+
+    with pytest.raises(TypeError):
+        event.body["name"] = "changed"
+    with pytest.raises(AttributeError):
+        event.body["account_names"].append("changed")
+    with pytest.raises(TypeError):
+        event.provenance["doc_id"] = "changed"
+
+
+def test_equal_and_suffix_reads_only_process_new_records(tmp_path, monkeypatch):
+    path = tmp_path / "ledger.jsonl"
+    store = EventStore.open(path, PW)
+    _seed(store)
+    identity = store.committed_snapshot().identity
+    module = import_module("viva.ledger.store")
+    real_hash, real_open = module._record_hash, module.open_sealed
+    calls = {"hash": 0, "open": 0}
+
+    def counted_hash(*args, **kwargs):
+        calls["hash"] += 1
+        return real_hash(*args, **kwargs)
+
+    def counted_open(*args, **kwargs):
+        calls["open"] += 1
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(module, "_record_hash", counted_hash)
+    monkeypatch.setattr(module, "open_sealed", counted_open)
+    assert store.committed_suffix_after(identity).events == ()
+    assert calls == {"hash": 0, "open": 0}
+
+    EventStore.open(path, PW).append(simple_transaction(
+        "chk", "5", "refund", "2026-01-06"))
+    calls.update(hash=0, open=0)
+    suffix = store.committed_suffix_after(identity)
+    assert [item.sequence for item in suffix.events] == [3]
+    assert calls == {"hash": 1, "open": 1}
+
+
+def test_committed_cursor_mac_bounds_and_boundary_are_validated(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    store = EventStore.open(path, PW)
+    _seed(store)
+    identity = store.committed_snapshot().identity
+    module = import_module("viva.ledger.store")
+
+    for offset in (-1, path.stat().st_size + 10, identity.end_offset - 1):
+        forged = replace(
+            identity, end_offset=offset,
+            cursor_mac=module._cursor_mac(
+                store._key, identity.count, identity.head_hash, offset))
+        with pytest.raises((CommittedPrefixMismatch, CryptoError)):
+            store.committed_suffix_after(forged)
+
+
+@pytest.mark.parametrize("damage", ["truncate", "insert", "replace"])
+def test_suffix_cursor_refuses_damage_at_or_after_verified_boundary(
+        tmp_path, damage):
+    path = tmp_path / f"cursor-{damage}.jsonl"
+    store = EventStore.open(path, PW)
+    _seed(store)
+    identity = store.committed_snapshot().identity
+    EventStore.open(path, PW).append(simple_transaction(
+        "chk", "5", "refund", "2026-01-06"))
+    content = path.read_bytes()
+    boundary = identity.end_offset
+    assert boundary is not None
+    if damage == "truncate":
+        path.write_bytes(content[:-4])
+    elif damage == "insert":
+        path.write_bytes(content[:boundary] + b"x" + content[boundary:])
+    else:
+        changed = bytearray(content)
+        changed[boundary + 5] ^= 1
+        path.write_bytes(changed)
+    with pytest.raises(CryptoError):
+        store.committed_suffix_after(identity)
 
 
 def test_atomic_preparation_failure_does_not_advance_the_cached_tail(
@@ -322,8 +530,15 @@ def test_chain_detects_tampering(tmp_path):
     rec["sealed"]["ct"] = "AAAA" + rec["sealed"]["ct"][4:]
     lines[1] = json.dumps(rec)
     path.write_text("\n".join(lines) + "\n")
+    # Warm open authenticates semantic freshness from the header, head, and
+    # terminal record without replaying the entire prefix. Any operation that
+    # uses canonical bytes still performs the full physical audit.
+    reopened = EventStore.open(path, PW)
     with pytest.raises(CryptoError, match="record hash mismatch"):
-        EventStore.open(path, PW)
+        reopened.verify_committed_log()
+    reopened = EventStore.open(path, PW)
+    with pytest.raises(CryptoError, match="record hash mismatch"):
+        reopened.append(simple_transaction("chk", "-1", "ONE", "2026-01-03"))
 
 
 def test_reordering_breaks_replay(tmp_path):
@@ -507,7 +722,7 @@ def _restore_an_observed_older_head(path):
     return store, older_head, unchanged_log
 
 
-@pytest.mark.parametrize("operation", ["snapshot", "append"])
+@pytest.mark.parametrize("operation", ["snapshot", "append", "fork"])
 def test_open_handle_rejects_same_size_authenticated_head_rollback(
         tmp_path, operation):
     path = tmp_path / f"{operation}.jsonl"
@@ -516,6 +731,8 @@ def test_open_handle_rejects_same_size_authenticated_head_rollback(
     with pytest.raises(CryptoError, match="moved backward"):
         if operation == "snapshot":
             store.snapshot_events()
+        elif operation == "fork":
+            store.fork()
         else:
             store.append(simple_transaction(
                 "chk", "-2", "THIRD", "2026-01-03"))
@@ -524,7 +741,7 @@ def test_open_handle_rejects_same_size_authenticated_head_rollback(
     assert path.with_suffix(path.suffix + ".head").read_bytes() == older_head
 
 
-@pytest.mark.parametrize("operation", ["snapshot", "append"])
+@pytest.mark.parametrize("operation", ["snapshot", "append", "fork"])
 @pytest.mark.parametrize("tamper", ["forged_mac", "missing_head"])
 def test_open_handle_authenticates_head_on_every_read_and_append(
         tmp_path, operation, tamper):
@@ -546,6 +763,8 @@ def test_open_handle_authenticates_head_on_every_read_and_append(
     with pytest.raises(CryptoError, match=match):
         if operation == "snapshot":
             store.snapshot_events()
+        elif operation == "fork":
+            store.fork()
         else:
             store.append(simple_transaction(
                 "chk", "-1", "SECOND", "2026-01-02"))

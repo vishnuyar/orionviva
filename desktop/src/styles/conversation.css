@@ -33,16 +33,15 @@
 .conversation-turn.refused, .conversation-turn.stale { border-left: var(--space-hair) solid var(--rust); }
 .conversation-turn-meta {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-xs);
   color: #8e968e;
   font-size: var(--text-fine);
   text-transform: uppercase;
   letter-spacing: .08em;
 }
-.conversation-turn-meta time { grid-column: 1 / -1; }
+.conversation-context-boundary { display: block; width: 100%; padding-bottom: var(--space-xs); border-bottom: var(--space-hair) solid var(--line); }
+.conversation-turn-meta-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); }
+.conversation-turn-meta-main time { margin-left: auto; }
 .conversation-turn p { margin: 0; color: #46584f; font-size: 12px; line-height: 1.55; }
 .conversation-citation { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid var(--line); color: #66766d; font-size: var(--text-fine); line-height: 1.5; }
 .conversation-citation small { color: #8b948d; font-size: var(--text-fine); line-height: 1.45; }

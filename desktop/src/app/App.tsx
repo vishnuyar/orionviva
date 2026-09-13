@@ -18,6 +18,7 @@ import { Trust } from "../features/trust/Trust";
 import { resolveEvidenceTarget } from "../surface/evidence";
 import type { ActionResult, ConversationData, ConversationGoalDraft, DeclineReason, Destination, EvidenceLink, FeatureResult, NoticeKind, PlanDraftResult, PlanPayload, QuestionActionState, ReviewTransactionTarget } from "../surface/types";
 import { destinations, standingCopy, standingOf } from "./navigation";
+import type { LazyDestination } from "./session";
 import { useResponsiveNavigation } from "./useResponsiveNavigation";
 import { useEvidenceDialog } from "./useEvidenceDialog";
 import { useProofPreference } from "./useProofPreference";
@@ -108,15 +109,19 @@ export function App() {
   const navigationDrawerRef = useRef<HTMLElement>(null);
   const navigationCloseRef = useRef<HTMLButtonElement>(null);
   const pageTitleRef = useRef<HTMLHeadingElement>(null);
+  const priorityRetryRef = useRef<HTMLButtonElement>(null);
+  const destinationRetryRef = useRef<HTMLButtonElement>(null);
+  const destinationRef = useRef(session.destination);
+  destinationRef.current = session.destination;
   const evidenceDrawerRef = useRef<HTMLElement>(null);
   const evidenceCloseRef = useRef<HTMLButtonElement>(null);
   const conversationDrawerRef = useRef<HTMLElement>(null);
   const conversationCloseRef = useRef<HTMLButtonElement>(null);
-  // The open remains pending through the first authoritative read. The hook's
-  // mutual-exclusion guard has not released yet, so every visible entry point
-  // must tell the same truth instead of looking actionable and silently doing
-  // nothing.
-  const openingVault = session.phase === "opening" || session.phase === "reading";
+  // Authentication is exclusive. Once it succeeds, the shell remains usable
+  // while each destination receives its own read state.
+  const openingVault = session.phase === "opening";
+  const priorityLoading = session.phase === "reading";
+  const priorityHasPreviousData = surface.overview.state === "ready" || surface.overview.state === "partial" || surface.overview.state === "needs_input";
   // The one job this screen has a control for: the newest capture the sidecar
   // has said anything about. The registry holds more than one, and a screen
   // that showed all of them would be showing work a person did not start from
@@ -247,6 +252,17 @@ export function App() {
   function closeNavigation(restoreFocus = true) { setOverlay(null); if (restoreFocus) requestAnimationFrame(() => navigationTriggerRef.current?.focus()); }
   function openNavigation() { if (openingVault || !isNarrow) return; setOverlay({ kind: "navigation" }); }
   function navigate(destination: Destination) { if (openingVault) return; const focusHeading = isNarrow && mobileNav; if (destination === "accounts") { setOpenedAccount(""); setAccountOrigin(null); setReviewTransaction(null); } control.navigate(destination); if (mobileNav) setOverlay(null); if (focusHeading) requestAnimationFrame(() => pageTitleRef.current?.focus()); }
+  async function retryPriorityRead() {
+    const retryDestination = session.destination;
+    const moveFocusOnSuccess = document.activeElement === priorityRetryRef.current;
+    const outcome = await control.retryPriorityRead();
+    if (outcome === "succeeded" && moveFocusOnSuccess && destinationRef.current === retryDestination) requestAnimationFrame(() => pageTitleRef.current?.focus());
+  }
+  async function retryDestinationRead(destination: LazyDestination) {
+    const moveFocusOnSuccess = document.activeElement === destinationRetryRef.current;
+    const outcome = await control.retryDestinationRead(destination);
+    if (moveFocusOnSuccess && (outcome === "succeeded" || (outcome === "ignored" && destinationRef.current !== destination))) requestAnimationFrame(() => pageTitleRef.current?.focus());
+  }
   function openDocuments() {
     if (openingVault) return;
     setPendingDocumentFocus({ target: "capture", requestId: session.requestId, nonce: ++pendingFocusNonce.current });
@@ -271,8 +287,9 @@ export function App() {
       anyVaultOpen.current = false;
     }
   }
-  function openAskViva() { if (openingVault) return; conversationReturn.current = null; setOverlay({ kind: "conversation", requestId: session.requestId, mode: "ask" }); }
+  function openAskViva() { if (openingVault) return; conversationReturn.current = null; setOverlay({ kind: "conversation", requestId: session.requestId, mode: "ask" }); void control.ensureDestination("review"); }
   function openReviewQuestion(questionId: string, itemId = "", movementId = "") {
+    if (!(reviewResult.state === "ready" && surface.conversation.state === "ready")) void control.ensureDestination("review");
     conversationReturn.current = movementId ? { kind: "ledger", accountId: openedAccount, movementId, reviewItemId: reviewTransaction?.itemId ?? itemId }
       : itemId ? { kind: "review", itemId } : null;
     control.selectQueue(questionId);
@@ -302,12 +319,14 @@ export function App() {
     setSelectedMovement(movementId);
     control.navigate("activity");
   }
-  function inspectOverviewDocument(documentId: string) {
-    control.selectDocument(documentId);
+  async function inspectOverviewDocument(documentId: string) {
     control.navigate("documents");
+    if (!await control.ensureDestination("documents")) return;
+    control.selectDocument(documentId);
     setPendingDocumentFocus({ target: "document", documentId, requestId: session.requestId, nonce: ++pendingFocusNonce.current });
   }
-  function inspectOverviewAccount(accountId: string) {
+  async function inspectOverviewAccount(accountId: string) {
+    await Promise.all([control.ensureDestination("review"), control.ensureDestination("activity")]);
     control.selectAccount(accountId);
     setAccountOrigin({ kind: "overview", accountId });
     setOpenedAccount(accountId);
@@ -375,10 +394,16 @@ export function App() {
     if (gesture === "unopened") control.setNotice({ kind: "refused", text: "The file picker could not be opened, so nothing was chosen and nothing was added to this vault." });
     if (gesture === "several") refuseSeveral();
   }
-  function openFigure(figureId: string) { setOverlay({ kind: "evidence", selection: { figureId, requestId: session.requestId } }); }
-  function openConversationFigure(figureId: string) { conversationDialog.cancelPendingRestore(); setOverlay({ kind: "evidence", selection: { figureId, requestId: session.requestId } }); }
-  function openEvidenceDocument(link: EvidenceLink, fromDrawer = false) {
-    const target = resolveEvidenceTarget(surface.documents, link.targetDocumentId);
+  function openFigure(figureId: string) { setOverlay({ kind: "evidence", selection: { figureId, requestId: session.requestId } }); void control.ensureDestination("documents"); }
+  function openConversationFigure(figureId: string) { conversationDialog.cancelPendingRestore(); setOverlay({ kind: "evidence", selection: { figureId, requestId: session.requestId } }); void control.ensureDestination("documents"); }
+  async function openEvidenceDocument(link: EvidenceLink, fromDrawer = false) {
+    const loaded = await control.ensureDestination("documents");
+    if (!loaded && surface.documents.state === "unavailable") {
+      control.setNotice({ kind: "refused", text: "Documents could not be read from the current vault." });
+      return;
+    }
+    const documents = loaded && "documents" in loaded && loaded.documents ? loaded.documents : surface.documents;
+    const target = resolveEvidenceTarget(documents, link.targetDocumentId);
     const label = link.label.trim() || "Source label unavailable";
     if (target.state === "missing_identity") { control.setNotice({ kind: "refused", text: "This evidence reference does not include a document identity." }); return; }
     if (target.state === "documents_unavailable") { control.setNotice({ kind: "refused", text: "Documents are not available in the current vault read." }); return; }
@@ -426,6 +451,11 @@ export function App() {
   const reviewCountLabel = reviewData ? `${reviewCount} actionable ${reviewCount === 1 ? "item" : "items"}` : "count unavailable";
   const shownDestinations = destinations.filter((item) => item.placement === "primary" && (item.id !== "plans" || plansServed));
   const utilityDestinations = destinations.filter((item) => item.placement === "utility");
+  const lazyDestination = session.destination in session.destinationReads ? session.destination as LazyDestination : null;
+  const destinationRead = lazyDestination ? session.destinationReads[lazyDestination] : "idle";
+  const destinationResult = lazyDestination ? surface[lazyDestination] : null;
+  const destinationHasPreviousData = Boolean(destinationResult && (destinationResult.state === "ready" || destinationResult.state === "partial" || destinationResult.state === "needs_input")
+    && (lazyDestination !== "review" || (surface.conversation.state === "ready" || surface.conversation.state === "partial" || surface.conversation.state === "needs_input")));
   function focusPlanResult(result: ActionResult) {
     requestAnimationFrame(() => {
       const proposalId = result.state === "settled" && result.outcome.kind === "proposal" ? result.outcome.proposalId : "";
@@ -481,9 +511,18 @@ export function App() {
     <main className="main-content" aria-hidden={accountTransactionOpen ? true : undefined} inert={openingVault || Boolean(evidenceSelection) || conversationOpen || accountTransactionOpen || (isNarrow && mobileNav) ? true : undefined}>
       <header className="topbar"><button ref={navigationTriggerRef} id="mobile-navigation-trigger" className="icon-button mobile-menu" type="button" onClick={openNavigation} aria-label="Open navigation" aria-controls="primary-navigation-drawer" aria-expanded={isNarrow ? mobileNav : false}><Menu size={20} /></button><div className="breadcrumbs"><span>OrionViva</span><ChevronRight size={14} /><strong>{pageCopy[session.destination].title}</strong></div><div className="topbar-actions"><button className="primary-button add-statement-button" type="button" onClick={openDocuments}><FilePlus2 className="action-icon" />Add statement</button><button className="ask-button" type="button" onClick={openAskViva}><Sparkles size={16} />Ask Viva</button></div></header>
       <StatusNotice notice={session.notice} onDismiss={() => control.setNotice(null)} icons={noticeIcons} dismissIcon={<X size={15} />} />
-      <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div></div>
+      <div className="content-wrap" data-read-revision={session.readRevision || undefined}><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div></div>
         <SourceDisclosure disclosure={surface.disclosure} />
-        {session.phase === "reading" ? <section className="feature-panel" aria-live="polite"><div className="empty-state"><strong>Reading private vault</strong><span>Reading available surfaces from this device…</span></div></section> : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
+        {session.source && lazyDestination && (destinationRead === "loading" || destinationRead === "retrying" || destinationRead === "failed") ? <div className="feature-panel priority-read-callout">
+          <div className="empty-state"><div role="status" aria-live="polite" aria-atomic="true"><strong>{destinationRead === "retrying" ? `Retrying ${pageCopy[lazyDestination].title}` : destinationRead === "loading" ? `Reading ${pageCopy[lazyDestination].title}` : destinationHasPreviousData ? `${pageCopy[lazyDestination].title} could not be refreshed` : `${pageCopy[lazyDestination].title} could not be read`}</strong><span>{destinationRead === "loading" ? "This screen is loading. Other screens remain available." : destinationRead === "retrying" ? "Trying this screen again." : destinationHasPreviousData ? "The last complete view remains below and may be stale." : "No previous view is available. You can try this screen again."}</span></div>{destinationRead !== "loading" ? <button ref={destinationRetryRef} className="secondary-button" type="button" aria-disabled={destinationRead === "retrying"} onClick={() => { if (destinationRead === "failed") void retryDestinationRead(lazyDestination); }}>Retry this screen</button> : null}</div>
+        </div> : null}
+        <section className="priority-destination" aria-busy={(session.destination === "overview" || session.destination === "accounts") && (priorityLoading || session.priorityRetrying) ? true : undefined}>
+        {session.source && (session.destination === "overview" || session.destination === "accounts") ? <div className="priority-read-status">
+          {priorityLoading ? <div className="feature-panel"><div className="empty-state" role="status" aria-live="polite" aria-atomic="true"><strong>Reading your financial picture</strong><span>Loading Overview and Accounts from this vault…</span></div></div>
+            : session.priorityRetryable ? <div className="feature-panel priority-read-callout"><div className="empty-state"><div role="status" aria-live="polite" aria-atomic="true"><strong>{session.priorityLifecycle === "rebuilding" ? "Preparing your financial picture" : session.priorityFreshness === "stale" ? "Showing the last complete read" : "Financial picture unavailable"}</strong><span>{session.priorityRetrying ? "Trying the financial picture again…" : session.priorityLifecycle === "rebuilding" ? "The vault is open. OrionViva is preparing its private on-device read, and you can keep using the app." : session.priorityFreshness === "stale" ? "The latest changes could not be read yet. The last complete figures remain visible." : "The vault is open, but no complete financial picture is available. No empty values have been substituted."}</span>{session.priorityRetryOutcome === "failed" ? <span>{priorityHasPreviousData ? "Your financial picture still could not be brought up to date. The last complete read remains shown." : "Your financial picture still could not be brought up to date. No complete picture is available yet."}</span> : null}</div><button ref={priorityRetryRef} className="secondary-button" type="button" aria-disabled={session.priorityRetrying} onClick={() => { if (!session.priorityRetrying) void retryPriorityRead(); }}>{session.priorityRetrying ? "Retrying…" : "Retry"}</button></div></div>
+            : session.priorityRetryOutcome === "succeeded" ? <span role="status" aria-live="polite">Your financial picture is up to date.</span> : null}
+        </div> : null}
+        {priorityLoading && (session.destination === "overview" || session.destination === "accounts") ? null : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
           {session.destination === "overview" && <Overview result={surface.overview} reviewResult={reviewResult} activityResult={surface.activity} readSpendingBreakdown={control.readSpendingBreakdown} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? openAskViva : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} findingReceipt={control.findingReceipt} onExploreSample={openSampleVault} openingSample={openingVault} />}
           {session.destination === "review" && <Review result={reviewResult} onOpenQuestion={openReviewQuestion} onOpenTransaction={openReviewTransaction} />}
           {session.destination === "accounts" && openedAccount && (surface.overview.state === "ready" || surface.overview.state === "partial" || surface.overview.state === "needs_input") ? <AccountLedger accountId={openedAccount} loadingAccountName={surface.overview.data.accounts.find((account) => account.id === openedAccount)?.name} requestedReviewTarget={reviewTransaction?.target} backLabel={reviewTransaction ? "Back to Review" : accountOrigin?.kind === "overview" ? "Back to Overview" : undefined} read={control.readAccountLedger} activityResult={surface.activity} conversationResult={surface.conversation} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignClassification: async (movementIds, categoryId, subcategoryId) => await control.assignActivityClassification(movementIds, categoryId, subcategoryId) ?? null, onAddTags: async (movementIds, tagIds) => await control.addActivityTags(movementIds, tagIds) ?? null, onRemoveTags: async (movementIds, tagIds) => await control.removeActivityTags(movementIds, tagIds) ?? null } : null} onBack={reviewTransaction ? returnToReview : returnFromAccount} onOpenEvidence={openEvidenceDocument} onOpenQuestion={(questionId, movementId) => openReviewQuestion(questionId, reviewTransaction?.itemId ?? "", movementId)} onReviewTransfer={reviewMovement} onDrawerOpenChange={setAccountTransactionOverlay} drawerActive={accountTransactionOpen} renderOverlay={(content) => createPortal(content, document.body)} pageTitleRef={pageTitleRef} /> : session.destination === "accounts" ? <Accounts result={surface.overview} selectedAccount={session.selectedAccount} onOpenAccount={(accountId) => { setAccountOrigin({ kind: "accounts", accountId }); setOpenedAccount(accountId); }} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} openingSample={openingVault} /> : null}
@@ -492,9 +531,10 @@ export function App() {
           {session.destination === "plans" && <Plans result={plansResult} controls={planControls} initialDraft={conversationPlanDraft} receipt={planActionReceipt} onOpenEvidence={openEvidenceDocument} />}
           {session.destination === "trust" && <Trust result={surface.trust} identity={session.description.identity} lifecycle={session.description.lifecycle} displayPreference={{ showVerificationDetails: proofPreference.showVerificationDetails, onChange: proofPreference.setShowVerificationDetails }} transfer={control.transferAvailable ? { state: session.transferAction, onExport: (archive: string) => void control.exportVault(archive), onRestore: (archive: string, directory: string, passphrase: string) => void control.restoreVault(archive, directory, passphrase) } : null} settings={control.settingsAvailable ? { settings: session.settings, state: session.settingsAction, onPropose: (kind, fields) => void control.proposeSettings(kind, fields), onConfirm: (kind, fields, digest, key) => void control.confirmSettings(kind, fields, digest, key) } : null} maintenance={control.trustAvailable ? { state: session.trustAction, job: maintenanceJob, jobStatus: control.jobStatus, jobCheck: control.jobCheck, cancel: session.cancelAction, onRun: (spend: boolean) => void control.runMaintenance(spend), onDiagnose: (file: string) => void control.writeDiagnostic(file), onStop: (jobId: string) => void control.cancelJob(jobId), onRecheck: () => void control.recheckJobs() } : null} />}
         </FeatureBoundary>}
+        </section>
       </div>
     </main>
-    {conversationOpen && <ConversationDialogShell mode={conversationSelection?.mode} resetKey={`${session.requestId}-conversation-${conversationSelection?.mode}`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer mode={conversationSelection?.mode} result={surface.conversation} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenFigure={openConversationFigure} onReviewPlan={(draft: ConversationGoalDraft) => { conversationDialog.cancelPendingRestore(); setPlanActionReceipt(null); setConversationPlanDraft({ state: "settled", kind: draft.kind, message: draft.message, reason: draft.reason, draft: draft.draft }); control.navigate("plans"); setOverlay(null); requestAnimationFrame(() => (document.getElementById("plans-draft-title") ?? pageTitleRef.current)?.focus()); }} ask={control.askAvailable ? { state: session.askAction, onAsk: (question: string, mirrored: boolean, planRequest = false) => void control.askViva(question, mirrored, planRequest) } : null} controls={{ state: session.questionAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} /></ConversationDialogShell>}
+    {conversationOpen && <ConversationDialogShell mode={conversationSelection?.mode} resetKey={`${session.requestId}-conversation-${conversationSelection?.mode}`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer mode={conversationSelection?.mode} result={surface.conversation} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenFigure={openConversationFigure} onReviewPlan={(draft: ConversationGoalDraft) => { conversationDialog.cancelPendingRestore(); setPlanActionReceipt(null); setConversationPlanDraft({ state: "settled", kind: draft.kind, message: draft.message, reason: draft.reason, draft: draft.draft }); control.navigate("plans"); setOverlay(null); requestAnimationFrame(() => (document.getElementById("plans-draft-title") ?? pageTitleRef.current)?.focus()); }} ask={control.askAvailable ? { state: session.askAction, onAsk: (question: string, mirrored: boolean, planRequest = false, contextMode = "new_question") => void control.askViva(question, mirrored, planRequest, contextMode) } : null} controls={{ state: session.questionAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} /></ConversationDialogShell>}
     {evidenceSelection && <EvidenceDrawer snapshot={surface} selection={evidenceSelection} drawerRef={evidenceDrawerRef} closeRef={evidenceCloseRef} onDismiss={evidenceDialog.dismissAndRestore} onOpenDocument={(link) => openEvidenceDocument(link, true)} renderEvidenceBadge={(grade) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />} />}
   </div>;
 }

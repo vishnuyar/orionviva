@@ -125,6 +125,7 @@ function timelineTurn(raw: unknown): ConversationTurn | null {
   return {
     id,
     kind,
+    contextMode: raw.context_mode === "new_question" || raw.context_mode === "follow_up" || raw.context_mode === "legacy" ? raw.context_mode : "legacy",
     occurredAt: textValue(raw.occurred_at),
     prompt: textValue(raw.prompt),
     said: textValue(raw.said),

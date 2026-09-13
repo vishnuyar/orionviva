@@ -1,7 +1,6 @@
 """Adapt an opened vault to durable conversation and correction handlers.
 
-The adapter owns one lazily built session for the opened vault. Turns are
-blocking requests, and no model is called until one is configured.
+Turns are blocking requests, and no model is called until one is configured.
 """
 
 from __future__ import annotations
@@ -37,7 +36,6 @@ class ConversationActions:
     def __init__(self, vault: Any, jobs: JobRegistry | None = None) -> None:
         self._vault = vault
         self._jobs = jobs if jobs is not None else JobRegistry()
-        self._session = None
 
     def ask(self, payload: dict[str, Any]) -> dict[str, Any]:
         """One question, and the turn it produced.
@@ -53,10 +51,11 @@ class ConversationActions:
         from viva.ledger.events import (conversation_turn_opened,
                                         conversation_turn_settled)
 
-        question, mirrored, plan_request = _ask_request(payload)
+        question, mirrored, plan_request, context_mode = _ask_request(payload)
         turn_id = secrets.token_urlsafe(18)
         self._vault.ledger.append(conversation_turn_opened(
-            turn_id, "ask", question, _today(), mirrored=mirrored))
+            turn_id, "ask", question, _today(), mirrored=mirrored,
+            context_mode=context_mode))
         if plan_request:
             from viva import speak
             spec = speak.speak_spec()
@@ -104,7 +103,7 @@ class ConversationActions:
                     turn_id, outcome.kind, outcome.message, _today(),
                     reason=outcome.reason or "", answer=said))
                 return outcome.as_dict()
-        session = self._opened()
+        session = self._opened(context_mode, turn_id)
         if session is None:
             outcome = ActionOutcome(
                 "refused", moment("conversation_unconfigured"),
@@ -251,22 +250,20 @@ class ConversationActions:
             reason=outcome.reason or ""))
         return outcome.as_dict()
 
-    def _opened(self):
-        """Return the lazily built session for this opened vault, if configured."""
-        if self._session is not None:
-            return self._session
+    def _opened(self, context_mode: str | None = None,
+                current_turn_id: str = ""):
+        """Build an Ask session with only the selected prior text."""
         from viva import speak
 
         # Module lookup lets tests replace the same configuration used here.
         spec = speak.speak_spec()
         if spec is None:
             return None
-        self._session = _session_for(self._vault, spec,
-                                     speak.compiler_factory(spec),
-                                     speak.resource_policy_from_env(),
-                                     _prior_context(
-                                         self._vault.ledger.projection()))
-        return self._session
+        return _session_for(self._vault, spec,
+                            speak.compiler_factory(spec),
+                            speak.resource_policy_from_env(),
+                            _prior_context(self._vault.ledger.projection(),
+                                           context_mode, current_turn_id))
 
 
 def _session_for(vault, spec, factory, resource_policy, prior_turns=()):
@@ -282,15 +279,31 @@ def _session_for(vault, spec, factory, resource_policy, prior_turns=()):
                    prior_turns=prior_turns)
 
 
-def _prior_context(projection) -> list[tuple[str, str]]:
+def _prior_context(projection, context_mode: str | None = None,
+                   current_turn_id: str = "") -> list[tuple[str, str]]:
     """Past visible ask turns as text context, never as current evidence."""
+    if context_mode == "new_question":
+        return []
+    rows = projection.conversation_turns()
+    boundary = 0
+    if context_mode == "follow_up":
+        for index, row in enumerate(rows):
+            if row.get("kind") == "ask" and row.get("context_mode") == "new_question":
+                boundary = index
     out = []
-    for row in projection.conversation_turns():
+    for row in rows[boundary:]:
         if row.get("kind") != "ask":
+            continue
+        if row.get("turn_id") == current_turn_id:
+            continue
+        if context_mode is not None and row.get("context_mode") not in (
+                "new_question", "follow_up"):
             continue
         if row.get("outcome") not in ("completed", "refused"):
             continue
         answer = row.get("answer") or {}
+        if "draft_state" in answer:
+            continue
         said = str(answer.get("text") or answer.get("refusal")
                    or row.get("message") or "")
         if said:
@@ -340,11 +353,12 @@ def _outcome_of(result: Mapping[str, Any]) -> ActionOutcome:
 outcome_of = _outcome_of
 
 
-def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool, bool]:
+def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool, bool, str | None]:
     """Validate a question and whether its answer will be mirrored in text."""
     from viva.reply import MAX_REPLY_TOKENS
 
-    allowed = {"question", "mirrored", "plan_request"}
+    from viva.ledger.events import CONVERSATION_CONTEXT_MODES
+    allowed = {"question", "mirrored", "plan_request", "context_mode"}
     unexpected = set(payload) - allowed
     if unexpected:
         raise BridgeRequestError(
@@ -361,7 +375,10 @@ def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool, bool]:
     plan_request = payload.get("plan_request", False)
     if not isinstance(plan_request, bool):
         raise BridgeRequestError("plan_request must be true or false")
-    return question, mirrored, plan_request
+    context_mode = payload.get("context_mode")
+    if "context_mode" in payload and context_mode not in CONVERSATION_CONTEXT_MODES:
+        raise BridgeRequestError("unknown conversation context mode")
+    return question, mirrored, plan_request, context_mode
 
 
 def _answer_request(payload: Mapping[str, Any]) -> tuple[str, str]:

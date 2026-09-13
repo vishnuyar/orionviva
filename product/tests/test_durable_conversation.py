@@ -10,7 +10,8 @@ from viva.desktop_bridge.conversation_actions import ConversationActions
 from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
 from viva.engine import _record_interpret
 from viva.ledger.events import (conversation_proposal_recorded,
-                                conversation_turn_opened, read_recorded)
+                                conversation_turn_opened, conversation_turn_settled,
+                                read_recorded)
 from viva.surface.conversation import timeline
 from viva.vault import Vault
 
@@ -25,6 +26,7 @@ def test_an_unconfigured_ask_is_durable_across_a_new_vault_object(
     result = ConversationActions(vault).ask(
         {"question": "What changed?", "mirrored": True})
     reopened = Vault.open(directory, "pw")
+    reopened.synchronize_read_store()
     read = OpenedVaultSurfaceProvider(reopened).read_surface(
         "conversation", {})
 
@@ -46,6 +48,44 @@ def test_an_opened_turn_without_a_settlement_is_shown_as_interrupted(tmp_path):
 
     assert read["turns"][0]["outcome"] == "stale"
     assert read["turns"][0]["reason"] == "interrupted"
+
+
+def test_context_boundary_survives_reopen_and_legacy_turns_stay_visible(tmp_path):
+    from viva.desktop_bridge.conversation_actions import _prior_context
+
+    directory = tmp_path / "vault"
+    vault = Vault.open(directory, "pw")
+    for identity, question, mode, settle in (
+            ("legacy", "Earlier?", None, True),
+            ("new", "New?", "new_question", False),
+            ("old-client", "Mixed?", None, True),
+            ("follow", "Follow?", "follow_up", True)):
+        vault.ledger.append(conversation_turn_opened(
+            identity, "ask", question, "2026-08-29", context_mode=mode))
+        if settle:
+            vault.ledger.append(conversation_turn_settled(
+                identity, "completed", "Synthetic answer.", "2026-08-29"))
+    reopened = Vault.open(directory, "pw")
+    reopened.synchronize_read_store()
+    projection = reopened.ledger.projection()
+    assert _prior_context(projection, "follow_up") == [("Follow?", "Synthetic answer.")]
+    assert _prior_context(projection, "new_question") == []
+    assert len(_prior_context(projection)) == 3
+    read = OpenedVaultSurfaceProvider(reopened).read_surface("conversation", {})
+    assert [row["context_mode"] for row in read["turns"]] == [
+        "legacy", "new_question", "legacy", "follow_up"]
+
+
+def test_context_mode_is_closed_and_only_for_ask_turns():
+    import pytest
+    from viva.desktop_bridge.conversation_actions import _ask_request
+    from viva.desktop_bridge.handlers import BridgeRequestError
+
+    with pytest.raises(BridgeRequestError):
+        _ask_request({"question": "What?", "context_mode": "guess"})
+    with pytest.raises(ValueError):
+        conversation_turn_opened("turn", "answer", "What?", "2026-08-29",
+                                 question_id="q", context_mode="follow_up")
 
 
 def test_a_proposal_persisted_before_an_interruption_remains_reachable(
@@ -81,6 +121,7 @@ def test_old_technical_read_records_are_not_backfilled_into_conversation(
     vault.ledger.append(read_recorded(
         "old-call", "model-route", "old-prompt", "text", "old response",
         0.0, 0, 0, True, None, "2026-08-28", phase="speak"))
+    vault.synchronize_read_store()
 
     read = OpenedVaultSurfaceProvider(vault).read_surface("conversation", {})
 

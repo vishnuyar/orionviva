@@ -197,7 +197,8 @@ export type QuestionSlot = { name: string; type: string; required: boolean; want
 export type QuestionReferences = { movement?: string; movements?: readonly string[]; candidates?: readonly string[]; document?: string; doc_id?: string; account?: string };
 export type QuestionView = { id: string; slots?: readonly QuestionSlot[]; refs?: QuestionReferences; reviewBinding?: ReviewQuestionBinding; label: string; detail: string; status: string; action: string; type: string; evidence: string; state: "needs_input" | "partial"; outcome: ActionOutcome | null; disposition: "answer" | "decline" | "proposal" | "confirm" | null; count?: number; scope?: string; currency?: string; amount?: string };
 export type ConversationProposal = { id: string; summary: string; status: string; outcome: string; message: string; reason: string };
-export type ConversationTurn = { id: string; kind: "ask" | "answer" | "decline" | "confirm"; occurredAt: string; prompt: string; said: string; questionId: string; outcome: ActionOutcome; message: string; reason: string; answer: TurnView | null; proposal: ConversationProposal | null };
+export type AskContextMode = "new_question" | "follow_up";
+export type ConversationTurn = { id: string; kind: "ask" | "answer" | "decline" | "confirm"; contextMode?: AskContextMode | "legacy"; occurredAt: string; prompt: string; said: string; questionId: string; outcome: ActionOutcome; message: string; reason: string; answer: TurnView | null; proposal: ConversationProposal | null };
 
 // The whole picture as the read composed it: one reviewed sentence about how
 // far it reaches, the day it was read on, one figure per currency, and one
@@ -383,7 +384,7 @@ export type MissingAnswerInput = { tag: string; label: string; question: string;
 // word in a frame, and it is the read's.
 export type TurnView = { question: string; text: string; answered: boolean; status: AnswerStatus; outcomeTag: string; refusal: string; grade: string; gradeSentence: string; figures: readonly TurnFigure[]; options: readonly AnswerOption[]; missing: readonly MissingAnswerInput[]; spoken: SpokenTurn; goalDraft?: ConversationGoalDraft | null };
 export type ConversationActions = {
-  ask: (question: string, mirrored: boolean, planRequest?: boolean) => Promise<{ result: ActionResult; turn: TurnView | null }>;
+  ask: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: AskContextMode) => Promise<{ result: ActionResult; turn: TurnView | null }>;
   answer: (questionId: string, said: string) => Promise<ActionResult>;
   confirm: (proposalId: string, said: string, asked: string) => Promise<ActionResult>;
   decline: (questionId: string, reason: DeclineReason) => Promise<ActionResult>;

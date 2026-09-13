@@ -6,6 +6,20 @@ import type { BridgeRequest, BridgeResponse, BridgeTransport } from "./contracts
 describe("bridge transport framing", () => {
   afterEach(() => { delete window.orionVivaBridge; });
 
+  it("uses the atomic priority read advertised by the opened vault", async () => {
+    const frames: BridgeRequest[] = [];
+    const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      const result = frame.operation === "bridge.open_vault"
+        ? { state: "opened", priority_reads: ["overview_accounts"] }
+        : { surface: frame.payload.surface, job_id: "job", data: {} };
+      return { protocol: "2.0", request_id: frame.requestId, ok: true, result: result as T };
+    } });
+    await client.openVault("/vault", "secret", false);
+    await client.readOverviewAccounts(true);
+    expect(frames[1].payload).toEqual({ surface: "overview_accounts", parameters: { refresh: 1 }, job_id: "desktop-overview_accounts-2" });
+  });
+
   it("frames vault open and all surface reads", async () => {
     const frames: Array<{ requestId: string; operation: string; payload: Record<string, unknown> }> = [];
     const transport: BridgeTransport = { request: async <T>(frame: { requestId: string; operation: string; payload: Record<string, unknown> }) => {

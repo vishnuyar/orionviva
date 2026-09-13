@@ -169,6 +169,7 @@ def test_the_whole_record_is_json_safe():
 def test_the_trust_surface_reads_the_record_from_a_real_vault(tmp_path: Path):
     vault = Vault.open(tmp_path / "vault", PASSPHRASE)
     vault.ledger.append(_call("classify", "a-model", 0.25, "2026-07-01"))
+    vault.synchronize_read_store()
 
     read = OpenedVaultSurfaceProvider(vault).read_surface("trust", {})
 
@@ -180,6 +181,7 @@ def test_the_trust_surface_reads_the_record_from_a_real_vault(tmp_path: Path):
 
 def test_the_trust_surface_of_a_silent_vault_still_carries_the_record(tmp_path: Path):
     vault = Vault.open(tmp_path / "vault", PASSPHRASE)
+    vault.synchronize_read_store()
 
     read = OpenedVaultSurfaceProvider(vault).read_surface("trust", {})
 

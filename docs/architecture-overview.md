@@ -30,11 +30,15 @@ recovery, and private recovery never falls back to a remembered default.
 
 OrionViva is an installed desktop application over a local, encrypted,
 append-only event log — the vault. Documents go in; deterministic verification
-decides what is true; events record it; every view is a projection replayed
-from the log; and one contracted surface carries read models across a small
-typed bridge to the interface a person sees. Models read documents and parse
-intent, but no model ever certifies a figure, computes one, or writes one into
-a sentence — trust is constructed by verification and carried as a grade on
+decides what is true; events record it; and every view remains a rebuildable
+projection of that log. Desktop Overview, Accounts, Activity, Spending,
+Documents, Review, Plans, Conversation, Trust, historical Overview/Activity,
+and account-ledger pages use encrypted, disposable SQL revisions; Jobs uses
+its separate registry. Non-desktop consumers may still use the legacy lazy
+in-memory projection. One contracted surface carries those read models across
+a small typed bridge to the interface a person sees. Models read documents and
+parse intent, but no model ever certifies a figure, computes one, or writes one
+into a sentence — trust is constructed by verification and carried as a grade on
 every number, end to end.
 
 ## The package trees
@@ -73,6 +77,13 @@ whose import direction is enforced by tests (the boundary rule is in
   event vocabulary; double-entry postings; and the projections (balances, net
   worth, streams, obligations, current-period control, merchants, statements)
   replayed from it.
+- `viva/read_store` — the encrypted, disposable SQL projection, authenticated
+  against the canonical event head and rebuilt or caught up outside the
+  foreground request loop. Current Overview, Accounts, Activity, Spending,
+  Documents, Review, Plans, Conversation, and Trust read immutable SQL
+  revisions. Historical Overview and Activity use value-time SQL adapters;
+  account-ledger uses a verified indexed SQL page; Jobs remains a separate
+  registry-backed gate, with no SQL Jobs table.
 - `viva/ingest` — the document pipeline: raw capture, classify, the document
   type registry, extraction, reconciliation diagnosis, review, merchants,
   transfers, categorization.

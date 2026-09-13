@@ -86,8 +86,11 @@ def documents(projection, raw_doc_ids: frozenset[str],
     ordinary_holds = {item.get("doc_id") for item in projection.open_holds()}
     activity_holds = {item.get("doc_id")
                       for item in projection.open_activity_holds()}
-    holds = [item.to_dict() for item in held_items(projection)]
-    holds.extend(other_holds(projection))
+    if hasattr(projection, "document_holds"):
+        holds = projection.document_holds()
+    else:
+        holds = [item.to_dict() for item in held_items(projection)]
+        holds.extend(other_holds(projection))
     rows = [
         {
             "id": doc_id,

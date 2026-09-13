@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BridgeTimeout } from "../bridge/contracts";
 import type { BridgeClient, SurfaceName } from "../bridge/contracts";
-import { loadPrivateSnapshot, privateActivityActions, privateDocumentActions, privateSettingsActions, privateTransferActions, privateTrustActions } from "./load-private-snapshot";
+import { loadCoherentSnapshot, loadPrivateDestination, loadPrivateSnapshot, loadPrioritySnapshot, loadSecondarySnapshot, loadStartupSecondarySnapshot, privateActivityActions, privateDocumentActions, privateSettingsActions, privateTransferActions, privateTrustActions } from "./load-private-snapshot";
 import { privateSource } from "./sources";
 
 const read = (surface: SurfaceName, data: unknown) => Promise.resolve({ surface, job_id: `job-${surface}`, data });
@@ -10,6 +10,7 @@ function client(conversation: unknown = { state: "ready", turns: [], questions: 
     openVault: async () => undefined,
     openSampleVault: async () => null,
     readOverview: () => read("overview", { accounts: [] }),
+    readOverviewAccounts: () => read("overview_accounts", { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-test", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" }),
     readDocuments: () => read("documents", { documents: [] }),
     readConversation: () => read("conversation", conversation),
     readJobs: () => read("jobs", { state: "absent", jobs: [], running: [] }),
@@ -51,6 +52,127 @@ function client(conversation: unknown = { state: "ready", turns: [], questions: 
 }
 
 describe("private conversation surface", () => {
+  it("settles the priority bundle while a secondary destination is blocked", async () => {
+    const blocked = Object.assign(client(), {
+      readOverviewAccounts: () => read("overview_accounts", { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" }),
+      readDocuments: () => new Promise<Awaited<ReturnType<BridgeClient["readDocuments"]>>>(() => undefined),
+    });
+    const secondary = loadSecondarySnapshot(blocked);
+    const priority = await loadPrioritySnapshot(blocked);
+    expect(priority.snapshot.overview.state).toBe("ready");
+    expect(priority.revision).toBe("g-one");
+    await expect(Promise.race([secondary.then(() => "settled"), Promise.resolve("blocked")])).resolves.toBe("blocked");
+  });
+
+  it("rejects a mixed Overview and Accounts bundle instead of combining revisions", async () => {
+    let legacyReads = 0;
+    const mixed = Object.assign(client(), {
+      readOverview: () => { legacyReads += 1; return read("overview", { accounts: [] }); },
+      readOverviewAccounts: () => read("overview_accounts", { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { accounts: [] }, accounts: { accounts: [{ account: "other" }] }, error: "" }),
+    });
+    const priority = await loadPrioritySnapshot(mixed);
+    expect(priority).toMatchObject({ revision: "", freshness: "unavailable", lifecycle: "degraded", retryable: true });
+    expect(priority.snapshot.overview).toEqual({ state: "failed", reason: "invalid_payload" });
+    expect(legacyReads).toBe(0);
+  });
+
+  it("does not enqueue legacy or raw-backed reads during routine startup", async () => {
+    const touched: string[] = [];
+    const guarded = Object.assign(client(), ...["readDocuments", "readConversation", "readReview", "readTrust", "readActivity", "readPlans"].map((name) => ({
+      [name]: async () => { touched.push(name); throw new Error("startup read"); },
+    })));
+    const snapshot = await loadStartupSecondarySnapshot(guarded);
+    expect(touched).toEqual([]);
+    expect(snapshot.documents).toEqual({ state: "absent", reason: "not_asked" });
+    expect(snapshot.conversation).toEqual({ state: "absent", reason: "not_asked" });
+    expect(snapshot.review).toEqual({ state: "absent", reason: "not_asked" });
+    expect(snapshot.activity).toEqual({ state: "absent", reason: "not_asked" });
+  });
+
+  it("retains a stale revision as data and exposes one retry state", async () => {
+    const stale = Object.assign(client(), {
+      readOverviewAccounts: () => read("overview_accounts", { state: "stale", freshness: "stale", lifecycle: "stale", revision: "g-prior", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" }),
+    });
+    const priority = await loadPrioritySnapshot(stale);
+    expect(priority).toMatchObject({ revision: "g-prior", freshness: "stale", retryable: true });
+    expect(priority.snapshot.overview.state).toBe("ready");
+  });
+
+  it.each(["partial", "needs_input"] as const)("preserves a %s priority Overview outcome", async (state) => {
+    const issue = { code: "incomplete_figure", message: "A named item needs attention." };
+    const focused = Object.assign(client(), {
+      readOverviewAccounts: () => read("overview_accounts", { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { state, issues: [issue], accounts: [] }, accounts: { state, issues: [issue], accounts: [] }, error: "" }),
+    });
+    const priority = await loadPrioritySnapshot(focused);
+    expect(priority.snapshot.overview).toMatchObject({ state, issues: [issue] });
+    expect(priority.revision).toBe("g-one");
+  });
+
+  it("refuses an aggregate when a secondary read crosses an authenticated generation", async () => {
+    let revision = "g-one";
+    const guarded = Object.assign(client(), {
+      readOverviewAccounts: () => read("overview_accounts", { state: "ready", freshness: "current", lifecycle: "equal", revision, overview: { accounts: [] }, accounts: { accounts: [] }, error: "" }),
+      readDocuments: () => { revision = "g-two"; return read("documents", { documents: [] }); },
+    });
+    await expect(privateSource(guarded).load()).rejects.toThrow("aggregate_revision_mismatch");
+  });
+
+  it("uses the paired priority route for the aggregate reread", async () => {
+    const asked: string[] = [];
+    const aggregate = Object.assign(client(), {
+      readOverview: () => { asked.push("overview"); return read("overview", { accounts: [] }); },
+      readOverviewAccounts: () => { asked.push("priority"); return read("overview_accounts", { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" }); },
+    });
+    const snapshot = await loadPrivateSnapshot(aggregate);
+    expect(snapshot.overview.state).toBe("ready");
+    expect(asked).toEqual(["priority", "priority"]);
+  });
+
+  it("makes eight bounded surface reads and returns the confirmed revision", async () => {
+    const asked: string[] = [];
+    const base = client();
+    const observed = Object.assign({}, base, {
+      readOverview: () => { throw new Error("bare overview route"); },
+      readOverviewAccounts: () => { asked.push("overview_accounts"); return base.readOverviewAccounts(); },
+      readDocuments: () => { asked.push("documents"); return read("documents", { documents: [] }); },
+      readConversation: () => { asked.push("conversation"); return read("conversation", { turns: [], questions: [], total: 0 }); },
+      readReview: () => { asked.push("review"); return read("review", { state: "ready", groups: [] }); },
+      readTrust: () => { asked.push("trust"); return read("trust", { state: "ready", notes: [] }); },
+      readActivity: () => { asked.push("activity"); return read("activity", { state: "ready", items: [] }); },
+      readPlans: () => { asked.push("plans"); return read("plans", { state: "ready", goals: [], proposals: [] }); },
+    });
+    const result = await loadCoherentSnapshot(observed);
+    expect(result.revision).toBe("g-test");
+    expect(asked).toEqual(["overview_accounts", "documents", "conversation", "review", "trust", "activity", "plans", "overview_accounts"]);
+  });
+
+  it("reuses a supplied post-job start instead of requesting a third priority read", async () => {
+    let priorities = 0;
+    const observed = Object.assign(client(), {
+      readOverviewAccounts: () => { priorities += 1; return read("overview_accounts", { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-job", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" }); },
+    });
+    const start = await loadPrioritySnapshot(observed, undefined, true);
+    const result = await loadCoherentSnapshot(observed, undefined, undefined, undefined, start);
+    expect(result.revision).toBe("g-job");
+    expect(priorities).toBe(2);
+  });
+
+  it("settles priority and active destination while an unrelated aggregate secondary is blocked", async () => {
+    let releaseDocuments: ((value: Awaited<ReturnType<BridgeClient["readDocuments"]>>) => void) | undefined;
+    let aggregateSettled = false;
+    const blocked = Object.assign(client(), {
+      readDocuments: () => new Promise<Awaited<ReturnType<BridgeClient["readDocuments"]>>>((resolve) => { releaseDocuments = resolve; }),
+    });
+    const aggregate = loadPrivateSnapshot(blocked).finally(() => { aggregateSettled = true; });
+    const priority = await loadPrioritySnapshot(blocked);
+    const plans = await loadPrivateDestination(blocked, "plans");
+    expect(priority.snapshot.overview.state).toBe("ready");
+    expect(plans.plans?.state).toBe("ready");
+    expect(aggregateSettled).toBe(false);
+    releaseDocuments?.({ surface: "documents", job_id: "blocked-documents", data: { documents: [] } });
+    expect((await aggregate).documents.state).toBe("ready");
+  });
+
   it("loads durable turns and derives the overview question summary from the same read", async () => {
     const snapshot = await loadPrivateSnapshot(client({ state: "ready", turns: [{ id: "t-1", kind: "ask", occurred_at: "2026-08-29", prompt: "What changed?", said: "", question_id: "", outcome: "refused", message: "No model.", reason: "no_model_named", answer: {}, proposal: null }], questions: [{ id: "q-1", text: "What was this?", why: "Unknown." }], total: 1 }));
     expect(snapshot.conversation.state).toBe("ready");

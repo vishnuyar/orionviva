@@ -14,6 +14,7 @@ from viva.desktop_bridge import (
     OpenedVaultSurfaceProvider,
 )
 from viva.desktop_bridge.conversation_actions import UnreadableOutcome, outcome_of
+from viva.desktop_bridge.handlers import BridgeRequestError
 from viva.desktop_bridge import vault_surface
 from viva.persona import moment
 from viva.vault import Vault
@@ -362,6 +363,7 @@ def test_job_progress_event_rejects_invalid_ranges():
 
 def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
     vault = Vault.open(tmp_path / "vault", "pw")
+    vault.synchronize_read_store()
     provider = OpenedVaultSurfaceProvider(vault)
 
     overview = provider.read_surface("overview", {"read_on": "2026-09-30"})
@@ -409,6 +411,15 @@ def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
     assert review["total"] == 0
 
 
+def test_documents_refuses_rebuilding_read_store(tmp_path):
+    vault = Vault.open(tmp_path / "vault", "pw")
+    vault.synchronize_read_store()
+    vault.read_store_lifecycle = "rebuilding"
+
+    with pytest.raises(BridgeRequestError, match="not caught up"):
+        OpenedVaultSurfaceProvider(vault).read_surface("documents", {})
+
+
 def test_opened_vault_provider_rejects_unknown_surface_and_parameters(tmp_path):
     provider = OpenedVaultSurfaceProvider(Vault.open(tmp_path / "vault", "pw"))
 
@@ -427,7 +438,9 @@ def test_the_day_a_picture_is_read_on_is_stated_or_is_the_day_it_is_asked_on(tmp
     it is not the projection horizon a letter away from it. A caller may state
     the day, which is how a generated artifact stays the same bytes whenever it
     runs; with none stated the surface holds no clock and this side does."""
-    provider = OpenedVaultSurfaceProvider(Vault.open(tmp_path / "vault", "pw"))
+    vault = Vault.open(tmp_path / "vault", "pw")
+    vault.synchronize_read_store()
+    provider = OpenedVaultSurfaceProvider(vault)
     monkeypatch.setattr(vault_surface, "_now", lambda: "2027-03-01")
 
     stated = provider.read_surface("overview", {"read_on": "2026-09-30"})
@@ -441,6 +454,7 @@ def test_the_day_a_picture_is_read_on_is_stated_or_is_the_day_it_is_asked_on(tmp
 
 def test_opened_vault_allowlist_dispatches_real_surface_reads(tmp_path):
     vault = Vault.open(tmp_path / "vault", "pw")
+    vault.synchronize_read_store()
     response = json.loads(
         dispatch_frame(
             frame(

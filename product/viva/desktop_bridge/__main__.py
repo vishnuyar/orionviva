@@ -1,6 +1,8 @@
 """Run the OrionViva desktop bridge as a JSON-lines sidecar.
 
-Foreground requests run sequentially. Foreground jobs pump stop frames between
+Foreground writes and vault operations run sequentially. A Jobs registry read
+uses one bounded background slot so a delayed registry lock does not hold the
+request loop; it has no vault mutation or read-store access. Foreground jobs pump stop frames between
 completed steps while retaining all other frames in arrival order. Paid
 maintenance runs on an independently cached vault handle and receives stop
 requests through the shared job registry without reading transport input.
@@ -10,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import select
-from threading import RLock
+from threading import RLock, Thread
 import sys
 from pathlib import Path
 from typing import Any
@@ -27,31 +29,18 @@ from viva.surface import BRIDGE_OPEN_DEMO_VAULT, BRIDGE_OPEN_VAULT
 
 log = logging.getLogger(__name__)
 
-# The surfaces an opened vault answers for. Read off the provider that serves
-# them rather than written twice: a list here that fell behind would promise a
-# caller a read the sidecar no longer has.
+# Surfaces exposed by the opened-vault provider.
 def _surface_names() -> frozenset[str]:
     from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
 
     return OpenedVaultSurfaceProvider._SURFACES
 
-# The operations a running job may be interrupted to serve. Every one of them
-# stops work; none of them starts any. A frame outside this set waits, because
-# serving it here would put a second handler on the vault while the first is
-# still working.
+# Operations that may interrupt a running job.
 CANCEL_OPERATIONS = frozenset({"viva.documents.cancel"})
 
 
 def _open_vault(payload: dict[str, Any]) -> tuple[Vault, bool]:
-    """Open the vault a person named, or make one where they said to.
-
-    ``create`` is the person's own word and defaults to false. A path typed
-    with a letter wrong used to answer as an opened, brand-new empty vault,
-    which reads to somebody as their records having vanished; nothing here
-    makes a vault unless somebody asked for one at that exact path.
-
-    Returns the vault and whether it was made, because a vault that was made is
-    a different thing to be told about than one that was opened."""
+    """Open the named vault and return it with whether ``create`` made it."""
     allowed = {"vault_directory", "passphrase", "create"}
     unexpected = set(payload) - allowed
     if unexpected:
@@ -68,20 +57,12 @@ def _open_vault(payload: dict[str, Any]) -> tuple[Vault, bool]:
     from viva.vault import holds_a_vault
 
     made = create and not holds_a_vault(Path(directory))
-    return Vault.open(Path(directory), passphrase, create=create), made
+    return Vault.open(Path(directory), passphrase, create=create,
+                      start_read_store_worker=True), made
 
 
 def _open_demo_vault(payload: dict[str, Any]) -> tuple[Vault, bool]:
-    """Open the sample vault, minting it where it lives if it is not there yet.
-
-    The request carries nothing. Where the sample vault lives and what opens it
-    are the engine's own, so a caller cannot point this at a directory they
-    keep their own records in, and cannot learn the passphrase by asking. That
-    is a fence kept by the shape of the request rather than by a check.
-
-    It is minted once and stays. A sample vault made fresh each launch would
-    lose whatever a person did inside it, and a demo somebody cannot change is
-    a screenshot."""
+    """Open or create the persistent sample vault from an empty payload."""
     allowed = ()
     extra = set(payload).difference(allowed)
     if extra:
@@ -92,10 +73,7 @@ def _open_demo_vault(payload: dict[str, Any]) -> tuple[Vault, bool]:
     return open_demo_vault()
 
 
-# The two ways a vault is opened, and the one place that says so. Both are
-# answered before dispatch runs, so neither reaches an allowlist; keeping them
-# in one table is what stops a second one being added without the branch that
-# serves it.
+# Vault-open operations handled before ordinary dispatch.
 OPEN_OPERATIONS = {
     BRIDGE_OPEN_VAULT: _open_vault,
     BRIDGE_OPEN_DEMO_VAULT: _open_demo_vault,
@@ -103,19 +81,14 @@ OPEN_OPERATIONS = {
 
 
 def _sample_frame() -> dict[str, str]:
-    """The frame's own words: what the place is, what that means, and the one
-    action that leaves it."""
+    """Return the reviewed sample-frame copy."""
     return {"title": _moment("sample_frame"),
             "detail": _moment("sample_frame_detail"),
             "leave": _moment("sample_frame_leave")}
 
 
 def _what_opened(made: bool, sample: bool) -> str:
-    """Which sentence a person gets about the vault that just opened.
-
-    The sample vault says so in its own words rather than borrowing the private
-    vault's: a screen that told somebody their vault was created, when what was
-    created was the demo, has said something false about their records."""
+    """Return the copy key for the completed open operation."""
     if sample:
         return "vault_sample_opened"
     return "vault_created" if made else "vault_opened"
@@ -129,19 +102,21 @@ class Sidecar:
         self._source = source
         self._dispatcher: BridgeDispatcher = default_handlers()
         self._vault: Vault | None = None
-        # Frames the pump read while a job was running, in the order they
-        # arrived. The loop drains this before it reads the transport again,
-        # so a frame that was pumped is served at the point in the sequence it
-        # would have been served at anyway.
+        # Frames buffered during a running job, in arrival order.
         self._held: list[str] = []
         self._output_lock = RLock()
         self._active_request_id: str | None = None
+        self._vault_generation = 0
+        self._jobs_pending: dict[str, int] = {}
+        self._jobs_worker_busy = False
 
     @property
     def handlers(self) -> BridgeDispatcher:
         return self._dispatcher
 
     def handle(self, frame: str) -> list[str]:
+        if self._vault is not None:
+            self._vault.poll_read_store_worker()
         request = _decode_request_id(frame)
         if request is not None and request["operation"] in OPEN_OPERATIONS:
             open_it = OPEN_OPERATIONS[request["operation"]]
@@ -155,6 +130,49 @@ class Sidecar:
             return [dispatch_frame(frame, self._dispatcher.handlers)]
         finally:
             self._active_request_id = None
+
+    def serve(self, frame: str) -> None:
+        """Dispatch one frame while isolating the registry-only read slot."""
+        request = _decode_request_id(frame)
+        if (self._vault is not None and request is not None
+                and request["operation"] == "viva.surface.read"
+                and isinstance(request["payload"], dict)
+                and request["payload"].get("surface") == "jobs"):
+            request_id = request["request_id"]
+            with self._output_lock:
+                if self._jobs_worker_busy:
+                    self._output.write(_jobs_unavailable(request_id))
+                    self._output.flush()
+                    return
+                generation = self._vault_generation
+                self._jobs_pending[request_id] = generation
+                self._jobs_worker_busy = True
+            handlers = self._dispatcher.handlers
+
+            def read_jobs() -> None:
+                try:
+                    response = dispatch_frame(frame, handlers)
+                except BaseException:
+                    response = _jobs_unavailable(request_id)
+                with self._output_lock:
+                    self._jobs_worker_busy = False
+                    if self._jobs_pending.get(request_id) != generation:
+                        return
+                    del self._jobs_pending[request_id]
+                    self._output.write(response)
+                    self._output.flush()
+
+            try:
+                Thread(target=read_jobs, daemon=True, name="jobs-registry-read").start()
+            except RuntimeError:
+                with self._output_lock:
+                    self._jobs_worker_busy = False
+                    self._jobs_pending.pop(request_id, None)
+                    self._output.write(_jobs_unavailable(request_id))
+                    self._output.flush()
+            return
+        for response in self.handle(frame):
+            self._write(response)
 
     # --------------------------------------------------------------- pumping
 
@@ -179,9 +197,7 @@ class Sidecar:
     def _arrived(self) -> list[str]:
         """Every whole line already waiting on the transport, and no more.
 
-        A source that cannot be asked without blocking — anything that is not
-        a real file — is not asked at all, which leaves a job unstoppable
-        rather than leaving the loop stuck."""
+        Sources without a nonblocking file descriptor return no lines."""
         source = self._source
         if source is None:
             return []
@@ -215,13 +231,23 @@ class Sidecar:
 
     def _open(self, request_id: str, payload: dict[str, Any],
               open_it=_open_vault, sample: bool = False) -> str:
+        vault = None
         try:
             vault, made = open_it(payload)
+            dispatcher = handlers_for_opened_vault(
+                vault,
+                lambda event: self._write_event(
+                    self._active_request_id or request_id, event.as_dict()),
+                self.pump,
+            )
         except Exception as exc:  # noqa: BLE001 - protocol must stay alive.
+            if vault is not None:
+                try:
+                    vault.close()
+                except Exception:
+                    pass
             log.debug("vault open failed: %s", exc)
-            # The sample vault fails differently, because a person opening it
-            # named no folder and no passphrase. Telling them a directory was
-            # absent would be telling them about a path they never typed.
+            # Sample-open failures use sample-specific copy.
             code, said = (("sample_vault_unopened", _moment("sample_vault_unopened"))
                           if sample else _why_it_did_not_open(exc))
             return encode_frame({
@@ -230,32 +256,39 @@ class Sidecar:
                 "ok": False,
                 "error": {"code": code, "message": said},
             })
+        if self._vault is not None:
+            try:
+                self._vault.close()
+            except Exception:
+                try:
+                    vault.close()
+                except Exception:
+                    pass
+                return encode_frame({
+                    "protocol": CURRENT_PROTOCOL.wire(),
+                    "request_id": request_id, "ok": False,
+                    "error": {"code": "handler_failed", "message": "vault replacement unavailable"},
+                })
+        with self._output_lock:
+            self._vault_generation += 1
+            for pending_id in tuple(self._jobs_pending):
+                self._output.write(_jobs_unavailable(pending_id))
+            self._output.flush()
+            self._jobs_pending.clear()
         self._vault = vault
-        self._dispatcher = handlers_for_opened_vault(
-            vault,
-            lambda event: self._write_event(
-                self._active_request_id or request_id, event.as_dict()),
-            self.pump,
-        )
+        self._dispatcher = dispatcher
         return encode_frame({
             "protocol": CURRENT_PROTOCOL.wire(),
             "request_id": request_id,
             "ok": True,
-            # Whether this is the sample vault is stated by the side that
-            # opened it. An interface deciding for itself which vault it is
-            # looking at would be deciding whether to draw the frame that says
-            # nothing here is real, and it would be right until the day it was
-            # not.
+            # The opening side declares whether the vault is the sample.
             "result": {"state": "created" if made else "opened",
                        "message": _moment(_what_opened(made, sample)),
                        "sample": sample,
-                       # The words the frame around the sample vault is drawn
-                       # with, sent by the side that ships them. A shell
-                       # composing its own frame would be writing the one
-                       # sentence in this product that says nothing here is
-                       # real, and writing it out of the pack's reach.
+                       # Supply the shipped sample-frame copy.
                        **({"frame": _sample_frame()} if sample else {}),
-                       "surfaces": sorted(_surface_names())},
+                       "surfaces": sorted(_surface_names()),
+                       "priority_reads": ["overview_accounts"]},
         })
 
     def _write_event(self, request_id: str, event: dict[str, Any]) -> None:
@@ -267,11 +300,7 @@ class Sidecar:
         }))
 
 
-# Every way naming a folder can fail, against the code a caller reads and the
-# sentence a person does. They are kept apart because they ask for completely
-# different next steps — a folder holding no vault, a path that is not a folder,
-# and a vault this passphrase will not open — and a single "unable to open
-# vault" made all three look like the same mistake.
+# Map vault-open failures to stable caller codes and reviewed copy.
 def _why_it_did_not_open(exc: Exception) -> tuple[str, str]:
     from viva.crypto import CryptoError
     from viva.vault import VaultNotFound
@@ -282,9 +311,7 @@ def _why_it_did_not_open(exc: Exception) -> tuple[str, str]:
         return "vault_not_a_directory", _moment("vault_not_a_folder")
     if isinstance(exc, CryptoError):
         return "vault_wrong_passphrase", _moment("vault_wrong_passphrase")
-    # A request this handler would not take at all. Its own words travel,
-    # because they are about the shape of the frame rather than about anybody's
-    # money, and a caller needs to know which field it got wrong.
+    # Preserve request-shape errors for the caller.
     if isinstance(exc, ValueError):
         return "invalid_request", str(exc)
     return "vault_open_failed", _moment("vault_absent")
@@ -299,10 +326,7 @@ def _moment(key: str) -> str:
 def _is_cancel(frame: str) -> bool:
     """Whether this frame asks to stop a job.
 
-    Read off the operation name and off nothing else. A frame is answered
-    mid-job only when it is one of the operations that can change what a
-    running job does, and that set is named here rather than guessed at from
-    the shape of a payload."""
+    Only named cancellation operations are answered during a running job."""
     import json
 
     try:
@@ -329,28 +353,36 @@ def _decode_request_id(frame: str) -> dict[str, Any] | None:
     return None
 
 
+def _jobs_unavailable(request_id: str) -> str:
+    return encode_frame({
+        "protocol": CURRENT_PROTOCOL.wire(), "request_id": request_id,
+        "ok": False, "error": {"code": "handler_failed", "message": "jobs read unavailable"},
+    })
+
+
 def main() -> int:
+    if sys.argv[1:] == ["--read-store-worker"]:
+        from viva.read_store.worker import main as worker_main
+        return worker_main()
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
+    # Verify SQLCipher before accepting requests.
+    from viva.read_store import assert_sqlcipher_runtime
+    assert_sqlcipher_runtime()
     # Restore persisted configuration before accepting the first frame.
     put_stored_in_force()
     sidecar = Sidecar(sys.stdout, sys.stdin)
-    # `readline` rather than iteration: a file iterator reads ahead into a
-    # buffer of its own, and a frame sitting in that buffer is invisible both
-    # to this loop and to the pump. Reading a line at a time is what keeps the
-    # transport the one place a frame waits.
+    # ``readline`` keeps buffered frames visible to the request pump.
     while True:
         for held in sidecar.held():
-            for response in sidecar.handle(held):
-                sys.stdout.write(response)
-                sys.stdout.flush()
+            sidecar.serve(held)
         line = sys.stdin.readline()
         if not line:
+            if sidecar._vault is not None:
+                sidecar._vault.close()
             return 0
         if not line.strip():
             continue
-        for response in sidecar.handle(line):
-            sys.stdout.write(response)
-            sys.stdout.flush()
+        sidecar.serve(line)
 
 
 if __name__ == "__main__":

@@ -146,6 +146,10 @@
 .conversation-ask form { display: grid; gap: var(--space-sm); }
 .conversation-ask label { font-size: var(--text-caption); font-weight: var(--weight-medium); }
 .conversation-ask textarea { width: 100%; font: inherit; font-size: var(--text-body); line-height: var(--leading-body); }
+.conversation-context-choice { display: flex; flex-wrap: wrap; gap: var(--space-sm); border: 0; margin: 0; padding: 0; }
+.conversation-context-choice legend { font-size: var(--text-caption); font-weight: var(--weight-medium); }
+.conversation-context-choice label { display: inline-flex; align-items: center; gap: var(--space-xs); font-size: var(--text-body); }
+.conversation-context-help { width: 100%; margin: 0; color: var(--ink); font-size: var(--text-fine); line-height: var(--leading-body); }
 .conversation-answer { display: grid; gap: var(--space-sm); }
 .conversation-answer h3 { margin: 0; color: var(--muted); font-size: var(--text-fine); font-weight: var(--weight-medium); }
 .conversation-answer p { margin: 0; font-size: var(--text-body); line-height: var(--leading-body); }

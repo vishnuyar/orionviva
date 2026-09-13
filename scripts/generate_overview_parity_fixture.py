@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate the artifact the backend and the interface are both held to.
 
-The bytes this writes are what the real provider returns for a real vault,
-carried through the real bridge dispatch. Nothing in it is authored by hand.
+The bytes come from the real provider through bridge dispatch. Account-ledger
+source and cursor tokens are authenticated live, then represented by stable
+opaque markers because their generation identity changes on each build.
 
 The vault it reads is built here, in code, from the event constructors the
 ingest path posts through, and holds eight shapes of account: one that
@@ -20,6 +21,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -121,8 +123,8 @@ def read_surfaces(vault) -> dict[str, Any]:
     """Every surface the artifact holds, read the way the desktop reads it.
 
     The real provider, the real dispatcher and the real frame: what this
-    records is what a shell would receive, not what a caller of the composer
-    would."""
+    records is what a shell would receive, apart from validated opaque
+    account-ledger tokens that differ for every encrypted generation."""
     _import_path()
     from viva.desktop_bridge import dispatch_frame, handlers_with_surface_provider
     from viva.desktop_bridge.vault_provider import create_vault_surface_provider
@@ -144,7 +146,36 @@ def read_surfaces(vault) -> dict[str, Any]:
                         "parameters": PARAMETERS.get(surface, {})},
         })
         reads[surface] = json.loads(dispatch_frame(frame, dispatcher.handlers))
+    _stabilize_account_ledger_tokens(vault, reads)
     return reads
+
+
+def _stabilize_account_ledger_tokens(vault, reads: dict[str, Any]) -> None:
+    """Validate live revision/cursor binding before freezing opaque tokens."""
+    from viva.read_store.account_ledger_page import _decode_cursor, _source_identity
+
+    frame = reads.get("account_ledger")
+    if frame is None or not frame.get("ok"):
+        return
+    data = frame["result"]["data"]
+    account = PARAMETERS["account_ledger"]["account_id"]
+    revision, page = data["revision"], data["page"]
+    cursor = page["next_cursor"]
+    if (re.fullmatch(r"[0-9a-f]{64}", revision or "") is None
+            or not isinstance(cursor, str) or not cursor
+            or page["remaining"] < 1 or page["returned"] < 1):
+        raise SystemExit("account-ledger parity source/cursor is incomplete")
+    with vault.read_store.open_reader() as held:
+        source = _source_identity(held)
+    if revision != source["head"]:
+        raise SystemExit("account-ledger parity revision is not the SQL source head")
+    anchor = _decode_cursor(cursor, account, source, CURSOR_SECRET)
+    last_group = data["groups"][-1]
+    last_row = last_group["movements"][-1]
+    if anchor != (last_row["date"], last_row["id"]):
+        raise SystemExit("account-ledger parity cursor is not the page anchor")
+    data["revision"] = "<authenticated-source-head>"
+    page["next_cursor"] = "<authenticated-keyset-cursor>"
 
 
 def build_artifact() -> dict[str, Any]:

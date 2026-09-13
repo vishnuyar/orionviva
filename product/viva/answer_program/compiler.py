@@ -239,7 +239,10 @@ class AnswerProgramCompiler:
                 "catalog_digest": self._families.catalog_digest,
                 "entity_catalog": self._families.entity_catalog,
                 "entity_catalog_digest": self._families.entity_catalog_digest,
-                "schema": self._families.model_output_schema()}
+                "schema": ("Use only the argument schema attached to the "
+                           "single supplied native semantic tool."
+                           if self.modality == "native-structured" else
+                           self._families.model_output_schema())}
 
     def _prompt(self, context) -> str:
         inputs = self._inputs(context)
@@ -251,8 +254,12 @@ class AnswerProgramCompiler:
         return promptstore.load(PROMPTS, REPAIR_VERSION).format(
             defects=json.dumps([item.to_dict() for item in defects], sort_keys=True,
                                separators=(",", ":")),
-            accepted=json.dumps(self._families.model_output_schema(), sort_keys=True,
-                                separators=(",", ":")))
+            accepted=json.dumps(
+                "Use only the argument schema attached to the single supplied "
+                "native semantic tool."
+                if self.modality == "native-structured" else
+                self._families.model_output_schema(), sort_keys=True,
+                separators=(",", ":")))
 
     def interpretations(self, outcome):
         return self._families.interpretations(outcome)

@@ -1,5 +1,5 @@
 import { BridgeRefusal, BridgeTimeout, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/contracts";
-import type { BridgeClient } from "../bridge/contracts";
+import type { BridgeClient, PriorityReadResult } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
 import { adaptActivity, adaptActivityActionOutcome } from "./adapters/activity";
 import { adaptAccountLedger } from "./adapters/account-ledger";
@@ -23,14 +23,6 @@ function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: T
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
   const data = adapt(result.value);
   return data === null ? { state: "failed", reason: "invalid_payload" } : { state: "ready", data };
-}
-// The panel state is taken from what the overview reported about itself, not
-// decided here from the adapted rows.
-function settledOverview<TRaw extends { data: unknown }>(result: PromiseSettledResult<TRaw>): FeatureResult<OverviewData> {
-  const adapted = settled(result, (read: TRaw) => adaptOverview(read.data));
-  if (adapted.state !== "ready") return adapted;
-  const panel = adaptOverviewPanel((result as PromiseFulfilledResult<TRaw>).value.data);
-  return panel.state === "ready" ? adapted : { state: panel.state as "partial" | "needs_input", data: adapted.data, issues: panel.issues };
 }
 function settledPlans<TRaw extends { data: unknown }>(result: PromiseSettledResult<TRaw>): FeatureResult<import("./types").PlansData> {
   const adapted = settled(result, (read: TRaw) => adaptPlans(read.data));
@@ -186,8 +178,8 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
 // turn itself, read only from a reply the vault settled.
 export function privateConversationActions(client: BridgeClient): ConversationActions {
   return {
-    ask: async (question, mirrored, planRequest = false) => {
-      const [replied] = await Promise.allSettled([client.askViva(question, mirrored, planRequest)]);
+    ask: async (question, mirrored, planRequest = false, contextMode) => {
+      const [replied] = await Promise.allSettled([client.askViva(question, mirrored, planRequest, contextMode)]);
       const result = await acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
       const turn = replied.status === "fulfilled" && isRecord(replied.value) ? adaptTurn(replied.value.state) : null;
       return { result, turn };
@@ -280,11 +272,17 @@ export function privatePlanActions(client: BridgeClient): PlanActions {
   };
 }
 
-export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string): Promise<SurfaceSnapshot> {
+export type CoherentSnapshot = { snapshot: SurfaceSnapshot; revision: string };
+
+export async function loadCoherentSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string, start?: PrioritySnapshot): Promise<CoherentSnapshot> {
+  const first = start ?? await loadPrioritySnapshot(client, disclosure);
+  if (first.freshness !== "current" || !first.revision) throw new Error("aggregate_revision_unavailable");
   const activityParameters = { ...(activityLimit ? { limit: activityLimit } : {}), ...(activityFocus ? { focus: activityFocus } : {}) };
-  const [overviewRead, documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
-  return buildLiveSnapshot(
-    settledOverview(overviewRead),
+  const [documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
+  const confirmed = await loadPrioritySnapshot(client, disclosure);
+  if (confirmed.freshness !== "current" || confirmed.revision !== first.revision) throw new Error("aggregate_revision_mismatch");
+  return { revision: first.revision, snapshot: buildLiveSnapshot(
+    first.snapshot.overview,
     settled(documentsRead, (read) => adaptDocuments(read.data)),
     settled(conversationRead, (read) => adaptConversation(read.data)),
     settled(trustRead, (read) => adaptTrust(read.data)),
@@ -292,5 +290,89 @@ export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: Sur
     settledPlans(plansRead),
     disclosure,
     settled(reviewRead, (read) => adaptReview(read.data)),
+  ) };
+}
+
+export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string): Promise<SurfaceSnapshot> {
+  return (await loadCoherentSnapshot(client, disclosure, activityLimit, activityFocus)).snapshot;
+}
+
+export type PrioritySnapshot = { snapshot: SurfaceSnapshot; revision: string; freshness: "current" | "stale" | "unavailable"; lifecycle: string; retryable: boolean };
+
+export async function loadPrioritySnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], refresh = false): Promise<PrioritySnapshot> {
+  const unavailable = (reason: "invalid_payload" | "read_failed" = "read_failed"): PrioritySnapshot => ({
+    snapshot: buildLiveSnapshot(
+      { state: "failed", reason },
+      { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" },
+      { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" },
+      { state: "absent", reason: "reading" }, disclosure, { state: "absent", reason: "reading" }),
+    revision: "", freshness: "unavailable", lifecycle: "degraded", retryable: true,
+  });
+  let reply;
+  try { reply = await client.readOverviewAccounts(refresh); }
+  catch { return unavailable(); }
+  const raw = isRecord(reply.data) ? reply.data as unknown as PriorityReadResult : null;
+  const valid = raw !== null
+    && (raw.state === "ready" || raw.state === "stale" || raw.state === "degraded")
+    && (raw.freshness === "current" || raw.freshness === "stale" || raw.freshness === "unavailable")
+    && typeof raw.revision === "string" && typeof raw.lifecycle === "string" && typeof raw.error === "string"
+    && JSON.stringify(raw.overview) === JSON.stringify(raw.accounts);
+  if (!valid) return unavailable("invalid_payload");
+  const overview = raw.overview !== null ? adaptOverview(raw.overview) : null;
+  const coherentState = raw.state === "ready" && raw.freshness === "current";
+  const retainedState = raw.state === "stale" && raw.freshness === "stale";
+  const absentState = raw.state === "degraded" && raw.freshness === "unavailable";
+  if ((!coherentState && !retainedState && !absentState)
+      || ((coherentState || retainedState) && (!raw.revision || !overview))
+      || (absentState && (raw.overview !== null || raw.accounts !== null))) return unavailable("invalid_payload");
+  const panel = overview ? adaptOverviewPanel(raw.overview) : null;
+  const result: FeatureResult<OverviewData> = overview
+    ? panel && panel.state !== "ready"
+      ? { state: panel.state as "partial" | "needs_input", data: overview, issues: panel.issues }
+      : { state: "ready", data: overview }
+    : { state: "failed", reason: "read_failed" };
+  return {
+    snapshot: buildLiveSnapshot(result, { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" }, disclosure, { state: "absent", reason: "reading" }),
+    revision: raw.revision, freshness: raw.freshness, lifecycle: raw.lifecycle,
+    retryable: raw.state !== "ready",
+  };
+}
+
+export async function loadSecondarySnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string): Promise<SurfaceSnapshot> {
+  const activityParameters = { ...(activityLimit ? { limit: activityLimit } : {}), ...(activityFocus ? { focus: activityFocus } : {}) };
+  const [documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
+  return buildLiveSnapshot(
+    { state: "absent", reason: "priority_owned" },
+    settled(documentsRead, (read) => adaptDocuments(read.data)),
+    settled(conversationRead, (read) => adaptConversation(read.data)),
+    settled(trustRead, (read) => adaptTrust(read.data)),
+    settled(activityRead, (read) => adaptActivity(read.data)),
+    settledPlans(plansRead), disclosure,
+    settled(reviewRead, (read) => adaptReview(read.data)),
   );
+}
+
+export async function loadStartupSecondarySnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string): Promise<SurfaceSnapshot> {
+  void client; void activityLimit; void activityFocus;
+  return buildLiveSnapshot(
+    { state: "absent", reason: "priority_owned" },
+    { state: "absent", reason: "not_asked" },
+    { state: "absent", reason: "not_asked" },
+    { state: "absent", reason: "not_asked" },
+    { state: "absent", reason: "not_asked" },
+    { state: "absent", reason: "not_asked" }, disclosure,
+    { state: "absent", reason: "not_asked" },
+  );
+}
+
+export async function loadPrivateDestination(client: BridgeClient, destination: "documents" | "review" | "trust" | "activity" | "plans", activityLimit = 50): Promise<Partial<SurfaceSnapshot>> {
+  if (destination === "documents") return { documents: await readDocumentsFeature(client) };
+  if (destination === "review") {
+    const [review, conversation] = await Promise.allSettled([client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readConversation()]);
+    return { review: settled(review, (value) => adaptReview(value.data)), conversation: settled(conversation, (value) => adaptConversation(value.data)) };
+  }
+  if (destination === "trust") return { trust: await readTrustFeature(client) };
+  if (destination === "activity") return { activity: await readActivityFeature(client, activityLimit) };
+  const [read] = await Promise.allSettled([client.readPlans()]);
+  return { plans: settledPlans(read) };
 }

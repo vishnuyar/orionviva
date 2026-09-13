@@ -212,9 +212,9 @@ def test_the_request_carries_a_question_and_whether_its_text_is_shown(tmp_path: 
 
     from viva.desktop_bridge.handlers import BridgeRequestError
 
-    assert _ask_request({"question": "what?"}) == ("what?", True, False)
-    assert _ask_request({"question": "what?", "mirrored": False}) == ("what?", False, False)
-    assert _ask_request({"question": "what?", "plan_request": True}) == ("what?", True, True)
+    assert _ask_request({"question": "what?"}) == ("what?", True, False, None)
+    assert _ask_request({"question": "what?", "mirrored": False}) == ("what?", False, False, None)
+    assert _ask_request({"question": "what?", "plan_request": True}) == ("what?", True, True, None)
     with pytest.raises(BridgeRequestError):
         _ask_request({"question": "what?", "speak": True})
     with pytest.raises(BridgeRequestError):
@@ -233,9 +233,8 @@ def test_the_unconfigured_read_is_unavailable_rather_than_failed():
     assert said["sentence"] == moment("conversation_unconfigured")
 
 
-def test_one_session_lives_as_long_as_the_vault_is_open(tmp_path: Path, monkeypatch):
-    """Turns share context. A second session would be a second conversation
-    wearing the first one's screen."""
+def test_each_ask_builds_a_session_with_selected_durable_context(tmp_path: Path, monkeypatch):
+    """A reopened action cannot recover text beyond a New question boundary."""
     import viva.desktop_bridge.conversation_actions as actions
     import viva.speak as speak
 
@@ -248,8 +247,10 @@ def test_one_session_lives_as_long_as_the_vault_is_open(tmp_path: Path, monkeypa
             return _Turn(question, _Result(text="Something."))
 
     built: list[_Session] = []
+    contexts = []
 
-    def one(*_args, **_kwargs) -> _Session:
+    def one(*args, **_kwargs) -> _Session:
+        contexts.append(args[-1])
         built.append(_Session())
         return built[-1]
 
@@ -259,11 +260,13 @@ def test_one_session_lives_as_long_as_the_vault_is_open(tmp_path: Path, monkeypa
     vault = Vault.open(tmp_path / "vault", "pw")
     talking = ConversationActions(vault)
 
-    talking.ask({"question": "first"})
-    talking.ask({"question": "second"})
+    talking.ask({"question": "first", "context_mode": "new_question"})
+    ConversationActions(vault).ask({"question": "second", "context_mode": "follow_up"})
+    ConversationActions(vault).ask({"question": "third", "context_mode": "new_question"})
+    ConversationActions(vault).ask({"question": "fourth", "context_mode": "follow_up"})
 
-    assert len(built) == 1
-    assert built[0].asked == ["first", "second"]
+    assert [session.asked for session in built] == [["first"], ["second"], ["third"], ["fourth"]]
+    assert contexts == [[], [("first", "Something.")], [], [("third", "Something.")]]
 
 
 def test_a_turn_that_refused_answers_as_a_refusal_with_vivas_own_sentence(

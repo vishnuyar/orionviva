@@ -27,7 +27,8 @@ from .ledger import Ledger
 from .projection import (AccountInfo, BalanceAnswer, LedgerProjection,
                          MovementInfo, TxnLine, UnknownAccountError,
                          movement_key)
-from .store import EventStore
+from .store import (CommittedEvent, CommittedIdentity, CommittedPrefixMismatch,
+                    CommittedSnapshot, EventStore, ImmutableEvent)
 
 __all__ = [
     "CryptoError",
@@ -48,7 +49,8 @@ __all__ = [
     "counter_account",
     "EQUITY_OPENING", "INCOME_UNCATEGORIZED", "EXPENSE_UNCATEGORIZED",
     "TRANSFERS_UNCATEGORIZED",
-    "EventStore", "Ledger",
+    "EventStore", "CommittedEvent", "CommittedIdentity", "ImmutableEvent",
+    "CommittedPrefixMismatch", "CommittedSnapshot", "Ledger",
     "LedgerProjection", "BalanceAnswer", "AccountInfo", "TxnLine",
     "MovementInfo", "movement_key", "UnknownAccountError",
 ]

@@ -109,7 +109,8 @@ def test_native_host_reaps_an_exited_child_before_starting_a_replacement():
     # A sidecar can exit between requests. Its previous PID is reaped before a
     # replacement is spawned so the host never accumulates stale processes.
     assert "current.status()?" in ensure
-    assert "process.take()" in ensure
+    assert "shutdown_current(process)?" in ensure
+    assert "process.take()" in _function_body(source, "shutdown_current")
     assert "spawn(app)?" in ensure
     assert "spawned.generation = next_generation.fetch_add" in ensure
 

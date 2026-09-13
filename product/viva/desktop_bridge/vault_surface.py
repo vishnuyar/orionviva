@@ -7,7 +7,7 @@ import secrets
 from collections.abc import Mapping
 from typing import Any
 
-from viva.questions import ACTIONABLE_QUESTION_WINDOW, open_questions
+from viva.questions import ACTIONABLE_QUESTION_WINDOW
 
 from ..env import locale_from_env
 from ..ingest.reader import live_reading_configured
@@ -15,18 +15,21 @@ from ..surface.documents import documents
 from ..surface.overview import overview
 from ..vault import Vault
 from .handlers import BridgeRequestError
+from ..startup_diagnostics import span
+
+MAX_RAW_PRESENCE = 10_000
 
 
 class OpenedVaultSurfaceProvider:
     """Expose reviewed read models from one already-open :class:`Vault`.
 
-    This is deliberately read-only. Writes, unlock/open lifecycle, and model
-    work remain outside the surface provider and must get separate reviewed
-    bridge operations.
+    Writes, unlock/open lifecycle, and model work remain outside this read-only
+    provider.
     """
 
     _SURFACES = frozenset(("overview", "spending", "documents", "conversation", "review", "jobs", "trust",
                            "activity", "account_ledger", "plans"))
+    _READS = _SURFACES | {"overview_accounts"}
 
     def __init__(self, vault: Vault, jobs: Any = None, *,
                  cursor_secret: bytes | None = None) -> None:
@@ -44,11 +47,13 @@ class OpenedVaultSurfaceProvider:
     def read_surface(
         self, surface: str, parameters: Mapping[str, Any]
     ) -> Mapping[str, Any]:
-        if surface not in self._SURFACES:
+        if surface not in self._READS:
             raise BridgeRequestError(f"unsupported surface: {surface!r}")
         params = _parameters(surface, parameters)
         if surface == "overview":
             return self._overview(params)
+        if surface == "overview_accounts":
+            return self._overview_accounts(params)
         if surface == "spending":
             return self._spending(params)
         if surface == "documents":
@@ -70,68 +75,136 @@ class OpenedVaultSurfaceProvider:
     def _review(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         from ..surface.review import DEFAULT_LIMIT, review
 
-        projection = self._vault.ledger.projection()
-        return review(
-            projection, locale_from_env(),
-            limit=parameters.get("limit", DEFAULT_LIMIT),
-            as_of=parameters.get("as_of", ""),
-            jurisdiction=parameters.get("jurisdiction", ""))
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if (store is None or self._vault.read_store_lifecycle
+                not in {"equal", "rebuilt", "caught_up"}):
+            raise BridgeRequestError("current read store is not caught up")
+        try:
+            locale = locale_from_env()
+            with store.open_reader() as revision:
+                return review(
+                    revision.review_projection(locale=locale), locale,
+                    limit=parameters.get("limit", DEFAULT_LIMIT),
+                    as_of=parameters.get("as_of", ""),
+                    jurisdiction=parameters.get("jurisdiction", ""))
+        except Exception:
+            raise BridgeRequestError("current read store could not answer review") from None
 
     def _plans(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         from ..surface.plans import plans
 
-        projection = self._vault.ledger.fresh_projection()
-        return plans(projection, locale_from_env(),
-                     parameters.get("read_on") or _now())
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if (store is None or self._vault.read_store_lifecycle
+                not in {"equal", "rebuilt", "caught_up"}):
+            raise BridgeRequestError("current read store is not caught up")
+        try:
+            with store.open_reader() as revision:
+                return plans(revision.plans_projection(), locale_from_env(),
+                             parameters.get("read_on") or _now())
+        except Exception:
+            raise BridgeRequestError("current read store could not answer plans") from None
 
     def _overview(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
-        """Open the projection and hand it to the surface that composes it.
+        """Compose current or value-time Overview from one held SQL revision."""
+        as_of = parameters.get("as_of", "")
+        read_on = parameters.get("read_on") or _now()
+        locale = locale_from_env()
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if (store is None or self._vault.read_store_lifecycle
+                not in {"equal", "rebuilt", "caught_up"}):
+            raise BridgeRequestError("current read store is not caught up")
+        try:
+            with store.open_reader() as revision:
+                projection = (revision.historical_overview_projection(
+                    as_of=as_of, today=read_on) if as_of
+                    else revision.overview_projection(today=read_on))
+                return overview(projection, locale, read_on)
+        except Exception:
+            raise BridgeRequestError(
+                "current read store could not answer Overview") from None
 
-        Which accounts are shown, what each is worth, how well it is stood
-        behind and what its figure covers are all decided in the surface, over
-        the same read a conversation makes. Nothing about them is decided
-        here.
-
-        What is decided here is the day the picture is read on, because the
-        surface holds no clock and this side of the boundary does. A caller may
-        state the day, which is how a generated artifact stays the same bytes
-        whenever it is run; with none stated it is the day it is asked on."""
-        projection = self._vault.ledger.projection_as_of(parameters.get("as_of"))
-        return overview(projection, locale_from_env(),
-                        parameters.get("read_on") or _now())
+    def _overview_accounts(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
+        """Return Overview and Accounts from one immutable SQL revision."""
+        self._vault.poll_read_store_worker()
+        if parameters.get("refresh") == 1:
+            self._vault.synchronize_read_store()
+        read_on = parameters.get("read_on") or _now()
+        store = self._vault.read_store
+        lifecycle = self._vault.read_store_lifecycle
+        if store is None:
+            return {"state": "degraded", "freshness": "unavailable",
+                    "lifecycle": lifecycle, "revision": "", "overview": None,
+                    "accounts": None, "error": "read_store_unavailable"}
+        try:
+            with store.open_reader() as revision:
+                payload = overview(revision.overview_projection(today=read_on),
+                                   locale_from_env(), read_on)
+                usable = lifecycle not in {"degraded", "unavailable", "rebuilding"}
+                current = usable and lifecycle not in {"stale", "rebuilding"}
+                return {
+                    "state": "ready" if current else "stale" if usable else "degraded",
+                    "freshness": "current" if current else "stale" if usable else "unavailable",
+                    "lifecycle": lifecycle, "revision": revision.generation,
+                    "overview": payload if usable else None,
+                    "accounts": payload if usable else None,
+                    "error": "" if current else "read_store_stale" if usable else "read_store_unavailable",
+                }
+        except Exception:
+            return {"state": "degraded", "freshness": "unavailable",
+                    "lifecycle": "degraded", "revision": "", "overview": None,
+                    "accounts": None, "error": "read_store_unavailable"}
 
     def _spending(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         """Compose one filterable chart without placing its arithmetic in UI."""
         from ..surface.spending import (SpendingBreakdownRequestError,
                                         spending_breakdown)
 
-        projection = self._vault.ledger.projection()
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if (store is None or self._vault.read_store_lifecycle
+                not in {"equal", "rebuilt", "caught_up"}):
+            raise BridgeRequestError("current read store is not caught up")
         try:
-            return spending_breakdown(
-                projection, locale_from_env(),
-                parameters.get("read_on") or _now(),
-                period=parameters.get("period", "latest_complete_month"),
-                granularity=parameters.get("granularity", "category"),
-                currency=parameters.get("currency", ""),
-                account_id=parameters.get("account_id", ""),
-                start_date=parameters.get("start_date", ""),
-                end_date=parameters.get("end_date", ""))
+            read_on = parameters.get("read_on") or _now()
+            locale = locale_from_env()
+            with store.open_reader() as revision:
+                return spending_breakdown(
+                    revision.spending_projection(today=read_on, locale=locale),
+                    locale, read_on,
+                    period=parameters.get("period", "latest_complete_month"),
+                    granularity=parameters.get("granularity", "category"),
+                    currency=parameters.get("currency", ""),
+                    account_id=parameters.get("account_id", ""),
+                    start_date=parameters.get("start_date", ""),
+                    end_date=parameters.get("end_date", ""))
         except SpendingBreakdownRequestError as exc:
             raise BridgeRequestError(str(exc)) from None
+        except Exception:
+            raise BridgeRequestError("current read store could not answer spending") from None
 
     def _documents(self) -> dict[str, Any]:
-        """Open the projection and the blob store, and hand both to the surface
-        that composes them.
-
-        Which documents are listed, what each is called, how far its reading
-        got and what the panel says about reading are all decided in the
-        surface. What is decided here is only what the surface cannot see for
-        itself: which originals the vault still holds, and whether this machine
-        names a reader at all."""
-        return documents(self._vault.ledger.projection(),
-                         frozenset(self._vault.raw.doc_ids()),
-                         live_reading_configured(),
-                         locale_from_env())
+        """Compose current Documents from SQL and explicit raw presence."""
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if (store is None or self._vault.read_store_lifecycle
+                not in {"equal", "rebuilt", "caught_up"}):
+            raise BridgeRequestError("current read store is not caught up")
+        try:
+            with span("raw_store"):
+                raw_ids = frozenset(self._vault.raw.doc_ids(
+                    max_count=MAX_RAW_PRESENCE))
+        except ValueError:
+            raise BridgeRequestError("raw document presence exceeds its row bound") from None
+        try:
+            with store.open_reader() as revision:
+                return documents(revision.documents_projection(), raw_ids,
+                                 live_reading_configured(), locale_from_env())
+        except Exception:
+            raise BridgeRequestError(
+                "current read store could not answer documents") from None
 
     def _activity(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         """Open the projection and hand it to the surface that composes it.
@@ -142,70 +215,73 @@ class OpenedVaultSurfaceProvider:
         side of the boundary is where a caller's `as_of` is read."""
         from ..surface.activity import activity
 
-        projection = self._vault.ledger.projection_as_of(parameters.get("as_of"))
         from ..surface.activity import DEFAULT_LIMIT
-        return activity(projection, locale_from_env(),
-                        parameters.get("limit", DEFAULT_LIMIT),
-                        parameters.get("focus", ""))
+        as_of = parameters.get("as_of", "")
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if (store is None or self._vault.read_store_lifecycle
+                not in {"equal", "rebuilt", "caught_up"}):
+            raise BridgeRequestError("current read store is not caught up")
+        try:
+            with store.open_reader() as revision:
+                return activity(
+                    (revision.historical_activity_projection(as_of=as_of)
+                     if as_of else revision.activity_projection()),
+                    locale_from_env(),
+                    parameters.get("limit", DEFAULT_LIMIT),
+                    parameters.get("focus", ""))
+        except Exception:
+            raise BridgeRequestError("current read store could not answer activity") from None
 
     def _account_ledger(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
-        """Read one exact account from one event-prefix snapshot.
-
-        The projection and revision are built from the same immutable tuple.
-        A later page therefore either names that same tuple or is refused as
-        stale; it can never continue by offset into a changed live projection.
-        """
+        """Read an indexed account page from one current SQL generation."""
         from ..surface.account_ledger import (
             DEFAULT_LIMIT, AccountLedgerCursorError,
-            AccountLedgerIdentityError, account_ledger, snapshot_revision)
+            AccountLedgerIdentityError, sql_account_ledger_page)
 
-        projection, events = self._vault.ledger.snapshot_projection()
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if (store is None or self._vault.read_store_lifecycle
+                not in {"equal", "rebuilt", "caught_up"}):
+            raise BridgeRequestError("current read store is not caught up")
         try:
-            return account_ledger(
-                projection, parameters["account_id"], locale_from_env(),
-                snapshot_revision(events),
-                cursor_secret=self._cursor_secret,
-                limit=parameters.get("limit", DEFAULT_LIMIT),
-                cursor=parameters.get("cursor", ""))
+            with store.open_reader() as revision:
+                parts = revision.account_ledger_page(
+                    parameters["account_id"], locale=locale_from_env(),
+                    cursor_secret=self._cursor_secret,
+                    limit=parameters.get("limit", DEFAULT_LIMIT),
+                    cursor=parameters.get("cursor", ""))
+                return sql_account_ledger_page(parts)
         except (AccountLedgerCursorError, AccountLedgerIdentityError) as exc:
-            # These are safe contract refusals. They intentionally do not echo
-            # an account path or movement identity from the vault.
             raise BridgeRequestError(str(exc)) from None
+        except Exception:
+            raise BridgeRequestError(
+                "current read store could not answer account ledger") from None
 
     def _trust(self) -> dict[str, Any]:
-        """What this vault has sent, and what nothing here can establish.
-
-        The event stream is handed to the surface that folds it, rather than a
-        projection: a model call is recorded once and read once, and putting it
-        through a projection would be a second opinion about a fact the log
-        already states plainly.
-
-        The absences travel inside the read for the same reason every other
-        sentence does — a screen that composes its own caveats writes them out
-        of date the day the capability lands, and nothing goes red when it
-        does."""
+        """Return outbound model activity and explicit trust absences."""
         from ..surface.outbound import outbound
-
+        from ..read_store.trust import outbound_events, has_agent_actions
         from ..persona import moment
-
-        events = list(self._vault.events())
-        return {
-            "state": "ready",
-            "outbound": outbound(events, locale_from_env()),
-            # What nothing on this machine can establish, said in the plainest
-            # sentences the pack holds. An absent capability described in soft
-            # words reads as a capability, and the difference is whether a
-            # person checks a claim or takes it.
-            "absences": [
-                {"id": "anchoring", "sentence": moment("trust_no_anchoring")},
-            ] + ([{"id": "maintenance",
-                   "sentence": moment("trust_no_maintenance_yet")}]
-                 if not self._vault.ledger.projection().agent_log() else []),
-            # Trust's notes are owed by their own cycle. An empty list says
-            # this build supplies none rather than that the vault has nothing
-            # to say, and the panel's own state says which.
-            "notes": [],
-        }
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if (store is None or self._vault.read_store_lifecycle
+                not in {"equal", "rebuilt", "caught_up"}):
+            raise BridgeRequestError("current read store is not caught up")
+        try:
+            with store.open_reader() as revision:
+                return {
+                    "state": "ready",
+                    "outbound": outbound(outbound_events(revision), locale_from_env()),
+                    "absences": [
+                        {"id": "anchoring", "sentence": moment("trust_no_anchoring")},
+                    ] + ([{"id": "maintenance",
+                           "sentence": moment("trust_no_maintenance_yet")}]
+                         if not has_agent_actions(revision) else []),
+                    "notes": [],
+                }
+        except Exception:
+            raise BridgeRequestError("current read store could not answer Trust") from None
 
     def _job_registry(self) -> dict[str, Any]:
         """Read bounded operational job receipts without opening a projection."""
@@ -216,25 +292,27 @@ class OpenedVaultSurfaceProvider:
     def _conversation(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         from ..surface.conversation import timeline
         from ..surface.review import question_review_binding
-
-        projection = self._vault.ledger.projection()
-        queue = open_questions(
-            projection,
-            limit=parameters.get("limit", ACTIONABLE_QUESTION_WINDOW),
-            as_of=parameters.get("as_of", ""),
-            jurisdiction=parameters.get("jurisdiction", ""),
-            locale=parameters.get("locale", ""),
-        )
-        locale = parameters.get("locale", "")
-        queue = {
-            **queue,
-            "questions": [{
-                **question,
-                "review_binding": question_review_binding(
-                    projection, question, locale),
-            } for question in queue.get("questions", [])],
-        }
-        return timeline(projection, queue)
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if (store is None or self._vault.read_store_lifecycle
+                not in {"equal", "rebuilt", "caught_up"}):
+            raise BridgeRequestError("current read store is not caught up")
+        try:
+            locale = parameters.get("locale", "") or locale_from_env()
+            with store.open_reader() as revision:
+                projection = revision.conversation_projection(locale=locale)
+                queue = revision.open_questions(
+                    limit=parameters.get("limit", ACTIONABLE_QUESTION_WINDOW),
+                    as_of=parameters.get("as_of", "") or _now(),
+                    jurisdiction=parameters.get("jurisdiction", ""), locale=locale,
+                    held_as_of="9999-12-31")
+                queue = {**queue, "questions": [{
+                    **question, "review_binding": question_review_binding(
+                        projection, question, locale),
+                } for question in queue.get("questions", [])]}
+                return timeline(projection, queue)
+        except Exception:
+            raise BridgeRequestError("current read store could not answer conversation") from None
 
 
 def _now() -> str:
@@ -248,6 +326,7 @@ def _parameters(surface: str, parameters: Mapping[str, Any]) -> dict[str, Any]:
     # a later change gets one of them wrong, so they are not spelled alike.
     allowed_by_surface = {
         "overview": {"as_of", "read_on"},
+        "overview_accounts": {"read_on", "refresh"},
         "spending": {"period", "granularity", "currency", "account_id",
                      "start_date", "end_date", "read_on"},
         "documents": set(),
@@ -287,6 +366,13 @@ def _parameters(surface: str, parameters: Mapping[str, Any]) -> dict[str, Any]:
             if limit > MAX_LIMIT:
                 raise BridgeRequestError(
                     f"review limit must be at most {MAX_LIMIT}")
+        if surface == "activity":
+            from ..read_store.overview import MAX_ACTIVITY_PAGE
+            if limit > MAX_ACTIVITY_PAGE:
+                raise BridgeRequestError(
+                    f"activity limit must be at most {MAX_ACTIVITY_PAGE}")
+    if "refresh" in result and result["refresh"] != 1:
+        raise BridgeRequestError("refresh must be 1")
     if "focus" in result and (not isinstance(result["focus"], str)
                               or not result["focus"].strip()):
         raise BridgeRequestError("focus must be a non-empty movement identity")

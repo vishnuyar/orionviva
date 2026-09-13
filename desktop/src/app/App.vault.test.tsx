@@ -8,6 +8,11 @@ import { act, fireEvent, render, waitFor, createRef, userEvent,
 beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
+const priorityEnvelope = (overview: unknown, revision = "vault-fixture") => ({
+  state: "ready", freshness: "current", lifecycle: "equal", revision,
+  overview, accounts: overview, error: "",
+});
+
 describe("vault", () => {
   it("announces an automatic-open timeout and restores the manual recovery control", async () => {
     vi.useFakeTimers();
@@ -183,10 +188,13 @@ describe("vault", () => {
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") {
-          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
         }
         await readsCanFinish;
-        const data = payload.surface === "overview"
+        const overview = { accounts: [] };
+        const data = payload.surface === "overview_accounts"
+          ? priorityEnvelope(overview, "pending-release")
+          : payload.surface === "overview"
           ? { accounts: [] }
           : payload.surface === "documents"
             ? { documents: [] }
@@ -208,19 +216,19 @@ describe("vault", () => {
       await user.click(getByRole("button", { name: "Open local vault" }));
 
       expect(getByText("Private vault")).toBeInTheDocument();
-      expect(getByText("Reading available surfaces from this device…", { selector: ".empty-state span" })).toBeInTheDocument();
+      expect(getByText("Loading Overview and Accounts from this vault…", { selector: ".empty-state span" })).toBeInTheDocument();
       expect(queryByText("USD 17,486.45")).not.toBeInTheDocument();
       expect(queryByText("Everyday Checking")).not.toBeInTheDocument();
       releaseReads();
       await waitFor(() => expect(getByText("No accounts yet", { selector: "strong" })).toBeInTheDocument());
-      expect(queryByText("Reading available surfaces from this device…", { selector: ".empty-state span" })).not.toBeInTheDocument();
+      expect(queryByText("Loading Overview and Accounts from this vault…", { selector: ".empty-state span" })).not.toBeInTheDocument();
     } finally {
       releaseReads();
       window.orionVivaBridge = previousBridge;
     }
   });
 
-  it("keeps stale-vault actions inert until the replacement read settles", async () => {
+  it("keeps navigation operable while the priority read settles", async () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     let releaseReads: () => void = () => {};
@@ -230,11 +238,14 @@ describe("vault", () => {
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") {
-          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
         }
         await readsCanFinish;
-        const data = payload.surface === "overview"
-          ? { accounts: [{ account: "late-private", name: "Late private account", balance: { amount: "999.99", grade: "verified" } }] }
+        const overview = { accounts: [{ account: "late-private", name: "Late private account", balance: { amount: "999.99", grade: "verified" } }] };
+        const data = payload.surface === "overview_accounts"
+          ? priorityEnvelope(overview, "replacement-release")
+          : payload.surface === "overview"
+          ? overview
           : payload.surface === "documents"
             ? { documents: [{ id: "late-private-document", doc_type: "statement" }] }
             : { questions: [], total: 0 };
@@ -247,15 +258,12 @@ describe("vault", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      expect(getByText("Reading available surfaces from this device…", { selector: ".empty-state span" })).toBeInTheDocument();
-
-      await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
-      expect(getByText("The vault is opening and its first authoritative read is still pending. Other actions are unavailable until it answers.")).toBeInTheDocument();
+      expect(getByText("Loading Overview and Accounts from this vault…", { selector: ".empty-state span" })).toBeInTheDocument();
+      await user.click(getByRole("button", { name: "Statements" }));
+      expect(getByRole("heading", { name: "Statements & documents" })).toBeInTheDocument();
       expect(queryByText("Late private account")).not.toBeInTheDocument();
-
-      // A stale source cannot be closed or otherwise acted on while the
-      // replacement's first authoritative read is unresolved.
       releaseReads();
+      await user.click(getByRole("button", { name: "Overview" }));
       await waitFor(() => expect(getAllByText("Late private account").length).toBeGreaterThan(0));
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
       expect(getAllByText("No vault open")[0]).toBeInTheDocument();
@@ -272,11 +280,14 @@ describe("vault", () => {
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") {
-          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
         }
         const surface = payload.surface;
-        const data = surface === "overview"
-          ? { as_of: "2026-08-18", accounts: [{ account: "live-account", name: "Private checking", kind: "deposit", currency: "USD", balance: { amount: "101.25", grade: "conflicted", dated: "2026-08-18" } }] }
+        const overview = { as_of: "2026-08-18", accounts: [{ account: "live-account", name: "Private checking", kind: "deposit", currency: "USD", balance: { amount: "101.25", grade: "conflicted", dated: "2026-08-18" } }] };
+        const data = surface === "overview_accounts"
+          ? priorityEnvelope(overview, "combined-live")
+          : surface === "overview"
+          ? overview
           : surface === "documents"
             ? { documents: [{ id: "live-document", doc_type: "statement", resolved: false, raw_available: true }] }
             : surface === "conversation"
@@ -357,10 +368,13 @@ describe("vault", () => {
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") {
-          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
         }
-        const data = payload.surface === "overview"
-          ? { accounts: [{ account: "complete-account", name: "Complete account", balance: { amount: "202.50", display: canonicalDisplay, measure: "balance", currency: "USD", dated: "2026-08-18", coverage: "Statement period ending 2026-08-18", provenance: "document live-doc, page 7", grade: "verified" } }] }
+        const overview = { accounts: [{ account: "complete-account", name: "Complete account", balance: { amount: "202.50", display: canonicalDisplay, measure: "balance", currency: "USD", dated: "2026-08-18", coverage: "Statement period ending 2026-08-18", provenance: "document live-doc, page 7", grade: "verified" } }] };
+        const data = payload.surface === "overview_accounts"
+          ? priorityEnvelope(overview, "canonical-display")
+          : payload.surface === "overview"
+          ? overview
           : payload.surface === "documents" ? { documents: [] } : payload.surface === "trust" ? trustPayload : payload.surface === "activity" ? activityPayload : { questions: [], total: 0 };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
       },
@@ -388,9 +402,12 @@ describe("vault", () => {
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") {
-          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
         }
-        const data = payload.surface === "overview"
+        const overview = { accounts: [] };
+        const data = payload.surface === "overview_accounts"
+          ? priorityEnvelope(overview, "empty-private")
+          : payload.surface === "overview"
           ? { accounts: [] }
           : payload.surface === "documents"
             ? { documents: [] }
@@ -421,7 +438,7 @@ describe("vault", () => {
       await user.click(getByRole("button", { name: "Statements" }));
       expect(getByText("No statements or documents yet", { selector: "strong" })).toBeInTheDocument();
       expect(getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
-      await user.click(getByRole("button", { name: /^Review, 0 actionable items$/i }));
+      await user.click(getByRole("button", { name: "Review, count unavailable" }));
       expect(getByText("Nothing to review", { selector: "strong" })).toBeInTheDocument();
       await user.click(getByRole("button", { name: "Transactions" }));
       // Transactions is a read. A vault that knows of nothing moving says so,
@@ -445,13 +462,16 @@ describe("vault", () => {
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") {
-          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+          return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
         }
         if (payload.surface === "documents") {
           throw new Error("private path must stay bounded");
         }
-        const data = payload.surface === "overview"
-          ? { accounts: [{ account: "kept-account", name: "Kept account", balance: { amount: "1", grade: "unverified" } }] }
+        const overview = { accounts: [{ account: "kept-account", name: "Kept account", balance: { amount: "1", grade: "unverified" } }] };
+        const data = payload.surface === "overview_accounts"
+          ? priorityEnvelope(overview, "partial-secondary")
+          : payload.surface === "overview"
+          ? overview
           : { questions: [], total: 0 };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
       },
@@ -463,10 +483,9 @@ describe("vault", () => {
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
 
-      await waitFor(() => expect(getAllByRole("status")[0]).toHaveTextContent("The private vault opened, but some surfaces could not be read. Your vault was not changed."));
       expect(getAllByText("Kept account", { ignore: "script, style, .figure-invitation" })).toHaveLength(2);
       await user.click(getByRole("button", { name: "Statements" }));
-      expect(getByText("The documents section could not be read. The private vault is still open.")).toBeInTheDocument();
+      expect(await waitFor(() => getByText("The documents section could not be read. The private vault is still open."))).toBeInTheDocument();
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -522,9 +541,9 @@ describe("vault", () => {
       // why pressing again does nothing.
       expect(control).toHaveAccessibleDescription("This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there. Your vault is answering the last request. Pressing again does nothing until it has.");
       resolveRequest?.();
-      // Resolving the open acknowledgement alone does not make the control
-      // available: the initial vault read must settle as well.
-      await waitFor(() => expect(getByRole("button", { name: "Opening vault..." })).toHaveAttribute("aria-disabled", "true"));
+      // Destination reads begin only after authentication completes and do not lock the
+      // shell or the vault controls while they settle.
+      await waitFor(() => expect(getByRole("button", { name: "Open local vault" })).not.toHaveAttribute("aria-disabled", "true"));
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -555,5 +574,138 @@ describe("vault", () => {
     } finally {
       window.orionVivaBridge = previousBridge;
     }
+  });
+
+  it("scopes priority loading and keeps wide navigation operable with one live owner", async () => {
+    const user = userEvent.setup();
+    let releasePriority: (() => void) | undefined;
+    const waiting = new Promise<void>((resolve) => { releasePriority = resolve; });
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "2.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
+        if (payload.surface === "overview_accounts") await waiting;
+        const overview = { accounts: [] };
+        const data = payload.surface === "overview_accounts" ? priorityEnvelope(overview, "scoped") : payload.surface === "documents" ? { documents: [] } : payload.surface === "review" ? reviewEmptyPayload : payload.surface === "trust" ? trustPayload : payload.surface === "activity" ? activityPayload : { turns: [], questions: [], total: 0 };
+        return { protocol: "2.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
+      },
+    };
+    const view = render(<App />);
+    await user.type(view.getByLabelText("Vault directory"), "/vault");
+    await user.type(view.getByLabelText("Passphrase"), "secret");
+    await user.click(view.getByRole("button", { name: "Open local vault" }));
+    const busy = view.container.querySelector('[aria-busy="true"]');
+    expect(busy).toHaveClass("priority-destination");
+    expect(view.getAllByRole("status")).toHaveLength(1);
+    await user.click(view.getByRole("button", { name: "Statements" }));
+    expect(view.getByRole("heading", { name: "Statements & documents" })).toBeInTheDocument();
+    expect(view.container.querySelector('[aria-busy="true"]')).toBeNull();
+    releasePriority?.();
+  });
+
+  it("makes retry idempotent, retains stale data on failure, and focuses the heading after success", async () => {
+    const user = userEvent.setup();
+    const retryReplies: Array<(value: unknown) => void> = [];
+    let priorityCalls = 0;
+    const staleOverview = { accounts: [{ account: "stale", name: "Last complete account", balance: { amount: "1", grade: "verified" } }] };
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "2.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
+        if (payload.surface === "overview_accounts") {
+          priorityCalls += 1;
+          if (priorityCalls === 1) return { protocol: "2.0", request_id: "stale", ok: true, result: { surface: "overview_accounts", job_id: "job", data: { ...priorityEnvelope(staleOverview, "old"), state: "stale", freshness: "stale", lifecycle: "stale" } } as T };
+          const result = await new Promise<unknown>((resolve) => retryReplies.push(resolve));
+          return { protocol: "2.0", request_id: "retry", ok: true, result: { surface: "overview_accounts", job_id: "job", data: result } as T };
+        }
+        const data = payload.surface === "documents" ? { documents: [] } : payload.surface === "review" ? reviewEmptyPayload : payload.surface === "trust" ? trustPayload : payload.surface === "activity" ? activityPayload : { turns: [], questions: [], total: 0 };
+        return { protocol: "2.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
+      },
+    };
+    const view = render(<App />);
+    await user.type(view.getByLabelText("Vault directory"), "/vault");
+    await user.type(view.getByLabelText("Passphrase"), "secret");
+    await user.click(view.getByRole("button", { name: "Open local vault" }));
+    const retry = await view.findByRole("button", { name: "Retry" });
+    expect(view.getAllByText("Last complete account").length).toBeGreaterThan(0);
+    retry.focus();
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(priorityCalls).toBe(2);
+    expect(view.getByRole("button", { name: "Retrying…" })).toHaveAttribute("aria-disabled", "true");
+    expect(view.getAllByText("Last complete account").length).toBeGreaterThan(0);
+    await act(async () => retryReplies.shift()?.({ ...priorityEnvelope(staleOverview, "old"), state: "stale", freshness: "stale", lifecycle: "stale" }));
+    await waitFor(() => expect(view.getByText(/still could not be brought up to date/i)).toBeInTheDocument());
+    expect(view.getAllByText("Last complete account").length).toBeGreaterThan(0);
+    expect(view.getByRole("button", { name: "Retry" })).toHaveFocus();
+    fireEvent.click(view.getByRole("button", { name: "Retry" }));
+    await act(async () => retryReplies.shift()?.(priorityEnvelope({ accounts: [] }, "new")));
+    await waitFor(() => expect(view.getByText("Your financial picture is up to date.")).toBeInTheDocument());
+    await waitFor(() => expect(view.getByRole("heading", { name: "Your financial picture" })).toHaveFocus());
+  });
+
+  it.each([
+    { width: 1440, layout: "wide" },
+    { width: 600, layout: "narrow" },
+  ] as const)("keeps the user-selected destination and focus when a priority retry finishes in the $layout layout", async ({ width, layout }) => {
+    installResponsiveMatchMedia(width);
+    const user = userEvent.setup();
+    let resolveRetry: ((value: unknown) => void) | undefined;
+    let priorityCalls = 0;
+    const staleOverview = { accounts: [{ account: "stale", name: "Last complete account", balance: { amount: "1", grade: "verified" } }] };
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "2.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
+        if (payload.surface === "overview_accounts") {
+          priorityCalls += 1;
+          if (priorityCalls === 1) return { protocol: "2.0", request_id: "stale", ok: true, result: { surface: "overview_accounts", job_id: "job", data: { ...priorityEnvelope(staleOverview, "old"), state: "stale", freshness: "stale", lifecycle: "stale" } } as T };
+          const result = await new Promise<unknown>((resolve) => { resolveRetry = resolve; });
+          return { protocol: "2.0", request_id: "retry", ok: true, result: { surface: "overview_accounts", job_id: "job", data: result } as T };
+        }
+        const data = payload.surface === "documents" ? { documents: [] } : payload.surface === "review" ? reviewEmptyPayload : payload.surface === "trust" ? trustPayload : payload.surface === "activity" ? activityPayload : { turns: [], questions: [], total: 0 };
+        return { protocol: "2.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
+      },
+    };
+    const view = render(<App />);
+    if (layout === "narrow") await user.click(view.getByRole("button", { name: "Open navigation" }));
+    await user.type(view.getByLabelText("Vault directory"), "/vault");
+    await user.type(view.getByLabelText("Passphrase"), "secret");
+    await user.click(view.getByRole("button", { name: "Open local vault" }));
+    await user.click(await view.findByRole("button", { name: "Retry" }));
+    expect(view.getByRole("button", { name: "Retrying…" })).toHaveAttribute("aria-disabled", "true");
+
+    if (layout === "narrow") await user.click(view.getByRole("button", { name: "Open navigation" }));
+    const statementsNavigation = view.getByRole("button", { name: "Statements" });
+    await user.click(statementsNavigation);
+    const statementsHeading = view.getByRole("heading", { name: "Statements & documents" });
+    if (layout === "narrow") await waitFor(() => expect(statementsHeading).toHaveFocus());
+    else expect(statementsNavigation).toHaveFocus();
+
+    await act(async () => resolveRetry?.(priorityEnvelope({ accounts: [{ account: "fresh", name: "Late replacement account" }] }, "new")));
+    await waitFor(() => expect(view.getByRole("heading", { name: "Statements & documents" })).toBeInTheDocument());
+    expect(view.queryByText("Last complete account")).toBeNull();
+    expect(view.queryByText("Late replacement account")).toBeNull();
+    if (layout === "narrow") expect(statementsHeading).toHaveFocus();
+    else expect(statementsNavigation).toHaveFocus();
+  });
+
+  it("moves narrow navigation focus to the selected priority heading while it loads", async () => {
+    installResponsiveMatchMedia(600);
+    const user = userEvent.setup();
+    const waiting = new Promise<void>(() => undefined);
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "2.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
+        if (payload.surface === "overview_accounts") await waiting;
+        return { protocol: "2.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data: {} } as T };
+      },
+    };
+    const view = render(<App />);
+    await user.click(view.getByRole("button", { name: "Open navigation" }));
+    await user.type(view.getByLabelText("Vault directory"), "/vault");
+    await user.type(view.getByLabelText("Passphrase"), "secret");
+    await user.click(view.getByRole("button", { name: "Open local vault" }));
+    await user.click(view.getByRole("button", { name: "Open navigation" }));
+    await user.click(view.getByRole("button", { name: "Accounts" }));
+    await waitFor(() => expect(view.getByRole("heading", { name: "Accounts" })).toHaveFocus());
+    expect(view.getByText("Loading Overview and Accounts from this vault…")).toBeInTheDocument();
   });
 });

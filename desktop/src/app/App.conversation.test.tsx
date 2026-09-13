@@ -25,7 +25,8 @@ describe("conversation questions and corrections", () => {
           return { protocol: "1.0", request_id: "decline", ok: true, result: { kind: "completed", message: "Set aside until something changes.", state: null, reason: null } as T };
         }
         const surface = payload.surface;
-        const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
+        const data = surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { as_of: "2026-08-18", accounts: [] }, accounts: { as_of: "2026-08-18", accounts: [] }, error: "" }
+          : surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
             : surface === "conversation" ? { turns: [], questions: questions(), total: setAside ? 1 : 2, invite: "Write an answer", answered_by_document: "A document answers this" }
               : surface === "review" ? reviewQuestionPayload(questions())
@@ -41,8 +42,8 @@ describe("conversation questions and corrections", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: /^Review, 2 actionable items$/ })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: /^Review, 2 actionable items$/ }));
+      await user.click(getByRole("button", { name: "Review, count unavailable" }));
+      await waitFor(() => expect(getAllByRole("button", { name: "Answer question" }).length).toBeGreaterThan(0));
       await user.click(getAllByRole("button", { name: "Answer question" })[0]);
 
       await user.click(getByRole("button", { name: "Set aside for now" }));
@@ -71,7 +72,8 @@ describe("conversation questions and corrections", () => {
           return { protocol: "1.0", request_id: "decline", ok: true, result: { kind: "refused", message: "That question is no longer open.", state: null, reason: "not_open" } as T };
         }
         const surface = payload.surface;
-        const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
+        const data = surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { as_of: "2026-08-18", accounts: [] }, accounts: { as_of: "2026-08-18", accounts: [] }, error: "" }
+          : surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
             : surface === "conversation" ? { turns: [], questions: [reviewBoundQuestion({ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." })], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
               : surface === "review" ? reviewQuestionPayload([{ id: "first-question", text: "Is this your account?", why: "Account identity is unresolved." }])
@@ -87,8 +89,8 @@ describe("conversation questions and corrections", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: /^Review, 1 actionable item$/ })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: /^Review, 1 actionable item$/ }));
+      await user.click(getByRole("button", { name: "Review, count unavailable" }));
+      await waitFor(() => expect(getAllByRole("button", { name: "Answer question" }).length).toBeGreaterThan(0));
       await user.click(getByRole("button", { name: "Answer question" }));
 
       const control = getByRole("button", { name: "Set aside for now" });
@@ -130,7 +132,8 @@ describe("conversation questions and corrections", () => {
         }
         const surface = payload.surface;
         if (surface === "conversation" && setAside) throw new Error("bounded read failure");
-        const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
+        const data = surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { as_of: "2026-08-18", accounts: [] }, accounts: { as_of: "2026-08-18", accounts: [] }, error: "" }
+          : surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
             : surface === "conversation" ? { turns: [], questions: [reviewBoundQuestion({ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." })], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
               : surface === "review" ? reviewQuestionPayload([{ id: "first-question", text: "Is this your account?", why: "Account identity is unresolved." }])
@@ -146,8 +149,8 @@ describe("conversation questions and corrections", () => {
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("button", { name: /^Review, 1 actionable item$/ })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: /^Review, 1 actionable item$/ }));
+      await user.click(getByRole("button", { name: "Review, count unavailable" }));
+      await waitFor(() => expect(getAllByRole("button", { name: "Answer question" }).length).toBeGreaterThan(0));
       await user.click(getByRole("button", { name: "Answer question" }));
 
       await user.click(getByRole("button", { name: "Set aside for now" }));

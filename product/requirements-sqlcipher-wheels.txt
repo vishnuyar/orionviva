@@ -1,0 +1,24 @@
+# Install this file alone with all three flags:
+#   python -m pip install --only-binary=:all: --require-hashes --no-deps \
+#       -r product/requirements-sqlcipher-wheels.txt
+#
+# CPython 3.12 wheels used by desktop/src-tauri/release-targets.json:
+# aarch64-apple-darwin
+#   sqlcipher3-0.6.2-cp312-cp312-macosx_10_13_universal2.whl
+#   sha256:a51b18bd782652a2282f9cb1b03b840ba5a6c0c675de6cefb76262c9789c8f06
+# x86_64-apple-darwin
+#   sqlcipher3-0.6.2-cp312-cp312-macosx_10_13_x86_64.whl
+#   sha256:fea0f1264f09d219dd6ce699ffca8cc9022a914661c6efa4390e85a2bf78acf9
+# x86_64-pc-windows-msvc
+#   sqlcipher3-0.6.2-cp312-cp312-win_amd64.whl
+#   sha256:8bd60ffb7bfa65bd0e51da3d5c308553d7149f0091d4ea9f754c33d5ebbf0a66
+# x86_64-unknown-linux-gnu
+#   sqlcipher3-0.6.2-cp312-cp312-manylinux_2_28_x86_64.whl
+#   sha256:6b26d28ca844dc2a69b8f74b390e940db47760f0be4c96d93337c57ae8250a48
+#
+# Hashes identify upstream artifacts; they do not attest their provenance.
+sqlcipher3==0.6.2 \
+    --hash=sha256:a51b18bd782652a2282f9cb1b03b840ba5a6c0c675de6cefb76262c9789c8f06 \
+    --hash=sha256:fea0f1264f09d219dd6ce699ffca8cc9022a914661c6efa4390e85a2bf78acf9 \
+    --hash=sha256:8bd60ffb7bfa65bd0e51da3d5c308553d7149f0091d4ea9f754c33d5ebbf0a66 \
+    --hash=sha256:6b26d28ca844dc2a69b8f74b390e940db47760f0be4c96d93337c57ae8250a48

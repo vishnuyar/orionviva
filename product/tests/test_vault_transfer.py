@@ -41,6 +41,7 @@ def test_every_part_of_a_vault_travels_and_nothing_else_does(tmp_path):
 
     assert {EVENTS, HEAD, RAW_HEADER} <= members
     assert any(name.endswith(".blob") for name in members)
+    assert not any(name.startswith("read-model/") for name in members)
 
 
 def test_a_vault_missing_its_second_keystream_is_refused_rather_than_shortened(tmp_path):
@@ -107,6 +108,10 @@ def test_a_round_trip_comes_back_whole_and_is_read_to_prove_it(tmp_path):
     brought_back = Vault.open(tmp_path / "brought-back", PASSPHRASE)
     assert brought_back.raw.get(doc_id) == DOCUMENT
     assert [event.event_type for event in brought_back.events()] == ["DocumentCaptured"]
+    assert (brought_back.directory / "read-model" / "current.json").is_file()
+    with brought_back.read_store.open_reader() as revision:
+        source = brought_back.read_store.authenticated_source_identity(revision)
+    assert source["count"] == result.event_count
 
 
 def test_a_restore_never_lands_on_a_directory_that_holds_something(tmp_path):

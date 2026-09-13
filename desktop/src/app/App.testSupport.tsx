@@ -108,35 +108,33 @@ function installSampleBridge(overrides: Record<string, unknown> = {}) {
   window.orionVivaBridge = {
     pickDocumentPaths: async () => [],
     request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
-      if (operation === "bridge.open_demo_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: true, frame: sampleFrame, surfaces: [] } as T };
-      if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: false } as T };
+      if (operation === "bridge.open_demo_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: true, frame: sampleFrame, priority_reads: ["overview_accounts"] } as T };
+      if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: false, priority_reads: ["overview_accounts"] } as T };
       if (operation === "bridge.handshake") return { protocol: "1.0", request_id: "hand", ok: true, result: { protocol: "2.0", transport: "json-lines", revision: "sample-build" } as T };
       if (operation === "viva.surface.capabilities") return { protocol: "1.0", request_id: "caps", ok: true, result: { protocol: "2.0", capabilities: [], destinations: { overview: true, accounts: true, activity: true, documents: true, plans: true, review: true, viva: true, trust: true } } as T };
       if (operation === "viva.settings.read") return { protocol: "1.0", request_id: "set", ok: true, result: { state: "ready", locale: "en-US", currency: "USD", adapter: "", model: "", base_url: "", key_set: false, can_send: false } as T };
       if (operation !== "viva.surface.read") return { protocol: "1.0", request_id: "act", ok: true, result: { kind: "completed", message: "Done.", state: null, reason: null } as T };
       const surface = String(payload.surface);
-      const data = surface in overrides ? overrides[surface] : sampleReads[surface]?.result.data;
+      const data = surface === "overview_accounts"
+        ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "sample-fixture", overview: overrides.overview ?? sampleReads.overview?.result.data, accounts: overrides.overview ?? sampleReads.overview?.result.data, error: "" }
+        : surface in overrides ? overrides[surface] : sampleReads[surface]?.result.data;
       return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
     },
   };
   return () => { window.orionVivaBridge = previous; };
 }
 
-// Render the shell and go in through the sample vault's one door. Every test
-// that used to start inside a fixture starts here instead.
+// Render the shell and open the sample through its visible entry point.
 async function openSample(overrides: Record<string, unknown> = {}) {
   const restore = installSampleBridge(overrides);
   const view = render(<App />);
   fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
   await waitFor(() => expect(view.getByText(moments.sample_frame)).toBeInTheDocument());
+  await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
   return { ...view, restore };
 }
 
-// A wide window before every test. `installResponsiveMatchMedia` replaces the
-// global, and a narrow one installed by one test used to survive into the next
-// — where the sidebar is hidden from the accessibility tree and the control
-// that opens a vault is unreachable. A test that fails because of the test
-// before it is a test nobody can read.
+// Begin each test with the wide-window media-query contract.
 
 export { act, fireEvent, render, waitFor, createRef, userEvent, afterEach,
   beforeEach, describe, expect, it, vi, App, ConversationDialogShell, moments,

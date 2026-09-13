@@ -854,6 +854,7 @@ CONVERSATION_TURN_SETTLED = "ConversationTurnSettled"
 CONVERSATION_PROPOSAL_RECORDED = "ConversationProposalRecorded"
 CONVERSATION_PROPOSAL_RESOLVED = "ConversationProposalResolved"
 CONVERSATION_TURN_KINDS = ("ask", "answer", "decline", "confirm")
+CONVERSATION_CONTEXT_MODES = ("new_question", "follow_up")
 CONVERSATION_OUTCOMES = ("completed", "refused", "proposal", "waiting",
                          "stale", "set_aside")
 
@@ -862,6 +863,7 @@ def conversation_turn_opened(turn_id: str, kind: str, prompt: str,
                              occurred_at: str, *, said: str = "",
                              question_id: str = "",
                              mirrored: bool = True,
+                             context_mode: str | None = None,
                              provenance: Provenance | None = None) -> Event:
     """Record the words and target that opened one conversation turn."""
     if not str(turn_id or "").strip():
@@ -873,11 +875,19 @@ def conversation_turn_opened(turn_id: str, kind: str, prompt: str,
         raise ValueError("a conversation turn requires the prompt that opened it")
     if kind in ("answer", "decline") and not str(question_id or "").strip():
         raise ValueError("a queue reply must name the question it answers")
+    if context_mode is not None:
+        if kind != "ask":
+            raise ValueError("only Ask turns may have a context mode")
+        if context_mode not in CONVERSATION_CONTEXT_MODES:
+            raise ValueError("unknown conversation context mode")
+    body = {"turn_id": turn_id, "kind": kind, "prompt": prompt,
+            "said": said, "question_id": question_id,
+            "mirrored": bool(mirrored)}
+    if context_mode is not None:
+        body["context_mode"] = context_mode
     return Event(
         CONVERSATION_TURN_OPENED, occurred_at,
-        body={"turn_id": turn_id, "kind": kind, "prompt": prompt,
-              "said": said, "question_id": question_id,
-              "mirrored": bool(mirrored)},
+        body=body,
         provenance=provenance or Provenance(),
     )
 

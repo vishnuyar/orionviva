@@ -26,7 +26,7 @@ analysis = Analysis(
         + collect_data_files("merchantcore", include_py_files=False)
         + [(REVISION_SOURCE, "viva")]
     ),
-    hiddenimports=[],
+    hiddenimports=["sqlcipher3", "sqlcipher3.dbapi2"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

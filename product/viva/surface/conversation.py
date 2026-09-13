@@ -114,6 +114,10 @@ def _timeline_turn(row: dict[str, Any],
     return {
         "id": str(row.get("turn_id") or ""),
         "kind": str(row.get("kind") or ""),
+        "context_mode": (str(row["context_mode"])
+                         if row.get("kind") == "ask" and row.get("context_mode") in
+                         ("new_question", "follow_up") else
+                         "legacy" if row.get("kind") == "ask" else ""),
         "occurred_at": str(row.get("occurred_at") or ""),
         "prompt": str(row.get("prompt") or ""),
         "said": str(row.get("said") or ""),

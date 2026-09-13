@@ -289,6 +289,59 @@ def _context(manifest):
                            shape_version="speak-shape-v13")
 
 
+def test_compiler_renders_mode_specific_protocol_and_repair():
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+    validator = ProgramValidator(manifest, policy)
+
+    class Adapter:
+        pass
+
+    native = AnswerProgramCompiler(Adapter(), validator, manifest, policy,
+                                   modality="native-structured")
+    text = AnswerProgramCompiler(Adapter(), validator, manifest, policy,
+                                 modality="text-json")
+    for rendered in (native._prompt(_context(manifest)), native._repair(())):
+        assert "single supplied native semantic tool" in rendered
+        assert '"request_version"' not in rendered
+        assert '"catalog_digest"' not in rendered
+        assert '"oneOf"' not in rendered
+    for rendered in (text._prompt(_context(manifest)), text._repair(())):
+        assert '"request_version"' in rendered
+        assert '"oneOf"' in rendered
+
+
+def test_native_compiler_adds_envelope_and_rejects_tool_argument_envelope():
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy(max_model_attempts=1)
+    arguments = {
+        "parameters": {"account_phrase": "Everyday Checking"},
+        "requested_claims": ["balance", "measurement_date"],
+    }
+
+    class Adapter:
+        def __init__(self, raw):
+            self.raw = raw
+        def converse(self, messages, tools):
+            return _turn(self.raw, "select_named_account_balance")
+
+    def compile_raw(raw):
+        return AnswerProgramCompiler(
+            Adapter(raw), ProgramValidator(manifest, policy), manifest, policy
+        ).compile(_context(manifest))
+
+    valid = compile_raw(arguments)
+    assert valid.ok
+    assert valid.semantic_outcome.request.family == "named_account_balance"
+    assert valid.semantic_outcome.request.catalog_digest == \
+        SemanticFamilyRegistry().catalog_digest
+    invalid = compile_raw({**arguments, "unexpected": "field"})
+    assert not invalid.ok
+    assert invalid.exchanges[0].failure_code == "request_field_set_mismatch"
+
+
 def test_compiler_repairs_a_malformed_semantic_request_before_any_read():
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
@@ -1514,6 +1567,33 @@ def test_copied_live_adapter_names_and_digests_cannot_forge_a_measured_run(
         write_release_bundle(
             tmp_path / "forged.json", profile=None, manifest=manifest,
             measured_run=forged)
+
+
+def test_promoted_semantic_prompt_invalidates_old_profiles(monkeypatch):
+    from vivacore import promptstore, versions
+    from viva.answer_program import admission as admission_module
+    from viva.tools.registry import PROMPTS
+
+    manifest = CapabilityManifest.from_registry(_registry())
+    report = _fully_validated_forged_report(manifest)
+    monkeypatch.setattr(admission_module, "_report_from_measured_run",
+                        lambda _measured: report)
+    profile = admitted_profile(object(), manifest=manifest)
+
+    assert versions.active(PACKAGE, "semantic_request") == "semantic-request-v9"
+    assert versions.active(PACKAGE, "semantic_request_retry") == \
+        "semantic-request-retry-v8"
+    assert profile.prompt_digest == current_contract_digests(
+        manifest, AnswerResourcePolicy())["compiler_prompt"]
+    assert profile.prompt_digest != promptstore.digest(
+        PROMPTS, "semantic-request-v7")
+    assert check_profile(profile, manifest, report).passed
+    for old_version in ("semantic-request-v7", "semantic-request-v8"):
+        old_profile = replace(
+            profile, prompt_version=old_version,
+            prompt_digest=promptstore.digest(PROMPTS, old_version))
+        assert "compiler_prompt_digest_mismatch" in check_profile(
+            old_profile, manifest, report).failures
 
 
 def test_fixture_and_oracle_contracts_bind_report_profile_build_and_bundle(

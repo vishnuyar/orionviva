@@ -55,7 +55,7 @@
 
 ### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
 **State:** enforced
-**Code:** product/viva/prompts/semantic-request-retry-v7.txt
+**Code:** product/viva/prompts/semantic-request-v9.txt, product/viva/prompts/semantic-request-retry-v8.txt
 **Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
 1. The repair prompt receives every compact-contract defect and asks for one complete replacement semantic request.
@@ -71,6 +71,12 @@
    Version 7 makes the representation decision meaning-first in both the
    prompt and native tool schema: a uniquely fitting catalog entry wins even
    when an indirect description shares no words with its label.
+   Version 8 changes only the initial semantic-request guidance: answerable
+   movement-treatment questions select the explanation family with an exact
+   grounded reference, while routine category-month questions supply their
+   required scope on the first attempt. Version 9 and retry version 8 keep
+   native tool arguments separate from the full text-output object; the
+   compiler supplies native envelope fields after the tool call.
 
 ## Why
 

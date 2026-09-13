@@ -10,6 +10,7 @@ dependencies = [
     "vivacore",          # the shared crown jewels (verify/, models/, claims)
     "merchantcore",      # the merchant knowledge base (normalize, enrich, catalog)
     "cryptography>=42",  # AES-256-GCM + scrypt for encryption at rest (ADR-005)
+    "sqlcipher3==0.6.2", # encrypted disposable read store; never substitute sqlite3
 ]
 
 [project.optional-dependencies]

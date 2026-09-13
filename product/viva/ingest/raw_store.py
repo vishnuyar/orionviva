@@ -39,9 +39,13 @@ class RawStore:
         directory.mkdir(parents=True, exist_ok=True)
         header_path = directory / _HEADER
         if header_path.exists():
-            key = open_vault_header(json.loads(header_path.read_text()), passphrase)
+            from ..startup_diagnostics import span
+            with span("credential_kdf"):
+                key = open_vault_header(json.loads(header_path.read_text()), passphrase)
         else:
-            header, key = new_vault_header(passphrase)
+            from ..startup_diagnostics import span
+            with span("credential_kdf"):
+                header, key = new_vault_header(passphrase)
             header_path.write_text(json.dumps(header, ensure_ascii=False))
         return cls(directory, key)
 
@@ -73,5 +77,10 @@ class RawStore:
         sealed = json.loads(self._blob_path(doc_id).read_text())
         return open_sealed(self._key, sealed, aad=doc_id.encode("utf-8"))
 
-    def doc_ids(self) -> list[str]:
-        return sorted(p.stem for p in self.dir.glob("*.blob"))
+    def doc_ids(self, *, max_count: int | None = None) -> list[str]:
+        ids = []
+        for path in self.dir.glob("*.blob"):
+            ids.append(path.stem)
+            if max_count is not None and len(ids) > max_count:
+                raise ValueError("raw document presence exceeds its row bound")
+        return sorted(ids)

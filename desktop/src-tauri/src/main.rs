@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc, Mutex, MutexGuard};
+use std::sync::{mpsc, Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -25,6 +25,47 @@ const JOB_PROGRESS_EVENT: &str = "orionviva://job-progress";
 
 const BRIDGE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const BRIDGE_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
+fn startup_diagnostic_record(
+    operation: &'static str,
+    state: &'static str,
+    duration: Duration,
+    generation: usize,
+    termination: &'static str,
+) -> Option<Value> {
+    if !matches!(
+        operation,
+        "generation" | "request_wait" | "timeout" | "termination"
+    ) || !matches!(state, "completed" | "failed")
+        || !matches!(
+            termination,
+            "started" | "none" | "pending" | "reaped" | "killed_reaped" | "kill_failed"
+        )
+    {
+        return None;
+    }
+    Some(json!({"kind": "viva.startup.span",
+        "operation": operation, "surface": "none",
+        "duration_ms": duration.as_millis(), "state": state,
+        "generation": generation, "termination": termination}))
+}
+
+fn startup_diagnostic(
+    operation: &'static str,
+    state: &'static str,
+    duration: Duration,
+    generation: usize,
+    termination: &'static str,
+) {
+    if std::env::var("VIVA_STARTUP_DIAGNOSTICS").as_deref() != Ok("1") {
+        return;
+    }
+    if let Some(record) =
+        startup_diagnostic_record(operation, state, duration, generation, termination)
+    {
+        eprintln!("{record}");
+    }
+}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const VAULT_CREDENTIAL_SERVICE: &str = "com.orionviva.desktop.default-vault";
@@ -111,11 +152,12 @@ struct BridgeProcess {
     stdin: Arc<Mutex<Option<ChildStdin>>>,
     pending: PendingCalls,
     closed: Arc<AtomicBool>,
+    terminal: Arc<Mutex<bool>>,
     generation: usize,
 }
 
 impl BridgeProcess {
-    fn status(&mut self) -> Result<Option<ExitStatus>, String> {
+    fn status(&self) -> Result<Option<ExitStatus>, String> {
         let mut child = self
             .child
             .lock()
@@ -129,6 +171,14 @@ impl BridgeProcess {
     }
 
     fn shutdown(&mut self) -> Result<(), String> {
+        let mut terminal = self
+            .terminal
+            .lock()
+            .map_err(|_| "OrionViva bridge termination state is unavailable".to_string())?;
+        if *terminal {
+            return Ok(());
+        }
+        let started = Instant::now();
         // Closing stdin is the sidecar's graceful shutdown signal: its JSON-lines
         // loop reaches EOF, drops the opened vault, and exits without a new RPC.
         self.closed.store(true, Ordering::SeqCst);
@@ -140,7 +190,17 @@ impl BridgeProcess {
 
         loop {
             match self.status()? {
-                Some(_) => return Ok(()),
+                Some(_) => {
+                    *terminal = true;
+                    startup_diagnostic(
+                        "termination",
+                        "completed",
+                        started.elapsed(),
+                        self.generation,
+                        "reaped",
+                    );
+                    return Ok(());
+                }
                 None if Instant::now() < deadline => {
                     thread::sleep(BRIDGE_SHUTDOWN_POLL_INTERVAL);
                 }
@@ -168,10 +228,29 @@ impl BridgeProcess {
             }
         }
 
-        child
+        let result = child
             .wait()
             .map(|_| ())
-            .map_err(|error| format!("unable to reap OrionViva bridge process: {error}"))
+            .map_err(|error| format!("unable to reap OrionViva bridge process: {error}"));
+        if result.is_ok() {
+            *terminal = true;
+        }
+        startup_diagnostic(
+            "termination",
+            if result.is_ok() {
+                "completed"
+            } else {
+                "failed"
+            },
+            started.elapsed(),
+            self.generation,
+            if result.is_ok() {
+                "killed_reaped"
+            } else {
+                "kill_failed"
+            },
+        );
+        result
     }
 }
 
@@ -206,6 +285,58 @@ struct BridgeState {
     active_vault: Mutex<ActiveVaultRecord>,
     next_generation: AtomicUsize,
     read_recovery_claimed: AtomicBool,
+    recovery_gate: RecoveryGate,
+}
+
+struct RecoveryGate {
+    busy: Mutex<bool>,
+    ready: Condvar,
+}
+
+impl RecoveryGate {
+    fn new() -> Self {
+        Self {
+            busy: Mutex::new(false),
+            ready: Condvar::new(),
+        }
+    }
+
+    fn wait(&self) -> Result<(), String> {
+        let busy = self
+            .busy
+            .lock()
+            .map_err(|_| "OrionViva bridge recovery state is unavailable".to_string())?;
+        let (busy, timed_out) = self
+            .ready
+            .wait_timeout_while(busy, Duration::from_secs(90), |busy| *busy)
+            .map_err(|_| "OrionViva bridge recovery state is unavailable".to_string())?;
+        if timed_out.timed_out() && *busy {
+            return Err("OrionViva bridge recovery did not settle".to_string());
+        }
+        Ok(())
+    }
+
+    fn begin(&self) -> Result<RecoveryPermit<'_>, String> {
+        let mut busy = self
+            .busy
+            .lock()
+            .map_err(|_| "OrionViva bridge recovery state is unavailable".to_string())?;
+        *busy = true;
+        Ok(RecoveryPermit { gate: self })
+    }
+}
+
+struct RecoveryPermit<'a> {
+    gate: &'a RecoveryGate,
+}
+
+impl Drop for RecoveryPermit<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut busy) = self.gate.busy.lock() {
+            *busy = false;
+            self.gate.ready.notify_all();
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -235,7 +366,17 @@ impl BridgeState {
     fn restart(&self, app: &AppHandle) -> Result<(), String> {
         let mut process = self.lock()?;
         shutdown_current(&mut process)?;
-        *process = Some(spawn_bridge(app)?);
+        let mut spawned = spawn_bridge(app)?;
+        spawned.generation = self.next_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        *process = Some(spawned);
+        *self
+            .active_vault
+            .lock()
+            .map_err(|_| "active vault identity is unavailable".to_string())? = ActiveVaultRecord {
+            vault: ActiveVault::None,
+            generation: 0,
+        };
+        self.read_recovery_claimed.store(false, Ordering::SeqCst);
         Ok(())
     }
 }
@@ -315,11 +456,10 @@ fn route_pending(pending: &PendingCalls, request_id: &str, frame: RoutedFrame) {
     }
 }
 
-fn route_stdout(
-    app: AppHandle,
+fn route_stdout<R: tauri::Runtime>(
+    app: AppHandle<R>,
     stdout: ChildStdout,
-    pending: PendingCalls,
-    closed: Arc<AtomicBool>,
+    mut bridge: BridgeProcess,
 ) {
     let mut stdout = BufReader::new(stdout);
     let mut line = String::new();
@@ -329,29 +469,35 @@ fn route_stdout(
             Ok(read) => read,
             Err(error) => {
                 interrupt_pending(
-                    &pending,
+                    &bridge.pending,
                     &format!("unable to read OrionViva bridge response: {error}"),
                 );
-                closed.store(true, Ordering::SeqCst);
+                if let Err(error) = bridge.shutdown() {
+                    eprintln!("unable to stop OrionViva bridge after output failure: {error}");
+                }
                 return;
             }
         };
         if read == 0 {
             interrupt_pending(
-                &pending,
+                &bridge.pending,
                 "OrionViva bridge closed its output before responding",
             );
-            closed.store(true, Ordering::SeqCst);
+            if let Err(error) = bridge.shutdown() {
+                eprintln!("unable to stop OrionViva bridge after output closure: {error}");
+            }
             return;
         }
         let response: Value = match serde_json::from_str(line.trim()) {
             Ok(response) => response,
             Err(error) => {
                 interrupt_pending(
-                    &pending,
+                    &bridge.pending,
                     &format!("OrionViva bridge returned invalid JSON: {error}"),
                 );
-                closed.store(true, Ordering::SeqCst);
+                if let Err(error) = bridge.shutdown() {
+                    eprintln!("unable to stop OrionViva bridge after invalid output: {error}");
+                }
                 return;
             }
         };
@@ -361,20 +507,26 @@ fn route_stdout(
             .map(str::to_string)
         else {
             interrupt_pending(
-                &pending,
+                &bridge.pending,
                 "OrionViva bridge returned a frame without a request identity",
             );
-            closed.store(true, Ordering::SeqCst);
+            if let Err(error) = bridge.shutdown() {
+                eprintln!("unable to stop OrionViva bridge after uncorrelated output: {error}");
+            }
             return;
         };
         if response.get("event").is_some() {
             if let Err(error) = app.emit(JOB_PROGRESS_EVENT, &response) {
                 eprintln!("unable to deliver OrionViva job progress: {error}");
             }
-            route_pending(&pending, &request_id, RoutedFrame::Progress);
+            route_pending(&bridge.pending, &request_id, RoutedFrame::Progress);
             continue;
         }
-        route_pending(&pending, &request_id, RoutedFrame::Response(response));
+        route_pending(
+            &bridge.pending,
+            &request_id,
+            RoutedFrame::Response(response),
+        );
     }
 }
 
@@ -426,10 +578,12 @@ fn spawn_bridge(app: &AppHandle) -> Result<BridgeProcess, String> {
         stdin: Arc::new(Mutex::new(Some(stdin))),
         pending: Arc::clone(&pending),
         closed: Arc::clone(&closed),
+        terminal: Arc::new(Mutex::new(false)),
         generation: 0,
     };
     let app = app.clone();
-    thread::spawn(move || route_stdout(app, stdout, pending, closed));
+    let reader_bridge = process.clone();
+    thread::spawn(move || route_stdout(app, stdout, reader_bridge));
     Ok(process)
 }
 
@@ -450,20 +604,29 @@ fn ensure_bridge<R: tauri::Runtime>(
         Some(current) => current.status()?,
         None => None,
     };
-
-    if let Some(status) = stale_status {
-        // Drop and reap the exited handle before creating a replacement. This
-        // keeps at most one sidecar owned by the host at any point in time.
-        process.take();
-        eprintln!(
-            "OrionViva bridge was stale ({}); starting a fresh process",
-            describe_exit_status(status)
-        );
+    let closed = process
+        .as_ref()
+        .is_some_and(|current| current.closed.load(Ordering::SeqCst));
+    if closed || stale_status.is_some() {
+        shutdown_current(process)?;
+        if let Some(status) = stale_status {
+            eprintln!(
+                "OrionViva bridge was stale ({}); starting a fresh process",
+                describe_exit_status(status)
+            );
+        }
     }
 
     if process.is_none() {
         let mut spawned = spawn(app)?;
         spawned.generation = next_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        startup_diagnostic(
+            "generation",
+            "completed",
+            Duration::ZERO,
+            spawned.generation,
+            "started",
+        );
         *process = Some(spawned);
     }
     process
@@ -567,6 +730,7 @@ fn request_process(
     encoded: &str,
     policy: DeadlinePolicy,
 ) -> Result<Value, String> {
+    let queued = Instant::now();
     if bridge.closed.load(Ordering::SeqCst) {
         return Err("OrionViva bridge is not running".to_string());
     }
@@ -602,6 +766,33 @@ fn request_process(
         return Err(error);
     }
     let result = wait_for_response(receiver, policy);
+    // This is total host-side request wait. The serial sidecar does not yet
+    // announce when a queued frame begins executing, so calling it queue time
+    // would turn execution time into a misleading diagnosis.
+    startup_diagnostic(
+        "request_wait",
+        if result.is_ok() {
+            "completed"
+        } else {
+            "failed"
+        },
+        queued.elapsed(),
+        bridge.generation,
+        "none",
+    );
+    if result
+        .as_ref()
+        .err()
+        .is_some_and(|error| error.contains("time"))
+    {
+        startup_diagnostic(
+            "timeout",
+            "completed",
+            queued.elapsed(),
+            bridge.generation,
+            "pending",
+        );
+    }
     if result.is_err() {
         if let Ok(mut pending) = bridge.pending.lock() {
             pending.remove(request_id);
@@ -652,6 +843,7 @@ fn request_bridge_with<R: tauri::Runtime>(
     policy: impl Fn(Option<&str>) -> DeadlinePolicy + Copy,
     before_failed_identity_clear: impl Fn(),
 ) -> Result<Value, String> {
+    state.recovery_gate.wait()?;
     let request_id = frame
         .get("request_id")
         .and_then(Value::as_str)
@@ -672,11 +864,18 @@ fn request_bridge_with<R: tauri::Runtime>(
     } else {
         None
     };
+    let mut _recovery_permit = None;
     for attempt in 0..2 {
+        if attempt == 0 {
+            state.recovery_gate.wait()?;
+        }
         let bridge = {
             let mut process = state.lock()?;
             ensure_bridge(app, &mut process, spawn, &state.next_generation)?
         };
+        if attempt == 0 {
+            state.recovery_gate.wait()?;
+        }
         if attempt == 1 {
             let reopened = match recovery.as_ref() {
                 Some(ActiveVault::Sample) => reopen_sample_vault(&bridge),
@@ -694,6 +893,26 @@ fn request_bridge_with<R: tauri::Runtime>(
         let result = request_process(&bridge, &request_id, &encoded, policy(operation));
         match result {
             Ok(response) => {
+                let current = state.lock()?;
+                let terminal = bridge
+                    .terminal
+                    .lock()
+                    .map_err(|_| "OrionViva bridge termination state is unavailable".to_string())?;
+                if !current.as_ref().is_some_and(|live| {
+                    live.generation == bridge.generation
+                        && Arc::ptr_eq(&live.child, &bridge.child)
+                        && !*terminal
+                        && !live.closed.load(Ordering::SeqCst)
+                }) {
+                    let uncertainty = if operation_may_have_written(operation) {
+                        " Outcome unknown; check the vault before trying again."
+                    } else {
+                        ""
+                    };
+                    return Err(format!(
+                        "OrionViva bridge response belongs to an interrupted generation.{uncertainty}"
+                    ));
+                }
                 if response.get("ok").and_then(Value::as_bool) == Some(true) {
                     let next_active = match operation {
                         Some("bridge.open_vault") => frame
@@ -724,20 +943,30 @@ fn request_bridge_with<R: tauri::Runtime>(
                         }
                     }
                 }
+                drop(terminal);
+                drop(current);
                 return Ok(response);
             }
             Err(error) => {
-                let cleanup_error = {
+                let (cleanup_error, will_recover) = {
                     let mut process = state.lock()?;
                     let is_current = process
                         .as_ref()
                         .map(|current| Arc::ptr_eq(&current.child, &bridge.child))
                         .unwrap_or(false);
-                    if is_current {
+                    let cleanup_error = if is_current {
                         shutdown_current(&mut process).err()
                     } else {
                         None
+                    };
+                    let will_recover = cleanup_error.is_none()
+                        && attempt == 0
+                        && can_replay_after_recovery(operation, recovery.as_ref())
+                        && claim_read_recovery(&state.read_recovery_claimed);
+                    if will_recover {
+                        _recovery_permit = Some(state.recovery_gate.begin()?);
                     }
+                    (cleanup_error, will_recover)
                 };
                 // A late failure belongs to the process that received the
                 // request. If another request has already recovered onto a
@@ -745,11 +974,7 @@ fn request_bridge_with<R: tauri::Runtime>(
                 // process's exact-vault identity.
                 before_failed_identity_clear();
                 clear_active_vault_after_failure(&state.active_vault, bridge.generation)?;
-                if cleanup_error.is_none()
-                    && attempt == 0
-                    && can_replay_after_recovery(operation, recovery.as_ref())
-                    && claim_read_recovery(&state.read_recovery_claimed)
-                {
+                if will_recover {
                     continue;
                 }
                 let uncertainty = if operation_may_have_written(operation) {
@@ -774,12 +999,8 @@ fn request_bridge(app: &AppHandle, state: &BridgeState, frame: Value) -> Result<
     request_bridge_with(app, state, frame, spawn_bridge, deadline_policy, || {})
 }
 
-// Restarting the process discards the in-memory vault key. Only operations
-// that establish a vault may therefore be replayed into a fresh process. A
-// surface read used to be replayed here as well; the fresh bridge correctly
-// answered that no vault was open, and the shell then replaced a visible
-// financial picture with that answer. A surface read may be replayed only
-// after the protected default credential has first reopened the same vault.
+// Restarting the process discards the in-memory vault key. A surface read may
+// be replayed only after the protected credential has reopened the same vault.
 fn operation_can_reopen_vault_and_replay(operation: Option<&str>) -> bool {
     operation == Some("viva.surface.read")
 }
@@ -837,8 +1058,8 @@ mod tests {
         can_replay_after_recovery, claim_read_recovery, deadline_policy,
         operation_can_reopen_vault_and_replay, operation_may_have_written,
         protected_default_matches_active, recovery_directory_for, recovery_is_exact, route_pending,
-        wait_for_response, ActiveVault, ActiveVaultRecord, BridgeProcess, BridgeState,
-        DeadlinePolicy, PendingCalls, RoutedFrame,
+        startup_diagnostic_record, wait_for_response, ActiveVault, ActiveVaultRecord,
+        BridgeProcess, BridgeState, DeadlinePolicy, PendingCalls, RecoveryGate, RoutedFrame,
     };
     use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -851,12 +1072,74 @@ mod tests {
     #[cfg(unix)]
     static LIFECYCLE_FAKE_LOCK: Mutex<()> = Mutex::new(());
 
+    #[test]
+    fn startup_diagnostic_record_enforces_its_privacy_allowlist() {
+        let record = startup_diagnostic_record(
+            "request_wait",
+            "completed",
+            Duration::from_millis(17),
+            3,
+            "none",
+        )
+        .unwrap();
+        let fields = record.as_object().unwrap();
+        assert_eq!(fields.len(), 7);
+        for field in [
+            "kind",
+            "operation",
+            "surface",
+            "duration_ms",
+            "state",
+            "generation",
+            "termination",
+        ] {
+            assert!(fields.contains_key(field));
+        }
+        assert!(startup_diagnostic_record(
+            "/private/vault",
+            "completed",
+            Duration::ZERO,
+            3,
+            "none",
+        )
+        .is_none());
+        assert!(startup_diagnostic_record(
+            "request_wait",
+            "merchant name",
+            Duration::ZERO,
+            3,
+            "none",
+        )
+        .is_none());
+        assert!(startup_diagnostic_record(
+            "request_wait",
+            "completed",
+            Duration::ZERO,
+            3,
+            "/private/vault",
+        )
+        .is_none());
+    }
+
     #[cfg(unix)]
     fn lifecycle_test_policy(_operation: Option<&str>) -> DeadlinePolicy {
         DeadlinePolicy {
             first: Duration::from_millis(20),
             silence: Duration::from_millis(20),
             cap: Duration::from_millis(20),
+        }
+    }
+
+    #[cfg(unix)]
+    fn peer_deadline_policy(operation: Option<&str>) -> DeadlinePolicy {
+        if operation == Some("viva.surface.read") {
+            DeadlinePolicy {
+                first: Duration::from_secs(5),
+                silence: Duration::from_secs(5),
+                cap: Duration::from_secs(5),
+            }
+        } else {
+            lifecycle_test_policy(operation)
         }
     }
 
@@ -893,6 +1176,7 @@ mod tests {
             stdin: Arc::new(Mutex::new(Some(stdin))),
             pending: Arc::clone(&pending),
             closed: Arc::clone(&closed),
+            terminal: Arc::new(Mutex::new(false)),
             generation: 0,
         };
         thread::spawn(move || {
@@ -917,6 +1201,196 @@ mod tests {
             closed.store(true, Ordering::SeqCst);
         });
         Ok(process)
+    }
+
+    #[cfg(unix)]
+    fn spawn_recovery_fake<R: tauri::Runtime>(
+        app: &tauri::AppHandle<R>,
+    ) -> Result<BridgeProcess, String> {
+        let spawn = LIFECYCLE_FAKE_SPAWNS.fetch_add(1, Ordering::SeqCst);
+        let script = if spawn == 0 {
+            "while IFS= read -r line; do :; done"
+        } else {
+            "opened=0; while IFS= read -r line; do id=$(printf '%s\n' \"$line\" | sed -n 's/.*\"request_id\":\"\\([^\"]*\\)\".*/\\1/p'); case \"$line\" in *bridge.open_demo_vault*) sleep 0.2; opened=1;; esac; printf '{\"request_id\":\"%s\",\"ok\":%s}\n' \"$id\" \"$([ \"$opened\" -eq 1 ] && printf true || printf false)\"; done"
+        };
+        let mut child = Command::new("sh")
+            .args(["-c", script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let bridge = BridgeProcess {
+            child: Arc::new(Mutex::new(Some(child))),
+            stdin: Arc::new(Mutex::new(Some(stdin))),
+            pending: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            closed: Arc::new(AtomicBool::new(false)),
+            terminal: Arc::new(Mutex::new(false)),
+            generation: 0,
+        };
+        let reader_bridge = bridge.clone();
+        let app = app.clone();
+        thread::spawn(move || super::route_stdout(app, stdout, reader_bridge));
+        Ok(bridge)
+    }
+
+    #[cfg(unix)]
+    fn spawn_opt_in_packaged<R: tauri::Runtime>(
+        app: &tauri::AppHandle<R>,
+    ) -> Result<BridgeProcess, String> {
+        let binary =
+            std::env::var("ORIONVIVA_PACKAGED_SIDECAR").map_err(|error| error.to_string())?;
+        let mut child = Command::new(binary)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        let stdin = child.stdin.take().ok_or("packaged stdin missing")?;
+        let stdout = child.stdout.take().ok_or("packaged stdout missing")?;
+        let bridge = BridgeProcess {
+            child: Arc::new(Mutex::new(Some(child))),
+            stdin: Arc::new(Mutex::new(Some(stdin))),
+            pending: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            closed: Arc::new(AtomicBool::new(false)),
+            terminal: Arc::new(Mutex::new(false)),
+            generation: 0,
+        };
+        let routed = bridge.clone();
+        let app = app.clone();
+        thread::spawn(move || super::route_stdout(app, stdout, routed));
+        Ok(bridge)
+    }
+
+    #[cfg(unix)]
+    fn packaged_cpu_deadline(_operation: Option<&str>) -> DeadlinePolicy {
+        DeadlinePolicy {
+            first: Duration::from_millis(100),
+            silence: Duration::from_millis(100),
+            cap: Duration::from_millis(100),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn packaged_cpu_bound_open_timeout_settles_peer_and_reaps_generation() {
+        let (Ok(binary), Ok(vault)) = (
+            std::env::var("ORIONVIVA_PACKAGED_SIDECAR"),
+            std::env::var("ORIONVIVA_PACKAGED_SLOW_VAULT"),
+        ) else {
+            return;
+        };
+        assert!(std::path::Path::new(&binary).is_file());
+        assert!(std::path::Path::new(&vault).join("events.jsonl").is_file());
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let app_handle = app.handle().clone();
+        let state = BridgeState {
+            process: Mutex::new(None),
+            active_vault: Mutex::new(ActiveVaultRecord {
+                vault: ActiveVault::None,
+                generation: 0,
+            }),
+            next_generation: AtomicUsize::new(0),
+            read_recovery_claimed: AtomicBool::new(false),
+            recovery_gate: RecoveryGate::new(),
+        };
+        struct StopStateOnDrop<'a>(&'a BridgeState);
+        impl Drop for StopStateOnDrop<'_> {
+            fn drop(&mut self) {
+                if let Ok(mut process) = self.0.process.lock() {
+                    let _ = super::shutdown_current(&mut process);
+                }
+            }
+        }
+        let _stop = StopStateOnDrop(&state);
+        let handshake = serde_json::json!({
+            "protocol": super::BRIDGE_PROTOCOL, "request_id": "packaged-ready",
+            "operation": "bridge.handshake", "payload": {}
+        });
+        let response = super::request_bridge_with(
+            &app_handle,
+            &state,
+            handshake,
+            spawn_opt_in_packaged,
+            super::deadline_policy,
+            || {},
+        )
+        .unwrap();
+        assert_eq!(
+            response.get("ok").and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        let first = state.process.lock().unwrap().as_ref().unwrap().clone();
+        thread::scope(|scope| {
+            let owner = scope.spawn(|| {
+                super::request_bridge_with(
+                    &app_handle,
+                    &state,
+                    serde_json::json!({
+                        "protocol": super::BRIDGE_PROTOCOL, "request_id": "slow-open",
+                        "operation": "bridge.open_vault",
+                        "payload": {"vault_directory": vault,
+                                    "passphrase": "synthetic-packaged-passphrase",
+                                    "create": false}
+                    }),
+                    spawn_opt_in_packaged,
+                    packaged_cpu_deadline,
+                    || {},
+                )
+            });
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !first.pending.lock().unwrap().contains_key("slow-open") {
+                assert!(Instant::now() < deadline);
+                thread::sleep(Duration::from_millis(1));
+            }
+            let peer_frame = serde_json::json!({
+                "protocol": super::BRIDGE_PROTOCOL, "request_id": "queued-peer",
+                "operation": "bridge.handshake", "payload": {}
+            })
+            .to_string();
+            let peer_bridge = first.clone();
+            let peer = scope.spawn(move || {
+                super::request_process(
+                    &peer_bridge,
+                    "queued-peer",
+                    &peer_frame,
+                    super::deadline_policy(Some("bridge.handshake")),
+                )
+            });
+            while !first.pending.lock().unwrap().contains_key("queued-peer") {
+                assert!(Instant::now() < deadline);
+                thread::sleep(Duration::from_millis(1));
+            }
+            let failure = owner.join().unwrap().unwrap_err();
+            assert!(failure.contains("timed out") || failure.contains("maximum running time"));
+            assert!(failure.contains("Outcome unknown"));
+            assert!(peer.join().unwrap().unwrap_err().contains("interrupted"));
+        });
+        assert!(first.status().unwrap().is_some());
+        assert!(*first.terminal.lock().unwrap());
+        assert!(state.process.lock().unwrap().is_none());
+        let response = super::request_bridge_with(
+            &app_handle,
+            &state,
+            serde_json::json!({
+                "protocol": super::BRIDGE_PROTOCOL, "request_id": "replacement-ready",
+                "operation": "bridge.handshake", "payload": {}
+            }),
+            spawn_opt_in_packaged,
+            super::deadline_policy,
+            || {},
+        )
+        .unwrap();
+        assert_eq!(
+            response.get("ok").and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(state.next_generation.load(Ordering::SeqCst), 2);
+        let mut process = state.process.lock().unwrap();
+        super::shutdown_current(&mut process).unwrap();
     }
 
     #[test]
@@ -1067,6 +1541,7 @@ mod tests {
             }),
             next_generation: AtomicUsize::new(0),
             read_recovery_claimed: AtomicBool::new(false),
+            recovery_gate: RecoveryGate::new(),
         };
         let first = serde_json::json!({
             "request_id": "first",
@@ -1111,6 +1586,375 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn explicit_shutdown_of_one_hung_generation_settles_peers_and_reaps_it() {
+        let _serial = LIFECYCLE_FAKE_LOCK.lock().unwrap();
+        LIFECYCLE_FAKE_SPAWNS.store(0, Ordering::SeqCst);
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let mut bridge = spawn_lifecycle_fake(app.handle()).unwrap();
+        bridge.generation = 41;
+        let peer_bridge = bridge.clone();
+        let peer = thread::spawn(move || {
+            super::request_process(
+                &peer_bridge,
+                "peer",
+                "{\"request_id\":\"peer\"}",
+                DeadlinePolicy {
+                    first: Duration::from_secs(5),
+                    silence: Duration::from_secs(5),
+                    cap: Duration::from_secs(5),
+                },
+            )
+        });
+        thread::sleep(Duration::from_millis(10));
+        let timed_out = super::request_process(
+            &bridge,
+            "owner",
+            "{\"request_id\":\"owner\"}",
+            lifecycle_test_policy(None),
+        );
+        assert!(timed_out.unwrap_err().contains("time"));
+        bridge.shutdown().unwrap();
+        assert!(peer.join().unwrap().unwrap_err().contains("interrupted"));
+        assert!(bridge.pending.lock().unwrap().is_empty());
+        assert!(bridge.status().unwrap().is_some(), "sidecar was not reaped");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_eof_terminates_a_live_generation_and_settles_its_peer() {
+        let _serial = LIFECYCLE_FAKE_LOCK.lock().unwrap();
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let mut child = Command::new("sh")
+            .args(["-c", "sleep 0.1; exec 1>&-; exec sleep 3"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let pending = Arc::new(Mutex::new(std::collections::HashMap::new()));
+        let closed = Arc::new(AtomicBool::new(false));
+        let bridge = BridgeProcess {
+            child: Arc::new(Mutex::new(Some(child))),
+            stdin: Arc::new(Mutex::new(Some(stdin))),
+            pending,
+            closed,
+            terminal: Arc::new(Mutex::new(false)),
+            generation: 23,
+        };
+        let peer_bridge = bridge.clone();
+        let peer = thread::spawn(move || {
+            super::request_process(
+                &peer_bridge,
+                "waiting-peer",
+                "{\"request_id\":\"waiting-peer\"}",
+                DeadlinePolicy {
+                    first: Duration::from_secs(5),
+                    silence: Duration::from_secs(5),
+                    cap: Duration::from_secs(5),
+                },
+            )
+        });
+        let reader_bridge = bridge.clone();
+        let reader =
+            thread::spawn(move || super::route_stdout(app.handle().clone(), stdout, reader_bridge));
+        let peer_result = peer.join().unwrap().unwrap_err();
+        assert!(peer_result.contains("closed its output") || peer_result.contains("interrupted"));
+        reader.join().unwrap();
+        assert!(bridge.closed.load(Ordering::SeqCst));
+        assert!(*bridge.terminal.lock().unwrap());
+        assert!(bridge.status().unwrap().is_some());
+        let mut duplicate = bridge.clone();
+        duplicate.shutdown().unwrap();
+        assert!(bridge.pending.lock().unwrap().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn child_crash_settles_all_inflight_peers_on_that_generation() {
+        let _serial = LIFECYCLE_FAKE_LOCK.lock().unwrap();
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let mut child = Command::new("sh")
+            .args(["-c", "sleep 0.1; IFS= read -r line; exit 7"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let bridge = BridgeProcess {
+            child: Arc::new(Mutex::new(Some(child))),
+            stdin: Arc::new(Mutex::new(Some(stdin))),
+            pending: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            closed: Arc::new(AtomicBool::new(false)),
+            terminal: Arc::new(Mutex::new(false)),
+            generation: 24,
+        };
+        let reader_bridge = bridge.clone();
+        let reader =
+            thread::spawn(move || super::route_stdout(app.handle().clone(), stdout, reader_bridge));
+        let peers = thread::scope(|scope| {
+            let requests = ["crash-a", "crash-b"];
+            let tasks = requests.map(|request_id| {
+                let peer = bridge.clone();
+                scope.spawn(move || {
+                    super::request_process(
+                        &peer,
+                        request_id,
+                        &format!("{{\"request_id\":\"{request_id}\"}}"),
+                        DeadlinePolicy {
+                            first: Duration::from_secs(5),
+                            silence: Duration::from_secs(5),
+                            cap: Duration::from_secs(5),
+                        },
+                    )
+                })
+            });
+            tasks.map(|task| task.join().unwrap().unwrap_err())
+        });
+        reader.join().unwrap();
+        assert!(peers
+            .iter()
+            .all(|error| { error.contains("closed its output") || error.contains("interrupted") }));
+        assert!(bridge.closed.load(Ordering::SeqCst));
+        assert!(*bridge.terminal.lock().unwrap());
+        assert!(bridge.pending.lock().unwrap().is_empty());
+        assert_eq!(bridge.status().unwrap().unwrap().code(), Some(7));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn one_timeout_automatically_settles_a_blocked_jobs_read_on_the_same_generation() {
+        let _serial = LIFECYCLE_FAKE_LOCK.lock().unwrap();
+        LIFECYCLE_FAKE_SPAWNS.store(0, Ordering::SeqCst);
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let state = BridgeState {
+            process: Mutex::new(None),
+            active_vault: Mutex::new(ActiveVaultRecord {
+                vault: ActiveVault::None,
+                generation: 0,
+            }),
+            next_generation: AtomicUsize::new(0),
+            read_recovery_claimed: AtomicBool::new(false),
+            recovery_gate: RecoveryGate::new(),
+        };
+        let jobs = serde_json::json!({
+            "request_id": "blocked-jobs",
+            "operation": "viva.surface.read",
+            "payload": {"surface": "jobs", "parameters": {}}
+        });
+        let app_handle = app.handle().clone();
+        let peer =
+            thread::scope(|scope| {
+                let jobs = scope.spawn(|| {
+                    super::request_bridge_with(
+                        &app_handle,
+                        &state,
+                        jobs,
+                        spawn_lifecycle_fake,
+                        peer_deadline_policy,
+                        || {},
+                    )
+                });
+                let deadline = Instant::now() + Duration::from_secs(1);
+                while state.process.lock().unwrap().as_ref().is_none_or(|bridge| {
+                    !bridge.pending.lock().unwrap().contains_key("blocked-jobs")
+                }) {
+                    assert!(Instant::now() < deadline);
+                    thread::sleep(Duration::from_millis(1));
+                }
+                let old = state.process.lock().unwrap().as_ref().unwrap().clone();
+                let owner = serde_json::json!({
+                    "request_id": "timed-out-active",
+                    "operation": "bridge.handshake",
+                    "payload": {}
+                });
+                let failure = super::request_bridge_with(
+                    &app_handle,
+                    &state,
+                    owner,
+                    spawn_lifecycle_fake,
+                    peer_deadline_policy,
+                    || {},
+                )
+                .unwrap_err();
+                assert!(failure.contains("timed out"));
+                (jobs.join().unwrap().unwrap_err(), old)
+            });
+        assert!(peer.0.contains("interrupted"));
+        assert!(peer.1.status().unwrap().is_some());
+        assert!(state.process.lock().unwrap().is_none());
+        assert_eq!(LIFECYCLE_FAKE_SPAWNS.load(Ordering::SeqCst), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn timed_out_write_reports_unknown_outcome_without_spawning_a_replay() {
+        let _serial = LIFECYCLE_FAKE_LOCK.lock().unwrap();
+        LIFECYCLE_FAKE_SPAWNS.store(0, Ordering::SeqCst);
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let state = BridgeState {
+            process: Mutex::new(None),
+            active_vault: Mutex::new(ActiveVaultRecord {
+                vault: ActiveVault::Sample,
+                generation: 1,
+            }),
+            next_generation: AtomicUsize::new(0),
+            read_recovery_claimed: AtomicBool::new(false),
+            recovery_gate: RecoveryGate::new(),
+        };
+        let failure = super::request_bridge_with(
+            app.handle(),
+            &state,
+            serde_json::json!({
+                "request_id": "uncertain-upload",
+                "operation": "viva.documents.upload",
+                "payload": {"path": "synthetic.pdf"}
+            }),
+            spawn_lifecycle_fake,
+            lifecycle_test_policy,
+            || {},
+        )
+        .unwrap_err();
+        assert!(failure.contains("Outcome unknown"));
+        assert_eq!(LIFECYCLE_FAKE_SPAWNS.load(Ordering::SeqCst), 1);
+        assert!(state.process.lock().unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replacement_waits_for_one_exact_reopen_before_priority_and_jobs_reads() {
+        let _serial = LIFECYCLE_FAKE_LOCK.lock().unwrap();
+        LIFECYCLE_FAKE_SPAWNS.store(0, Ordering::SeqCst);
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let app_handle = app.handle().clone();
+        let mut first = spawn_recovery_fake(&app_handle).unwrap();
+        first.generation = 1;
+        let state = BridgeState {
+            process: Mutex::new(Some(first)),
+            active_vault: Mutex::new(ActiveVaultRecord {
+                vault: ActiveVault::Sample,
+                generation: 1,
+            }),
+            next_generation: AtomicUsize::new(1),
+            read_recovery_claimed: AtomicBool::new(false),
+            recovery_gate: RecoveryGate::new(),
+        };
+        thread::scope(|scope| {
+            let (claimed_tx, claimed_rx) = mpsc::channel();
+            let (release_tx, release_rx) = mpsc::channel();
+            let state_ref = &state;
+            let handle_ref = &app_handle;
+            let jobs = scope.spawn(move || {
+                super::request_bridge_with(
+                    handle_ref,
+                    state_ref,
+                    serde_json::json!({
+                        "request_id": "old-jobs",
+                        "operation": "viva.surface.read",
+                        "payload": {"surface": "jobs", "parameters": {}}
+                    }),
+                    spawn_recovery_fake,
+                    peer_deadline_policy,
+                    || {
+                        claimed_tx.send(()).unwrap();
+                        release_rx.recv().unwrap();
+                    },
+                )
+            });
+            let deadline = Instant::now() + Duration::from_secs(1);
+            while state
+                .process
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_none_or(|bridge| !bridge.pending.lock().unwrap().contains_key("old-jobs"))
+            {
+                assert!(Instant::now() < deadline);
+                thread::sleep(Duration::from_millis(1));
+            }
+            let owner_failure = super::request_bridge_with(
+                &app_handle,
+                &state,
+                serde_json::json!({
+                    "request_id": "owner-timeout",
+                    "operation": "bridge.handshake",
+                    "payload": {}
+                }),
+                spawn_recovery_fake,
+                peer_deadline_policy,
+                || {},
+            )
+            .unwrap_err();
+            assert!(owner_failure.contains("timed out"));
+            claimed_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+            let priority = scope.spawn(move || {
+                super::request_bridge_with(
+                    handle_ref,
+                    state_ref,
+                    serde_json::json!({
+                        "request_id": "new-priority",
+                        "operation": "viva.surface.read",
+                        "payload": {"surface": "overview_accounts", "parameters": {}}
+                    }),
+                    spawn_recovery_fake,
+                    peer_deadline_policy,
+                    || {},
+                )
+            });
+            thread::sleep(Duration::from_millis(50));
+            assert!(!priority.is_finished());
+            release_tx.send(()).unwrap();
+            let priority = priority.join().unwrap().unwrap();
+            assert_eq!(
+                priority.get("ok").and_then(serde_json::Value::as_bool),
+                Some(true)
+            );
+            let secondary = super::request_bridge_with(
+                &app_handle,
+                &state,
+                serde_json::json!({
+                    "request_id": "new-secondary",
+                    "operation": "viva.surface.read",
+                    "payload": {"surface": "activity", "parameters": {}}
+                }),
+                spawn_recovery_fake,
+                peer_deadline_policy,
+                || {},
+            )
+            .unwrap();
+            assert_eq!(
+                secondary.get("ok").and_then(serde_json::Value::as_bool),
+                Some(true)
+            );
+            assert_eq!(
+                jobs.join()
+                    .unwrap()
+                    .unwrap()
+                    .get("ok")
+                    .and_then(serde_json::Value::as_bool),
+                Some(true)
+            );
+        });
+        assert_eq!(LIFECYCLE_FAKE_SPAWNS.load(Ordering::SeqCst), 2);
+        assert_eq!(state.active_vault.lock().unwrap().generation, 2);
+        state.shutdown().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn old_supervisor_failure_cannot_clear_identity_recovered_in_the_cleanup_gap() {
         let _serial = LIFECYCLE_FAKE_LOCK.lock().unwrap();
         LIFECYCLE_FAKE_SPAWNS.store(0, Ordering::SeqCst);
@@ -1125,6 +1969,7 @@ mod tests {
             }),
             next_generation: AtomicUsize::new(0),
             read_recovery_claimed: AtomicBool::new(false),
+            recovery_gate: RecoveryGate::new(),
         };
         let request = serde_json::json!({
             "request_id": "old-open",
@@ -1260,6 +2105,7 @@ pub fn run() {
             }),
             next_generation: AtomicUsize::new(0),
             read_recovery_claimed: AtomicBool::new(false),
+            recovery_gate: RecoveryGate::new(),
         })
         .invoke_handler(tauri::generate_handler![
             bridge_request,

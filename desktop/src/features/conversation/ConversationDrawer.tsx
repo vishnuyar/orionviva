@@ -5,9 +5,9 @@ import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChan
 import { conversationEvidenceFigure } from "../../surface/evidence";
 import { Questions } from "./Questions";
 import { outcomePresentation } from "./questionPresentation";
-import type { ActionOutcome, AskActionState, ConversationData, ConversationGoalDraft, ConversationTurn, DeclineReason, FeatureResult, MissingAnswerInput, QuestionActionState, TurnView } from "../../surface/types";
+import type { ActionOutcome, AskActionState, AskContextMode, ConversationData, ConversationGoalDraft, ConversationTurn, DeclineReason, FeatureResult, MissingAnswerInput, QuestionActionState, TurnView } from "../../surface/types";
 
-export type AskControls = { state: AskActionState; onAsk: (question: string, mirrored: boolean, planRequest?: boolean) => void };
+export type AskControls = { state: AskActionState; onAsk: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: AskContextMode) => void };
 export type ConversationControls = {
   state: QuestionActionState;
   onAnswer: (questionId: string, said: string) => void;
@@ -17,6 +17,7 @@ export type ConversationControls = {
 
 function AskBox({ ask }: { ask: AskControls }) {
   const [question, setQuestion] = useState("");
+  const [contextMode, setContextMode] = useState<AskContextMode>("new_question");
   const [submitted, setSubmitted] = useState<{ question: string; observedWorking: boolean } | null>(null);
   const working = ask.state.state === "working";
   const settled = ask.state.state === "settled" ? ask.state : null;
@@ -27,9 +28,13 @@ function AskBox({ ask }: { ask: AskControls }) {
       setSubmitted({ ...submitted, observedWorking: true });
       return;
     }
-    if (settled?.authoritative === true && settled.result.state === "settled" && settled.result.outcome.kind === "completed"
+    if (settled?.authoritative === true && settled.result.state === "settled"
+        && (settled.result.outcome.kind === "completed" || settled.result.outcome.kind === "refused")
         && submitted?.observedWorking && settled.question === submitted.question && question === submitted.question) {
-      setQuestion("");
+      setContextMode("new_question");
+      if (settled.result.outcome.kind === "completed") {
+        setQuestion("");
+      }
       setSubmitted(null);
     }
   }, [ask.state, question, settled, submitted]);
@@ -37,13 +42,19 @@ function AskBox({ ask }: { ask: AskControls }) {
     if (working || !question.trim()) return;
     const exact = question.trim();
     setSubmitted({ question: exact, observedWorking: false });
-    ask.onAsk(exact, true, planRequest);
+    ask.onAsk(exact, true, planRequest, contextMode);
   }
   return <section className="conversation-ask" aria-labelledby="conversation-ask-title">
     <h3 id="conversation-ask-title">Ask about your money</h3>
     <form onSubmit={(event) => { event.preventDefault(); send(); }}>
       <label htmlFor="conversation-ask-question">Your question</label>
       <textarea id="conversation-ask-question" value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} />
+      <fieldset className="conversation-context-choice" aria-describedby="conversation-context-help">
+        <legend>Use earlier questions?</legend>
+        <label><input type="radio" name="ask-context-mode" value="new_question" checked={contextMode === "new_question"} onChange={() => setContextMode("new_question")} /> New question</label>
+        <label><input type="radio" name="ask-context-mode" value="follow_up" checked={contextMode === "follow_up"} onChange={() => setContextMode("follow_up")} /> Follow-up</label>
+      </fieldset>
+      <p className="conversation-context-help" id="conversation-context-help">New question excludes earlier Ask text. Follow-up uses questions and answers since your last New question.</p>
       <button className="primary-button" type="submit" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : undefined}>Ask</button>
       <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : undefined} onClick={() => send(true)}>Draft a save-up plan</button>
     </form>
@@ -129,7 +140,10 @@ function Timeline({ data, controls, onOpenFigure, onReviewPlan }: { data: Conver
   return <section className="conversation-thread" aria-labelledby="conversation-turns-title">
     <h3 id="conversation-turns-title">Conversation</h3>
     <ol>{data.turns.map((turn) => <li className={`conversation-turn ${turn.outcome}`} key={turn.id}>
-      <div className="conversation-turn-meta"><strong>{turn.kind === "ask" ? "You asked" : turn.kind === "answer" ? "You answered" : turn.kind === "decline" ? "You set aside" : "You confirmed"}</strong><span>{outcomeLabels[turn.outcome]}</span>{turn.occurredAt ? <time dateTime={turn.occurredAt}>{turn.occurredAt}</time> : null}</div>
+      <div className="conversation-turn-meta">
+        {turn.kind === "ask" && turn.contextMode === "new_question" ? <span className="conversation-context-boundary">New question</span> : null}
+        <div className="conversation-turn-meta-main"><strong>{turn.kind === "ask" ? "You asked" : turn.kind === "answer" ? "You answered" : turn.kind === "decline" ? "You set aside" : "You confirmed"}</strong>{turn.kind === "ask" && turn.contextMode !== "new_question" ? <span>{turn.contextMode === "follow_up" ? "Follow-up" : "Earlier conversation"}</span> : null}<span>{outcomeLabels[turn.outcome]}</span>{turn.occurredAt ? <time dateTime={turn.occurredAt}>{turn.occurredAt}</time> : null}</div>
+      </div>
       <p>{turn.prompt}</p>
       {turn.said ? <blockquote>{turn.said}</blockquote> : null}
       {turn.answer ? <AnswerDetail answer={turn.answer} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} /> : turn.message ? <p className="conversation-answer-text">{turn.message}</p> : null}

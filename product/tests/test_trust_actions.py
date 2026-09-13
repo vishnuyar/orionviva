@@ -8,6 +8,7 @@ money.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -31,6 +32,7 @@ def _vault(tmp_path: Path) -> Vault:
                                           "statement", 0.9, "2026-07-01"))
     vault.ledger.append(read_recorded("d" * 64, "a-pinned-1", "p", "text", "{}",
                                       0.25, 1, 2, True, None, "2026-07-01"))
+    vault.synchronize_read_store()
     return vault
 
 
@@ -132,6 +134,348 @@ def test_paid_maintenance_reports_the_free_plan_and_can_stop_before_spend(
     assert calls == [True]
     assert record.state.value == "cancelled"
     assert record.completed == 1 and record.step == "planned"
+
+
+def test_paid_maintenance_waits_for_forked_events_to_reach_activity(
+        tmp_path: Path, monkeypatch):
+    import threading
+    import viva.agent.run as agent
+
+    vault = _vault(tmp_path)
+    jobs = JobRegistry()
+    actions = TrustActions(vault, jobs)
+    job = jobs.open("viva.maintenance.run", ("planned", "spent"))
+    committed = threading.Event()
+    release = threading.Event()
+    original_sync = vault.synchronize_read_store
+
+    def delayed_sync(**kwargs):
+        assert release.wait(2)
+        return original_sync(**kwargs)
+
+    def wake(worker, **kwargs):
+        if not kwargs["dry_run"]:
+            worker.ledger.append(document_captured(
+                "e" * 64, "synthetic.pdf", 1, "statement", 0.9, "2026-07-02"))
+            committed.set()
+        return SimpleNamespace(could_not_spend=False, calls_spent=0)
+
+    monkeypatch.setattr(agent, "wake", wake)
+    monkeypatch.setattr(vault, "synchronize_read_store", delayed_sync)
+    thread = threading.Thread(target=actions._spend_in_background, args=(job, 0))
+    thread.start()
+    try:
+        assert committed.wait(2)
+        assert jobs.record(job.job_id).state.value == "running"
+        assert jobs.record(job.job_id).step == "planned"
+        with pytest.raises(BridgeRequestError, match="not caught up"):
+            OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+    finally:
+        release.set()
+        thread.join(2)
+    assert not thread.is_alive()
+    assert jobs.record(job.job_id).state.value == "completed"
+    assert OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+
+
+def test_paid_maintenance_reports_saved_events_when_read_store_cannot_catch_up(
+        tmp_path: Path, monkeypatch):
+    import viva.agent.run as agent
+    import viva.desktop_bridge.trust_actions as trust
+
+    vault = _vault(tmp_path)
+    jobs = JobRegistry()
+    actions = TrustActions(vault, jobs)
+    job = jobs.open("viva.maintenance.run", ("planned", "spent"))
+    before = vault.ledger.store.authenticated_identity()
+
+    def wake(worker, **kwargs):
+        if not kwargs["dry_run"]:
+            worker.ledger.append(document_captured(
+                "e" * 64, "synthetic.pdf", 1, "statement", 0.9, "2026-07-02"))
+        return SimpleNamespace(could_not_spend=False, calls_spent=0)
+
+    monkeypatch.setattr(agent, "wake", wake)
+    monkeypatch.setattr(trust, "READ_VISIBILITY_TIMEOUT", 0.02)
+    monkeypatch.setattr(vault, "synchronize_read_store", lambda **_kwargs: "stale")
+    actions._spend_in_background(job, 0)
+
+    record = jobs.record(job.job_id)
+    assert vault.ledger.store.authenticated_identity() != before
+    assert record.state.value == "failed"
+    assert record.completed == 1 and record.step == "planned"
+    assert "may have been saved" in record.message
+    with pytest.raises(BridgeRequestError, match="not caught up"):
+        OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+
+    # The failed job never reruns its committed work. Disposable SQL can still
+    # recover in the background after its temporary failure clears.
+    monkeypatch.setattr(vault, "synchronize_read_store",
+                        Vault.synchronize_read_store.__get__(vault))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+            break
+        except BridgeRequestError:
+            time.sleep(0.01)
+    else:
+        pytest.fail("read store did not recover after failed maintenance")
+
+
+def test_visibility_wait_rechecks_a_newer_canonical_write(tmp_path: Path, monkeypatch):
+    vault = _vault(tmp_path)
+    original_sync = vault.synchronize_read_store
+    writes = 0
+
+    def write_during_first_publication(**kwargs):
+        nonlocal writes
+        state = original_sync(**kwargs)
+        if writes == 0:
+            writes += 1
+            vault.fork_for_background().ledger.append(document_captured(
+                "e" * 64, "synthetic.pdf", 1, "statement", 0.9, "2026-07-02"))
+        return state
+
+    monkeypatch.setattr(vault, "synchronize_read_store", write_during_first_publication)
+    vault._read_store_visibility_held = True
+    assert vault.wait_for_read_store(timeout=2)
+    assert writes == 1
+    assert vault.read_store_lifecycle == "equal"
+    assert OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+
+
+def test_cancel_after_canonical_commit_does_not_undo_or_repeat_work(
+        tmp_path: Path, monkeypatch):
+    import threading
+    import viva.agent.run as agent
+
+    vault = _vault(tmp_path)
+    jobs = JobRegistry()
+    actions = TrustActions(vault, jobs)
+    job = jobs.open("viva.maintenance.run", ("planned", "spent"))
+    waiting = threading.Event()
+    release = threading.Event()
+    original_sync = vault.synchronize_read_store
+    paid = 0
+
+    def delayed_sync(**kwargs):
+        waiting.set()
+        assert release.wait(2)
+        return original_sync(**kwargs)
+
+    def wake(worker, **kwargs):
+        nonlocal paid
+        if not kwargs["dry_run"]:
+            paid += 1
+            worker.ledger.append(document_captured(
+                "e" * 64, "synthetic.pdf", 1, "statement", 0.9, "2026-07-02"))
+        return SimpleNamespace(could_not_spend=False, calls_spent=0)
+
+    monkeypatch.setattr(agent, "wake", wake)
+    monkeypatch.setattr(vault, "synchronize_read_store", delayed_sync)
+    thread = threading.Thread(target=actions._spend_in_background, args=(job, 0))
+    thread.start()
+    try:
+        assert waiting.wait(2)
+        jobs.cancel(job.job_id)
+    finally:
+        release.set()
+        thread.join(2)
+    assert not thread.is_alive()
+    assert jobs.record(job.job_id).state.value == "cancelled"
+    assert paid == 1
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            assert OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+            break
+        except BridgeRequestError:
+            time.sleep(0.01)
+    else:
+        pytest.fail("read store did not recover after cancellation")
+
+
+def test_failed_paid_wake_releases_visibility_fence_after_recovery(
+        tmp_path: Path, monkeypatch):
+    import viva.agent.run as agent
+
+    vault = _vault(tmp_path)
+    jobs = JobRegistry()
+    actions = TrustActions(vault, jobs)
+    job = jobs.open("viva.maintenance.run", ("planned", "spent"))
+
+    def wake(worker, **kwargs):
+        if not kwargs["dry_run"]:
+            worker.ledger.append(document_captured(
+                "e" * 64, "synthetic.pdf", 1, "statement", 0.9, "2026-07-02"))
+            raise RuntimeError("synthetic paid-wake failure")
+        return SimpleNamespace(could_not_spend=False, calls_spent=0)
+
+    monkeypatch.setattr(agent, "wake", wake)
+    with pytest.raises(RuntimeError, match="synthetic paid-wake failure"):
+        actions._spend_in_background(job, 0)
+    assert jobs.record(job.job_id).state.value == "failed"
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            assert OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+            break
+        except BridgeRequestError:
+            time.sleep(0.01)
+    else:
+        pytest.fail("read store did not recover after paid-wake failure")
+
+
+def test_failed_job_keeps_activity_closed_during_delayed_recovery(
+        tmp_path: Path, monkeypatch):
+    import threading
+    import viva.agent.run as agent
+    import viva.desktop_bridge.trust_actions as trust
+
+    vault = _vault(tmp_path)
+    jobs = JobRegistry()
+    actions = TrustActions(vault, jobs)
+    job = jobs.open("viva.maintenance.run", ("planned", "spent"))
+    recovering = threading.Event()
+    release = threading.Event()
+    original_sync = vault.synchronize_read_store
+
+    def sync(**kwargs):
+        if jobs.record(job.job_id).state.value != "failed":
+            return "stale"
+        recovering.set()
+        assert release.wait(2)
+        return original_sync(**kwargs)
+
+    def wake(worker, **kwargs):
+        if not kwargs["dry_run"]:
+            worker.ledger.append(document_captured(
+                "e" * 64, "synthetic.pdf", 1, "statement", 0.9, "2026-07-02"))
+        return SimpleNamespace(could_not_spend=False, calls_spent=0)
+
+    monkeypatch.setattr(agent, "wake", wake)
+    monkeypatch.setattr(trust, "READ_VISIBILITY_TIMEOUT", 0.02)
+    monkeypatch.setattr(vault, "synchronize_read_store", sync)
+    actions._spend_in_background(job, 0)
+    try:
+        assert recovering.wait(2)
+        # A late worker reply may advertise its earlier generation as ready.
+        vault.read_store_lifecycle = "equal"
+        with pytest.raises(BridgeRequestError, match="not caught up"):
+            OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+    finally:
+        release.set()
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            assert OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+            break
+        except BridgeRequestError:
+            time.sleep(0.01)
+    else:
+        pytest.fail("read store did not recover")
+
+
+def test_old_recovery_cannot_release_a_new_paid_jobs_read_fence(
+        tmp_path: Path, monkeypatch):
+    import threading
+    import viva.agent.run as agent
+    import viva.desktop_bridge.trust_actions as trust
+
+    vault = _vault(tmp_path)
+    jobs = JobRegistry()
+    actions = TrustActions(vault, jobs)
+    old = jobs.open("viva.maintenance.run", ("planned", "spent"))
+    recovering = threading.Event()
+    release_recovery = threading.Event()
+    new_paid = threading.Event()
+    release_new = threading.Event()
+    original_sync = vault.synchronize_read_store
+    paid = 0
+
+    def sync(**kwargs):
+        if jobs.record(old.job_id).state.value != "failed":
+            return "stale"
+        if not recovering.is_set():
+            recovering.set()
+            assert release_recovery.wait(2)
+        return original_sync(**kwargs)
+
+    def wake(worker, **kwargs):
+        nonlocal paid
+        if not kwargs["dry_run"]:
+            paid += 1
+            if paid == 2:
+                new_paid.set()
+                assert release_new.wait(2)
+            worker.ledger.append(document_captured(
+                ("e" if paid == 1 else "f") * 64,
+                "synthetic.pdf", 1, "statement", 0.9, "2026-07-02"))
+        return SimpleNamespace(could_not_spend=False, calls_spent=0)
+
+    monkeypatch.setattr(agent, "wake", wake)
+    monkeypatch.setattr(trust, "READ_VISIBILITY_TIMEOUT", 0.02)
+    monkeypatch.setattr(vault, "synchronize_read_store", sync)
+    actions._spend_in_background(old, 0)
+    assert recovering.wait(2)
+    monkeypatch.setattr(trust, "READ_VISIBILITY_TIMEOUT", 2)
+    new = jobs.open("viva.maintenance.run", ("planned", "spent"))
+    thread = threading.Thread(target=actions._spend_in_background, args=(new, 0))
+    thread.start()
+    try:
+        assert new_paid.wait(2)
+        release_recovery.set()
+        time.sleep(0.05)
+        vault.read_store_lifecycle = "equal"
+        with pytest.raises(BridgeRequestError, match="not caught up"):
+            OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+    finally:
+        release_new.set()
+        thread.join(2)
+    assert not thread.is_alive()
+    assert paid == 2
+    assert jobs.record(new.job_id).state.value == "completed"
+    assert OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+
+
+def test_visibility_serial_change_is_atomic_with_old_waiter_release(
+        tmp_path: Path, monkeypatch):
+    import threading
+
+    vault = _vault(tmp_path)
+    old_serial = vault.hold_read_store_visibility()
+    entered = threading.Event()
+    release = threading.Event()
+    original_source = vault.read_store.authenticated_source_identity
+
+    def delayed_source(revision):
+        entered.set()
+        assert release.wait(2)
+        return original_source(revision)
+
+    monkeypatch.setattr(vault.read_store, "authenticated_source_identity",
+                        delayed_source)
+    finished = threading.Event()
+
+    def old_waiter():
+        assert vault.wait_for_read_store(timeout=2, visibility_serial=old_serial)
+        finished.set()
+
+    thread = threading.Thread(target=old_waiter)
+    thread.start()
+    try:
+        assert entered.wait(2)
+        new_serial = vault.hold_read_store_visibility()
+    finally:
+        release.set()
+        thread.join(2)
+    assert finished.is_set()
+    assert vault.holds_read_store_visibility(new_serial)
+    with pytest.raises(BridgeRequestError, match="not caught up"):
+        OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
+    assert vault.wait_for_read_store(timeout=2, visibility_serial=new_serial)
+    assert OpenedVaultSurfaceProvider(vault).read_surface("activity", {"limit": 10})
 
 
 def test_the_reply_carries_the_whole_run_rather_than_a_summary(tmp_path: Path):

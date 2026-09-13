@@ -5,11 +5,269 @@ import { act, fireEvent, render, waitFor, createRef, userEvent,
   installCapturedAnimationFrames, activityPayload, trustPayload, sampleReads,
   sampleFrame, installSampleBridge, openSample } from "./App.testSupport";
 import { restoreAccountIndexFocus } from "./App";
+import type { BridgeRequest } from "../bridge/contracts";
 
 beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("shell", () => {
+  it.each(["Overview", "Accounts"] as const)("keeps %s priority retry focus, live text, and a retained stale picture", async (destination) => {
+    const user = userEvent.setup();
+    const restore = installSampleBridge();
+    const bridge = window.orionVivaBridge!;
+    const originalRequest = bridge.request.bind(bridge);
+    let priorityReads = 0;
+    bridge.request = async <T,>(frame: BridgeRequest) => {
+      const reply = await originalRequest<T>(frame);
+      if (frame.operation !== "viva.surface.read" || frame.payload.surface !== "overview_accounts" || !reply.ok) return reply;
+      priorityReads += 1;
+      if (priorityReads === 3) return reply;
+      return { ...reply, result: { ...(reply.result as Record<string, unknown>), data: priorityReads === 1
+        ? { ...((reply.result as { data: Record<string, unknown> }).data), state: "stale", freshness: "stale", lifecycle: "behind" }
+        : { state: "degraded", freshness: "unavailable", lifecycle: "degraded", revision: "", overview: null, accounts: null, error: "read_failed" } } as T };
+    };
+    const view = render(<App />);
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
+    if (destination === "Accounts") fireEvent.click(view.getByRole("button", { name: "Accounts" }));
+    const retry = await view.findByRole("button", { name: "Retry" });
+    const status = retry.closest(".priority-read-callout")?.querySelector('[role="status"][aria-live="polite"]');
+    expect(status).toHaveTextContent("Showing the last complete read");
+    expect(status).not.toContainElement(retry);
+    expect(view.getByRole("heading", { name: destination === "Overview" ? "Your financial picture" : "Accounts", level: 1 })).toBeInTheDocument();
+    retry.focus();
+    await user.keyboard(" ");
+    await waitFor(() => expect(status).toHaveTextContent("still could not be brought up to date"));
+    expect(retry).toHaveFocus();
+    expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(view.getByText("Your financial picture is up to date.")).toBeInTheDocument());
+    expect(priorityReads).toBe(3);
+    restore();
+  });
+
+  it.each(["Overview", "Accounts"] as const)("does not claim a retained %s picture after first-open degraded retry", async (destination) => {
+    const user = userEvent.setup();
+    const restore = installSampleBridge();
+    const bridge = window.orionVivaBridge!;
+    const originalRequest = bridge.request.bind(bridge);
+    let priorities = 0;
+    bridge.request = async <T,>(frame: BridgeRequest) => {
+      const reply = await originalRequest<T>(frame);
+      if (frame.operation !== "viva.surface.read" || frame.payload.surface !== "overview_accounts" || !reply.ok) return reply;
+      priorities += 1;
+      return { ...reply, result: { ...(reply.result as Record<string, unknown>), data: {
+        state: "degraded", freshness: "unavailable", lifecycle: "degraded", revision: "", overview: null, accounts: null, error: "read_failed",
+      } } as T };
+    };
+    const view = render(<App />);
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    let retry = await view.findByRole("button", { name: "Retry" });
+    if (destination === "Accounts") fireEvent.click(view.getByRole("button", { name: "Accounts" }));
+    retry = await view.findByRole("button", { name: "Retry" });
+    retry.focus();
+    await user.keyboard("{Enter}");
+    const status = retry.closest(".priority-read-callout")?.querySelector('[role="status"][aria-live="polite"]');
+    await waitFor(() => expect(status).toHaveTextContent("No complete picture is available yet."));
+    expect(status).not.toHaveTextContent("last complete read remains shown");
+    expect(retry).toHaveFocus();
+    expect(view.container.querySelector(".priority-destination")).toHaveTextContent("unavailable");
+    expect(priorities).toBe(2);
+    restore();
+  });
+
+  it.each(["partial", "needs_input"] as const)("announces %s priority content on Overview and Accounts", async (state) => {
+    const raw = sampleReads.overview?.result.data as Record<string, unknown>;
+    const restore = installSampleBridge({ overview: { ...raw, state, issues: [{ code: "named_issue", message: "A named part needs attention." }] } });
+    const view = render(<App />);
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
+    const expected = state === "partial" ? "Some" : "need";
+    expect(view.getByRole("heading", { name: "Your financial picture", level: 1 })).toBeInTheDocument();
+    expect(view.container.querySelector(".priority-destination")).toHaveTextContent(expected);
+    fireEvent.click(view.getByRole("button", { name: "Accounts" }));
+    expect(view.getByRole("heading", { name: "Accounts", level: 1 })).toBeInTheDocument();
+    expect(view.container.querySelector(".priority-destination")).toHaveTextContent(expected);
+    restore();
+  });
+
+  it.each([320, 620])("keeps the priority Retry reachable at %dpx", async (width) => {
+    installResponsiveMatchMedia(width);
+    const restore = installSampleBridge();
+    const bridge = window.orionVivaBridge!;
+    const originalRequest = bridge.request.bind(bridge);
+    bridge.request = async <T,>(frame: BridgeRequest) => {
+      const reply = await originalRequest<T>(frame);
+      if (frame.operation !== "viva.surface.read" || frame.payload.surface !== "overview_accounts" || !reply.ok) return reply;
+      return { ...reply, result: { ...(reply.result as Record<string, unknown>), data: {
+        ...((reply.result as { data: Record<string, unknown> }).data), state: "stale", freshness: "stale", lifecycle: "behind",
+      } } as T };
+    };
+    const view = render(<App />);
+    fireEvent.click(view.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    const retry = await view.findByRole("button", { name: "Retry" });
+    expect(retry.closest(".content-wrap")).not.toBeNull();
+    expect(retry.closest(".sidebar")).toBeNull();
+    expect(retry).toBeVisible();
+    expect(retry.closest('[aria-live="polite"]')).toBeNull();
+    restore();
+  });
+  it.each([
+    ["documents", "Statements", "Statements & documents"],
+    ["review", /^Review,/, "Review"],
+    ["trust", "Trust & settings", "Trust & settings"],
+    ["activity", "Transactions", "Transactions"],
+    ["plans", "Plans", "Plans"],
+  ] as const)("announces and keyboard-retries a failed %s destination", async (surface, navLabel, heading) => {
+    const user = userEvent.setup();
+    const restore = installSampleBridge();
+    const bridge = window.orionVivaBridge!;
+    const originalRequest = bridge.request.bind(bridge);
+    let fail = false;
+    bridge.request = async (frame) => {
+      if (frame.operation === "viva.surface.read" && frame.payload.surface === surface && fail) {
+        fail = false;
+        throw new Error("synthetic destination failure");
+      }
+      return originalRequest(frame);
+    };
+    const view = render(<App />);
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
+    fail = true;
+    fireEvent.click(await view.findByRole("button", { name: navLabel }));
+    const retry = await view.findByRole("button", { name: "Retry this screen" });
+    expect(retry.closest(".feature-panel")?.querySelector('[role="status"][aria-live="polite"]')).toHaveTextContent("No previous view is available");
+    retry.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(retry).not.toBeInTheDocument());
+    await waitFor(() => expect(view.getByRole("heading", { name: heading, level: 1 })).toHaveFocus());
+    restore();
+  });
+
+  it("announces a destination failure and offers a keyboard retry without blanking Overview", async () => {
+    const user = userEvent.setup();
+    const restore = installSampleBridge();
+    const bridge = window.orionVivaBridge!;
+    const originalRequest = bridge.request.bind(bridge);
+    let failActivity = false;
+    bridge.request = async (frame) => {
+      if (frame.operation === "viva.surface.read" && frame.payload.surface === "activity" && failActivity) {
+        failActivity = false;
+        throw new Error("synthetic destination failure");
+      }
+      return originalRequest(frame);
+    };
+    const view = render(<App />);
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
+    failActivity = true;
+    fireEvent.click(view.getByRole("button", { name: "Transactions" }));
+    const retry = await view.findByRole("button", { name: "Retry this screen" });
+    expect(retry.closest(".feature-panel")?.querySelector('[role="status"]')).toHaveTextContent("No previous view is available");
+    retry.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(retry).not.toBeInTheDocument());
+    await waitFor(() => expect(view.getByRole("heading", { name: "Transactions", level: 1 })).toHaveFocus());
+    fireEvent.click(view.getByRole("button", { name: "Overview" }));
+    expect(view.getByText("USD 17,486.45")).toBeInTheDocument();
+    restore();
+  });
+  it("keeps retry focus and a concise announcement across a failed Space-key retry", async () => {
+    const user = userEvent.setup();
+    const restore = installSampleBridge();
+    const bridge = window.orionVivaBridge!;
+    const originalRequest = bridge.request.bind(bridge);
+    let remainingFailures = 0;
+    bridge.request = async (frame) => {
+      if (frame.operation === "viva.surface.read" && frame.payload.surface === "activity" && remainingFailures > 0) {
+        remainingFailures -= 1;
+        throw new Error("synthetic destination failure");
+      }
+      return originalRequest(frame);
+    };
+    const view = render(<App />);
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
+    fireEvent.click(view.getByRole("button", { name: "Transactions" }));
+    await waitFor(() => expect(view.getByRole("heading", { name: "Transactions", level: 1 })).toBeInTheDocument());
+    fireEvent.click(view.getByRole("button", { name: "Overview" }));
+    remainingFailures = 2;
+    fireEvent.click(view.getByRole("button", { name: "Transactions" }));
+    const retry = await view.findByRole("button", { name: "Retry this screen" });
+    const announcement = retry.closest(".feature-panel")?.querySelector('[role="status"]');
+    expect(announcement).toHaveTextContent("last complete view remains");
+    expect(announcement).not.toContainElement(retry);
+    retry.focus();
+    await user.keyboard(" ");
+    await waitFor(() => expect(retry).toHaveAttribute("aria-disabled", "false"));
+    expect(retry).toBeInTheDocument();
+    expect(retry).toHaveFocus();
+    expect(announcement).toHaveTextContent("could not be refreshed");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(retry).not.toBeInTheDocument());
+    await waitFor(() => expect(view.getByRole("heading", { name: "Transactions", level: 1 })).toHaveFocus());
+    restore();
+  });
+  it("moves focus to the current heading when navigation makes a retry obsolete", async () => {
+    const restore = installSampleBridge();
+    const bridge = window.orionVivaBridge!;
+    const originalRequest = bridge.request.bind(bridge);
+    let failActivity = false;
+    let blockRetry = false;
+    let releaseRetry = () => {};
+    const retryGate = new Promise<void>((resolve) => { releaseRetry = resolve; });
+    bridge.request = async (frame) => {
+      if (frame.operation === "viva.surface.read" && frame.payload.surface === "activity") {
+        if (failActivity) { failActivity = false; throw new Error("synthetic destination failure"); }
+        if (blockRetry) await retryGate;
+      }
+      return originalRequest(frame);
+    };
+    const view = render(<App />);
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
+    failActivity = true;
+    fireEvent.click(view.getByRole("button", { name: "Transactions" }));
+    const retry = await view.findByRole("button", { name: "Retry this screen" });
+    retry.focus();
+    blockRetry = true;
+    fireEvent.click(retry);
+    await waitFor(() => expect(retry).toHaveAttribute("aria-disabled", "true"));
+    expect(retry).toHaveFocus();
+    fireEvent.click(view.getByRole("button", { name: "Overview" }));
+    releaseRetry();
+    await waitFor(() => expect(view.getByRole("heading", { name: "Your financial picture", level: 1 })).toHaveFocus());
+    restore();
+  });
+  it.each([320, 620])("keeps the destination retry reachable at %dpx", async (width) => {
+    installResponsiveMatchMedia(width);
+    const restore = installSampleBridge();
+    const bridge = window.orionVivaBridge!;
+    const originalRequest = bridge.request.bind(bridge);
+    let failActivity = false;
+    bridge.request = async (frame) => {
+      if (frame.operation === "viva.surface.read" && frame.payload.surface === "activity" && failActivity) {
+        failActivity = false;
+        throw new Error("synthetic destination failure");
+      }
+      return originalRequest(frame);
+    };
+    const view = render(<App />);
+    fireEvent.click(view.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
+    failActivity = true;
+    fireEvent.click(view.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(view.getByRole("button", { name: "Transactions" }));
+    const retry = await view.findByRole("button", { name: "Retry this screen" });
+    expect(retry.closest(".content-wrap")).not.toBeNull();
+    expect(retry.closest(".sidebar")).toBeNull();
+    expect(retry).toBeVisible();
+    expect(retry).not.toHaveAttribute("aria-disabled", "true");
+    restore();
+  });
   it("reaches and opens the sample vault using only Tab and Enter", async () => {
     const user = userEvent.setup();
     installSampleBridge();
@@ -49,12 +307,14 @@ describe("shell", () => {
   it("opens an exact Overview account in its ledger and returns focus to the originating card", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText, getAllByText } = await openSample();
+    await waitFor(() => expect(getByRole("heading", { name: "Your financial picture" })).toHaveFocus());
 
     const origin = getAllByText("Rainy Day Savings").find((node) => node.closest("button")?.classList.contains("account-card-button"))!.closest("button")!;
     origin.focus();
+    expect(origin).toHaveFocus();
     await user.keyboard("{Enter}");
 
-    expect(getByRole("heading", { name: "Rainy Day Savings" })).toBeInTheDocument();
+    await waitFor(() => expect(getByRole("heading", { name: "Rainy Day Savings" })).toBeInTheDocument());
     expect(getByRole("button", { name: "Accounts" })).toHaveAttribute("aria-current", "page");
     expect(getByRole("button", { name: "Back to Overview" })).toBeInTheDocument();
     await user.click(getByRole("button", { name: "Back to Overview" }));

@@ -41,6 +41,16 @@ packaged Python sidecar. The desktop consumes every operation the sidecar
 declares. A private vault and persistent sample vault both use the live bridge;
 fixtures remain for deterministic presentation-state coverage.
 
+Vault authentication now completes before destination reads. Overview and
+Accounts arrive together from one immutable encrypted SQL revision; Activity,
+Spending, Documents, Review, Plans, Conversation, Trust, historical Overview
+and Activity, and account-ledger pages also read immutable encrypted SQL
+revisions. Jobs retains its separate registry-backed read path.
+The disposable store catches up or rebuilds in a terminable child process. A
+stale or rebuilding store is stated as such and does not turn into an
+apparently empty vault. Independent retry states for every surface and one
+automatic failure coordinator for each sidecar generation remain open.
+
 After a private vault opens successfully, the native host stores its directory
 and vaultphrase as one protected credential in macOS Keychain or Windows
 Credential Manager. Startup asks the native host to open that default before
@@ -69,7 +79,7 @@ backend-supplied assumptions, exclusions, evidence and balance series,
 save-up Plans with pure drafts, explicit local reservations, exact persisted
 proposal confirmation, account evidence and durable conversational entry,
 bounded durable job receipts with live progress and cancellation,
-one durable conversation for questions, answers, corrections, proposal confirmation and decline, capability-derived navigation,
+one durable visible conversation for questions, answers, corrections, proposal confirmation and decline, with an explicit New question / Follow-up model-context boundary for Ask, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle
 identity, vault export and restore, maintenance, and privacy-filtered diagnostic
 export. Trust refreshes after each Ask Viva turn, separates configured routes

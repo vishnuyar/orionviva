@@ -1,11 +1,4 @@
-"""The sample vault a person opens, and where it lives.
-
-The demo used to be told sentence by sentence: a qualifier beside each figure,
-in an interface that had a second dialect for rendering them. What is here is a
-vault — minted by the engine, opened through the sidecar, read by the same
-provider — which is what lets one frame around the whole place be true by
-construction and the per-sentence qualifiers retire.
-"""
+"""Contracts for the persistent fictional sample vault."""
 
 from __future__ import annotations
 
@@ -38,7 +31,7 @@ def home(tmp_path, monkeypatch) -> Path:
     return tmp_path / "sample-vault"
 
 
-# ------------------------------------------------------- a vault, not a fixture
+# ---------------------------------------------------------- vault persistence
 
 
 def test_the_sample_is_a_vault_the_engine_opens(home: Path):
@@ -50,8 +43,7 @@ def test_the_sample_is_a_vault_the_engine_opens(home: Path):
 
 
 def test_it_is_minted_once_and_stays(home: Path):
-    """A vault made fresh each launch loses whatever a person did inside it, and
-    a demo somebody cannot change is a screenshot."""
+    """The sample is created once and persists between opens."""
     first, made_first = open_demo_vault()
     events = len(list(first.events()))
 
@@ -62,10 +54,38 @@ def test_it_is_minted_once_and_stays(home: Path):
     assert len(list(second.events())) == events
 
 
+def test_sample_open_immediately_serves_converted_current_surfaces(home: Path):
+    vault, _ = open_demo_vault()
+    provider = OpenedVaultSurfaceProvider(vault)
+
+    assert vault.read_store_lifecycle in {"equal", "caught_up", "rebuilt"}
+    assert provider.read_surface("activity", {})["state"] == "ready"
+    assert provider.read_surface("spending", {})["state"] in {"ready", "empty"}
+
+
+def test_fresh_and_existing_sample_each_have_one_readiness_owner(
+        home: Path, monkeypatch: pytest.MonkeyPatch):
+    calls = []
+    real_synchronize = Vault.synchronize_read_store
+
+    def synchronize(vault, *args, **kwargs):
+        calls.append(vault.directory)
+        return real_synchronize(vault, *args, **kwargs)
+
+    monkeypatch.setattr(Vault, "synchronize_read_store", synchronize)
+    fresh, made = open_demo_vault()
+    assert made is True
+    assert calls == [home]
+    fresh.close()
+
+    existing, made = open_demo_vault()
+    assert made is False
+    assert calls == [home, home]
+    existing.close()
+
+
 def test_every_surface_an_opened_vault_answers_has_something_to_show(home: Path):
-    """A demo is every screen. One that answered on two of them would send a
-    person to a screen that says nothing and let them read that as the
-    product."""
+    """Every sample destination returns a renderable state."""
     vault, _ = open_demo_vault()
     provider = OpenedVaultSurfaceProvider(vault)
 
@@ -86,24 +106,21 @@ def test_the_states_the_other_screens_can_be_in_are_reachable(home: Path):
     activity = provider.read_surface("activity", {})
     trust = provider.read_surface("trust", {})
 
-    # Questions of more than one kind, so the queue is not one shape repeated.
+    # The sample queue contains multiple question kinds.
     assert len({question["kind"] for question in review["questions"]}) > 1
-    # A question that wants an answer out of a closed vocabulary.
+    # At least one question uses a closed vocabulary.
     assert any(slot.get("choices") for question in review["questions"]
                for slot in question["slots"])
-    # Money between a person's own pockets, which is the one row on the
-    # activity screen that is not what its sign says it is.
+    # Activity includes a linked transfer and both directions.
     assert any(item["linked"] for item in activity["items"])
     assert {item["direction"] for item in activity["items"]} == {"in", "out"}
-    # Something has been sent, so the outbound record is a record rather than
-    # an absence, and something has run, so Trust is not only absences.
+    # Trust includes outbound activity and only the remaining absence.
     assert trust["outbound"]["call_count"] > 0
     assert [absence["id"] for absence in trust["absences"]] == ["anchoring"]
 
 
 def test_every_document_is_named_the_way_a_person_would_recognise_it(home: Path):
-    """Eight rows called `bank_statement.txt` is a list nobody can tell apart,
-    and a demo that shows the documents screen working worse than it does."""
+    """Every sample document has a distinct display filename."""
     vault, _ = open_demo_vault()
 
     read = OpenedVaultSurfaceProvider(vault).read_surface("documents", {})
@@ -112,13 +129,11 @@ def test_every_document_is_named_the_way_a_person_would_recognise_it(home: Path)
     assert len(set(names)) == len(names)
 
 
-# ---------------------------------------------- opened through the real sidecar
+# ----------------------------------------------------------- sidecar opening
 
 
 def test_the_sidecar_opens_it_from_a_request_that_names_nothing(home: Path):
-    """Where the sample vault lives and what opens it are the engine's. A caller
-    has nowhere to point this at a folder they keep their own records in, and
-    nowhere to learn what would open it."""
+    """The sidecar opens the sample without caller-supplied credentials."""
     answered = _open(Sidecar(io.StringIO()))
 
     assert answered["ok"] is True
@@ -136,9 +151,7 @@ def test_a_request_that_names_anything_at_all_is_refused(home: Path):
 
 
 def test_the_frame_words_come_from_the_pack_rather_than_from_a_screen(home: Path):
-    """The one sentence in this product that says nothing here is real is a
-    shipped sentence. A shell composing its own would put it out of the pack's
-    reach."""
+    """The sample frame uses the shipped copy pack."""
     frame = _open(Sidecar(io.StringIO()))["result"]["frame"]
 
     assert frame == {"title": moment("sample_frame"),
@@ -147,8 +160,7 @@ def test_the_frame_words_come_from_the_pack_rather_than_from_a_screen(home: Path
 
 
 def test_a_private_open_carries_no_frame(home: Path, tmp_path: Path):
-    """A frame drawn around a person's own records would tell them their money
-    was invented."""
+    """Private vault replies contain no sample frame."""
     answered = json.loads(Sidecar(io.StringIO()).handle(_frame(
         "bridge.open_vault",
         {"vault_directory": str(tmp_path / "mine"), "passphrase": "pw",
@@ -170,12 +182,11 @@ def test_the_surfaces_it_answers_are_read_through_the_same_dispatch(home: Path):
     assert read["result"]["data"]["state"] == "ready"
 
 
-# --------------------------------------------------------- nothing here is real
+# --------------------------------------------------------- fictional content
 
 
 def test_nothing_in_it_is_anybody_s(home: Path):
-    """Every institution, holder and amount is invented, and the names are
-    self-evidently so."""
+    """The sample contains only synthetic institutions and identities."""
     vault, _ = open_demo_vault()
     held = json.dumps(OpenedVaultSurfaceProvider(vault).read_surface("overview", {}))
 
@@ -185,8 +196,7 @@ def test_nothing_in_it_is_anybody_s(home: Path):
 
 
 def test_a_home_is_this_module_s_to_choose(tmp_path: Path):
-    """A caller choosing where the demo goes is a caller who can point it at a
-    real vault."""
+    """Only the module API chooses the sample home."""
     assert demo_home(tmp_path).parent == tmp_path
     built = build_demo_vault(tmp_path / "elsewhere")
 

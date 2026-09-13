@@ -43,6 +43,7 @@ ADR numbers are serial ids in the order decisions were made, never a reading ord
 | [012](ADR-012-the-interview-model-boundary.md) | The interview's model boundary — two enumerated outbound flows, a whitelisted envelope, no amounts or currency | One-way in trust (the whitelist); mechanism two-way |
 | [013](ADR-013-the-shape-before-the-data.md) | A sentence's shape is authored before its data, in both directions — a run holds a ledger of what it established, and an answer may say only what is in it | One-way in trust (the ordering); mechanism two-way |
 | [014](ADR-014-financial-meaning-before-executable-programs.md) | The model names financial meaning and typed parameters; deterministic code authors the executable AnswerProgram | Two-way mechanism under ADR-013's one-way ordering |
+| [015](ADR-015-encrypted-read-store-binding.md) | A fail-closed, statically linked SQLCipher Python binding protects the disposable read store | Two-way dependency choice; one-way plaintext prohibition |
 
 ## Why
 

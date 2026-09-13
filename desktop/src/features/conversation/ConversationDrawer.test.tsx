@@ -10,6 +10,17 @@ const controls = { state: { state: "idle" } as const, onAnswer: vi.fn(), onConfi
 const openFigure = vi.fn();
 
 describe("durable Viva conversation", () => {
+  it("defaults to an independent question and sends an explicit follow-up choice", () => {
+    const onAsk = vi.fn();
+    const view = render(<ConversationDrawer result={ready({ turns: [turn({ contextMode: "new_question" })], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={{ state: { state: "idle" }, onAsk }} controls={controls} />);
+    expect(view.getByRole("radio", { name: "New question" })).toBeChecked();
+    expect(view.getByText("New question", { selector: ".conversation-turn-meta span" })).toBeInTheDocument();
+    fireEvent.click(view.getByRole("radio", { name: "Follow-up" }));
+    fireEvent.change(view.getByLabelText("Your question"), { target: { value: "And then?" } });
+    fireEvent.click(view.getByRole("button", { name: "Ask" }));
+    expect(onAsk).toHaveBeenCalledWith("And then?", true, false, "follow_up");
+    expect(view.getByRole("radio", { name: "Follow-up" })).toBeChecked();
+  });
   it("renders the persisted timeline and the deterministic question queue together", () => {
     const data: ConversationData = { turns: [turn({ message: "The records changed." })], questions: { ...questions, queue: [{ id: "q-1", label: "What was this payment?", detail: "It is not classified.", status: "", action: "", type: "nature", evidence: "", state: "needs_input", outcome: null, disposition: null }] } };
     const view = render(<ConversationDrawer result={ready(data)} selectedQueue="q-1" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={null} controls={controls} />);
@@ -117,7 +128,7 @@ describe("durable Viva conversation", () => {
     fireEvent.change(view.getByLabelText("Your question"), { target: { value: "Build a rainy-day fund" } });
     fireEvent.click(view.getByRole("button", { name: "Draft a save-up plan" }));
 
-    expect(onAsk).toHaveBeenCalledWith("Build a rainy-day fund", true, true);
+    expect(onAsk).toHaveBeenCalledWith("Build a rainy-day fund", true, true, "new_question");
   });
 
   it("keeps an Ask Viva draft through failure and clears only its own authoritative completion", () => {

@@ -264,8 +264,7 @@ def test_what_was_left_out_is_counted_rather_than_dropped():
 
 
 def test_what_was_left_out_carries_no_amount():
-    """The rows beyond are in whatever currencies they are in, and one number
-    over them would be a total of unlike things."""
+    """The omitted-row summary contains a count and no monetary total."""
     read = _read([_Movement(key=f"m{n}") for n in range(6)], limit=2)
 
     assert set(read["beyond"]) == {"count"}
@@ -306,6 +305,7 @@ def test_compound_editor_vocabulary_carries_parented_subcategory_ids():
 
 def test_the_surface_reads_activity_from_a_real_vault(tmp_path: Path):
     vault = Vault.open(tmp_path / "vault", "pw")
+    vault.synchronize_read_store()
 
     read = OpenedVaultSurfaceProvider(vault).read_surface("activity", {})
 

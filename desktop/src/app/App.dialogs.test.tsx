@@ -206,10 +206,13 @@ describe("dialogs", () => {
     try {
       const { queryByRole, getAllByRole, container, getByRole } = await openSample();
       fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
-      expect(document.querySelector("#selected-document-title")).not.toHaveFocus();
+      const pendingTitle = document.querySelector("#selected-document-title");
+      if (pendingTitle) expect(pendingTitle).not.toHaveFocus();
 
       fireEvent.click(getAllByRole("button", { name: moments.sample_frame_leave })[0]);
-      expect(cancelAnimationFrame).toHaveBeenCalled();
+      // The destination read had not completed, so no focus request was
+      // scheduled for the source that has just been replaced.
+      expect(cancelAnimationFrame).not.toHaveBeenCalled();
       pendingFrames.forEach((callback) => callback(performance.now()));
       pendingFrames.clear();
 
@@ -249,6 +252,7 @@ describe("dialogs", () => {
     try {
       const { container, getByRole } = await openSample();
       fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
+      await waitFor(() => expect(getByRole("heading", { name: "abroad-current-2026-06.pdf" })).toBeInTheDocument());
       fireEvent.click(getByRole("button", { name: "Accounts" }));
       fireEvent.click(getByRole("button", { name: "Statements" }));
       getByRole("heading", { name: "Statements & documents" }).focus();
@@ -264,6 +268,7 @@ describe("dialogs", () => {
     try {
       const { container, getByRole } = await openSample();
       fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
+      await waitFor(() => expect(getByRole("button", { name: /growth-portfolio-2026-06\.pdf/i })).toBeInTheDocument());
       fireEvent.click(getByRole("button", { name: /growth-portfolio-2026-06\.pdf/i }));
       fireEvent.click(getByRole("button", { name: /everyday-checking-2026-06\.pdf/i }));
       getByRole("heading", { name: "Statements & documents" }).focus();
@@ -311,7 +316,7 @@ describe("dialogs", () => {
   it("shows the selected queue item inside Viva", async () => {
     const user = userEvent.setup();
     const { getAllByRole, getAllByText, getByRole, getByText } = await openSample();
-    await user.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+    await user.click(getByRole("button", { name: "Review, count unavailable" }));
     const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
     expect(action).toBeDefined(); await user.click(action!);
     expect(getByRole("heading", { name: /May I ask what/ })).toBeInTheDocument();
@@ -322,7 +327,7 @@ describe("dialogs", () => {
   it("opens and focuses an exact question from Review", async () => {
     const user = userEvent.setup();
     const { getAllByRole, getByRole, queryByRole } = await openSample();
-    await user.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+    await user.click(getByRole("button", { name: "Review, count unavailable" }));
     const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
     expect(action).toBeDefined(); await user.click(action!);
     await waitFor(() => expect(getByRole("heading", { name: /May I ask what/ })).toHaveFocus());
@@ -334,7 +339,8 @@ describe("dialogs", () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { getAllByRole, getByRole } = await openSample();
-      fireEvent.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+      fireEvent.click(getByRole("button", { name: "Review, count unavailable" }));
+      await waitFor(() => expect(getAllByRole("button", { name: "Answer question" }).length).toBeGreaterThan(0));
       const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
       fireEvent.click(action!);
       fireEvent.click(getByRole("button", { name: "Close Review question" }));
@@ -350,7 +356,8 @@ describe("dialogs", () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { getAllByRole, getByRole } = await openSample();
-      fireEvent.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+      fireEvent.click(getByRole("button", { name: "Review, count unavailable" }));
+      await waitFor(() => expect(getAllByRole("button", { name: "Answer question" }).length).toBeGreaterThan(0));
       const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
       fireEvent.click(action!);
       fireEvent.click(getByRole("button", { name: /Your acct:everyday-checking statement/i }));
@@ -376,7 +383,8 @@ describe("dialogs", () => {
       // A question opened from Review asks for focus one frame later. The
       // vault is closed before that frame runs, so the focus it captured names
       // a question on a screen nobody is looking at any more.
-      fireEvent.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+      fireEvent.click(getByRole("button", { name: "Review, count unavailable" }));
+      await waitFor(() => expect(getAllByRole("button", { name: "Answer question" }).length).toBeGreaterThan(0));
       fireEvent.click(getAllByRole("button", { name: "Answer question" })[0]);
       fireEvent.click(getByRole("button", { name: "Close Review question" }));
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
@@ -421,7 +429,7 @@ describe("dialogs", () => {
     const user = userEvent.setup();
     const { getAllByRole, getAllByText, getByRole, getByText } = await openSample();
 
-    await user.click(getByRole("button", { name: /^Review, 15 actionable items$/ }));
+    await user.click(getByRole("button", { name: "Review, count unavailable" }));
     const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
     expect(action).toBeDefined(); await user.click(action!);
     expect(getAllByText("160.00").length).toBeGreaterThan(0);

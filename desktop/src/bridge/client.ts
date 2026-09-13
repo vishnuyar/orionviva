@@ -19,6 +19,10 @@ function sampleFrame(result: unknown): SampleFrame | null {
 
 export function createHostBridgeClient(transport: BridgeTransport): BridgeClient {
   let requestNumber = 0;
+  // Protocol 2 requires the atomic priority bundle. Missing capability
+  // metadata is not permission to reconstruct it from a legacy projection;
+  // an older host will refuse the request and the UI will show unavailable.
+  let priorityBundleSupported = true;
   async function request<T>(operation: string, payload: Record<string, unknown>): Promise<T> {
     const requestId = `desktop-${++requestNumber}`;
     const response = await transport.request<T>({ requestId, operation, payload });
@@ -34,15 +38,30 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     return request("viva.surface.read", { surface, parameters, job_id: `desktop-${surface}-${requestNumber + 1}` });
   }
   return {
-    openVault: async (vaultDirectory, passphrase, create) => { await request("bridge.open_vault", { vault_directory: vaultDirectory, passphrase, create }); },
+    openVault: async (vaultDirectory, passphrase, create) => {
+      const opened = await request<{ surfaces?: unknown; priority_reads?: unknown }>("bridge.open_vault", { vault_directory: vaultDirectory, passphrase, create });
+      if (Array.isArray(opened.priority_reads) || Array.isArray(opened.surfaces)) {
+        priorityBundleSupported = (Array.isArray(opened.priority_reads) && opened.priority_reads.includes("overview_accounts")) || (Array.isArray(opened.surfaces) && opened.surfaces.includes("overview_accounts"));
+      }
+    },
     ...(transport.openRememberedVault ? { openRememberedVault: transport.openRememberedVault } : {}),
     ...(transport.rememberVault ? { rememberVault: transport.rememberVault } : {}),
-    openSampleVault: async () => sampleFrame(await request<unknown>("bridge.open_demo_vault", {})),
+    openSampleVault: async () => {
+      const opened = await request<{ surfaces?: unknown; priority_reads?: unknown }>("bridge.open_demo_vault", {});
+      if (Array.isArray(opened.priority_reads) || Array.isArray(opened.surfaces)) {
+        priorityBundleSupported = (Array.isArray(opened.priority_reads) && opened.priority_reads.includes("overview_accounts")) || (Array.isArray(opened.surfaces) && opened.surfaces.includes("overview_accounts"));
+      }
+      return sampleFrame(opened);
+    },
     ...(transport.pickVaultDirectory ? { pickVaultDirectory: transport.pickVaultDirectory } : {}),
     ...(transport.pickDocumentPaths ? { pickDocumentPaths: transport.pickDocumentPaths } : {}),
     ...(transport.subscribeToDroppedPaths ? { subscribeToDroppedPaths: transport.subscribeToDroppedPaths } : {}),
     ...(transport.subscribeToJobProgress ? { subscribeToJobProgress: transport.subscribeToJobProgress } : {}),
     readOverview: (parameters) => read("overview", parameters),
+    readOverviewAccounts: async (refresh = false) => {
+      if (!priorityBundleSupported) throw new BridgeUnreadable("overview_accounts");
+      return read("overview_accounts", refresh ? { refresh: 1 } : {});
+    },
     readSpending: (parameters) => read("spending", parameters),
     readDocuments: () => read("documents"),
     readConversation: (parameters) => read("conversation", parameters),
@@ -82,7 +101,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     writeDiagnostic: (file: string) => request("viva.maintenance.diagnose", { file }),
     exportVault: (archive: string) => request("viva.vault.export", { archive }),
     restoreVault: (archive: string, directory: string, passphrase: string) => request("viva.vault.restore", { archive, directory, passphrase }),
-    askViva: (question: string, mirrored: boolean, planRequest = false) => request("viva.conversation.ask", { question, mirrored, plan_request: planRequest }),
+    askViva: (question: string, mirrored: boolean, planRequest = false, contextMode?: import("../surface/types").AskContextMode) => request("viva.conversation.ask", { question, mirrored, plan_request: planRequest, ...(contextMode ? { context_mode: contextMode } : {}) }),
     answerQuestion: (questionId: string, said: string) => request("viva.conversation.answer", { question_id: questionId, said }),
     confirmProposal: (proposalId: string, said: string, asked: string) => request("viva.conversation.confirm", { proposal_id: proposalId, said, asked }),
     declineQuestion: (questionId, reason: DeclineReason) => request("viva.conversation.decline", { question_id: questionId, reason }),

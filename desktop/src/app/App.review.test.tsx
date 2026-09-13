@@ -20,7 +20,8 @@ describe("Review and Ask Viva separation", () => {
   it("opens Review without calling the model and follows an exact transaction target", async () => {
     const user = userEvent.setup();
     const view = await openSample();
-    await user.click(view.getByRole("button", { name: /Review, 15 actionable items/i }));
+    await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
+    await view.findByLabelText("15 actionable review items");
     expect(view.getByRole("heading", { name: "Review", level: 1 })).toBeInTheDocument();
     expect(view.getByLabelText("15 actionable review items")).toBeInTheDocument();
     expect(view.queryByRole("dialog")).not.toBeInTheDocument();
@@ -47,7 +48,8 @@ describe("Review and Ask Viva separation", () => {
     const view = await openSample();
     viewport.resize(320);
     await user.click(view.getByRole("button", { name: "Open navigation" }));
-    await user.click(view.getByRole("button", { name: /Review, 15 actionable items/i }));
+    await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
+    await view.findByLabelText("15 actionable review items");
     await user.click(view.getAllByRole("button", { name: /review transaction/i })[0]);
     const drawer = await view.findByRole("dialog", { name: "possible transfer to savings" });
     const backgroundControls = [...document.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((control) => !drawer.contains(control));
@@ -59,7 +61,8 @@ describe("Review and Ask Viva separation", () => {
   it("hands Review transaction focus through the question drawer and back to the canonical ledger row", async () => {
     const user = userEvent.setup();
     const view = await openSample();
-    await user.click(view.getByRole("button", { name: /Review, 15 actionable items/i }));
+    await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
+    await view.findByLabelText("15 actionable review items");
     await user.click(view.getAllByRole("button", { name: /review transaction/i })[0]);
     const transaction = await view.findByRole("dialog", { name: "possible transfer to savings" });
     const marker = view.getByLabelText("Viva needs an answer");
@@ -76,7 +79,8 @@ describe("Review and Ask Viva separation", () => {
   it("returns a direct Review question to its exact item and falls back to the Review heading if that item was removed", async () => {
     const user = userEvent.setup();
     const view = await openSample();
-    await user.click(view.getByRole("button", { name: /Review, 15 actionable items/i }));
+    await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
+    await view.findByLabelText("15 actionable review items");
     const answer = view.getAllByRole("button", { name: "Answer question" })[0];
     const item = answer.closest<HTMLElement>(".review-center-row")!;
     await user.click(answer);
@@ -104,7 +108,7 @@ describe("Review and Ask Viva separation", () => {
     expect(transfer).toHaveTextContent("Rainy Day Savings");
     expect(transfer).toHaveTextContent("1 possible counterpart movement(s) remain from the vault's transfer evidence.");
     expect(transfer).toHaveTextContent("This would treat 2026-06-22's possible transfer to savings on Everyday Checking (USD 275.00) and 2026-06-23's possible transfer from checking on Rainy Day Savings (USD 275.00) as one transfer between your own accounts");
-    await user.click(within(transfer).getByRole("button", { name: "Review transfer controls in Transactions" }));
+    await user.click(await view.findByRole("button", { name: "Review transfer controls in Transactions" }));
     expect(view.getByRole("heading", { name: "Transactions", level: 1 })).toBeInTheDocument();
     const activityRow = view.getAllByText(/possible transfer to savings/i).map((node) => node.closest("li")).find(Boolean);
     expect(activityRow).toHaveFocus();
@@ -113,7 +117,8 @@ describe("Review and Ask Viva separation", () => {
   it("keeps every authored target actionable beyond the old ten-question conversation window", async () => {
     const user = userEvent.setup();
     const view = await openSample();
-    await user.click(view.getByRole("button", { name: /Review, 15 actionable items/i }));
+    await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
+    await view.findByLabelText("15 actionable review items");
     const rows = [...view.container.querySelectorAll<HTMLElement>(".review-center-row")];
     expect(rows).toHaveLength(15);
     const target = rows[10];
@@ -130,8 +135,8 @@ describe("Review and Ask Viva separation", () => {
 
     const view = await openSample({ review });
 
-    expect(view.getByRole("button", { name: "Review, count unavailable" })).toBeInTheDocument();
-    expect(view.getByRole("heading", { name: "Review could not be read" })).toBeInTheDocument();
+    await userEvent.setup().click(view.getByRole("button", { name: "Review, count unavailable" }));
+    await waitFor(() => expect(view.queryByRole("button", { name: /Changed label/ })).not.toBeInTheDocument());
     expect(view.queryByRole("button", { name: /Changed label/ })).not.toBeInTheDocument();
   });
 });

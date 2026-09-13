@@ -350,6 +350,11 @@ def _verified(directory: Path, passphrase: str,
             "the restored vault would not open with that passphrase, so "
             f"nothing in it could be read: {exc}") from exc
 
+    if vault.synchronize_read_store() not in {"equal", "caught_up", "rebuilt"}:
+        vault.close()
+        raise TransferError(
+            "the restored canonical history could not reconstruct its disposable read model")
+
     intact, count = vault.ledger.store.verify_chain()
     if not intact:
         raise TransferError(
@@ -377,4 +382,5 @@ def _verified(directory: Path, passphrase: str,
 
     log.info("restored %d events and %d documents into %s",
              count, readable, directory)
+    vault.close()
     return RestoreResult(directory, event_count=count, blob_count=readable)

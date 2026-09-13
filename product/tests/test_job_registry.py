@@ -15,6 +15,7 @@ import pytest
 from viva.desktop_bridge.jobs import (JobCancelled, JobProgressEvent,
                                       JobRegistry, JobState)
 from viva.desktop_bridge.__main__ import Sidecar
+from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
 from viva.vault import Vault
 
 
@@ -35,6 +36,23 @@ def test_a_job_is_minted_by_the_registry_and_names_its_operation():
     assert first.job_id != second.job_id
     assert first.job_id.startswith("viva.documents.upload-")
     assert registry.record(first.job_id).total == len(STEPS)
+
+
+def test_jobs_registry_answers_while_sql_generation_is_degraded(tmp_path, monkeypatch):
+    vault = Vault.open(tmp_path / "vault", "pw")
+    registry, _events = _registry()
+    job = registry.open("viva.maintenance.run", ("checked",))
+    with job:
+        job.reached("checked", "Done")
+    vault.read_store_lifecycle = "degraded"
+    if vault.read_store is not None:
+        monkeypatch.setattr(vault.read_store, "open_reader",
+                            lambda: pytest.fail("Jobs opened SQL"))
+    monkeypatch.setattr(vault.ledger, "projection",
+                        lambda: pytest.fail("Jobs replayed events"))
+    provider = OpenedVaultSurfaceProvider(vault, registry)
+    assert provider.read_surface("jobs", {}) == registry.read()
+    assert provider.read_surface("jobs", {})["jobs"][0]["job_id"] == job.job_id
 
 
 def test_a_job_with_no_declared_step_is_refused():

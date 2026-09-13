@@ -1,10 +1,4 @@
-"""Acceptance tests for the concrete opened-Vault bridge provider.
-
-These tests deliberately target the decisive milestone rather than the
-fixture-backed provider protocol.  Until production exposes a concrete
-adapter, the tests fail with an actionable message instead of silently
-turning the milestone into a skip.
-"""
+"""Acceptance contracts for the concrete opened-vault bridge provider."""
 
 from __future__ import annotations
 
@@ -29,7 +23,7 @@ def _frame(*, operation: str, payload: dict[str, Any] | None = None) -> str:
 
 
 def _concrete_provider(vault: Vault):
-    """Load the production adapter expected by this milestone."""
+    """Load the production opened-vault adapter."""
 
     try:
         module = importlib.import_module("viva.desktop_bridge.vault_provider")
@@ -70,6 +64,7 @@ def _read(vault: Vault, surface: str, events: list[Any] | None = None) -> dict[s
 
 def test_concrete_provider_reads_empty_open_vault_as_json_safe_surfaces(tmp_path: Path):
     vault = Vault.open(tmp_path / "empty-vault", "test-passphrase")
+    vault.synchronize_read_store()
 
     for surface in ("overview", "documents", "conversation"):
         result = _read(vault, surface)
@@ -82,6 +77,7 @@ def test_concrete_provider_reads_open_vault_and_keeps_surface_payloads_json_safe
     directory = tmp_path / "vault"
     opened = Vault.open(directory, "test-passphrase")
     reopened = Vault.open(directory, "test-passphrase")
+    reopened.synchronize_read_store()
 
     for surface in ("overview", "documents", "conversation"):
         result = _read(reopened, surface)
@@ -94,6 +90,7 @@ def test_concrete_provider_reads_open_vault_and_keeps_surface_payloads_json_safe
 def test_concrete_provider_emits_started_and_completed_progress(tmp_path: Path):
     events: list[Any] = []
     vault = Vault.open(tmp_path / "vault", "test-passphrase")
+    vault.synchronize_read_store()
 
     _read(vault, "overview", events)
 
@@ -122,3 +119,28 @@ def test_concrete_provider_failure_emits_failed_progress_and_error_frame(tmp_pat
     assert response["ok"] is False
     assert response["error"]["code"] == "handler_failed"
     assert events[-1].status == "failed"
+
+
+def test_routine_startup_surfaces_do_not_enumerate_raw_store(tmp_path: Path, monkeypatch):
+    vault = Vault.open(tmp_path / "vault", "test-passphrase")
+    vault.synchronize_read_store()
+    touched: list[str] = []
+
+    def record(name, result):
+        def spy(*_args, **_kwargs):
+            touched.append(name)
+            return result
+        return spy
+
+    # Cover every public route that can inspect blob names/content or compute a
+    # raw-content address. Returning inert values lets the whole startup burst
+    # run, so one early access cannot hide a later, different access.
+    monkeypatch.setattr(vault.raw, "doc_ids", record("doc_ids", []))
+    monkeypatch.setattr(vault.raw, "has", record("has", False))
+    monkeypatch.setattr(vault.raw, "get", record("get", b""))
+    monkeypatch.setattr(vault.raw, "fingerprint", record("fingerprint", "0" * 64))
+    monkeypatch.setattr(vault.raw, "put", record("put", "0" * 64))
+    for surface in ("overview_accounts", "jobs", "conversation", "review",
+                    "activity", "spending", "plans", "trust"):
+        _read(vault, surface)
+    assert touched == []

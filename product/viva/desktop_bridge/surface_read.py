@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
 from .handlers import BridgeRequestError
+from ..startup_diagnostics import span
 from .jobs import JobProgressEvent, ProgressStatus
 
 # A read is one step, and it is finished by the time the frame it answers is
@@ -54,7 +55,8 @@ class VaultSurfaceReader:
         surface, parameters, job_id = _read_request(payload)
         self._emit(JobProgressEvent(job_id, "started", 0, 1, f"reading {surface}"))
         try:
-            result = self._provider.read_surface(surface, parameters)
+            with span("surface", surface=surface):
+                result = self._provider.read_surface(surface, parameters)
             if not isinstance(result, Mapping):
                 raise TypeError("surface provider must return a mapping")
             json.dumps(result)

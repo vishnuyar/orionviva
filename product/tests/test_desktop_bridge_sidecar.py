@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import time
 
 import pytest
 
@@ -18,6 +19,17 @@ def _frame(operation: str, payload: dict | None = None, request_id: str = "req-1
     })
 
 
+def _catch_up(sidecar: Sidecar) -> None:
+    vault = sidecar._vault
+    assert vault is not None
+    vault.synchronize_read_store()
+    deadline = time.monotonic() + 5
+    while vault.read_store_lifecycle not in {"equal", "rebuilt", "caught_up"} and time.monotonic() < deadline:
+        vault.poll_read_store_worker()
+        time.sleep(0.01)
+    assert vault.read_store_lifecycle in {"equal", "rebuilt", "caught_up"}
+
+
 def test_sidecar_refuses_live_reads_until_host_opens_a_vault(tmp_path):
     sidecar = Sidecar(io.StringIO())
     response = json.loads(sidecar.handle(_frame("viva.surface.read", {"surface": "overview"}))[0])
@@ -25,7 +37,7 @@ def test_sidecar_refuses_live_reads_until_host_opens_a_vault(tmp_path):
     assert response["error"]["code"] == "operation_not_allowed"
 
 
-def test_sidecar_opens_vault_and_enables_only_surface_reads(tmp_path):
+def test_sidecar_opens_vault_and_enables_only_surface_reads(monkeypatch, tmp_path):
     output = io.StringIO()
     sidecar = Sidecar(output)
     opened = json.loads(sidecar.handle(_frame(
@@ -34,8 +46,18 @@ def test_sidecar_opens_vault_and_enables_only_surface_reads(tmp_path):
          "passphrase": "test-passphrase", "create": True},
     ))[0])
     assert opened["ok"] is True
-    # Made on purpose, and said as that rather than as an ordinary open.
+    # An explicit create request reports the created state.
     assert opened["result"]["state"] == "created"
+
+    assert sidecar._vault is not None
+    with monkeypatch.context() as held:
+        held.setattr(sidecar._vault, "poll_read_store_worker", lambda: None)
+        held.setattr(sidecar._vault, "read_store_lifecycle", "rebuilding")
+        rebuilding = json.loads(sidecar.handle(_frame(
+            "viva.surface.read", {"surface": "overview"}, "rebuilding",
+        ))[-1])
+    assert rebuilding["ok"] is False
+    _catch_up(sidecar)
 
     response = json.loads(sidecar.handle(_frame(
         "viva.surface.read", {"surface": "overview", "job_id": "job-1"}, "req-2",
@@ -45,7 +67,7 @@ def test_sidecar_opens_vault_and_enables_only_surface_reads(tmp_path):
     assert 'test-passphrase' not in output.getvalue()
     progress = [json.loads(line) for line in output.getvalue().splitlines()]
     assert progress
-    assert {event["request_id"] for event in progress} == {"req-2"}
+    assert {event["request_id"] for event in progress} == {"rebuilding", "req-2"}
 
 
 def test_sidecar_opens_demo_vault_only_with_an_empty_payload(monkeypatch):
@@ -63,8 +85,7 @@ def test_sidecar_opens_demo_vault_only_with_an_empty_payload(monkeypatch):
 
 
 def test_a_folder_holding_no_vault_is_refused_rather_than_filled_with_one(tmp_path):
-    """A path typed with a letter wrong used to answer as an opened, brand-new
-    empty vault, which reads to somebody as their records having vanished."""
+    """A missing vault path is refused instead of creating an empty vault."""
     from viva.persona import moment
 
     sidecar = Sidecar(io.StringIO())
@@ -162,6 +183,8 @@ def test_sidecar_failed_reopen_preserves_the_existing_open_vault(monkeypatch, tm
          "create": True},
     ))[0])
     assert opened["ok"] is True
+    _catch_up(sidecar)
+    existing = sidecar._vault
 
     def fail_open(*_args, **_kwargs):
         raise RuntimeError("wrong passphrase")
@@ -176,6 +199,7 @@ def test_sidecar_failed_reopen_preserves_the_existing_open_vault(monkeypatch, tm
     assert failed["ok"] is False
     assert failed["error"]["code"] == "vault_open_failed"
     assert "second-secret" not in json.dumps(failed)
+    assert sidecar._vault is existing
 
     read = json.loads(sidecar.handle(_frame(
         "viva.surface.read", {"surface": "overview", "job_id": "still-open"}, "read-after-reopen-failure",

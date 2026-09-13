@@ -36,9 +36,11 @@ import logging
 import os
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Callable, Iterable
-from typing import Iterator
+from collections.abc import Callable, Iterable, Mapping
+from types import MappingProxyType
+from typing import Any, Iterator
 
 from ..crypto import (HEAD_BOUND_HEADER_VERSION, HEAD_CAPABILITY_VERSION,
                       KdfParams, CryptoError, new_vault_header,
@@ -61,6 +63,87 @@ GENESIS = "0" * 64
 # next nonempty append.
 HEAD_VERSION = HEAD_CAPABILITY_VERSION
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CommittedIdentity:
+    """The exact length and terminal record hash of one committed prefix."""
+
+    count: int
+    head_hash: str
+    end_offset: int | None = None
+    cursor_mac: str | None = None
+
+
+def _freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
+def _thaw(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw(item) for item in value]
+    return value
+
+
+def _immutable_event(payload: dict[str, Any]) -> "ImmutableEvent":
+    data = payload.get("event")
+    if (not isinstance(data, dict) or not isinstance(data.get("event_id"), str)
+            or not data["event_id"]):
+        raise CryptoError("committed event has no canonical event_id")
+    return ImmutableEvent.from_event(Event.from_dict(data))
+
+
+@dataclass(frozen=True)
+class ImmutableEvent:
+    """A deeply immutable event DTO for projection boundaries."""
+
+    event_type: str
+    event_id: str
+    occurred_at: str
+    provenance: Mapping[str, Any]
+    body: Mapping[str, Any]
+
+    @classmethod
+    def from_event(cls, event: Event) -> "ImmutableEvent":
+        data = event.to_dict()
+        return cls(data["event_type"], data["event_id"], data["occurred_at"],
+                   _freeze(data["provenance"]), _freeze(data["body"]))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"event_type": self.event_type, "event_id": self.event_id,
+                "occurred_at": self.occurred_at,
+                "provenance": _thaw(self.provenance), "body": _thaw(self.body)}
+
+
+@dataclass(frozen=True)
+class CommittedEvent:
+    """One authenticated event together with its canonical record identity."""
+
+    sequence: int
+    record_hash: str
+    event: ImmutableEvent
+
+    @property
+    def event_id(self) -> str:
+        return self.event.event_id
+
+
+@dataclass(frozen=True)
+class CommittedSnapshot:
+    """A writer-excluded committed event snapshot and its terminal identity."""
+
+    identity: CommittedIdentity
+    events: tuple[CommittedEvent, ...]
+
+
+class CommittedPrefixMismatch(CryptoError):
+    """The supplied identity is not a valid cursor for this committed log."""
 
 
 def _canonical(obj) -> str:
@@ -145,6 +228,13 @@ def head_mac(key: bytes, body: dict) -> str:
     subkey = hmac.new(key, b"viva-head-mac-v1", hashlib.sha256).digest()
     return hmac.new(subkey, _canonical(body).encode("utf-8"),
                     hashlib.sha256).hexdigest()
+
+
+def _cursor_mac(key: bytes, count: int, head_hash: str, end_offset: int) -> str:
+    """Authenticate a previously validated record boundary for suffix reads."""
+    subkey = hmac.new(key, b"viva-event-cursor-mac-v1", hashlib.sha256).digest()
+    body = {"count": count, "head_hash": head_hash, "end_offset": end_offset}
+    return hmac.new(subkey, _canonical(body).encode(), hashlib.sha256).hexdigest()
 
 
 def write_head(path: Path, key: bytes, count: int, head_hash: str) -> None:
@@ -305,6 +395,40 @@ def _recover_to_authenticated_head(path: Path, key: bytes, *, required: bool,
 
 
 
+def _fast_committed_boundary(path: Path, count: int, head_hash: str) -> int | None:
+    """Confirm the authenticated head at EOF without scanning its prefix.
+
+    This is a semantic-freshness check, not a physical audit. Canonical reads,
+    appends, export, and explicit verification still traverse and authenticate
+    the complete committed prefix before using it.
+    """
+    with path.open("rb") as source:
+        source.seek(0, os.SEEK_END)
+        end = source.tell()
+        if count == 0:
+            source.seek(0)
+            header = source.readline()
+            return end if header.endswith(b"\n") and source.read().strip() == b"" else None
+        position = max(0, end - 1)
+        while position > 0:
+            source.seek(position - 1)
+            if source.read(1) == b"\n" and position < end:
+                break
+            position -= 1
+        source.seek(position)
+        line = source.readline()
+    try:
+        record = json.loads(line)
+        if (record.get("seq") == count - 1
+                and record.get("record_hash") == head_hash
+                and _record_hash(record["seq"], record["prev_hash"],
+                                  record["sealed"]) == head_hash):
+            return end
+    except (json.JSONDecodeError, KeyError, TypeError):
+        pass
+    return None
+
+
 class EventStore:
     """An encrypted, append-only, hash-chained log of ledger events.
 
@@ -312,21 +436,26 @@ class EventStore:
     open and held only in memory for the store's lifetime; it is never written
     anywhere."""
 
-    def __init__(self, path: Path, key: bytes, kdf: KdfParams) -> None:
+    def __init__(self, path: Path, key: bytes, kdf: KdfParams, *,
+                 trusted_head: tuple[int, str, int] | None = None) -> None:
         # Prefer EventStore.open(); this constructor assumes an initialised file.
         self.path = Path(path)
         self._key = key
         self._kdf = kdf
         self._write_failed = False
         self._decision_owner: int | None = None
+        self._observer_owner: int | None = None
+        self._commit_observer: Callable[[tuple[int | None, str | None, int]], None] | None = None
         self._head_required = False
         self._committed_head: tuple[int, str] | None = None
-        self._last_hash = GENESIS
-        self._count = 0
-        for _seq, prev, sealed, rec_hash in self._iter_raw():
-            self._last_hash = rec_hash
-            self._count += 1
-        self._size = self.path.stat().st_size if self.path.exists() else 0
+        self._last_hash = trusted_head[1] if trusted_head else GENESIS
+        self._count = trusted_head[0] if trusted_head else 0
+        if trusted_head is None:
+            for _seq, _prev, _sealed, rec_hash in self._iter_raw():
+                self._last_hash = rec_hash
+                self._count += 1
+        self._size = (trusted_head[2] if trusted_head else
+                      self.path.stat().st_size if self.path.exists() else 0)
         # A partial write can leave a tail that cannot be replayed.  This
         # handle then refuses every later append; reopening after repairing the
         # interrupted final line is the only safe way to resume.
@@ -342,16 +471,31 @@ class EventStore:
         with self.path.open("a", encoding="utf-8") as locked:
             fcntl.flock(locked.fileno(), fcntl.LOCK_EX)
             try:
-                self._reread_tail(locked.fileno())
+                self._refresh_trusted_tail(locked.fileno())
             except Exception:
                 self._write_failed = True
                 raise
             finally:
                 fcntl.flock(locked.fileno(), fcntl.LOCK_UN)
-        forked = EventStore(self.path, self._key, self._kdf)
+        forked = EventStore(
+            self.path, self._key, self._kdf,
+            trusted_head=(self._count, self._last_hash, self._size))
         forked._head_required = self._head_required
         forked._committed_head = self._committed_head
         return forked
+
+    def observe_commits(
+            self, observer: Callable[[tuple[int | None, str | None, int]], None] | None
+    ) -> None:
+        """Notify one owner after a canonical commit without joining its boundary.
+
+        The observer is best-effort. Once the authenticated head
+        has committed, projection work may report stale or degraded state but
+        can never turn the successful event append into a failed write reply.
+        Forked stores do not inherit the observer.
+        """
+        self._refuse_decision_reentry("observer mutation")
+        self._commit_observer = observer
 
     # --------------------------------------------------------------- lifecycle
 
@@ -368,21 +512,30 @@ class EventStore:
             if not header_line.strip():
                 raise CryptoError(f"{path} exists but has no header")
             header = json.loads(header_line)
-            key = open_vault_header(header, passphrase)   # fails fast on wrong pass
+            from ..startup_diagnostics import span
+            with span("credential_kdf"):
+                key = open_vault_header(header, passphrase)   # fails fast on wrong pass
             required = _header_requires_head(header)
-            # The authenticated head is the commit point.  A process may have
-            # died after appending any prefix of a batch but before advancing
-            # it; remove that uncommitted suffix before constructing a store
-            # that could replay it.
-            with path.open("a", encoding="utf-8") as locked:
-                fcntl.flock(locked.fileno(), fcntl.LOCK_EX)
-                try:
-                    recovered = _recover_to_authenticated_head(
-                        path, key, required=required,
-                        truncate_fd=locked.fileno())
-                finally:
-                    fcntl.flock(locked.fileno(), fcntl.LOCK_UN)
-            store = cls(path, key, KdfParams.from_dict(header["kdf"]))
+            head = _authenticated_head(path, key, required=required)
+            fast_end = (_fast_committed_boundary(path, head[0], head[1])
+                        if head is not None else None)
+            if head is not None and fast_end is not None:
+                recovered = (head[0], head[1], fast_end)
+            else:
+                # Legacy logs and interrupted/corrupt tails take the strict
+                # recovery path; only an ordinary modern warm open is O(1).
+                with path.open("a", encoding="utf-8") as locked:
+                    fcntl.flock(locked.fileno(), fcntl.LOCK_EX)
+                    try:
+                        recovered = _recover_to_authenticated_head(
+                            path, key, required=required,
+                            truncate_fd=locked.fileno())
+                    finally:
+                        fcntl.flock(locked.fileno(), fcntl.LOCK_UN)
+            trusted = ((recovered[0], recovered[1], recovered[2])
+                       if recovered is not None else None)
+            store = cls(path, key, KdfParams.from_dict(header["kdf"]),
+                        trusted_head=trusted)
             store._head_required = required
             store._committed_head = (recovered[0], recovered[1]) \
                 if recovered is not None else None
@@ -391,8 +544,10 @@ class EventStore:
 
         # New store: mint a header (KDF salt + check token) and write it as line 0.
         path.parent.mkdir(parents=True, exist_ok=True)
-        header, key = new_vault_header(
-            passphrase, header_version=HEAD_BOUND_HEADER_VERSION)
+        from ..startup_diagnostics import span
+        with span("credential_kdf"):
+            header, key = new_vault_header(
+                passphrase, header_version=HEAD_BOUND_HEADER_VERSION)
         with path.open("w", encoding="utf-8") as f:
             f.write(json.dumps(header, ensure_ascii=False) + "\n")
             f.flush()
@@ -534,6 +689,19 @@ class EventStore:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         for record, event in zip(records, events):
             log.debug("append seq=%d type=%s", record["seq"], event.event_type)
+        observer = self._commit_observer
+        if records and observer is not None:
+            self._observer_owner = threading.get_ident()
+            try:
+                observer(self._cached_identity())
+            except BaseException:
+                # Observer failures can carry paths or projection values.  The
+                # typed vault lifecycle is the diagnostic boundary; logs state
+                # only that disposable maintenance failed after canonical commit.
+                log.warning("post-commit read-store synchronization failed; "
+                            "the canonical event remains committed")
+            finally:
+                self._observer_owner = None
         return records
 
     # -------------------------------------------------------------- the head
@@ -600,6 +768,49 @@ class EventStore:
         self._count = count
         self._size = size
 
+    def _refresh_trusted_tail(self, truncate_fd: int) -> None:
+        """Advance a trusted handle without rescanning its committed prefix."""
+        required = self._authenticate_current_header()
+        if self._head_required and not required:
+            raise CryptoError(
+                "authenticated vault header was downgraded from head-required "
+                "mode")
+        if not required:
+            # Legacy stores have no authenticated boundary to extend from.
+            self._reread_tail(truncate_fd)
+            return
+        self._head_required = True
+        head = _authenticated_head(self.path, self._key, required=True)
+        assert head is not None
+        count, head_hash = head
+        if count < self._count or (
+                count == self._count and head_hash != self._last_hash):
+            raise CryptoError(
+                "authenticated head moved backward or changed at an already "
+                "observed commit")
+        if count == self._count:
+            end = self._size
+            size = self.path.stat().st_size
+            if end > size:
+                raise CryptoError("committed event log is shorter than its trusted boundary")
+            with self.path.open("rb") as source:
+                if end:
+                    source.seek(end - 1)
+                    if source.read(1) != b"\n":
+                        raise CryptoError("trusted event cursor is not a record boundary")
+        else:
+            prefix = self._identity_for(self._count, self._last_hash, self._size)
+            _events, end = self._committed_suffix_from_cursor(
+                prefix, count, head_hash)
+            size = self.path.stat().st_size
+        if size > end:
+            os.ftruncate(truncate_fd, end)
+            os.fsync(truncate_fd)
+        self._count = count
+        self._last_hash = head_hash
+        self._size = end
+        self._committed_head = (count, head_hash)
+
     def _authenticate_current_header(self) -> bool:
         try:
             with self.path.open("r", encoding="utf-8") as source:
@@ -615,10 +826,20 @@ class EventStore:
         return _header_requires_head(header)
 
     def _refuse_decision_reentry(self, operation: str) -> None:
+        # A post-commit callback is a notification boundary, not another
+        # EventStore capability.  Maintenance that needs the authenticated
+        # commit must use the fork created before the callback was installed.
+        self._refuse_observer_reentry(operation)
         if self._decision_owner == threading.get_ident():
             raise CryptoError(
                 f"event-store {operation} cannot be called from its own "
                 "atomic decision callback")
+
+    def _refuse_observer_reentry(self, operation: str) -> None:
+        if self._observer_owner == threading.get_ident():
+            raise CryptoError(
+                f"event-store {operation} cannot be called from its own "
+                "post-commit observer")
 
     # ------------------------------------------------------------------- reads
 
@@ -711,6 +932,204 @@ class EventStore:
             finally:
                 fcntl.flock(source.fileno(), fcntl.LOCK_UN)
 
+    def committed_snapshot(self) -> CommittedSnapshot:
+        """Return committed events and their exact chain identities under lock.
+
+        This projection boundary goes through the same header authentication,
+        legacy handling, head recovery, and chain validation as other reads.
+        """
+        self._refuse_decision_reentry("committed snapshot")
+        if self._write_failed:
+            raise CryptoError(
+                "this event-store handle cannot snapshot after an uncertain "
+                "write; reopen the vault to recover its committed boundary")
+        with self.path.open("a", encoding="utf-8") as source:
+            fcntl.flock(source.fileno(), fcntl.LOCK_EX)
+            try:
+                try:
+                    self._reread_tail(source.fileno())
+                    entries, end_offset = self._committed_entries_unlocked()
+                except Exception:
+                    self._write_failed = True
+                    raise
+                return CommittedSnapshot(
+                    self._committed_identity(end_offset), entries)
+            finally:
+                fcntl.flock(source.fileno(), fcntl.LOCK_UN)
+
+    def committed_suffix_after(
+            self, prefix: CommittedIdentity) -> CommittedSnapshot:
+        """Authenticate ``prefix`` as a cursor, then return later events.
+
+        The byte boundary is accepted only with EventStore's MAC. Modern logs
+        authenticate the current head, then validate and decrypt only the new
+        records. This fast path proves semantic freshness against the
+        authenticated head without rescanning physical bytes
+        before the cursor. Call :meth:`verify_committed_log` for that audit.
+        Legacy logs have no authenticated commit boundary and must be scanned
+        completely.
+        """
+        self._refuse_decision_reentry("committed suffix")
+        if not isinstance(prefix, CommittedIdentity):
+            raise TypeError("prefix must be a CommittedIdentity")
+        if prefix.count < 0 or not isinstance(prefix.head_hash, str):
+            raise ValueError("committed prefix identity is invalid")
+        if self._write_failed:
+            raise CryptoError(
+                "this event-store handle cannot read after an uncertain write; "
+                "reopen the vault to recover its committed boundary")
+        with self.path.open("a", encoding="utf-8") as source:
+            fcntl.flock(source.fileno(), fcntl.LOCK_EX)
+            try:
+                try:
+                    required = self._authenticate_current_header()
+                    head = _authenticated_head(self.path, self._key,
+                                               required=required)
+                    if head is None:
+                        self._reread_tail(source.fileno())
+                        entries, end_offset = self._committed_entries_unlocked(
+                            start=prefix.count, expected_prefix=prefix)
+                        return CommittedSnapshot(
+                            self._committed_identity(end_offset), entries)
+                    count, head_hash = head
+                    if prefix.count > count:
+                        raise CommittedPrefixMismatch(
+                            "committed prefix is ahead of the event log")
+                    if (prefix.end_offset is None or prefix.cursor_mac is None
+                            or prefix.end_offset < 0
+                            or not hmac.compare_digest(
+                                _cursor_mac(self._key, prefix.count,
+                                            prefix.head_hash, prefix.end_offset),
+                                prefix.cursor_mac)):
+                        raise CommittedPrefixMismatch(
+                            "committed prefix does not match a valid EventStore cursor")
+                    if prefix.count == count and prefix.head_hash != head_hash:
+                        raise CommittedPrefixMismatch(
+                            "committed prefix does not match the event log")
+                    entries, end_offset = self._committed_suffix_from_cursor(
+                        prefix, count, head_hash)
+                except CommittedPrefixMismatch:
+                    raise
+                except Exception:
+                    self._write_failed = True
+                    raise
+                return CommittedSnapshot(
+                    self._identity_for(count, head_hash, end_offset),
+                    entries)
+            finally:
+                fcntl.flock(source.fileno(), fcntl.LOCK_UN)
+
+    def verify_committed_log(self) -> CommittedIdentity:
+        """Fully authenticate every physical byte in the committed log.
+
+        Warm equality and suffix reads intentionally trust a previously minted
+        cursor plus the authenticated current head, so their work can remain
+        proportional to new events. This explicit audit instead recomputes the
+        complete hash chain and authenticates every sealed event before
+        returning the freshly minted terminal identity.
+        """
+        self._refuse_decision_reentry("committed-log audit")
+        if self._write_failed:
+            raise CryptoError(
+                "this event-store handle cannot audit after an uncertain write; "
+                "reopen the vault to recover its committed boundary")
+        with self.path.open("a", encoding="utf-8") as source:
+            fcntl.flock(source.fileno(), fcntl.LOCK_EX)
+            try:
+                try:
+                    self._reread_tail(source.fileno())
+                    _entries, end_offset = self._committed_entries_unlocked()
+                except Exception:
+                    self._write_failed = True
+                    raise
+                return self._committed_identity(end_offset)
+            finally:
+                fcntl.flock(source.fileno(), fcntl.LOCK_UN)
+
+    def _committed_entries_unlocked(
+            self, *, start: int = 0,
+            expected_prefix: CommittedIdentity | None = None
+            ) -> tuple[tuple[CommittedEvent, ...], int]:
+        """Strictly validate and decrypt a complete canonical/legacy scan."""
+        records = tuple(self._iter_raw(self._count))
+        if len(records) != self._count:
+            raise CryptoError("committed event snapshot changed during replay")
+        entries = []
+        previous_hash = GENESIS
+        observed_prefix = GENESIS
+        for expected_seq, (seq, previous, sealed, record_hash) in enumerate(records):
+            if seq != expected_seq or previous != previous_hash:
+                raise CryptoError(f"chain broken at committed seq {expected_seq}")
+            if _record_hash(seq, previous, sealed) != record_hash:
+                raise CryptoError(f"record hash mismatch at committed seq {expected_seq}")
+            aad = f"{seq}:{previous}".encode("utf-8")
+            payload = json.loads(open_sealed(self._key, sealed, aad))
+            if expected_seq >= start:
+                entries.append(CommittedEvent(
+                    seq, record_hash, _immutable_event(payload)))
+            previous_hash = record_hash
+            if expected_prefix is not None and expected_seq + 1 == expected_prefix.count:
+                observed_prefix = record_hash
+        if expected_prefix is not None:
+            if expected_prefix.count > self._count:
+                raise CommittedPrefixMismatch("committed prefix is ahead of the event log")
+            if expected_prefix.count == 0:
+                observed_prefix = GENESIS
+            if observed_prefix != expected_prefix.head_hash:
+                raise CommittedPrefixMismatch("committed prefix does not match the event log")
+        return tuple(entries), self.path.stat().st_size
+
+    def _identity_for(self, count: int, head_hash: str,
+                      end_offset: int) -> CommittedIdentity:
+        return CommittedIdentity(count, head_hash, end_offset,
+                                 _cursor_mac(self._key, count, head_hash,
+                                             end_offset))
+
+    def _committed_identity(self, end_offset: int) -> CommittedIdentity:
+        return self._identity_for(self._count, self._last_hash, end_offset)
+
+    def _committed_suffix_from_cursor(
+            self, prefix: CommittedIdentity, count: int,
+            head_hash: str) -> tuple[tuple[CommittedEvent, ...], int]:
+        size = self.path.stat().st_size
+        assert prefix.end_offset is not None
+        if prefix.end_offset > size:
+            raise CommittedPrefixMismatch("committed prefix cursor is beyond the event log")
+        entries: list[CommittedEvent] = []
+        previous = prefix.head_hash
+        try:
+            with self.path.open("rb") as source:
+                if prefix.end_offset:
+                    source.seek(prefix.end_offset - 1)
+                    if source.read(1) != b"\n":
+                        raise CommittedPrefixMismatch(
+                            "committed prefix cursor is not a record boundary")
+                source.seek(prefix.end_offset)
+                for expected_seq in range(prefix.count, count):
+                    line = source.readline()
+                    if not line or not line.endswith(b"\n"):
+                        raise CryptoError("committed event suffix is truncated")
+                    record = json.loads(line)
+                    seq, rec_previous = record["seq"], record["prev_hash"]
+                    sealed, record_hash = record["sealed"], record["record_hash"]
+                    if seq != expected_seq or rec_previous != previous:
+                        raise CryptoError(
+                            f"chain broken at committed seq {expected_seq}")
+                    if _record_hash(seq, rec_previous, sealed) != record_hash:
+                        raise CryptoError(
+                            f"record hash mismatch at committed seq {expected_seq}")
+                    aad = f"{seq}:{rec_previous}".encode()
+                    payload = json.loads(open_sealed(self._key, sealed, aad))
+                    entries.append(CommittedEvent(
+                        seq, record_hash, _immutable_event(payload)))
+                    previous = record_hash
+                end_offset = source.tell()
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise CryptoError("event suffix contains an unreadable record") from exc
+        if previous != head_hash:
+            raise CryptoError("event suffix does not reach the authenticated head")
+        return tuple(entries), end_offset
+
     def authenticated_identity(self) -> tuple[int | None, str | None, int]:
         """Validate and return the current commit witness for cache users."""
         self._refuse_decision_reentry("read")
@@ -746,6 +1165,7 @@ class EventStore:
         compared against the head record too, in the clear. That check is what a
         keyless holder gets; authenticating the head record needs the key and
         happens on open."""
+        self._refuse_decision_reentry("chain verification")
         prev = GENESIS
         count = 0
         for seq, rec_prev, sealed, rec_hash in self._iter_raw():

@@ -5,14 +5,14 @@ import type { BridgeRequest, BridgeResponse, BridgeTransport, SurfaceName } from
 import type { SurfaceSource } from "../surface/sources";
 import type { SurfaceSnapshot } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer, unopenedSnapshot } from "./session";
-import { authoritativeQuestionReread, useSurfaceSession } from "./useSurfaceSession";
+import { authoritativeQuestionReread, priorityAttemptCanPublish, useSurfaceSession } from "./useSurfaceSession";
 import { destinations } from "./navigation";
 import { retainSelection } from "./selection";
 
 const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", sample: false, frame: null, load: async () => liveReadingSnapshot(), activityActions: { read: async () => ({ state: "absent", reason: "not asked" }), assignCategory: async () => ({ state: "unanswered" }), assignClassification: async () => ({ state: "unanswered" }), assignMeaning: async () => ({ state: "unanswered" }), replaceTags: async () => ({ state: "unanswered" }), addTags: async () => ({ state: "unanswered" }), removeTags: async () => ({ state: "unanswered" }), confirmTransfer: async () => ({ state: "unanswered" }), rejectTransfer: async () => ({ state: "unanswered" }), unlinkTransfer: async () => ({ state: "unanswered" }) }, documentActions: null, jobStream: null, transferActions: null, settingsActions: null, conversationActions: null, trustActions: null, describe: async () => ({ identity: { state: "unavailable", reason: "not asked" }, registry: { state: "unavailable", reason: "not asked" }, lifecycle: { state: "unavailable", reason: "not asked" } }) };
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason?: unknown) => void; const promise = new Promise<T>((onResolve, onReject) => { resolve = onResolve; reject = onReject; }); return { promise, resolve, reject }; }
 function ok<T>(requestId: string, result: T): BridgeResponse<T> { return { protocol: "1.0", request_id: requestId, ok: true, result }; }
-function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "documents" ? { documents: [] } : surface === "conversation" ? { turns: [], questions: [], total: 0 } : surface === "review" ? { contract: "ReviewSummary.v1", state: "ready", title: "Review", summary: "Nothing needs your answer.", actionable_count: 0, shown_count: 0, remaining_count: 0, types: [], groups: [] } : surface === "jobs" ? { state: "absent", jobs: [], running: [] } : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] } : surface === "trust" ? { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } } : surface === "activity" ? activityPayload() : { questions: [], total: 0 }; }
+function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-current", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" } : surface === "documents" ? { documents: [] } : surface === "conversation" ? { turns: [], questions: [], total: 0 } : surface === "review" ? { contract: "ReviewSummary.v1", state: "ready", title: "Review", summary: "Nothing needs your answer.", actionable_count: 0, shown_count: 0, remaining_count: 0, types: [], groups: [] } : surface === "jobs" ? { state: "absent", jobs: [], running: [] } : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] } : surface === "trust" ? { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } } : surface === "activity" ? activityPayload() : { questions: [], total: 0 }; }
 function rawReviewBinding(questionId: string, label: string, reason: string) {
   const target = { kind: "conversation", question_id: questionId, disclosure: "No exact transaction was supplied." };
   return { item_id: `question:${questionId}`, question_id: questionId, question_kind: "identity", label, reason, refs: { movement: "", movements: [], candidates: [], document: "", doc_id: "", account: "" }, target, status: "open", primary_action: "open_question", allowed_actions: ["open_question"] };
@@ -67,6 +67,7 @@ function transferActivityPayload(suggestedState: boolean) {
 }
 function completeSurfacePayload(surface: SurfaceName, refreshed = false): unknown {
   if (surface === "overview") return { accounts: [] };
+  if (surface === "overview_accounts") return { state: "ready", freshness: "current", lifecycle: "equal", revision: refreshed ? "g-refreshed" : "g-current", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" };
   if (surface === "documents") return { documents: [] };
   if (surface === "conversation") return { turns: [], questions: [], total: 0 };
   if (surface === "review") return emptyPayload("review");
@@ -75,6 +76,7 @@ function completeSurfacePayload(surface: SurfaceName, refreshed = false): unknow
   if (surface === "trust") return { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } };
   return refreshed ? activityPayload("housing", "Housing") : activityPayload();
 }
+const aggregateSurfaces = ["overview_accounts", "documents", "conversation", "review", "trust", "activity", "plans", "overview_accounts"];
 function readyLive(): SurfaceSnapshot {
   return {
     ...liveReadingSnapshot(),
@@ -117,6 +119,76 @@ function pairedTransactionSnapshot(): SurfaceSnapshot {
 }
 
 describe("surface session", () => {
+  it.each([
+    [1, 1, 4, 4, true, true],
+    [1, 2, 4, 4, true, false],
+    [2, 2, 3, 4, true, false],
+    [2, 2, 4, 4, false, false],
+  ] as const)("publishes only the newest priority attempt %#", (activeGeneration, latestGeneration, activeRequest, latestRequest, sameSource, expected) => {
+    expect(priorityAttemptCanPublish(activeGeneration, latestGeneration, activeRequest, latestRequest, sameSource)).toBe(expected);
+  });
+  it("binds priority data to one opaque revision and ignores a late prior reply", () => {
+    const reading = { ...initialSession(), requestId: 2, phase: "reading" as const };
+    const current = sessionReducer(reading, { type: "priority-loaded", requestId: 2, source: liveSource, overview: readyLive().overview, disclosure: readyLive().disclosure, revision: "g-current", freshness: "current", lifecycle: "equal", retryable: false });
+    const late = sessionReducer(current, { type: "priority-loaded", requestId: 1, source: liveSource, overview: liveReadingSnapshot().overview, disclosure: liveReadingSnapshot().disclosure, revision: "g-old", freshness: "stale", lifecycle: "behind", retryable: true });
+    expect(late).toBe(current);
+    expect(late.readRevision).toBe("g-current");
+  });
+
+  it("keeps a complete stale priority read visible and announces Retry eligibility", () => {
+    const reading = { ...initialSession(), requestId: 1, phase: "reading" as const };
+    const stale = sessionReducer(reading, { type: "priority-loaded", requestId: 1, source: liveSource, overview: readyLive().overview, disclosure: readyLive().disclosure, revision: "g-prior", freshness: "stale", lifecycle: "behind", retryable: true });
+    expect(stale.snapshot.overview.state).toBe("ready");
+    expect(stale.priorityRetryable).toBe(true);
+    expect(stale.notice).toBeNull();
+    expect(stale.priorityRetrying).toBe(false);
+  });
+
+  it.each(["ready", "partial", "needs_input"] as const)("retains the %s priority outcome for Overview and Accounts", (outcome) => {
+    const base = { ...initialSession(), requestId: 1, phase: "reading" as const };
+    const complete = readyLive().overview;
+    if (complete.state !== "ready") throw new Error("fixture overview not ready");
+    const overview = outcome === "ready" ? complete : {
+      state: outcome, data: complete.data,
+      issues: [{ code: "named_issue", message: "A named part needs attention." }],
+    } as const;
+    const loaded = sessionReducer(base, { type: "priority-loaded", requestId: 1, source: liveSource,
+      overview, disclosure: readyLive().disclosure, revision: "g-one", freshness: "current", lifecycle: "equal", retryable: false });
+    expect(loaded.snapshot.overview.state).toBe(outcome);
+    expect(loaded.readRevision).toBe("g-one");
+    expect(loaded.priorityFreshness).toBe("current");
+    expect(loaded.priorityRetryable).toBe(false);
+  });
+
+  it("keeps a same-source complete priority view when a retry degrades", () => {
+    const base = { ...initialSession(), requestId: 1, source: liveSource, snapshot: readyLive(),
+      readRevision: "g-prior", priorityFreshness: "current" as const };
+    const degraded = sessionReducer(base, { type: "priority-loaded", requestId: 1, source: liveSource,
+      overview: { state: "failed", reason: "read_failed" }, disclosure: base.snapshot.disclosure,
+      revision: "", freshness: "unavailable", lifecycle: "degraded", retryable: true });
+    expect(degraded.snapshot.overview).toBe(base.snapshot.overview);
+    expect(degraded.readRevision).toBe("g-prior");
+    expect(degraded.priorityFreshness).toBe("stale");
+    expect(degraded.priorityRetryable).toBe(true);
+  });
+
+  it("does not carry prior-vault secondary data or selections into a replacement priority read", () => {
+    const replacement = { ...liveSource, label: "Replacement vault" };
+    const base = { ...initialSession(), requestId: 2, source: liveSource, snapshot: readyLive(),
+      selectedDocument: "document-live", selectedQueue: "question-live", selectedAccount: "account-live", selectedPrompt: "old-prompt" };
+    const next = sessionReducer(base, { type: "priority-loaded", requestId: 2, source: replacement,
+      overview: { state: "failed", reason: "read_failed" }, disclosure: liveReadingSnapshot().disclosure,
+      revision: "", freshness: "unavailable", lifecycle: "rebuilding", retryable: true });
+    expect(next.source).toBe(replacement);
+    expect(next.snapshot.overview.state).toBe("failed");
+    expect(next.snapshot.documents).toEqual({ state: "absent", reason: "reading" });
+    expect(next.snapshot.conversation).toEqual({ state: "absent", reason: "reading" });
+    expect(next.selectedDocument).toBe("");
+    expect(next.selectedQueue).toBe("");
+    expect(next.selectedAccount).toBe("");
+    expect(next.selectedPrompt).toBe("");
+  });
+
   afterEach(() => vi.useRealTimers());
   it("keeps the spending reader stable across ordinary rerenders", () => {
     const view = renderHook(() => useSurfaceSession());
@@ -381,7 +453,10 @@ describe("surface session", () => {
       request: async <T>(frame: BridgeRequest) => {
         if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
         const surface = frame.payload.surface as SurfaceName;
-        const account = surface === "overview" ? { accounts: [{ account: "manual-account", name: "Manual" }] } : completeSurfacePayload(surface);
+        const manual = { accounts: [{ account: "manual-account", name: "Manual" }] };
+        const account = surface === "overview" ? manual : surface === "overview_accounts"
+          ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-manual", overview: manual, accounts: manual, error: "" }
+          : completeSurfacePayload(surface);
         return ok(frame.requestId, { surface, job_id: "manual", data: account } as T);
       },
     };
@@ -501,29 +576,483 @@ describe("surface session", () => {
     await waitFor(() => expect(remembered).toEqual(["/vault/a", "/vault/b"]));
   });
 
-  it("does not replace a private vault while its initial reads are pending", async () => {
-    const oldReads = Array.from({ length: 5 }, () => deferred<BridgeResponse<unknown>>());
-    let openCount = 0; let oldReadIndex = 0;
+  it("closes and reopens while an old priority read is unresolved, then ignores its late completion", async () => {
+    const oldPriority = deferred<BridgeResponse<unknown>>();
+    let openCount = 0;
     window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
       if (frame.operation === "bridge.open_vault") { openCount += 1; return ok(frame.requestId, { state: "opened" } as T); }
-      if (openCount === 1) return oldReads[oldReadIndex++].promise as Promise<BridgeResponse<T>>;
-      const data = frame.payload.surface === "overview" ? { accounts: [{ account: "new-private", name: "New private" }] } : frame.payload.surface === "documents" ? { documents: [] } : frame.payload.surface === "conversation" ? { turns: [], questions: [], total: 0 } : emptyPayload(frame.payload.surface as SurfaceName);
+      if (openCount === 1 && frame.payload.surface === "overview_accounts") return oldPriority.promise as Promise<BridgeResponse<T>>;
+      const data = frame.payload.surface === "overview_accounts"
+        ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "new", overview: { accounts: [{ account: "new-private", name: "New private" }] }, accounts: { accounts: [{ account: "new-private", name: "New private" }] }, error: "" }
+        : completeSurfacePayload(frame.payload.surface as SurfaceName);
       return ok(frame.requestId, { surface: frame.payload.surface, job_id: "new", data } as T);
     } };
     const { result } = renderHook(() => useSurfaceSession());
-    let older!: Promise<boolean>; let newer!: Promise<boolean>;
-    act(() => { older = result.current.openVault("/old", "secret", false); });
+    await act(async () => { await result.current.openVault("/old", "secret", false); });
     await waitFor(() => expect(result.current.session.phase).toBe("reading"));
-    act(() => { newer = result.current.openVault("/new", "secret", false); });
-    await expect(newer).resolves.toBe(false);
-    expect(openCount).toBe(1);
-    oldReads[0].resolve(ok("old-0", { surface: "overview", job_id: "old", data: { accounts: [] } }));
-    oldReads[1].reject(new Error("stale read failure"));
-    oldReads[2].resolve(ok("old-2", { surface: "conversation", job_id: "old", data: { turns: [], questions: [], total: 0 } }));
-    oldReads[3].resolve(ok("old-3", { surface: "trust", job_id: "old", data: emptyPayload("trust") }));
-    oldReads[4].resolve(ok("old-4", { surface: "activity", job_id: "old", data: emptyPayload("activity") }));
-    await act(async () => { await older; });
-    expect(result.current.session.requestId).toBe(1);
+    act(() => { result.current.resetDemo(); });
+    await act(async () => { await result.current.openVault("/new", "secret", false); });
+    await waitFor(() => expect(result.current.session.readRevision).toBe("new"));
+    expect(openCount).toBe(2);
+    oldPriority.resolve(ok("old", { surface: "overview_accounts", job_id: "old", data: { state: "ready", freshness: "current", lifecycle: "equal", revision: "old", overview: { accounts: [{ account: "old-private", name: "Old private" }] }, accounts: { accounts: [{ account: "old-private", name: "Old private" }] }, error: "" } }));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.session.readRevision).toBe("new");
+    expect(JSON.stringify(result.current.session.snapshot)).not.toContain("Old private");
+  });
+
+  it("lets a replacement vault retry while the prior vault's priority retry is unresolved", async () => {
+    const oldRetry = deferred<BridgeResponse<unknown>>();
+    let opened = 0;
+    let oldPriorityReads = 0;
+    let newPriorityReads = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") { opened += 1; return ok(frame.requestId, { state: "opened" } as T); }
+      const surface = frame.payload.surface as SurfaceName;
+      if (surface === "overview_accounts") {
+        if (opened === 1) {
+          oldPriorityReads += 1;
+          if (oldPriorityReads === 2) return oldRetry.promise as Promise<BridgeResponse<T>>;
+          return ok(frame.requestId, { surface, job_id: "old", data: { ...completeSurfacePayload(surface) as Record<string, unknown>, state: "stale", freshness: "stale", lifecycle: "behind", revision: "g-old" } } as T);
+        }
+        newPriorityReads += 1;
+        return ok(frame.requestId, { surface, job_id: "new", data: { ...completeSurfacePayload(surface) as Record<string, unknown>, ...(newPriorityReads === 1 ? { state: "stale", freshness: "stale", lifecycle: "behind", revision: "g-new-old" } : { revision: "g-new" }) } } as T);
+      }
+      return ok(frame.requestId, { surface, job_id: "other", data: completeSurfacePayload(surface) } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/old", "secret", false); });
+    await waitFor(() => expect(result.current.session.readRevision).toBe("g-old"));
+    let oldAttempt!: Promise<"ignored" | "succeeded" | "failed">;
+    act(() => { oldAttempt = result.current.retryPriorityRead(); });
+    await waitFor(() => expect(oldPriorityReads).toBe(2));
+    act(() => { result.current.resetDemo(); });
+    await act(async () => { await result.current.openVault("/new", "secret", false); });
+    await waitFor(() => expect(result.current.session.readRevision).toBe("g-new-old"));
+    await act(async () => { expect(await result.current.retryPriorityRead()).toBe("succeeded"); });
+    expect(result.current.session.readRevision).toBe("g-new");
+    oldRetry.resolve(ok("late-old", { surface: "overview_accounts", job_id: "late-old", data: { ...completeSurfacePayload("overview_accounts") as Record<string, unknown>, revision: "g-old-late" } }));
+    await act(async () => { expect(await oldAttempt).toBe("ignored"); });
+    expect(result.current.session.readRevision).toBe("g-new");
+    expect(newPriorityReads).toBe(2);
+  });
+
+  it("publishes the active screen and destination while a Jobs read is blocked", async () => {
+    const blockedJobs = deferred<BridgeResponse<unknown>>();
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      const surface = frame.payload.surface as SurfaceName;
+      if (surface === "jobs") return blockedJobs.promise as Promise<BridgeResponse<T>>;
+      return ok(frame.requestId, { surface, job_id: "job", data: completeSurfacePayload(surface) } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    await waitFor(() => expect(result.current.session.readRevision).toBe("g-current"));
+    await waitFor(() => expect(result.current.session.snapshot.activity).toEqual({ state: "absent", reason: "not_asked" }));
+    act(() => { result.current.navigate("activity"); });
+    await waitFor(() => expect(result.current.session.snapshot.activity.state).toBe("ready"));
+    expect(result.current.session.jobCheck).not.toBe("succeeded");
+  });
+
+  it("navigates to Activity without awaiting a blocked Documents read", async () => {
+    const blockedDocuments = deferred<BridgeResponse<unknown>>();
+    let documentsAsked = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      const surface = frame.payload.surface as SurfaceName;
+      if (surface === "documents") { documentsAsked += 1; return blockedDocuments.promise as Promise<BridgeResponse<T>>; }
+      return ok(frame.requestId, { surface, job_id: "job", data: completeSurfacePayload(surface) } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    expect(result.current.session.readRevision).toBe("g-current");
+    act(() => { result.current.navigate("documents"); });
+    await waitFor(() => expect(documentsAsked).toBe(1));
+    expect(result.current.session.destinationReads.documents).toBe("loading");
+    act(() => { result.current.navigate("activity"); });
+    await waitFor(() => expect(result.current.session.destinationReads.activity).toBe("ready"));
+    expect(result.current.session.snapshot.activity.state).toBe("ready");
+    expect(result.current.session.readRevision).toBe("g-current");
+    blockedDocuments.resolve(ok("late-documents", { surface: "documents", job_id: "late", data: { documents: [{ id: "obsolete-document" }] } }));
+    await act(async () => { await Promise.resolve(); });
+    expect(JSON.stringify(result.current.session.snapshot.documents)).not.toContain("obsolete-document");
+  });
+
+  it("reports a destination-only failure and retries it without waiting for Jobs", async () => {
+    const blockedJobs = deferred<BridgeResponse<unknown>>();
+    let failNextActivity = false;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      const surface = frame.payload.surface as SurfaceName;
+      if (surface === "jobs") return blockedJobs.promise as Promise<BridgeResponse<T>>;
+      if (surface === "activity" && failNextActivity) { failNextActivity = false; throw new Error("synthetic destination failure"); }
+      return ok(frame.requestId, { surface, job_id: "job", data: completeSurfacePayload(surface) } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    await waitFor(() => expect(result.current.session.snapshot.activity).toEqual({ state: "absent", reason: "not_asked" }));
+    failNextActivity = true;
+    act(() => { result.current.navigate("activity"); });
+    await waitFor(() => expect(result.current.session.destinationReads.activity).toBe("failed"));
+    expect(result.current.session.snapshot.overview.state).toBe("ready");
+    let retried: string = "";
+    await act(async () => { retried = await result.current.retryDestinationRead("activity"); });
+    expect(retried).toBe("succeeded");
+    expect(result.current.session.destinationReads.activity).toBe("ready");
+    expect(result.current.session.snapshot.activity.state).toBe("ready");
+    expect(result.current.session.jobCheck).not.toBe("succeeded");
+  });
+
+  it("keeps a complete destination view when a later local read fails", () => {
+    const old = { ...initialSession(), requestId: 4, source: liveSource, destination: "documents" as const,
+      snapshot: readyLive() };
+    const loading = sessionReducer(old, { type: "destination-loading", requestId: 4, destination: "documents" });
+    const failed = sessionReducer(loading, { type: "destination-failed", requestId: 4, destination: "documents" });
+    expect(failed.destinationReads.documents).toBe("failed");
+    expect(failed.snapshot.documents).toEqual(old.snapshot.documents);
+    expect(sessionReducer(failed, { type: "destination-failed", requestId: 3, destination: "documents" })).toBe(failed);
+  });
+
+  it.each(["documents", "review", "trust", "activity", "plans"] as const)(
+    "keeps %s outcome states distinct and refuses an older reply", (destination) => {
+      const base = { ...initialSession(), requestId: 9, source: liveSource,
+        destination, snapshot: readyLive() };
+      const loaded = sessionReducer(base, { type: "destination-loading", requestId: 9, destination });
+      expect(loaded.destinationReads[destination]).toBe("loading");
+      for (const state of ["ready", "partial", "needs_input", "unavailable", "absent"] as const) {
+        const feature = state === "unavailable" || state === "absent"
+          ? { state, reason: "test" }
+          : { state, data: {}, ...(state === "partial" || state === "needs_input" ? { issues: [] } : {}) };
+        const snapshot = destination === "review" && (state === "ready" || state === "partial" || state === "needs_input")
+          ? { review: { ...base.snapshot.review, state, ...(state === "ready" ? {} : { issues: [] }) },
+            conversation: { ...base.snapshot.conversation, state, ...(state === "ready" ? {} : { issues: [] }) } }
+          : destination === "review" ? { review: feature, conversation: feature }
+            : { [destination]: feature };
+        const outcome = sessionReducer(loaded, { type: "destination-loaded", requestId: 9,
+          destination, snapshot: snapshot as Partial<SurfaceSnapshot> });
+        expect(outcome.destinationReads[destination]).toBe(state);
+        expect(sessionReducer(outcome, { type: "destination-loaded", requestId: 8,
+          destination, snapshot: snapshot as Partial<SurfaceSnapshot> })).toBe(outcome);
+      }
+      const failed = sessionReducer(loaded, { type: "destination-failed", requestId: 9, destination });
+      expect(failed.destinationReads[destination]).toBe("failed");
+      expect(sessionReducer(failed, { type: "destination-failed", requestId: 8,
+        destination })).toBe(failed);
+    },
+  );
+
+  it.each(["documents", "review", "trust", "activity", "plans"] as const)(
+    "does not let a late failed %s read replace the newer navigation result", async (destination) => {
+    const oldRead = deferred<BridgeResponse<unknown>>();
+    let deferRead = false;
+    let reads = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      const surface = frame.payload.surface as SurfaceName;
+      if (surface === destination && deferRead && ++reads === 1) return oldRead.promise as Promise<BridgeResponse<T>>;
+      return ok(frame.requestId, { surface, job_id: "job", data: completeSurfacePayload(surface) } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    await waitFor(() => expect(result.current.session.snapshot[destination]).toEqual({ state: "absent", reason: "not_asked" }));
+    deferRead = true;
+    act(() => { result.current.navigate(destination); });
+    await waitFor(() => expect(result.current.session.destinationReads[destination]).toBe("loading"));
+    act(() => { result.current.navigate("overview"); });
+    act(() => { result.current.navigate(destination); });
+    await waitFor(() => expect(result.current.session.destinationReads[destination]).toBe("ready"));
+    oldRead.reject(new Error("late old failure"));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.session.destinationReads[destination]).toBe("ready");
+    expect(result.current.session.snapshot[destination]?.state).toBe("ready");
+  });
+
+  it("lets vault B retry Activity while vault A's retry is still unanswered", async () => {
+    const retryA = deferred<BridgeResponse<unknown>>();
+    const retryB = deferred<BridgeResponse<unknown>>();
+    let vault = "";
+    let failA = false;
+    let failB = false;
+    let holdA = false;
+    let holdB = false;
+    let bRetryCalls = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") {
+        vault = String(frame.payload.vault_directory);
+        return ok(frame.requestId, { state: "opened" } as T);
+      }
+      const surface = frame.payload.surface as SurfaceName;
+      if (surface === "activity" && vault === "/A") {
+        if (failA) { failA = false; throw new Error("A first read failed"); }
+        if (holdA) return retryA.promise as Promise<BridgeResponse<T>>;
+      }
+      if (surface === "activity" && vault === "/B") {
+        if (failB) { failB = false; throw new Error("B first read failed"); }
+        if (holdB) { bRetryCalls += 1; return retryB.promise as Promise<BridgeResponse<T>>; }
+      }
+      return ok(frame.requestId, { surface, job_id: "job", data: completeSurfacePayload(surface) } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/A", "secret", false); });
+    await waitFor(() => expect(result.current.session.snapshot.activity).toEqual({ state: "absent", reason: "not_asked" }));
+    failA = true;
+    act(() => { result.current.navigate("activity"); });
+    await waitFor(() => expect(result.current.session.destinationReads.activity).toBe("failed"));
+    holdA = true;
+    let aWork!: Promise<"succeeded" | "failed" | "ignored">;
+    act(() => { aWork = result.current.retryDestinationRead("activity"); });
+    await waitFor(() => expect(result.current.session.destinationReads.activity).toBe("retrying"));
+    act(() => { result.current.resetDemo(); });
+    await act(async () => { await result.current.openVault("/B", "secret", false); });
+    await waitFor(() => expect(result.current.session.snapshot.activity).toEqual({ state: "absent", reason: "not_asked" }));
+    failB = true;
+    act(() => { result.current.navigate("activity"); });
+    await waitFor(() => expect(result.current.session.destinationReads.activity).toBe("failed"));
+    holdB = true;
+    const staleBRetry = result.current.retryDestinationRead;
+    let bWork!: Promise<"succeeded" | "failed" | "ignored">;
+    act(() => { bWork = result.current.retryDestinationRead("activity"); });
+    await waitFor(() => expect(result.current.session.destinationReads.activity).toBe("retrying"));
+    retryA.reject(new Error("A late failure"));
+    await act(async () => { expect(await aWork).toBe("ignored"); });
+    await act(async () => { expect(await staleBRetry("activity")).toBe("ignored"); });
+    expect(bRetryCalls).toBe(1);
+    retryB.resolve(ok("B-retry", { surface: "activity", job_id: "B", data: completeSurfacePayload("activity") }));
+    await act(async () => { expect(await bWork).toBe("succeeded"); });
+    expect(result.current.session.destinationReads.activity).toBe("ready");
+  });
+
+  it("settles a financial correction from its reread while Jobs remains blocked", async () => {
+    const blockedJobs = deferred<BridgeResponse<unknown>>();
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.activity.assign_category") return ok(frame.requestId, { kind: "completed", message: "Recorded.", state: null, reason: null } as T);
+      const surface = frame.payload.surface as SurfaceName;
+      if (surface === "jobs") return blockedJobs.promise as Promise<BridgeResponse<T>>;
+      return ok(frame.requestId, { surface, job_id: "job", data: completeSurfacePayload(surface, true) } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    act(() => { result.current.navigate("activity"); });
+    await waitFor(() => expect(result.current.session.snapshot.activity.state).toBe("ready"));
+    await act(async () => { await result.current.assignActivityCategory("movement:key", "housing"); });
+    expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed" });
+    expect(result.current.session.snapshot.activity.state).toBe("ready");
+  });
+
+  it("rejects an old Jobs registry reply after a replacement vault has answered", async () => {
+    const oldJobs = deferred<BridgeResponse<unknown>>();
+    let opens = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") { opens += 1; return ok(frame.requestId, { state: "opened" } as T); }
+      const surface = frame.payload.surface as SurfaceName;
+      if (surface === "jobs" && opens === 1) return oldJobs.promise as Promise<BridgeResponse<T>>;
+      const data = surface === "jobs"
+        ? { state: "ready", jobs: [{ job_id: "new-job", operation: "viva.maintenance.run", state: "completed", completed: 1, total: 1, attempt: 1, steps: ["done"] }], running: [] }
+        : surface === "overview_accounts"
+          ? { ...completeSurfacePayload(surface) as Record<string, unknown>, revision: `g-${opens}` }
+          : completeSurfacePayload(surface);
+      return ok(frame.requestId, { surface, job_id: "job", data } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/first", "secret", false); });
+    act(() => { result.current.resetDemo(); });
+    await act(async () => { await result.current.openVault("/second", "secret", false); });
+    await waitFor(() => expect(result.current.session.jobs.some((job) => job.jobId === "new-job")).toBe(true));
+    oldJobs.resolve(ok("old", { surface: "jobs", job_id: "old", data: { state: "absent", jobs: [], running: [] } }));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.session.readRevision).toBe("g-2");
+    expect(result.current.session.jobs.map((job) => job.jobId)).toEqual(["new-job"]);
+  });
+
+  it("ignores a previous vault's late job event even when it arrives after replacement", async () => {
+    const listeners: Array<(frame: { protocol: string; request_id: string; event: string; result: unknown }) => void> = [];
+    let opens = 0;
+    window.orionVivaBridge = {
+      subscribeToJobProgress: async (listen) => { listeners.push(listen); return () => undefined; },
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") { opens += 1; return ok(frame.requestId, { state: "opened" } as T); }
+        const surface = frame.payload.surface as SurfaceName;
+        const data = surface === "overview_accounts"
+          ? { ...completeSurfacePayload(surface) as Record<string, unknown>, revision: `g-${opens}` }
+          : completeSurfacePayload(surface);
+        return ok(frame.requestId, { surface, job_id: "job", data } as T);
+      },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/first", "secret", false); });
+    await waitFor(() => expect(listeners).toHaveLength(1));
+    act(() => { result.current.resetDemo(); });
+    await act(async () => { await result.current.openVault("/second", "secret", false); });
+    await waitFor(() => expect(listeners).toHaveLength(2));
+    act(() => { listeners[0]({ protocol: "1.0", request_id: "old", event: "progress",
+      result: { job_id: "old-job", operation: "viva.maintenance.run", status: "completed", completed: 1, total: 1, attempt: 1 } }); });
+    expect(result.current.session.readRevision).toBe("g-2");
+    expect(result.current.session.jobs.some((job) => job.jobId === "old-job")).toBe(false);
+  });
+
+  it("refreshes the authenticated priority revision after a terminal job event", async () => {
+    let listener: ((frame: { protocol: string; request_id: string; event: string; result: unknown }) => void) | null = null;
+    let refreshes = 0;
+    window.orionVivaBridge = {
+      subscribeToJobProgress: async (listen) => { listener = listen; return () => undefined; },
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+        const surface = frame.payload.surface as SurfaceName;
+        if (surface === "overview_accounts" && (frame.payload.parameters as { refresh?: number } | undefined)?.refresh === 1) refreshes += 1;
+        const data = surface === "overview_accounts"
+          ? { ...completeSurfacePayload(surface) as Record<string, unknown>, revision: refreshes ? "g-after-job" : "g-before-job" }
+          : completeSurfacePayload(surface);
+        return ok(frame.requestId, { surface, job_id: "job", data } as T);
+      },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    await waitFor(() => expect(listener).not.toBeNull());
+    act(() => { listener?.({ protocol: "1.0", request_id: "job", event: "progress",
+      result: { job_id: "job", operation: "viva.maintenance.run", status: "completed", completed: 1, total: 1, attempt: 1 } }); });
+    await waitFor(() => expect(result.current.session.readRevision).toBe("g-after-job"));
+    await waitFor(() => expect(result.current.session.snapshot.documents.state).toBe("ready"));
+    expect(result.current.session.notice).toBeNull();
+    expect(refreshes).toBe(1);
+  });
+
+  it("publishes post-job secondary data only when its surrounding priority reads name one generation", async () => {
+    let listener: ((frame: { protocol: string; request_id: string; event: string; result: unknown }) => void) | null = null;
+    const delayedDocuments = deferred<BridgeResponse<unknown>>();
+    let afterJob = false;
+    let priorityReads = 0;
+    window.orionVivaBridge = {
+      subscribeToJobProgress: async (listen) => { listener = listen; return () => undefined; },
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+        const surface = frame.payload.surface as SurfaceName;
+        if (surface === "overview_accounts") {
+          priorityReads += 1;
+          const revision = !afterJob ? "g-before" : priorityReads === 2 ? "g-job" : "g-other";
+          return ok(frame.requestId, { surface, job_id: "job", data: { ...completeSurfacePayload(surface) as Record<string, unknown>, revision } } as T);
+        }
+        if (afterJob && surface === "documents") return delayedDocuments.promise as Promise<BridgeResponse<T>>;
+        return ok(frame.requestId, { surface, job_id: "job", data: completeSurfacePayload(surface, afterJob) } as T);
+      },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    await waitFor(() => expect(listener).not.toBeNull());
+    const oldDocuments = result.current.session.snapshot.documents;
+    afterJob = true;
+    act(() => { listener?.({ protocol: "1.0", request_id: "job", event: "progress",
+      result: { job_id: "job", operation: "viva.maintenance.run", status: "completed", completed: 1, total: 1, attempt: 1 } }); });
+    await waitFor(() => expect(result.current.session.readRevision).toBe("g-job"));
+    expect(result.current.session.snapshot.documents).toBe(oldDocuments);
+    delayedDocuments.resolve(ok("documents", { surface: "documents", job_id: "job", data: completeSurfacePayload("documents", true) }));
+    await waitFor(() => expect(result.current.session.notice?.text).toContain("may be stale"));
+    expect(result.current.session.snapshot.documents).toBe(oldDocuments);
+    expect(result.current.session.readRevision).toBe("g-job");
+    expect(priorityReads).toBe(3);
+  });
+
+  it("drops an in-flight post-job reread after its vault is replaced", async () => {
+    let listener: ((frame: { protocol: string; request_id: string; event: string; result: unknown }) => void) | null = null;
+    const oldDocuments = deferred<BridgeResponse<unknown>>();
+    let vault = 0;
+    let jobStarted = false;
+    let heldRead = false;
+    window.orionVivaBridge = {
+      subscribeToJobProgress: async (listen) => { listener = listen; return () => undefined; },
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") { vault += 1; return ok(frame.requestId, { state: "opened" } as T); }
+        const surface = frame.payload.surface as SurfaceName;
+        if (vault === 1 && jobStarted && surface === "documents") { heldRead = true; return oldDocuments.promise as Promise<BridgeResponse<T>>; }
+        const data = surface === "overview_accounts"
+          ? { ...completeSurfacePayload(surface) as Record<string, unknown>, revision: `g-${vault}` }
+          : completeSurfacePayload(surface);
+        return ok(frame.requestId, { surface, job_id: "job", data } as T);
+      },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/first", "secret", false); });
+    await waitFor(() => expect(listener).not.toBeNull());
+    jobStarted = true;
+    act(() => { listener?.({ protocol: "1.0", request_id: "job", event: "progress",
+      result: { job_id: "job", operation: "viva.maintenance.run", status: "completed", completed: 1, total: 1, attempt: 1 } }); });
+    await waitFor(() => expect(heldRead).toBe(true));
+    act(() => { result.current.resetDemo(); });
+    await act(async () => { await result.current.openVault("/second", "secret", false); });
+    await waitFor(() => expect(result.current.session.readRevision).toBe("g-2"));
+    const currentDocuments = result.current.session.snapshot.documents;
+    oldDocuments.resolve(ok("documents", { surface: "documents", job_id: "old", data: { documents: [{ id: "old-vault-document", doc_type: "statement" }] } }));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.session.readRevision).toBe("g-2");
+    expect(result.current.session.snapshot.documents).toBe(currentDocuments);
+    expect(JSON.stringify(result.current.session.snapshot)).not.toContain("old-vault-document");
+  });
+
+  it.each(["secondary-first", "priority-first"] as const)("preserves newest priority and secondary data when retry and secondary finish %s", async (order) => {
+    const documents = deferred<BridgeResponse<unknown>>();
+    const retry = deferred<BridgeResponse<unknown>>();
+    let priorityCalls = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      const surface = frame.payload.surface as SurfaceName;
+      if (surface === "overview_accounts") {
+        priorityCalls += 1;
+        if (priorityCalls === 1) return ok(frame.requestId, { surface, job_id: "initial", data: { state: "stale", freshness: "stale", lifecycle: "behind", revision: "old", overview: { accounts: [{ account: "old", name: "Old account" }] }, accounts: { accounts: [{ account: "old", name: "Old account" }] }, error: "behind" } } as T);
+        return retry.promise as Promise<BridgeResponse<T>>;
+      }
+      if (surface === "documents") return documents.promise as Promise<BridgeResponse<T>>;
+      return ok(frame.requestId, { surface, job_id: "secondary", data: completeSurfacePayload(surface) } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    await waitFor(() => expect(result.current.session.priorityRetryable).toBe(true));
+    act(() => { result.current.navigate("documents"); });
+    let retryResult!: Promise<"ignored" | "succeeded" | "failed">;
+    act(() => { retryResult = result.current.retryPriorityRead(); });
+    await waitFor(() => expect(priorityCalls).toBe(2));
+
+    const releaseDocuments = () => documents.resolve(ok("documents", { surface: "documents", job_id: "secondary", data: { documents: [{ id: "new-document", doc_type: "statement" }] } }));
+    const releasePriority = () => retry.resolve(ok("retry", { surface: "overview_accounts", job_id: "retry", data: { state: "ready", freshness: "current", lifecycle: "equal", revision: "new", overview: { accounts: [{ account: "new", name: "New account" }] }, accounts: { accounts: [{ account: "new", name: "New account" }] }, error: "" } }));
+    if (order === "secondary-first") {
+      releaseDocuments();
+      await waitFor(() => expect(JSON.stringify(result.current.session.snapshot.documents)).toContain("new-document"));
+      releasePriority();
+    } else {
+      releasePriority();
+      await expect(retryResult).resolves.toBe("succeeded");
+      releaseDocuments();
+    }
+    await waitFor(() => {
+      expect(result.current.session.readRevision).toBe("new");
+      expect(JSON.stringify(result.current.session.snapshot.overview)).toContain("New account");
+      expect(JSON.stringify(result.current.session.snapshot.documents)).toContain("new-document");
+    });
+  });
+
+  it("ignores a secondary completion from a closed source after its replacement publishes", async () => {
+    const oldDocuments = deferred<BridgeResponse<unknown>>();
+    let openCount = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") { openCount += 1; return ok(frame.requestId, { state: "opened" } as T); }
+      const surface = frame.payload.surface as SurfaceName;
+      if (openCount === 1 && surface === "documents") return oldDocuments.promise as Promise<BridgeResponse<T>>;
+      const data = surface === "overview_accounts"
+        ? { state: "ready", freshness: "current", lifecycle: "equal", revision: openCount === 1 ? "old" : "new", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" }
+        : surface === "documents" ? { documents: [{ id: "new-document", doc_type: "statement" }] } : completeSurfacePayload(surface);
+      return ok(frame.requestId, { surface, job_id: "read", data } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/old", "secret", false); });
+    await waitFor(() => expect(result.current.session.readRevision).toBe("old"));
+    act(() => { result.current.navigate("documents"); });
+    act(() => { result.current.resetDemo(); });
+    await act(async () => { await result.current.openVault("/new", "secret", false); });
+    act(() => { result.current.navigate("documents"); });
+    await waitFor(() => expect(JSON.stringify(result.current.session.snapshot.documents)).toContain("new-document"));
+    oldDocuments.resolve(ok("old-documents", { surface: "documents", job_id: "old", data: { documents: [{ id: "old-document", doc_type: "statement" }] } }));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.session.readRevision).toBe("new");
+    expect(JSON.stringify(result.current.session.snapshot.documents)).toContain("new-document");
+    expect(JSON.stringify(result.current.session.snapshot.documents)).not.toContain("old-document");
   });
 
   it("refuses a second private open while the first host request is pending", async () => {
@@ -569,6 +1098,8 @@ describe("surface session", () => {
 
     const { result } = renderHook(() => useSurfaceSession());
     await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    act(() => { result.current.navigate("review"); });
+    await waitFor(() => expect(result.current.session.selectedQueue).toBe("question-live"));
     expect(result.current.session.selectedQueue).toBe("question-live");
 
     await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
@@ -587,7 +1118,8 @@ describe("surface session", () => {
     if (result.current.session.snapshot.conversation.state === "ready") expect(result.current.session.snapshot.conversation.data.questions.meta.pending).toEqual({ count: 1 });
     expect(result.current.session.selectedQueue).toBe("");
     // A mutation refreshes every financial surface.
-    expect(frames.filter((frame) => frame.payload.surface === "overview")).toHaveLength(2);
+    expect(frames.filter((frame) => frame.payload.surface === "overview_accounts")).toHaveLength(3);
+    expect(frames.filter((frame) => frame.payload.surface === "overview")).toHaveLength(0);
 
     act(() => result.current.selectQueue("another-question"));
     expect(result.current.session.questionAction).toEqual({ state: "idle" });
@@ -848,6 +1380,8 @@ describe("surface session", () => {
       window.orionVivaBridge = transport;
       const { result } = renderHook(() => useSurfaceSession());
       await act(async () => { await result.current.openVault("/vault", "secret", false); });
+      act(() => { result.current.navigate("review"); });
+      await waitFor(() => expect(result.current.session.snapshot.review?.state).toBe("ready"));
       expect(result.current.session.snapshot.review?.state).toBe("ready");
       if (result.current.session.snapshot.review?.state === "ready") expect(result.current.session.snapshot.review.data.shownCount).toBe(15);
       const priorReview = result.current.session.snapshot.review;
@@ -956,6 +1490,40 @@ describe("surface session", () => {
     expect(after.notice?.text).toContain("prior questions and count remain");
   });
 
+  it("retains the prior picture and never replays a write when aggregate generations differ", async () => {
+    let written = 0;
+    let afterWritePriority = 0;
+    const frames: BridgeRequest[] = [];
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.activity.assign_category") {
+        written += 1;
+        return ok(frame.requestId, { kind: "completed", message: "Recorded.", state: null, reason: null } as T);
+      }
+      const surface = frame.payload.surface as SurfaceName;
+      if (written && surface === "overview_accounts") afterWritePriority += 1;
+      const data = surface === "overview_accounts" && written
+        ? { ...(completeSurfacePayload(surface) as Record<string, unknown>), revision: afterWritePriority === 1 ? "g-one" : "g-two" }
+        : completeSurfacePayload(surface, written > 0);
+      return ok(frame.requestId, { surface, job_id: "job", data } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    act(() => { result.current.navigate("activity"); });
+    await waitFor(() => expect(result.current.session.snapshot.activity.state).toBe("ready"));
+    const before = result.current.session.snapshot;
+    const priorRevision = result.current.session.readRevision;
+    await act(async () => { await result.current.assignActivityCategory("movement:key", "housing"); });
+    expect(written).toBe(1);
+    expect(afterWritePriority).toBe(2);
+    expect(result.current.session.snapshot).toBe(before);
+    expect(result.current.session.readRevision).toBe(priorRevision);
+    expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "failed" });
+    expect(result.current.session.notice?.text).toContain("stale");
+    expect(frames.filter((frame) => frame.operation === "viva.activity.assign_category")).toHaveLength(1);
+  });
+
   it("orders an Activity action before one full reread, suppresses cross-verb duplicates, and never patches optimistically", async () => {
     const frames: BridgeRequest[] = [];
     const actionReply = deferred<BridgeResponse<unknown>>();
@@ -975,6 +1543,8 @@ describe("surface session", () => {
     } };
     const { result } = renderHook(() => useSurfaceSession());
     await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    act(() => { result.current.navigate("activity"); });
+    await waitFor(() => expect(result.current.session.snapshot.activity.state).toBe("ready"));
     expect(result.current.session.snapshot.activity.state).toBe("ready");
     frames.length = 0;
 
@@ -994,15 +1564,16 @@ describe("surface session", () => {
     if (result.current.session.snapshot.activity.state === "ready") expect(result.current.session.snapshot.activity.data.movements[0].category.id).toBe("groceries");
     act(() => { void result.current.replaceActivityTags("movement:key", []); });
     expect(frames.filter((frame) => frame.operation.startsWith("viva.activity."))).toHaveLength(1);
-    expect(frames.filter((frame) => frame.operation === "viva.surface.read")).toHaveLength(8);
+    expect(frames.filter((frame) => frame.operation === "viva.surface.read")).toHaveLength(2);
 
     await act(async () => { refreshGate.resolve(); await pending; });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "settled", outcome: { kind: "completed" } } });
     if (result.current.session.snapshot.activity.state === "ready") expect(result.current.session.snapshot.activity.data.movements[0].category.id).toBe("housing");
     const relevant = frames.filter((frame) => frame.operation.startsWith("viva.activity.") || frame.operation === "viva.surface.read");
-    expect(relevant.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", ...Array(8).fill("viva.surface.read")]);
+    expect(relevant.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", ...Array(9).fill("viva.surface.read")]);
     expect(relevant[0].payload).toEqual({ movement_key: "movement:key", category_id: "housing" });
-    expect(relevant.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "review", "trust", "activity", "plans", "jobs"]);
+    expect(relevant.slice(1).filter((frame) => frame.payload.surface !== "jobs").map((frame) => frame.payload.surface)).toEqual(aggregateSurfaces);
+    expect(relevant.filter((frame) => frame.payload.surface === "jobs")).toHaveLength(1);
     expect(relevant.find((frame) => frame.payload.surface === "activity")?.payload.parameters).toEqual({ limit: 50, focus: "movement:key" });
   });
 
@@ -1020,7 +1591,7 @@ describe("surface session", () => {
     frames.length = 0;
     await act(async () => { await result.current.replaceActivityTags("movement:key", []); });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "settled", outcome: { kind } } });
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.replace_tags", ...Array(8).fill("viva.surface.read")]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.replace_tags", ...Array(9).fill("viva.surface.read")]);
   });
 
   it("retains an exact batch selection in action state and rereads instead of patching it", async () => {
@@ -1054,7 +1625,7 @@ describe("surface session", () => {
       operation: "viva.activity.assign_classification",
       payload: { movement_ids: ["movement:key", "movement:two"], category_id: "groceries", subcategory_id: "supermarket" },
     });
-    expect(frames.slice(1).map((frame) => frame.operation)).toEqual(Array(8).fill("viva.surface.read"));
+    expect(frames.slice(1).map((frame) => frame.operation)).toEqual(Array(9).fill("viva.surface.read"));
     expect(frames.find((frame) => frame.payload.surface === "activity")?.payload.parameters).toEqual({ limit: 50, focus: "movement:key" });
   });
 
@@ -1080,9 +1651,10 @@ describe("surface session", () => {
       else await result.current.unlinkActivityTransfer("movement:key", "movement:counterpart");
     });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "settled", outcome: { kind: "completed" } } });
-    expect(frames.map((frame) => frame.operation)).toEqual([operation, ...Array(8).fill("viva.surface.read")]);
+    expect(frames.map((frame) => frame.operation)).toEqual([operation, ...Array(9).fill("viva.surface.read")]);
     expect(frames[0].payload).toEqual(expectedPayload);
-    expect(frames.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "review", "trust", "activity", "plans", "jobs"]);
+    expect(frames.slice(1).filter((frame) => frame.payload.surface !== "jobs").map((frame) => frame.payload.surface)).toEqual(aggregateSurfaces);
+    expect(frames.filter((frame) => frame.payload.surface === "jobs")).toHaveLength(1);
   });
 
   it("retains the suggested transfer through confirm and refresh, then replaces it only from the full reread", async () => {
@@ -1208,7 +1780,7 @@ describe("surface session", () => {
     frames.length = 0;
     await act(async () => { await result.current.assignActivityCategory("movement:key", "housing"); });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "unreadable" } });
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", ...Array(8).fill("viva.surface.read")]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", ...Array(9).fill("viva.surface.read")]);
   });
 
   it("retains the old full picture and outcome when any post-write surface read is invalid", async () => {
@@ -1226,6 +1798,8 @@ describe("surface session", () => {
     } };
     const { result } = renderHook(() => useSurfaceSession());
     await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    act(() => { result.current.navigate("activity"); });
+    await waitFor(() => expect(result.current.session.snapshot.activity.state).toBe("ready"));
     const oldPicture = result.current.session.snapshot;
     await act(async () => { await result.current.assignActivityCategory("movement:key", "housing"); });
     expect(result.current.session.snapshot).toBe(oldPicture);

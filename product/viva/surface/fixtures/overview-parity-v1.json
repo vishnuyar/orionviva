@@ -225,7 +225,7 @@
           ],
           "page": {
             "limit": 3,
-            "next_cursor": "eyJib2R5Ijp7ImFjY291bnRfaWQiOiJhY2N0OmV2ZXJ5ZGF5LWNoZWNraW5nIiwiYWZ0ZXIiOnsiZGF0ZSI6IjIwMjYtMDYtMDgiLCJtb3ZlbWVudF9pZCI6ImIyZjI4NGMzMWJkYTBjNWQ5NjZlZTk0NmFlNDZhNmM1MDYyMWQ1MjExN2Y5OTg4NWQwOWIxYjBjMDc1NGI1ZTZ8YWNjdDpldmVyeWRheS1jaGVja2luZ3wyMDI2LTA2LTA4fC0zMTguNTV8cmVudHwwIn0sInJldmlzaW9uIjoiOTFjODQ0NGYyMTc0MzA4ZTAxOTgyZGU2ZDM4NDY2NmY4YjEyZjc4MGE2ZmYzYzhjYjYxMzVkMGQ3MDZiYzIxYSIsInYiOjF9LCJtYWMiOiIxNWUyYmFlZTE0NzlmZDhmNTNmM2EzYTk3YTY1YTM5OGIyMGQwMzAxNmVmMjkwN2RiOTA4M2Y4MjFiZTQ1OWU2In0",
+            "next_cursor": "<authenticated-keyset-cursor>",
             "remaining": 1,
             "returned": 3
           },
@@ -246,7 +246,7 @@
               "state": "absent"
             }
           },
-          "revision": "91c8444f2174308e01982de6d384666f8b12f780a6ff3c8cb6135d0d706bc21a",
+          "revision": "<authenticated-source-head>",
           "scope": {
             "account_id": "acct:everyday-checking",
             "kind": "account"

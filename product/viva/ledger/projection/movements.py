@@ -10,22 +10,10 @@ from decimal import Decimal
 from .. import streams
 from ..events import (MAJOR_ASSET, MAJOR_EXPENSE, MAJOR_INCOME,
                       MAJOR_LIABILITY, SCOPE_MOVEMENT, Provenance)
+from ..movement_identity import movement_key
 from . import accounts as accounts_view
 from . import merchants as merchants_view
 from .core import ProjectionCore, TxnLine, UnknownAccountError
-
-
-def movement_key(doc_id: str, account: str, date: str, amount: Decimal | str,
-                 description: str, occurrence: int = 0) -> str:
-    """A stable reference to one posted movement, for transfer links.
-
-    Anchored to content — document, account, date, amount, description — plus an
-    occurrence index that separates identical siblings in the same document. It
-    survives a reingest, which mints new event ids, because it depends on what
-    was read rather than on the event's identity. `occurrence` is assigned by
-    the projection's canonical enumeration, so one movement always keys the
-    same."""
-    return f"{doc_id}|{account}|{date}|{amount}|{description}|{occurrence}"
 
 
 # ------------------------------------------------------------- movement nature

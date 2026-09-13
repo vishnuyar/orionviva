@@ -31,9 +31,11 @@ class Ledger:
         # the live one does.
         self._resolve_keys = resolve_keys
         self._lock = RLock()
-        events, identity = store.snapshot_events_with_identity()
-        self._proj = LedgerProjection(events, resolve_keys=resolve_keys)
-        self._projection_identity = identity
+        # Desktop SQL reads do not require this projection; legacy consumers
+        # construct it on their first request.
+        self._proj: LedgerProjection | None = None
+        # Begin at the authenticated identity established by EventStore.open.
+        self._projection_identity = store._cached_identity()
 
     def fork(self) -> "Ledger":
         """An independently cached ledger over the same durable log."""
@@ -47,10 +49,13 @@ class Ledger:
         # The authenticated head is the cache witness. File size is neither an
         # authenticity check nor enough to notice head-only rollback/tampering.
         identity = self.store.authenticated_identity()
-        if identity != self._projection_identity:
-            events, identity = self.store.snapshot_events_with_identity()
-            self._proj = LedgerProjection(
-                events, resolve_keys=self._resolve_keys)
+        if self._proj is None or identity != self._projection_identity:
+            from ..startup_diagnostics import span
+            with span("event_authenticated_snapshot"):
+                events, identity = self.store.snapshot_events_with_identity()
+            with span("projection_construction"):
+                self._proj = LedgerProjection(
+                    events, resolve_keys=self._resolve_keys)
             self._projection_identity = identity
 
     @classmethod
@@ -78,6 +83,7 @@ class Ledger:
         """The live projection, synchronized after another handle writes."""
         with self._lock:
             self._sync_if_external_write()
+            assert self._proj is not None
             return self._proj
 
     def fresh_projection(self) -> LedgerProjection:

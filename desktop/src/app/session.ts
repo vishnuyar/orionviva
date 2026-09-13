@@ -3,14 +3,26 @@ import type { ActionResult, ActivityActionResult, ActivityCorrectionState, Activ
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
+export type LazyDestination = "documents" | "review" | "trust" | "activity" | "plans";
+export type DestinationReadState = "idle" | "loading" | "retrying" | "absent" | "ready" | "partial" | "needs_input" | "unavailable" | "failed";
+function emptyDestinationReads(): Record<LazyDestination, DestinationReadState> {
+  return { documents: "idle", review: "idle", trust: "idle", activity: "idle", plans: "idle" };
+}
 export type SurfaceSession = {
   phase: SessionPhase;
   requestId: number;
   // No vault open yet. Every screen reads its own absent state from the
   // snapshot; this says which verbs exist, and before a vault there are none.
   source: SurfaceSource | null;
+  readRevision: string;
+  priorityLifecycle: string;
+  priorityFreshness: "loading" | "current" | "stale" | "unavailable";
+  priorityRetryable: boolean;
+  priorityRetrying: boolean;
+  priorityRetryOutcome: "succeeded" | "failed" | null;
   snapshot: SurfaceSnapshot;
   destination: Destination;
+  destinationReads: Record<LazyDestination, DestinationReadState>;
   selectedDocument: string;
   selectedQueue: string;
   selectedAccount: string;
@@ -63,7 +75,16 @@ export type SessionAction =
   | { type: "opening"; requestId: number }
   | { type: "reading"; requestId: number; source: SurfaceSource; snapshot: SurfaceSnapshot }
   | { type: "loaded"; requestId: number; source?: SurfaceSource; snapshot: SurfaceSnapshot; jobs?: readonly JobView[]; jobStatus?: "available" | "unavailable" }
-  | { type: "mutation-loaded"; requestId: number; snapshot: SurfaceSnapshot; jobs?: readonly JobView[]; jobStatus?: "available" | "unavailable" }
+  | { type: "priority-loaded"; requestId: number; source: SurfaceSource; overview: SurfaceSnapshot["overview"]; disclosure: SurfaceSnapshot["disclosure"]; revision: string; freshness: "current" | "stale" | "unavailable"; lifecycle: string; retryable: boolean }
+  | { type: "priority-retrying"; requestId: number }
+  | { type: "priority-retry-failed"; requestId: number }
+  | { type: "priority-retry-succeeded"; requestId: number }
+  | { type: "secondary-loaded"; requestId: number; snapshot: SurfaceSnapshot }
+  | { type: "destination-loading"; requestId: number; destination: LazyDestination }
+  | { type: "destination-retrying"; requestId: number; destination: LazyDestination }
+  | { type: "destination-failed"; requestId: number; destination: LazyDestination; snapshot?: Partial<SurfaceSnapshot> }
+  | { type: "destination-loaded"; requestId: number; snapshot: Partial<SurfaceSnapshot>; destination?: LazyDestination }
+  | { type: "mutation-loaded"; requestId: number; snapshot: SurfaceSnapshot; revision?: string; jobs?: readonly JobView[]; jobStatus?: "available" | "unavailable" }
   | { type: "mutation-refresh-failed"; requestId: number }
   | { type: "open-failed"; requestId: number; said: string }
   | { type: "remembered-open-finished"; requestId: number; said?: string }
@@ -78,7 +99,7 @@ export type SessionAction =
   | { type: "question-acted"; requestId: number; questionId: string; verb: QuestionVerb; result: ActionResult; authoritative: boolean; resolved: boolean }
   | { type: "activity-correcting"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb }
   | { type: "activity-outcome"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult }
-  | { type: "activity-refreshed"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
+  | { type: "activity-refreshed"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult; snapshot: SurfaceSnapshot; revision?: string; jobs?: readonly JobView[] }
   | { type: "activity-refresh-failed"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult }
   | { type: "activity-page-loaded"; requestId: number; activity: FeatureResult<ActivityData> }
   | { type: "capturing"; requestId: number }
@@ -108,14 +129,24 @@ function dataOf<T>(result: FeatureResult<T>): T | null {
   return result.state === "ready" || result.state === "partial" || result.state === "needs_input" ? result.data : null;
 }
 
+function destinationOutcome(snapshot: SurfaceSnapshot, destination: LazyDestination): DestinationReadState {
+  const states = destination === "review"
+    ? [snapshot.review?.state ?? "absent", snapshot.conversation?.state ?? "absent"]
+    : [snapshot[destination]?.state ?? "absent"];
+  for (const state of ["failed", "unavailable", "needs_input", "partial", "absent"] as const) {
+    if (states.includes(state)) return state;
+  }
+  return "ready";
+}
+
 function selectedIds(snapshot: SurfaceSnapshot) {
   const overview = dataOf(snapshot.overview);
   const documents = dataOf(snapshot.documents);
   const conversation = dataOf(snapshot.conversation);
   return {
-    documents: documents?.documents.map((item) => item.id) ?? [],
-    queue: conversation?.questions.queue.map((item) => item.id) ?? [],
-    accounts: overview?.accounts.map((item) => item.id) ?? [],
+    documents: documents?.documents?.map((item) => item.id) ?? [],
+    queue: conversation?.questions?.queue?.map((item) => item.id) ?? [],
+    accounts: overview?.accounts?.map((item) => item.id) ?? [],
     prompts: [],
   };
 }
@@ -224,8 +255,15 @@ export function initialSession(): SurfaceSession {
     phase: "settled",
     requestId: 0,
     source: null,
+    readRevision: "",
+    priorityLifecycle: "",
+    priorityFreshness: "unavailable",
+    priorityRetryable: false,
+    priorityRetrying: false,
+    priorityRetryOutcome: null,
     snapshot: unopenedSnapshot(),
     destination: "overview",
+    destinationReads: emptyDestinationReads(),
     selectedDocument: "",
     selectedQueue: "",
     selectedAccount: "",
@@ -308,7 +346,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, questionAction: { state: "idle" }, activityAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], jobStatus: "available", jobCheck: "idle", description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
+      return { ...state, phase: "opening", requestId: action.requestId, destinationReads: emptyDestinationReads(), priorityFreshness: "loading", priorityRetryable: false, priorityRetrying: false, priorityRetryOutcome: null, notice: null, questionAction: { state: "idle" }, activityAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], jobStatus: "available", jobCheck: "idle", description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId) return state;
       return {
@@ -325,7 +363,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         selectedQueue: state.source ? state.selectedQueue : "",
         selectedAccount: state.source ? state.selectedAccount : "",
         selectedPrompt: state.source ? state.selectedPrompt : "",
-        notice: { kind: "acknowledged", text: "Reading available surfaces from this device…" },
+        notice: null,
         questionAction: { state: "idle" },
         activityAction: { state: "idle" },
         captureAction: { state: "idle" },
@@ -337,6 +375,96 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         askAction: { state: "idle" },
         trustAction: { state: "idle" },
       };
+    case "priority-loaded": {
+      if (action.requestId !== state.requestId) return state;
+      const sameSource = state.source === action.source;
+      const retainComplete = sameSource
+        && action.overview.state === "failed"
+        && dataBearing(state.snapshot.overview);
+      const snapshot = { ...(sameSource ? state.snapshot : liveReadingSnapshot()),
+        overview: retainComplete ? state.snapshot.overview : action.overview, disclosure: action.disclosure };
+      const ids = selectedIds(snapshot);
+      return {
+        ...state, phase: "settled", source: action.source, snapshot,
+        readRevision: retainComplete ? state.readRevision : action.revision,
+        priorityFreshness: retainComplete ? "stale" : action.freshness,
+        priorityLifecycle: action.lifecycle,
+        priorityRetryable: retainComplete || action.retryable,
+        priorityRetrying: false,
+        selectedDocument: sameSource ? state.selectedDocument : "",
+        selectedQueue: sameSource ? state.selectedQueue : "",
+        selectedPrompt: sameSource ? state.selectedPrompt : "",
+        selectedAccount: sameSource ? retainSelection(state.selectedAccount, ids.accounts) : "",
+        notice: null,
+      };
+    }
+    case "priority-retrying":
+      return action.requestId === state.requestId && state.priorityRetryable && !state.priorityRetrying
+        ? { ...state, priorityRetrying: true, priorityRetryOutcome: null }
+        : state;
+    case "priority-retry-failed":
+      return action.requestId === state.requestId ? { ...state, priorityRetrying: false, priorityRetryOutcome: "failed" } : state;
+    case "priority-retry-succeeded":
+      return action.requestId === state.requestId ? { ...state, priorityRetrying: false, priorityRetryOutcome: "succeeded" } : state;
+    case "secondary-loaded": {
+      if (action.requestId !== state.requestId) return state;
+      const combined = { ...action.snapshot, overview: state.snapshot.overview, disclosure: state.snapshot.disclosure };
+      const dataPair = dataBearing(combined.review) && dataBearing(combined.conversation);
+      const mismatchedPair = dataPair && !reviewConversationSemanticallyMatch(combined);
+      const snapshot: SurfaceSnapshot = mismatchedPair ? {
+        ...combined,
+        review: { state: "failed", reason: "invalid_payload" },
+        conversation: { state: "failed", reason: "invalid_payload" },
+      } : combined;
+      const ids = selectedIds(snapshot);
+      return { ...state, snapshot,
+        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedQueue: retainSelection(state.selectedQueue, ids.queue),
+        selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
+        notice: mismatchedPair
+          ? { kind: "refused", text: "The vault opened, but Review and conversation disagreed about which questions are actionable. Neither queue is available." }
+          : hasReadFailure(snapshot)
+            ? { kind: "refused", text: "The private vault opened, but some surfaces could not be read. Your vault was not changed." }
+            : state.notice };
+    }
+    case "destination-loading":
+      return action.requestId === state.requestId
+        ? { ...state, destinationReads: { ...state.destinationReads, [action.destination]: "loading" } }
+        : state;
+    case "destination-retrying":
+      return action.requestId === state.requestId && state.destinationReads[action.destination] === "failed"
+        ? { ...state, destinationReads: { ...state.destinationReads, [action.destination]: "retrying" } }
+        : state;
+    case "destination-failed": {
+      if (action.requestId !== state.requestId) return state;
+      const failed = { state: "failed" as const, reason: "read_failed" as const };
+      const current = state.snapshot[action.destination];
+      const replacement = current && (current.state === "ready" || current.state === "partial" || current.state === "needs_input")
+        ? current : action.snapshot?.[action.destination] ?? failed;
+      const snapshot: SurfaceSnapshot = { ...state.snapshot, [action.destination]: replacement };
+      if (action.destination === "review" && !(dataBearing(state.snapshot.review) && dataBearing(state.snapshot.conversation))) {
+        snapshot.review = action.snapshot?.review?.state === "failed" ? action.snapshot.review : failed;
+        snapshot.conversation = action.snapshot?.conversation?.state === "failed" ? action.snapshot.conversation : failed;
+      }
+      return { ...state, snapshot, destinationReads: { ...state.destinationReads, [action.destination]: "failed" } };
+    }
+    case "destination-loaded": {
+      if (action.requestId !== state.requestId) return state;
+      const merged = { ...state.snapshot, ...action.snapshot };
+      const dataPair = dataBearing(merged.review) && dataBearing(merged.conversation);
+      const mismatchedPair = dataPair && !reviewConversationSemanticallyMatch(merged);
+      const snapshot = mismatchedPair ? {
+        ...merged,
+        review: { state: "failed" as const, reason: "invalid_payload" as const },
+        conversation: { state: "failed" as const, reason: "invalid_payload" as const },
+      } : merged;
+      const ids = selectedIds(snapshot);
+      return { ...state, snapshot,
+        destinationReads: action.destination ? { ...state.destinationReads, [action.destination]: destinationOutcome(snapshot, action.destination) } : state.destinationReads,
+        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedQueue: retainSelection(state.selectedQueue, ids.queue),
+        selectedAccount: retainSelection(state.selectedAccount, ids.accounts) };
+    }
     case "loaded": {
       if (action.requestId !== state.requestId) return state;
       const dataPair = dataBearing(action.snapshot.review) && dataBearing(action.snapshot.conversation);
@@ -376,6 +504,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         ...state,
         phase: "settled",
         snapshot,
+        readRevision: snapshot === action.snapshot && action.revision ? action.revision : state.readRevision,
         jobs: action.jobs ?? state.jobs,
         jobStatus: action.jobStatus ?? state.jobStatus,
         selectedDocument: retainSelection(state.selectedDocument, ids.documents),
@@ -462,6 +591,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return {
         ...state,
         snapshot: action.snapshot,
+        readRevision: action.revision || state.readRevision,
         jobs: action.jobs ?? state.jobs,
         selectedDocument: retainSelection(state.selectedDocument, ids.documents),
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),

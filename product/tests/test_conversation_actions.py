@@ -11,17 +11,15 @@ import pytest
 from decimal import Decimal
 
 from viva.desktop_bridge import dispatch_frame, handlers_for_opened_vault
-from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
+from viva.ingest import (ReadResult, StatementFacts, TxnFact,
                          capture_and_ingest)
-from viva.ledger import EventStore, Ledger
 from viva.vault import Vault
 
 
 def _vault(tmp_path) -> Vault:
     """Return a synthetic vault with one open merchant question."""
-    raw = RawStore.open(tmp_path / "raw", "pw")
-    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
-    vault = Vault(ledger=ledger, raw=raw, directory=tmp_path)
+    vault = Vault.open(tmp_path / "vault", "pw")
+    raw, ledger = vault.raw, vault.ledger
     facts = StatementFacts(
         doc_id="", doc_type="checking_statement", doc_type_confidence=0.98,
         account_ref="Everyday Account", currency="USD",
@@ -35,6 +33,7 @@ def _vault(tmp_path) -> Vault:
         return ReadResult(facts.doc_type, 0.98, facts)
 
     capture_and_ingest(raw, ledger, b"one-statement", read, captured_at="2026-05-01")
+    vault.synchronize_read_store()
     return vault
 
 

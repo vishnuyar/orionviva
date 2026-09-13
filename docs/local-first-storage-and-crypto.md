@@ -39,6 +39,7 @@
 2. Chain verification needs no passphrase, so integrity is checkable by someone who cannot read the contents.
 3. A record's sequence number and previous hash are bound into the GCM aad, so a ciphertext moved to another slot no longer decrypts.
 4. The length of the log and the hash of its last record are recorded beside it, because the chain alone cannot see a truncation: a log with its final records removed is a shorter log that verifies. The record is written in the clear so clause 2 survives, and authenticated with a key derived from the vault key so it cannot be rewritten to agree with a truncation. A header that declares one and has none is refused, so deleting it is not a way out.
+5. A routine modern warm open authenticates the header, head, and terminal record without walking the complete prefix. This is a semantic-freshness check, not a physical audit. Any canonical read, append decision, full rebuild, export, or explicit verification still validates the complete chain and authenticates every event it uses; a damaged or legacy boundary takes that strict path immediately.
 
 ### PROG-46 — Original documents are encrypted, immutable, content-addressed blobs
 **State:** enforced
@@ -76,11 +77,33 @@ Encryption belongs on the trust-critical path only in forms with long deployment
 
 The storage layer options were weighed as four. **SQLite + SQLCipher** — the boring, proven default: whole-database transparent encryption, a single file, works everywhere, a huge deployment history, well supported from Python and Node/TS. **SQLite + an OS keychain-wrapped key** — SQLCipher's key itself living in the OS keychain, unlocked by user login or biometrics; good custody UX without inventing anything. **Turso/libSQL, DuckDB and their kin** — interesting, not justified; DuckDB may earn a place later for analytical queries reading from the canonical encrypted store, but is not the system of record. **Original documents** as encrypted blobs on disk (age/XChaCha20-Poly1305 file encryption), referenced from the database, kept forever, encrypted, immutable. The **leaning** among them was SQLCipher-encrypted SQLite as the single system of record, original documents as encrypted immutable blobs, and the key wrapped by the OS keychain with a user-held recovery phrase. That was a leaning and never a decision, which is why it is recorded here rather than as a rule.
 
+The accepted read-store direction is narrower than that earlier leaning.
+Encrypted, hash-chained events remain the system of record; SQLCipher is a
+disposable materialized read model. Its private root contains authenticated
+key metadata and a current-generation pointer, opaque immutable generation
+directories, a writer lock, and a bounded quarantine. Publication replaces
+only the closed pointer file, never an open database. Read-only connections
+stay bound to the revision they opened while one serialized writer constructs
+and publishes a later complete revision. The exact layout, retention count,
+platform permission status, and secure-deletion limits live with the active
+implementation checklist in
+[encrypted-read-store-implementation-todo.md](encrypted-read-store-implementation-todo.md).
+
 Local-first does not mean single-device forever. Designing storage as an encrypted log plus encrypted blobs keeps every sync option open — file-level sync, the user's own cloud drive, or nothing — without baking in an assumption that storage is ever plaintext.
 
 ## Open
 
-- The storage leaning was never taken up. The system of record is an encrypted, hash-chained JSONL event log (product/viva/ledger/store.py:1) plus a content-addressed encrypted blob store (product/viva/ingest/raw_store.py:25); no `sqlite`, `sqlcipher` or keychain dependency exists anywhere in `product/`, `core/`, `merchant/` or `bench/`. Whether the leaning is abandoned or merely unbuilt is undecided.
+- The system of record remains the encrypted, hash-chained JSONL event log
+  (`product/viva/ledger/store.py`) plus the content-addressed encrypted blob
+  store (`product/viva/ingest/raw_store.py`). A fail-closed SQLCipher dependency
+  and encrypted read-store foundation now exist under `product/viva/read_store/`;
+  that database is disposable derived state, not canonical history, and its
+  projection schema and authenticated event-log catch-up are built. Converted
+  desktop reads now serve current Overview, Accounts, Activity, and Spending
+  from immutable SQL revisions; the remaining destinations and historical
+  Activity still use their legacy paths. The desktop host also uses the operating-
+  system credential store for device-local automatic opening. See ADR-015 and
+  the encrypted read-store implementation TODO.
 - Model credentials are machine-level and currently live in an owner-only plaintext `.env` file. The sidecar loads one into its process at startup, before any vault opens, and retains it for the process lifetime. Moving that accessor to the OS keychain, with a user-held recovery path, is a dedicated custody cycle; this storage decision remains open until it lands.
 - Key rotation has no story beyond a sketch, and one is needed before any second user.
 - Does the event log double as the agent's memory substrate (corrections, preferences), or is memory a separate store? The leaning is one log, many projections.

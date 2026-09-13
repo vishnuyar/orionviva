@@ -149,6 +149,14 @@ Answers should cite vault evidence and refuse unsupported combinations. Ask
 Viva should not silently convert currencies, invent missing dates, or change
 financial records merely because a question was asked.
 
+The Ask box starts on **New question**. This keeps earlier Ask text out of
+the next model request while leaving every turn visible in the vault's
+timeline. Choose **Follow-up** when your question depends on the current
+conversation. A new question starts a durable boundary, so closing and
+reopening the vault does not bring older question text back into a follow-up.
+The ledger and cited evidence are freshly read for each answer; conversation
+text is not evidence. A save-up plan draft remains a separate action.
+
 When a configured model is required, relevant question or document data may
 leave the machine. Trust & settings records the observed outbound activity.
 

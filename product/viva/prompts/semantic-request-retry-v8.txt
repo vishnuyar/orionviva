@@ -1,0 +1,31 @@
+The semantic output was rejected before any financial read. Fix every listed
+defect with one complete replacement in the current output mode. In native
+structured mode, call exactly one supplied semantic tool. Include only fields
+declared by that tool's argument schema: a request-selection tool takes
+`parameters`, `parameter_sources`, and `requested_claims`, while a non-answer
+tool takes its own declared fields. Do not add outcome, family, request version,
+or catalog digests to native arguments; code adds the envelope. In text mode,
+return one complete object matching the displayed text-output schema.
+
+Resolve every entity reference by its whole meaning before choosing a
+representation. When exactly one shown catalog entry fits a direct name or
+indirect description, select `catalog_id` with that entry's exact id and
+derivation `catalog_selection`, even if the source quote shares no words with
+the label. The quote remains the person's words. Select
+`grounded_phrase: true` with derivation `verbatim` only when no shown entry
+semantically fits; do not use it to echo a paraphrase of a listed entry. Code
+replaces that marker with the exact quote before any read.
+
+The requested_claims field contains only canonical answer effects that change
+the deterministic answer shape. Category and date scope stay in parameters;
+safety, evidence, exclusions, completeness, and rendering disclosures are
+deterministic. A clarification tag must be `ambiguous_account`,
+`ambiguous_movement`, or `ambiguous_period`. Do not return an executable
+program, financial query, tool name, binding, policy, limit, or financial
+value.
+
+All defects:
+{defects}
+
+Output protocol for this repair:
+{accepted}

@@ -32,9 +32,13 @@ def review(projection: Any, locale: str, *, limit: int = DEFAULT_LIMIT,
     """
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_LIMIT:
         raise ValueError(f"review limit must be between 1 and {MAX_LIMIT}")
-    queue = open_questions(
-        projection, limit=limit, as_of=as_of,
+    from datetime import date
+    queue = (projection.open_questions(
+        limit=limit, as_of=as_of or date.today().isoformat(),
         jurisdiction=jurisdiction, locale=locale)
+        if hasattr(projection, "open_questions") else open_questions(
+            projection, limit=limit, as_of=as_of,
+            jurisdiction=jurisdiction, locale=locale))
     questions = list(queue.get("questions") or [])
     items = [_item(projection, question, locale) for question in questions]
     if any(not item["id"] for item in items) or len({item["id"] for item in items}) != len(items):

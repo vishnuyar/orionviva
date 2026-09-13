@@ -25,6 +25,8 @@ CANCELLED = "job_cancelled"
 PLANNED = "planned"
 SPENT = "spent"
 MAINTENANCE_STEPS = (PLANNED, SPENT)
+READ_VISIBILITY_TIMEOUT = 120.0
+READ_VISIBILITY_RECOVERY_TIMEOUT = 120.0
 
 
 class TrustActions:
@@ -83,6 +85,7 @@ class TrustActions:
         """Run paid maintenance on isolated caches without pumping transport."""
         from viva.agent.run import wake
 
+        visibility_serial = None
         try:
             with job:
                 # Background cancellation is read from the registry.
@@ -94,15 +97,38 @@ class TrustActions:
                 wake(worker_vault, remaining_calls=budget, dry_run=True)
                 job.reached(PLANNED, "Maintenance plan completed.")
                 job.checkpoint(pump=False)
+                # The fork has no foreground commit observer. Reads must refuse
+                # until its possible writes have reached authenticated SQL.
+                visibility_serial = self._vault.hold_read_store_visibility()
                 run = wake(worker_vault, remaining_calls=budget, dry_run=False)
                 if run.could_not_spend:
+                    self._vault.wait_for_read_store(
+                        timeout=READ_VISIBILITY_TIMEOUT,
+                        checkpoint=lambda: job.checkpoint(pump=False),
+                        visibility_serial=visibility_serial)
                     job.fail("Maintenance could not spend because no model is configured.")
+                    return
+                if not self._vault.wait_for_read_store(
+                        timeout=READ_VISIBILITY_TIMEOUT,
+                        checkpoint=lambda: job.checkpoint(pump=False),
+                        visibility_serial=visibility_serial):
+                    job.fail("Maintenance events may have been saved, but the read store "
+                             "is unavailable. Activity cannot show them yet.")
                     return
                 job.reached(
                     SPENT,
                     f"Maintenance completed using {run.calls_spent} model call(s).")
         except JobCancelled:
             return
+        finally:
+            if (visibility_serial is not None
+                    and self._vault.holds_read_store_visibility(visibility_serial)):
+                # The job is already terminal, but its write fence remains
+                # until authenticated recovery; never repeat the paid wake.
+                Thread(target=self._vault.wait_for_read_store,
+                       kwargs={"timeout": READ_VISIBILITY_RECOVERY_TIMEOUT,
+                               "visibility_serial": visibility_serial},
+                       daemon=True).start()
 
     def diagnose(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Write a diagnostic containing allowlisted operational counts."""

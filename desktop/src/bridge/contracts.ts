@@ -3,10 +3,11 @@
 // and moves only when the sidecar's does.
 export const BRIDGE_PROTOCOL = "2.0";
 
-export type SurfaceName = "overview" | "spending" | "documents" | "conversation" | "review" | "jobs" | "trust" | "activity" | "account_ledger" | "plans";
+export type SurfaceName = "overview" | "overview_accounts" | "spending" | "documents" | "conversation" | "review" | "jobs" | "trust" | "activity" | "account_ledger" | "plans";
 export type SurfaceParameters = Record<string, string | number>;
 export type BridgeResponse<T> = { protocol: string; request_id: string; ok: boolean; result?: T; error?: { code: string; message: string } };
 export type SurfaceReadResult = { surface: SurfaceName; job_id: string; data: unknown };
+export type PriorityReadResult = { state: "ready" | "stale" | "degraded"; freshness: "current" | "stale" | "unavailable"; lifecycle: string; revision: string; overview: unknown; accounts: unknown; error: string };
 // What the sidecar said about itself when the shell first spoke to it, and what
 // it says about its own registry. Both arrive unread: the transport carries the
 // frame and something above it decides what it says.
@@ -102,6 +103,7 @@ export type BridgeClient = {
   openSampleVault: () => Promise<SampleFrame | null>;
   pickVaultDirectory?: () => Promise<string | null>;
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
+  readOverviewAccounts: (refresh?: boolean) => Promise<SurfaceReadResult>;
   readSpending?: (parameters: SurfaceParameters) => Promise<SurfaceReadResult>;
   readDocuments: () => Promise<SurfaceReadResult>;
   readConversation: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
@@ -183,7 +185,7 @@ export type BridgeClient = {
   // One question, and whether its text will be in front of the person. The
   // second is a fact about this screen rather than a preference: it is the
   // input to the rule that a figure is never spoken with nowhere to check it.
-  askViva: (question: string, mirrored: boolean, planRequest?: boolean) => Promise<unknown>;
+  askViva: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: import("../surface/types").AskContextMode) => Promise<unknown>;
   answerQuestion: (questionId: string, said: string) => Promise<unknown>;
   confirmProposal?: (proposalId: string, said: string, asked: string) => Promise<unknown>;
   declineQuestion: (questionId: string, reason: DeclineReason) => Promise<unknown>;

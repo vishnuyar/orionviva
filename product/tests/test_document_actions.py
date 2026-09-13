@@ -24,7 +24,6 @@ import pytest
 from viva.desktop_bridge import dispatch_frame, handlers_for_opened_vault
 from viva.ingest import RawStore
 from viva.ingest.reader import MAX_BYTES
-from viva.ledger import EventStore, Ledger
 from viva.persona import moment
 from viva.vault import Vault
 
@@ -33,9 +32,9 @@ DOCUMENT = b"a document this build has no way of reading"
 
 
 def _vault(tmp_path) -> Vault:
-    return Vault(ledger=Ledger(EventStore.open(tmp_path / "events.jsonl", "pw")),
-                 raw=RawStore.open(tmp_path / "raw", "pw"),
-                 directory=tmp_path)
+    vault = Vault.open(tmp_path, "pw")
+    assert vault.synchronize_read_store() in {"equal", "caught_up", "rebuilt"}
+    return vault
 
 
 class _Sidecar:
@@ -289,6 +288,20 @@ def test_the_document_is_in_the_read_the_panel_makes_before_anything_reads_it(
     assert row["reading"] == "never_read"
     assert row["raw_available"] is True
     assert row["resolved"] is False
+
+
+def test_supported_open_catches_up_each_acknowledged_upload_before_document_read(
+        tmp_path, unplugged):
+    vault = _vault(tmp_path)
+    sidecar = _Sidecar(vault)
+
+    for name in ("first.pdf", "second.pdf"):
+        sidecar.send(UPLOAD, {"path": str(_file(tmp_path, name, name.encode()))})
+        read = sidecar.send(
+            "viva.surface.read", {"surface": "documents", "parameters": {}})["data"]
+        assert {row["filename"] for row in read["documents"]} == (
+            {"first.pdf"} if name == "first.pdf" else {"first.pdf", "second.pdf"})
+        assert all(row["raw_available"] for row in read["documents"])
 
 
 def test_the_blob_is_already_sealed_when_the_read_begins_on_this_path(

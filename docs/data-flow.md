@@ -50,9 +50,13 @@ that arrives, whatever the path it arrived by:
    and re-seats the opening balance, and every ordering of the same documents
    yields an identical chain
    ([individual-as-enterprise.md](individual-as-enterprise.md)).
-7. **Project.** One cached incremental projection folds forward on each
-   append, so ordinary reads never re-decrypt the log; the surface reads the
-   projection, and the interface renders what the surface says.
+7. **Project.** The canonical event prefix builds read state. Desktop Overview,
+   Accounts, Activity, Spending, Documents, Review, Plans, Conversation, Trust,
+   historical Overview/Activity, and account-ledger pages read encrypted,
+   disposable SQL revisions that catch up or rebuild outside the foreground
+   request loop. Jobs reads its separate registry; non-desktop consumers may
+   still construct the lazy in-memory projection. The interface renders what
+   the contracted surface says.
 
 ```mermaid
 flowchart LR
@@ -66,7 +70,7 @@ flowchart LR
     verify -- gap --> diagnose["Diagnose cheapest-first"]
     diagnose -- forced finding --> post
     diagnose -- unresolved --> review["Held for review — a question is raised"]
-    post --> projection["Projection folds forward"]
+    post --> projection["Encrypted SQL or in-memory projection"]
     projection --> surface["Surface read models"]
     surface --> interface["Interface renders"]
 ```

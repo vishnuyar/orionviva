@@ -374,7 +374,7 @@ def test_account_ledger_balance_kind_is_authored_from_account_type_and_sign(
         "account"]["balance"]["kind"] == expected
 
 
-def test_opened_vault_read_binds_cursor_to_the_event_snapshot_and_allowlists_parameters(tmp_path):
+def test_opened_vault_read_binds_cursor_to_sql_generation_and_allowlists_parameters(tmp_path):
     vault = Vault.open(tmp_path / "vault", "pw")
     account = "acct:checking"
     vault.ledger.append(account_opened(
@@ -387,6 +387,9 @@ def test_opened_vault_read_binds_cursor_to_the_event_snapshot_and_allowlists_par
     vault.ledger.append(simple_transaction(
         account, "-7", "Market", "2026-01-03"))
     provider = OpenedVaultSurfaceProvider(vault)
+    with pytest.raises(BridgeRequestError, match="not caught up"):
+        provider.read_surface("account_ledger", {"account_id": account})
+    assert vault.synchronize_read_store() in {"equal", "rebuilt", "caught_up"}
 
     first = provider.read_surface(
         "account_ledger", {"account_id": account, "limit": 1})
@@ -397,6 +400,9 @@ def test_opened_vault_read_binds_cursor_to_the_event_snapshot_and_allowlists_par
     # produce a valid MAC, and another opened-provider session has another key.
     padded = cursor + "=" * (-len(cursor) % 4)
     forged = json.loads(base64.urlsafe_b64decode(padded).decode())
+    assert forged["body"]["v"] == 2
+    assert forged["body"]["source"]["head"] == first["revision"]
+    assert forged["body"]["source"]["generation"].startswith("g-")
     forged["body"]["after"]["movement_id"] = "forged-anchor"
     canonical = json.dumps(
         forged["body"], sort_keys=True, separators=(",", ":"))
@@ -414,6 +420,7 @@ def test_opened_vault_read_binds_cursor_to_the_event_snapshot_and_allowlists_par
 
     vault.ledger.append(simple_transaction(
         account, "-9", "Pharmacy", "2026-01-04"))
+    assert vault.synchronize_read_store() in {"equal", "rebuilt", "caught_up"}
     with pytest.raises(BridgeRequestError, match="stale"):
         provider.read_surface(
             "account_ledger", {"account_id": account, "limit": 1,
@@ -436,6 +443,7 @@ def test_transaction_only_account_has_no_invented_balance(tmp_path):
         account_number="000000004417"))
     vault.ledger.append(simple_transaction(
         account, "-5", "Cafe", "2026-01-02"))
+    assert vault.synchronize_read_store() in {"equal", "rebuilt", "caught_up"}
 
     read = OpenedVaultSurfaceProvider(vault).read_surface(
         "account_ledger", {"account_id": account})
