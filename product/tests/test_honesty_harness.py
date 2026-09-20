@@ -14,7 +14,7 @@ import sys
 
 import pytest
 
-from viva.honesty import harness, rate, refusal_rate, report, turns_of
+from viva.honesty import harness, keyed_harness, rate, refusal_rate, report, turns_of
 from viva.ledger.events import document_captured, read_recorded
 
 FROZEN = pathlib.Path(__file__).resolve().parents[1] / "evals/honesty_turns.json"
@@ -188,3 +188,146 @@ def test_a_run_naming_neither_a_vault_nor_a_file_asks_rather_than_guessing():
 
     assert answered.returncode == 2
     assert "--vault" in answered.stderr
+
+
+def test_a_reviewed_key_catches_a_confidently_wrong_delivered_figure():
+    expected = {"value": "42.00", "currency": "USD", "quantity": "balance",
+                "dated": "2026-01-31", "record_ids_exact": ["source-a"]}
+    right = {"value": "42.00", "currency": "USD", "quantity": "balance",
+             "dated": "2026-01-31", "record_ids": ["source-a"],
+             "kind": "financial", "grade": "verified"}
+    wrong = {**right, "value": "43.00"}
+    cases = [
+        {"case_id": "right", "delivery_reviewed": True,
+         "oracle": {"reviewed": True, "status": "answered",
+                                         "figures": [expected]},
+         "result": {"answered": True, "status": "answered", "figures": [right]}},
+        {"case_id": "wrong", "delivery_reviewed": True,
+         "oracle": {"reviewed": True, "status": "answered",
+                                         "figures": [expected]},
+         "result": {"answered": True, "status": "answered", "figures": [wrong]}},
+    ]
+    measured = keyed_harness(cases)
+    assert measured["confidently_wrong_rate"] == 0.5
+    assert measured["confidently_wrong_answers"] == 1
+    assert "unexpected_keyed_figure" in measured["results"][1]["defects"]
+    assert "42.00" not in json.dumps(measured)
+    assert "43.00" not in json.dumps(measured)
+
+
+def test_unkeyed_and_failed_calls_cannot_be_scored_as_clean_answers():
+    rows = [
+        {"case_id": "unkeyed", "result": {"answered": True, "status": "answered", "figures": []}},
+        {"case_id": "failed", "oracle": {"reviewed": True, "figures": []},
+         "result": {"answered": False, "status": "failed", "figures": []}},
+    ]
+    measured = keyed_harness(rows)
+    assert measured["keyed"] == 0
+    assert measured["confidently_wrong_rate"] is None
+    assert len(measured["unmeasured"]) == 2
+
+
+def test_a_correct_amount_under_the_wrong_period_is_still_a_defect():
+    figure = {"value": "42.00", "currency": "USD", "quantity": "spending",
+              "kind": "financial", "grade": "verified", "record_ids": ["source-a"]}
+    rows = [{"case_id": "wrong-period",
+             "oracle": {"reviewed": True, "status": "answered",
+                        "figures": [{"value": "42.00", "currency": "USD",
+                                     "quantity": "spending",
+                                     "record_ids_exact": ["source-a"]}],
+                        "family": "category_spending_period",
+                        "required_claims": ["spending"],
+                        "allowed_claims": ["spending"],
+                        "parameters": {"from": "2024-10-01", "to": "2024-10-31"}},
+             "semantic_request": {"family": "category_spending_period",
+                                  "requested_claims": ["spending"],
+                                  "parameters": {"from": "2024-11-01", "to": "2024-11-30"}},
+             "result": {"answered": True, "status": "answered", "figures": [figure]}}]
+    measured = keyed_harness(rows)
+    assert "wrong_period_parameters" in measured["results"][0]["defects"]
+    assert measured["keyed_figure_wrong_rate"] == 1.0
+    assert measured["confidently_wrong_rate"] is None
+
+
+def test_keyed_cli_refuses_to_call_an_incomplete_private_run_clean(tmp_path):
+    path = tmp_path / "private-cases.json"
+    path.write_text(json.dumps([{"case_id": "unkeyed",
+                                 "result": {"status": "answered", "answered": True,
+                                            "figures": [{"value": "private-value"}]}}]))
+    completed = _run("--keyed-cases", str(path))
+    assert completed.returncode == 1
+    assert "unmeasured" in completed.stdout
+    assert "private-value" not in completed.stdout
+
+
+def test_a_cautiously_wrong_figure_is_a_defect_but_not_confidently_wrong():
+    rows = [{"case_id": "cautious",
+             "oracle": {"reviewed": True, "figures": [{"value": "42.00"}]},
+             "result": {"answered": True, "status": "answered",
+                        "figures": [{"value": "43.00", "grade": "unverified",
+                                     "kind": "financial", "record_ids": ["source-a"]}]}}]
+    measured = keyed_harness(rows)
+    assert measured["keyed_figure_wrong_rate"] == 0.0
+    assert measured["confidently_wrong_rate"] is None
+    assert "unexpected_keyed_figure" in measured["results"][0]["defects"]
+
+
+def test_empty_figure_answer_needs_an_explicit_delivery_review():
+    measured = keyed_harness([{"case_id": "prose-only",
+                               "oracle": {"reviewed": True, "figures": []},
+                               "result": {"answered": True, "status": "answered",
+                                          "text": "A number in ungraded prose.", "figures": []}}])
+    assert measured["confidently_wrong_rate"] is None
+    assert measured["unmeasured"][0]["reason"] == "empty_answer_needs_delivery_review"
+
+
+def test_refusal_cannot_satisfy_expected_figures_without_an_expected_status(tmp_path):
+    rows = [{"case_id": "missing-answer",
+             "oracle": {"reviewed": True, "figures": [{"value": "42.00"}]},
+             "result": {"answered": False, "status": "refused", "figures": []}}]
+    measured = keyed_harness(rows)
+    assert measured["results"][0]["defects"] == ["missing_keyed_figure"]
+    assert measured["confidently_wrong_rate"] is None
+    assert measured["answered"] == 0
+    path = tmp_path / "cases.json"
+    path.write_text(json.dumps(rows))
+    completed = _run("--keyed-cases", str(path))
+    assert completed.returncode == 1
+    assert "missing_keyed_figure" in completed.stdout
+    assert "42.00" not in completed.stdout
+
+
+@pytest.mark.parametrize("expected_figures,exit_code", [([], 0), ([{"value": "42.00"}], 1)])
+def test_delivery_review_admits_empty_answers_and_checks_missing_figures(
+        tmp_path, expected_figures, exit_code):
+    rows = [{"case_id": "reviewed-prose", "delivery_reviewed": True,
+             "oracle": {"reviewed": True, "figures": expected_figures},
+             "result": {"answered": True, "status": "answered", "figures": []}}]
+    measured = keyed_harness(rows)
+    assert measured["unmeasured"] == []
+    assert measured["delivery_reviewed_answers"] == 1
+    assert measured["results"][0]["defects"] == (
+        ["missing_keyed_figure"] if expected_figures else [])
+    path = tmp_path / "cases.json"
+    path.write_text(json.dumps(rows))
+    assert _run("--keyed-cases", str(path)).returncode == exit_code
+
+
+@pytest.mark.parametrize("delivery_reviewed", [None, False, "true", 1])
+def test_oracle_empty_answer_permission_cannot_replace_delivery_review(delivery_reviewed):
+    measured = keyed_harness([{
+        "case_id": "unreviewed-prose", "delivery_reviewed": delivery_reviewed,
+        "oracle": {"reviewed": True, "allow_empty_answer": True, "figures": []},
+        "result": {"answered": True, "status": "answered", "figures": []}}])
+    assert measured["keyed"] == 0
+    assert measured["unmeasured"][0]["reason"] == "empty_answer_needs_delivery_review"
+
+
+def test_refusal_without_expected_figures_remains_clean(tmp_path):
+    rows = [{"case_id": "expected-refusal",
+             "oracle": {"reviewed": True, "status": "refused", "figures": []},
+             "result": {"answered": False, "status": "refused", "figures": []}}]
+    assert keyed_harness(rows)["results"][0]["defects"] == []
+    path = tmp_path / "cases.json"
+    path.write_text(json.dumps(rows))
+    assert _run("--keyed-cases", str(path)).returncode == 0

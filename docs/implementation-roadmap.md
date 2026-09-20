@@ -56,7 +56,16 @@ wrong when it was written.
 1. No stranger tests the product until a continuous honesty harness exists, with the confidently-wrong rate as its headline.
 2. The eval corpus accumulates at zero marginal cost as a by-product of the build, from frozen answer keys and from the corrections a person gives.
 
-**Exception:** the confidently-wrong rate is still measured over one model call against a frozen key and nowhere else. The vault-facing half measures what a vault can answer without a key — the refusal rate, and how often a figure was stated with nothing on record behind it — and reports the confidently-wrong rate as not measured rather than as zero, because a key is what says an answer was wrong and a vault has none. Shapes authored, holes unfilled and clauses dropped are still counted by a debug reader (product/viva/debug/) rather than by the harness.
+**Exception:** the confidently-wrong rate is measured over the frozen synthetic
+key and can be measured over private Witness turns only where an independent, reviewed answer
+key has been supplied and delivered text has been reviewed. The ordinary
+vault-facing fold still measures refusal
+and uncited figures and reports confidently wrong as unmeasured: a vault alone
+cannot say an answer was false. The private keyed fold reports unkeyed and
+failed cases separately and never treats an empty denominator as zero. It does
+not admit a runtime model or replace the author's judgment of an answer's
+meaning. Shapes authored, holes unfilled and clauses dropped are still counted
+by a debug reader (product/viva/debug/) rather than by the harness.
 
 ### SPINE-8 — The trust trial runs alongside breadth, never in front of it
 **State:** untestable

@@ -91,6 +91,27 @@ The one genuinely new thing against the benchmark is what is graded. The benchma
 
 ## Open
 
+The vault-facing honesty fold has no answer key and therefore cannot measure
+whether a number was wrong. A private Witness may pass a JSON array of cases
+to `viva.honesty --keyed-cases`. Each case has a stable `case_id`, the delivered
+`result`, and an independently checked `oracle` marked `reviewed`. A keyed
+oracle states the expected status and figures; each figure may pin value,
+currency, quantity, date, and exact source-record ids. It may also state the
+expected semantic family, allowed and required answer effects, and exact period
+edges. A separate post-turn `delivery_reviewed` mark records that the delivered
+text was checked for numeric claims missing from the structured figures. The
+scorer returns only opaque case ids, defect codes and counts. It refuses a
+clean exit when any case lacks a key, the model failed, or an answered turn
+lacks delivery review. It reports the full confidently-wrong rate as unknown
+when no delivered answer has that review, while still reporting a narrower
+keyed-figure rate. Full oracles and transcripts stay private, outside the
+repository.
+
+This is a diagnostic for the cases a person independently keyed, not continuous
+grading of everything Viva said. A matching figure does not establish that the
+product's underlying record was true, and a question about completeness needs
+a reviewed coverage and language oracle in addition to matching figures.
+
 - Document reading has no live measurement. The continuously running harness grades sentence interpretation; the answer path is covered separately by exact-profile keyed and adversarial admission.
 - Q31: case-set curation — how many hand-written adversarial cases, and who reviews additions. A wrong expected answer erodes the bar silently, so the eval set needs the two-drafter-plus-audit rigour the benchmark keys were designed for.
 - Q32: alarm thresholds — what movement in the confidently-wrong rate blocks a commit rather than warning. Setting it honestly needs the frozen-key baseline first.
