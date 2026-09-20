@@ -155,7 +155,8 @@ def keyed_harness(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
         if not isinstance(actual, list):
             unmeasured.append({"case_id": case_id, "reason": "invalid_result"})
             continue
-        if result.get("answered") and not actual and not oracle.get("allow_empty_answer"):
+        if (result.get("answered") and not actual and
+                row.get("delivery_reviewed") is not True):
             unmeasured.append({"case_id": case_id,
                                "reason": "empty_answer_needs_delivery_review"})
             continue
@@ -183,6 +184,8 @@ def keyed_harness(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
                     defects.append("wrong_period_parameters")
                     break
         if not result.get("answered"):
+            if oracle["figures"]:
+                defects.append("missing_keyed_figure")
             measured.append({"case_id": case_id, "answered": False,
                              "figures": 0, "unsupported": 0,
                              "confidently_wrong": 0, "defects": defects,

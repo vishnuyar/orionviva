@@ -279,3 +279,55 @@ def test_empty_figure_answer_needs_an_explicit_delivery_review():
                                           "text": "A number in ungraded prose.", "figures": []}}])
     assert measured["confidently_wrong_rate"] is None
     assert measured["unmeasured"][0]["reason"] == "empty_answer_needs_delivery_review"
+
+
+def test_refusal_cannot_satisfy_expected_figures_without_an_expected_status(tmp_path):
+    rows = [{"case_id": "missing-answer",
+             "oracle": {"reviewed": True, "figures": [{"value": "42.00"}]},
+             "result": {"answered": False, "status": "refused", "figures": []}}]
+    measured = keyed_harness(rows)
+    assert measured["results"][0]["defects"] == ["missing_keyed_figure"]
+    assert measured["confidently_wrong_rate"] is None
+    assert measured["answered"] == 0
+    path = tmp_path / "cases.json"
+    path.write_text(json.dumps(rows))
+    completed = _run("--keyed-cases", str(path))
+    assert completed.returncode == 1
+    assert "missing_keyed_figure" in completed.stdout
+    assert "42.00" not in completed.stdout
+
+
+@pytest.mark.parametrize("expected_figures,exit_code", [([], 0), ([{"value": "42.00"}], 1)])
+def test_delivery_review_admits_empty_answers_and_checks_missing_figures(
+        tmp_path, expected_figures, exit_code):
+    rows = [{"case_id": "reviewed-prose", "delivery_reviewed": True,
+             "oracle": {"reviewed": True, "figures": expected_figures},
+             "result": {"answered": True, "status": "answered", "figures": []}}]
+    measured = keyed_harness(rows)
+    assert measured["unmeasured"] == []
+    assert measured["delivery_reviewed_answers"] == 1
+    assert measured["results"][0]["defects"] == (
+        ["missing_keyed_figure"] if expected_figures else [])
+    path = tmp_path / "cases.json"
+    path.write_text(json.dumps(rows))
+    assert _run("--keyed-cases", str(path)).returncode == exit_code
+
+
+@pytest.mark.parametrize("delivery_reviewed", [None, False, "true", 1])
+def test_oracle_empty_answer_permission_cannot_replace_delivery_review(delivery_reviewed):
+    measured = keyed_harness([{
+        "case_id": "unreviewed-prose", "delivery_reviewed": delivery_reviewed,
+        "oracle": {"reviewed": True, "allow_empty_answer": True, "figures": []},
+        "result": {"answered": True, "status": "answered", "figures": []}}])
+    assert measured["keyed"] == 0
+    assert measured["unmeasured"][0]["reason"] == "empty_answer_needs_delivery_review"
+
+
+def test_refusal_without_expected_figures_remains_clean(tmp_path):
+    rows = [{"case_id": "expected-refusal",
+             "oracle": {"reviewed": True, "status": "refused", "figures": []},
+             "result": {"answered": False, "status": "refused", "figures": []}}]
+    assert keyed_harness(rows)["results"][0]["defects"] == []
+    path = tmp_path / "cases.json"
+    path.write_text(json.dumps(rows))
+    assert _run("--keyed-cases", str(path)).returncode == 0
