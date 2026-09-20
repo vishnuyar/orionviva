@@ -31,6 +31,7 @@ nothing about how the payload travels.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Iterable
 
 # The event a conversation turn is recorded as, and the pass it is recorded
@@ -124,6 +125,129 @@ def harness(events: Iterable[Any]) -> dict[str, Any]:
     }
 
 
+def keyed_harness(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Grade delivered Witness results against independent, prewritten keys.
+
+    A case without an oracle, or whose model never answered, cannot enter the
+    confidently-wrong denominator. This fold accepts private result dictionaries
+    but returns only case ids and defect codes, never questions or values.
+    """
+    rows = list(cases)
+    ids = [str(row.get("case_id", "")) for row in rows]
+    if (not all(re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,79}", item) for item in ids)
+            or len(ids) != len(set(ids))):
+        raise ValueError("Witness case ids must be unique opaque slugs")
+    measured = []
+    unmeasured = []
+    for row, case_id in zip(rows, ids):
+        oracle = row.get("oracle")
+        result = row.get("result")
+        if not isinstance(oracle, dict) or not isinstance(result, dict):
+            unmeasured.append({"case_id": case_id, "reason": "missing_key_or_result"})
+            continue
+        if not isinstance(oracle.get("figures"), list) or not oracle.get("reviewed"):
+            unmeasured.append({"case_id": case_id, "reason": "unreviewed_key"})
+            continue
+        if result.get("status") == "failed":
+            unmeasured.append({"case_id": case_id, "reason": "model_or_runtime_failed"})
+            continue
+        actual = result.get("figures")
+        if not isinstance(actual, list):
+            unmeasured.append({"case_id": case_id, "reason": "invalid_result"})
+            continue
+        if result.get("answered") and not actual and not oracle.get("allow_empty_answer"):
+            unmeasured.append({"case_id": case_id,
+                               "reason": "empty_answer_needs_delivery_review"})
+            continue
+        defects = []
+        expected_status = oracle.get("status")
+        if expected_status and result.get("status") != expected_status:
+            defects.append("wrong_status")
+        semantic = row.get("semantic_request")
+        if oracle.get("family"):
+            if not isinstance(semantic, dict):
+                defects.append("missing_semantic_request")
+                semantic = {}
+            if semantic.get("family") != oracle["family"]:
+                defects.append("wrong_family")
+            requested = set(semantic.get("requested_claims") or ())
+            if not set(oracle.get("required_claims") or ()) <= requested:
+                defects.append("missing_answer_effect")
+            if ("allowed_claims" in oracle and
+                    not requested <= set(oracle["allowed_claims"])):
+                defects.append("unrequested_answer_effect")
+            parameters = semantic.get("parameters") or {}
+            for name in ("from", "to"):
+                if (name in (oracle.get("parameters") or {}) and
+                        parameters.get(name) != oracle["parameters"][name]):
+                    defects.append("wrong_period_parameters")
+                    break
+        if not result.get("answered"):
+            measured.append({"case_id": case_id, "answered": False,
+                             "figures": 0, "unsupported": 0,
+                             "confidently_wrong": 0, "defects": defects,
+                             "delivery_reviewed": False})
+            continue
+        remaining = list(actual)
+        wrong = unsupported = 0
+        for figure in actual:
+            if not isinstance(figure, dict):
+                defects.append("invalid_figure")
+                continue
+            if figure.get("kind") in ("financial", "computed") and not figure.get("record_ids"):
+                unsupported += 1
+        for expected in oracle["figures"]:
+            if not isinstance(expected, dict):
+                raise ValueError("a keyed figure must be an object")
+            match = next((figure for figure in remaining
+                          if isinstance(figure, dict) and _keyed_match(figure, expected)), None)
+            if match is None:
+                defects.append("missing_keyed_figure")
+            else:
+                remaining.remove(match)
+        if oracle.get("exact_figures", True) and remaining:
+            defects.append("unexpected_keyed_figure")
+            wrong = sum(isinstance(figure, dict) and
+                        figure.get("grade") in ("verified", "corroborated")
+                        for figure in remaining)
+        if any(defect in defects for defect in
+               ("wrong_status", "wrong_family", "wrong_period_parameters",
+                "unrequested_answer_effect")):
+            wrong = max(wrong, int(any(
+                isinstance(figure, dict) and figure.get("grade") in
+                ("verified", "corroborated") for figure in actual)))
+        measured.append({"case_id": case_id, "answered": True,
+                         "figures": len(actual), "unsupported": unsupported,
+                         "confidently_wrong": wrong, "defects": sorted(set(defects)),
+                         "delivery_reviewed": row.get("delivery_reviewed") is True})
+    answered = [row for row in measured if row["answered"]]
+    wrong_cases = sum(bool(row["confidently_wrong"]) for row in answered)
+    delivery_reviewed = [row for row in answered if row["delivery_reviewed"]]
+    delivery_wrong = sum(bool(row["confidently_wrong"]) for row in delivery_reviewed)
+    return {"cases": len(rows), "keyed": len(measured),
+            "answered": len(answered), "unmeasured": unmeasured,
+            "refusal_rate": refusal_rate(len(measured) - len(answered), len(measured)),
+            "unsupported_figures": sum(row["unsupported"] for row in answered),
+            "confidently_wrong_answers": wrong_cases,
+            "keyed_figure_wrong_rate": rate(wrong_cases, len(answered)),
+            "confidently_wrong_rate": rate(delivery_wrong, len(delivery_reviewed)),
+            "delivery_reviewed_answers": len(delivery_reviewed),
+            "results": measured}
+
+
+def _keyed_match(actual: dict[str, Any], expected: dict[str, Any]) -> bool:
+    for name, value in expected.items():
+        if name == "record_ids_exact":
+            if sorted(map(str, actual.get("record_ids") or ())) != sorted(map(str, value)):
+                return False
+        elif name == "subject_record_id":
+            if str(value) not in set(map(str, actual.get("record_ids") or ())):
+                return False
+        elif actual.get(name) != value:
+            return False
+    return True
+
+
 def _answers(turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One row per answer a person got, out of the exchanges that produced it.
 
@@ -215,6 +339,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="How honestly this vault has answered.")
     parser.add_argument("--vault", help="a vault directory; its passphrase comes from VIVA_PASSPHRASE")
     parser.add_argument("--events", help="a JSON file of recorded events, for a run that opens nothing")
+    parser.add_argument("--keyed-cases", help="private JSON Witness cases with independently reviewed oracles")
     parser.add_argument("--json", action="store_true", help="print the measurement rather than the report")
     parser.add_argument("--max-refusal-rate", type=float, default=None,
                         help="fail when the refusal rate is above this")
@@ -222,6 +347,15 @@ def main() -> int:
                         help="fail when the unsupported-figure rate is above this")
     args = parser.parse_args()
 
+    if args.keyed_cases:
+        with open(args.keyed_cases, encoding="utf-8") as source:
+            measured = keyed_harness(json.load(source))
+        print(json.dumps(measured, indent=2))
+        return int(bool(measured["confidently_wrong_answers"] or
+                        measured["unsupported_figures"] or
+                        measured["unmeasured"] or
+                        measured["delivery_reviewed_answers"] < measured["answered"] or
+                        any(row["defects"] for row in measured["results"])))
     if args.events:
         measured = harness(_events_from(args.events))
     elif args.vault:
