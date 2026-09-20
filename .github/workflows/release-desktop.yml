@@ -116,6 +116,15 @@ jobs:
       - name: Validate the packaged sidecar by running it
         run: python scripts/validate_packaged_artifact.py --target "${{ matrix.target }}"
 
+      - name: Check packaged-sidecar restart and vault preservation
+        run: python scripts/validate_sidecar_lifecycle.py --target "${{ matrix.target }}" --output sidecar-lifecycle.json
+      - name: Preserve scoped sidecar lifecycle evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sidecar-lifecycle-${{ matrix.target }}
+          path: sidecar-lifecycle.json
+          if-no-files-found: error
+
       - name: Test target-native host
         run: cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml --target "${{ matrix.target }}"
 

@@ -25,17 +25,23 @@ REQUIRED_TARGETS = {
     "x86_64-apple-darwin",
     "x86_64-pc-windows-msvc",
 }
-RELEASE_TRIGGERS = ("workflow_dispatch:", "refs/tags/", "tags:")
 
 
 def _release_workflows() -> list[Path]:
     """Return workflows that opt in to creating a native release."""
-    return [
-        workflow
-        for workflow in WORKFLOWS.glob("*.y*ml")
-        if "tauri build" in workflow.read_text().lower()
-        and any(trigger in workflow.read_text() for trigger in RELEASE_TRIGGERS)
-    ]
+    import yaml
+
+    releases = []
+    for workflow in WORKFLOWS.glob("*.y*ml"):
+        document = yaml.safe_load(workflow.read_text())
+        # Manual dispatch also runs unsigned platform quality checks. Publishing
+        # is identified by the release action, not by the dispatch trigger alone.
+        steps = [step for job in document.get("jobs", {}).values()
+                 for step in job.get("steps", [])]
+        if any(step.get("uses", "").startswith("tauri-apps/tauri-action@")
+               and step.get("with", {}).get("tagName") for step in steps):
+            releases.append(workflow)
+    return releases
 
 
 def _declared_release_targets() -> set[str]:
@@ -255,3 +261,19 @@ def test_native_gate_rejects_failure_suppression(tmp_path):
             (tmp_path / filename).write_text(yaml.safe_dump(workflow))
             with pytest.raises(AssertionError):
                 _assert_native_test_gates(tmp_path)
+
+
+def test_manual_quality_workflow_is_not_a_signing_release():
+    import yaml
+
+    assert {workflow.name for workflow in _release_workflows()} == {"release-desktop.yml"}
+    quality = yaml.safe_load((WORKFLOWS / "quality.yml").read_text())
+    assert quality["permissions"] == {"contents": "read"}
+    assert not quality["jobs"]["desktop"].get("environment")
+    for job in quality["jobs"].values():
+        for step in job.get("steps", []):
+            assert not step.get("uses", "").startswith("tauri-apps/tauri-action@")
+    source = (WORKFLOWS / "quality.yml").read_text()
+    assert "SIGNING_PRIVATE_KEY" not in source
+    assert "APPLE_CERTIFICATE" not in source
+    assert "WINDOWS_CERTIFICATE" not in source

@@ -474,11 +474,12 @@ actual integrated source check passed on the clean implementation commit; log:
 release fence, not an installed release. Windows command construction is covered
 by regression tests, but actual Windows execution remains outstanding.
 
-Native GUI checks remain withheld on this everyday user account: although the
-test build uses a separate keychain service, its current runner inherits user
+At the preceding checkpoint, native GUI checks were withheld on this everyday
+user account: although the test build used a separate keychain service, that
+runner inherited user
 configuration/environment and locates keyboard targets by a shared process name.
-A hard guard now blocks the native WebDriver configuration before target reads
-or application launch. Independent review replaced a weak source-text test with
+An interim hard guard blocked the native WebDriver configuration before target
+reads or application launch. Independent review replaced a weak source-text test with
 an executed configuration test that traps downstream work and catches a removed
 guard. A candidate disposable profile/environment utility is tested on macOS; it
 is not a completed isolated launcher. An isolated native profile and exact
@@ -488,3 +489,144 @@ close this runtime gap.
 
 Follow-up scope: the catalog cleanup and this evidence register. Evaluator
 maintenance lives on its own `codex/orionviva-recovery-compatibility` branch.
+
+## Completion continuation
+
+The owner explicitly requested that the orchestrator invoke agents and complete
+the remaining plan. The preceding product follow-up is committed as `e6e3388`;
+evaluator maintenance is committed separately as `617d162`. The final complete
+run at `runs/acceptance-repair/e6e3388-final/trace.report.json` passed ten of eleven
+cases, with no failed case. Its source compatibility checks passed; installed
+compatibility remained incomplete. All 195 evaluator tests and four protocol
+regressions passed before this continuation.
+
+The remaining implementation is being carried through these bounded lanes:
+
+- A native runner that owns the exact child process, supplies an isolated
+  environment and profile, and binds input and WebDriver operations to that
+  process. Fresh review has now approved the authenticated replacement;
+  unowned launches and unavailable physical input still fail closed.
+- Executable synthetic release-lifecycle checks and platform artifact
+  verification, with same-artifact restart distinguished from actual two-version
+  compatibility and operating-system installation.
+- Accurate evidence collection: source tests cannot certify native dialogs or
+  accessibility, and a supplied executable cannot bypass the isolated launcher.
+- Independent verification, final affected suites and durable run instructions.
+
+A read-only host audit found that native Accessibility/event-post authorization
+is unavailable, no usable foreign-OS runner or VM is installed, and the Docker
+daemon is unreachable. Signing tools exist, but their presence does not prove a
+signed artifact. These observations do not prevent implementing and testing the
+runners. They do prevent claiming physical native input, other-OS execution, or
+signed clean installation from this machine alone. No representative human trial
+has been performed by an agent or substituted with an automated walkthrough.
+
+### Representative first-use protocol
+
+Run this only with the reviewed installed build, a fresh synthetic profile and a
+person who has not been coached through the interface. Record the exact revision,
+artifact digest, operating system, and whether assistive technology was used.
+Do not collect personal documents or provider credentials.
+
+1. Ask the person to explore the sample and explain which information is fictional.
+2. Ask them to create a new empty vault and find where a first statement is added.
+3. Ask them to find the model settings and explain what may leave the computer
+   before approving anything. Stop before any paid or private-data request.
+4. With approved synthetic import fixtures, ask them to identify a failure and
+   explain the difference between refreshing a result and paying to read it again.
+5. Ask them to locate evidence, close it, and resume the previous task using their
+   ordinary keyboard or assistive technology.
+
+Record completion, hesitation, recovery, and any assistance given for each task;
+do not invent a passing time limit or treat an assisted completion as unassisted.
+The resulting observations are usability evidence, not deterministic financial
+correctness. Missing observation remains an explicit release-evidence item.
+
+### Release validation implementation and evidence
+
+`scripts/validate_sidecar_lifecycle.py` now runs the packaged backend through
+synthetic vault creation, candidate reopen, baseline rollback, application-byte
+removal and baseline reinstall. Artifact hashes are checked before and after
+execution. Subsequent opens must use the existing vault; they cannot quietly
+create a new sample. Canonical encrypted events, authenticated head and saved
+originals must stay unchanged. The release workflow requires a clearly labelled
+same-artifact restart/removal check on each target before signing.
+
+`scripts/verify_native_signature.py` invokes actual macOS signature, publisher,
+Gatekeeper and stapled-notarization checks, or Windows Authenticode and expected
+publisher checks. It rejects unsupported signature policies and protects the
+input artifact from output-path collisions. `RELEASING.md` gives the commands and
+distinguishes these checks from actual OS installation and human observation.
+
+Fresh independent review passed 112 affected release tests. It reproduced a
+queued-progress deadline bypass in the initial checker; the fix and regression
+now reject that case. The orchestrator separately built packaged backends from
+clean commits `6737707` and `e6e3388` and ran the real distinct-artifact lifecycle
+successfully. Evidence is
+`runs/product-improvement-continuation/clean-commit-sidecar-lifecycle.json`.
+These are distinct commit artifacts with the same application release version,
+not proof of a future schema migration or an operating-system installer.
+
+Independent evaluator review also removed an alternate caller-supplied native
+launch path. Source file-dialog and accessibility checks now retain their source
+results but report native runtime evidence as unverified. Four independent
+counterexamples rejected source/runtime conflation, concealed source failure,
+and actual execution through the prohibited alternate launch path.
+
+### Native continuation verification
+
+The evaluator now launches a child it owns with an allowlisted environment,
+private disposable profile, fresh compiled credential service and bundle identity,
+and non-persistent WebKit storage. A current-run authenticated manifest binds the
+exact binary, backend and prepared source. The request gateway checks the child's
+executable, kernel start identity and listening socket before forwarding each
+WebDriver request; physical input uses the same owned identity. Process-name
+selection has been removed from this path. Cleanup waits for the owned process
+group, including children that ignore graceful termination.
+
+Independent review passed 26 safety tests and additional invalid-target probes.
+An integration run found an early UI-contract ordering regression; restoring the
+existing approval gate before helper preparation passed 27 focused tests and the
+complete evaluator suite: 215 Node tests plus four protocol regressions. The
+orchestrator also tightened compatibility verdict handling: actual failures may
+not be hidden as incomplete evidence, and native pass flags cannot replace
+missing source proof. Seven new counterexamples fail against the old classifier.
+
+The actual isolated observation run on the clean `e6e3388` source reached stable,
+actionable content in 4,475 ms. This is one debug/WebDriver measurement, not a
+release performance claim. No physical input was dispatched. The session closed
+and its prepared target was removed. Evidence:
+`runs/product-improvement-continuation/native-observation/native-startup-observation.json`.
+The current UI approval binds the clean working-tree digest, so this run used
+`observe --working-tree` on a clean disposable checkout. A mismatched identity
+mode was correctly rejected before the app was built or launched.
+
+The full product suite passed 3,320 tests with three skips in a clean checkout
+containing the release implementation and excluding the four unrelated edits.
+The skips remain two opt-in packaged tests and the ignored local denylist absent
+from a clean checkout; the real distinct-artifact lifecycle was exercised
+separately. The final additional manual-CI wiring passed 64 independent scoped
+checks, including eight refusal mutations. Documentation checks passed 23 tests.
+Quality now supports manual, unsigned runs with privacy checking and lifecycle
+reports on all three desktop operating systems. No remote job has been started.
+
+### Remaining external execution requirements
+
+- Grant native Accessibility/event-post authority before physical-input tests;
+  the read-only helper currently refuses those operations. A request for the
+  owner to enable Accessibility is pending in this task.
+- Push the reviewed branch and execute the prepared Quality matrix to obtain
+  real Windows/Linux/macOS job results. A public push still needs explicit
+  authorization under `WORKFLOW.md`; local test results cannot substitute.
+- Supply actual signed baseline/candidate installers and clean supported hosts,
+  then verify install, first launch, update, rollback, uninstall and preserved
+  vaults. No clean-host installer orchestration or signed matrix ingestion is
+  implemented here; sidecar replacement and signature checks cover narrower
+  scopes and must not be promoted into that evidence.
+- Run the representative-person and native assistive-technology walkthroughs.
+  An automated startup observation is not either of those trials.
+
+Do not call the entire plan or release acceptance complete while these remain.
+The native runner and release check implementations above are independently
+reviewed; the remaining unavailable execution and installer infrastructure are
+explicit continuation requirements rather than passing checkboxes.

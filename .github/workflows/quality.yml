@@ -3,6 +3,7 @@ name: Quality
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 # Neither job writes anything back to the repository.
 permissions:
@@ -121,6 +122,15 @@ jobs:
         run: |
           python ../scripts/validate_packaged_artifact.py \
             --target "$(rustc -vV | sed -n 's/^host: //p')"
+      - name: Check packaged-sidecar restart and vault preservation
+        run: >-
+          python ../scripts/validate_sidecar_lifecycle.py --target "$(rustc -vV | sed -n 's/^host: //p')" --output sidecar-lifecycle.json
+      - name: Preserve scoped sidecar lifecycle evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quality-sidecar-lifecycle-${{ matrix.runner }}
+          path: desktop/sidecar-lifecycle.json
+          if-no-files-found: error
       - name: Test native host
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Build Tauri desktop bundle
@@ -139,6 +149,7 @@ jobs:
     # hand it.
     if: >-
       github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
