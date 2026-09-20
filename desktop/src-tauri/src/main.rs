@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 // The protocol version every frame this host sends is stamped with. The
 // sidecar refuses a frame whose major version is not its own, so this moves
 // with the sidecar's own constant and never on its own.
-const BRIDGE_PROTOCOL: &str = "2.0";
+const BRIDGE_PROTOCOL: &str = "2.1";
 
 // The window event one progress frame is delivered on. The sidecar produces
 // these while a job runs; before this existed they were read off the transport
@@ -680,7 +680,7 @@ fn deadline_policy(operation: Option<&str>) -> DeadlinePolicy {
 fn is_long_job(operation: &str) -> bool {
     matches!(
         operation,
-        "viva.documents.upload" | "viva.documents.rescan" | "viva.maintenance.run"
+        "viva.documents.upload" | "viva.documents.recover" | "viva.documents.rescan" | "viva.maintenance.run"
     )
 }
 
@@ -1470,6 +1470,9 @@ mod tests {
             deadline_policy(Some("viva.vault.export")).cap,
             Duration::from_secs(600)
         );
+        let recovery = deadline_policy(Some("viva.documents.recover"));
+        assert_eq!(recovery.cap, Duration::from_secs(1800));
+        assert!(operation_may_have_written(Some("viva.documents.recover")));
         let job = deadline_policy(Some("viva.documents.upload"));
         assert_eq!(job.first, Duration::from_secs(60));
         assert_eq!(job.silence, Duration::from_secs(120));

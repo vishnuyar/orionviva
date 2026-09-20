@@ -1,5 +1,8 @@
 # Reading Guide — where every document sits
 
+Current approved implementation: [Product reliability and usability plan](product-improvement-plan.md)
+records the scope, milestones, agent ownership, evidence, and resumption steps.
+
 **State:** built
 **Rules:** SPINE-5, SPINE-6
 

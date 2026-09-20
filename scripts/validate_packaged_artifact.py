@@ -40,7 +40,7 @@ SIDECAR_NAME = "viva-desktop-bridge"
 # The protocol this speaks. Written here rather than imported, because the
 # subject is a packaged artifact and importing the product to test the package
 # would be asking the source tree what the package does.
-PROTOCOL = "2.0"
+PROTOCOL = "2.1"
 
 # The word a build uses for a revision it could not establish. Same reason.
 UNKNOWN_REVISION = "unknown"

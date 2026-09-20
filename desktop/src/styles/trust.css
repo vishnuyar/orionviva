@@ -34,3 +34,7 @@
 .trust-display-preferences p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
 .trust-display-preference-choice { display: flex; align-items: center; gap: var(--space-sm); min-height: 44px; color: var(--ink); font-size: var(--text-body); font-weight: var(--weight-medium); }
 .trust-display-preference-choice input { width: 18px; height: 18px; margin: 0; }
+
+.trust-model-connection { border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-md); }
+.trust-model-connection summary { display: list-item; min-height: var(--control-min-height); align-content: center; cursor: pointer; color: var(--ink); font-weight: var(--weight-medium); }
+.trust-model-connection summary:focus-visible { outline: 2px solid var(--moss); outline-offset: var(--space-hair); }

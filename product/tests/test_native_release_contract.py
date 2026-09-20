@@ -134,3 +134,124 @@ def test_release_workflow_keeps_signing_secrets_out_of_pull_request_jobs():
     # from an untrusted fork must never receive the updater private key.
     assert "pull_request:" not in source
     assert not re.search(r"TAURI_SIGNING_PRIVATE_KEY\s*:\s*['\"](?!\$\{\{)", source)
+
+
+def _required_gate_step(workflow, job, command):
+    """Require one unsuppressed, standalone command using a standard CI shell."""
+    assert not job.get("if") and not job.get("continue-on-error")
+    steps = [step for step in job["steps"] if step.get("run", "").strip() == command]
+    assert len(steps) == 1, f"missing standalone gate command: {command}"
+    step = steps[0]
+    assert not step.get("if") and not step.get("continue-on-error")
+    shell = step.get("shell", job.get("defaults", {}).get("run", {}).get(
+        "shell", workflow.get("defaults", {}).get("run", {}).get("shell")))
+    assert shell in (None, "bash", "pwsh"), "gate shell must propagate command failure"
+    return step
+
+
+def _assert_native_test_gates(workflows):
+    import yaml
+
+    quality = yaml.safe_load((workflows / "quality.yml").read_text())
+    desktop = quality["jobs"]["desktop"]
+    assert set(desktop["strategy"]["matrix"]["runner"]) >= {
+        "macos-latest", "windows-latest", "ubuntu-22.04"}
+    assert desktop["runs-on"] == "${{ matrix.runner }}"
+    _required_gate_step(
+        quality, desktop, "cargo test --locked --manifest-path src-tauri/Cargo.toml")
+    _required_gate_step(
+        quality, desktop,
+        "python -m pytest product/tests/test_store.py product/tests/test_ledger_platform_io.py "
+        "product/tests/test_native_release_contract.py -q")
+
+    release = yaml.safe_load((workflows / "release-desktop.yml").read_text())
+    package = release["jobs"]["package"]
+    native = _required_gate_step(
+        release, package,
+        'cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml --target "${{ matrix.target }}"')
+    steps = package["steps"]
+    publish = next(index for index, step in enumerate(steps)
+                   if step.get("uses", "").startswith("tauri-apps/tauri-action@"))
+    assert steps.index(native) < publish
+
+
+def test_native_host_and_storage_tests_gate_supported_platforms():
+    _assert_native_test_gates(WORKFLOWS)
+
+
+def test_native_gate_rejects_removed_tests_and_non_executable_mentions(tmp_path):
+    import pytest
+    import yaml
+
+    for filename in ("quality.yml", "release-desktop.yml"):
+        (tmp_path / filename).write_text((WORKFLOWS / filename).read_text())
+    original = (tmp_path / "quality.yml").read_text()
+    for replacement in ("echo cargo test --locked --manifest-path src-tauri/Cargo.toml",
+                        "# cargo test --locked --manifest-path src-tauri/Cargo.toml"):
+        quality = yaml.safe_load(original)
+        step = next(step for step in quality["jobs"]["desktop"]["steps"]
+                    if step.get("run", "").startswith("cargo test"))
+        step["run"] = replacement
+        (tmp_path / "quality.yml").write_text(yaml.safe_dump(quality))
+        with pytest.raises(AssertionError):
+            _assert_native_test_gates(tmp_path)
+    (tmp_path / "quality.yml").write_text(original)
+    release = yaml.safe_load((tmp_path / "release-desktop.yml").read_text())
+    release["jobs"]["package"]["steps"] = [
+        step for step in release["jobs"]["package"]["steps"]
+        if not step.get("run", "").startswith("cargo test")]
+    (tmp_path / "release-desktop.yml").write_text(yaml.safe_dump(release))
+    with pytest.raises(AssertionError):
+        _assert_native_test_gates(tmp_path)
+
+
+def test_native_gate_rejects_failure_suppression(tmp_path):
+    import pytest
+    import yaml
+
+    originals = {name: (WORKFLOWS / name).read_text()
+                 for name in ("quality.yml", "release-desktop.yml")}
+    mutations = (
+        "or_true", "semicolon_true", "pipeline", "background", "next_line",
+        "set_plus_e", "subshell", "step_continue", "job_continue",
+        "step_shell", "job_shell", "workflow_shell",
+    )
+    for filename, job_name, prefix in (
+            ("quality.yml", "desktop", "cargo test"),
+            ("quality.yml", "desktop", "python -m pytest"),
+            ("release-desktop.yml", "package", "cargo test")):
+        for mutation in mutations:
+            for name, original in originals.items():
+                (tmp_path / name).write_text(original)
+            workflow = yaml.safe_load(originals[filename])
+            job = workflow["jobs"][job_name]
+            step = next(step for step in job["steps"]
+                        if step.get("run", "").startswith(prefix))
+            command = step["run"].strip()
+            replacements = {
+                "or_true": command + " || true",
+                "semicolon_true": command + "; true",
+                "pipeline": command + " | cat",
+                "background": command + " &",
+                "next_line": command + "\ntrue",
+                "set_plus_e": "set +e\n" + command + "\ntrue",
+                "subshell": "(" + command + ") || true",
+            }
+            if mutation in replacements:
+                step["run"] = replacements[mutation]
+            elif mutation == "step_continue":
+                step["continue-on-error"] = True
+            elif mutation == "job_continue":
+                job["continue-on-error"] = True
+            elif mutation == "step_shell":
+                step["shell"] = "bash -c '{0}; true'"
+            else:
+                step.pop("shell", None)
+                if mutation == "job_shell":
+                    job.setdefault("defaults", {}).setdefault("run", {})["shell"] = "bash -c '{0}; true'"
+                else:
+                    job.get("defaults", {}).get("run", {}).pop("shell", None)
+                    workflow.setdefault("defaults", {}).setdefault("run", {})["shell"] = "bash -c '{0}; true'"
+            (tmp_path / filename).write_text(yaml.safe_dump(workflow))
+            with pytest.raises(AssertionError):
+                _assert_native_test_gates(tmp_path)

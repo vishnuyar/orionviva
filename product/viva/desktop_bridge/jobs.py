@@ -32,6 +32,7 @@ testable without a bridge.
 from __future__ import annotations
 
 import itertools
+import os
 import json
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field, replace
@@ -133,6 +134,8 @@ class JobRecord:
     step: str
     attempt: int
     steps: tuple[str, ...] = ()
+    document_id: str = ""
+    recovery_stage: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -145,6 +148,8 @@ class JobRecord:
             "step": self.step,
             "attempt": self.attempt,
             "steps": list(self.steps),
+            "document_id": self.document_id,
+            "recovery_stage": self.recovery_stage,
             # Whether a cancel frame naming this job would reach anything. It
             # is stated by the registry rather than derived on the far side,
             # because the rule is this module's and a second derivation of it
@@ -188,6 +193,15 @@ class JobHandle:
         move a bar past a place the person was never told about, and the count
         it moves against would stop being a count of anything."""
         self._registry._reached(self._job_id, step, message)
+
+    def bind_document(self, doc_id: str) -> None:
+        """Bind only the opaque address of a durably sealed original."""
+        self._registry._move(self._job_id, "progress", document_id=doc_id,
+                             recovery_stage="reading")
+
+    def settling(self) -> None:
+        """Declare the boundary beyond which interrupted work is not retried."""
+        self._registry._move(self._job_id, "progress", recovery_stage="settling")
 
     def checkpoint(self, *, pump: bool = True) -> None:
         """Stop here if a person has asked this job to stop.
@@ -263,15 +277,17 @@ class JobRegistry:
             for item in raw[-self._limit:]:
                 state = JobState(item["state"])
                 if state not in TERMINAL:
-                    state = JobState.FAILED
-                    item["message"] = ("Interrupted when the app closed; start "
-                                       "maintenance again to continue.")
+                    state = (JobState.CANCELLED if item.get("cancel_requested")
+                             else JobState.FAILED)
+                    item["message"] = "Interrupted when the app closed; inspect this job before starting it again."
                 record = JobRecord(
                     job_id=str(item["job_id"]), operation=str(item["operation"]),
                     state=state, completed=int(item["completed"]),
                     total=int(item["total"]), message=str(item.get("message", "")),
                     step=str(item.get("step", "")), attempt=int(item.get("attempt", 1)),
-                    steps=tuple(item.get("steps", ())))
+                    steps=tuple(item.get("steps", ())),
+                    document_id=str(item.get("document_id", "")),
+                    recovery_stage=str(item.get("recovery_stage", "")))
                 self._jobs[record.job_id] = _Job(record)
                 self._order.append(record.job_id)
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
@@ -285,11 +301,15 @@ class JobRegistry:
             self._state_file.parent.mkdir(parents=True, exist_ok=True)
             temporary = self._state_file.with_suffix(
                 self._state_file.suffix + ".tmp")
-            temporary.write_text(
-                json.dumps([self._jobs[job_id].record.as_dict()
-                            for job_id in self._order], indent=2) + "\n",
-                encoding="utf-8")
-            temporary.replace(self._state_file)
+            from ..ledger.platform_io import replace_commit_head
+            with temporary.open("w", encoding="utf-8", newline="\n") as output:
+                output.write(json.dumps([
+                    {**self._jobs[job_id].record.as_dict(),
+                     "cancel_requested": self._jobs[job_id].cancel_requested}
+                    for job_id in self._order], indent=2) + "\n")
+                output.flush()
+                os.fsync(output.fileno())
+            replace_commit_head(temporary, self._state_file)
 
     # ------------------------------------------------------------ minting
 
@@ -419,6 +439,7 @@ class JobRegistry:
             if job.record.state in TERMINAL:
                 return job.record
             job.cancel_requested = True
+            self._persist()
             if job.record.state == JobState.QUEUED:
                 # Queued jobs cancel immediately; running jobs use checkpoints.
                 self._move(job_id, "cancelled", state=JobState.CANCELLED)

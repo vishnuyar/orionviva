@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsView, TransferActionState, TrustData } from "../../surface/types";
@@ -209,6 +210,34 @@ describe("what this app has been told to do", () => {
   const controls = (over: Partial<SettingsControls> = {}): SettingsControls => ({
     settings: { state: "ready", data: inForce }, state: { state: "idle" },
     onPropose: () => {}, onConfirm: () => {}, ...over,
+  });
+
+  it.each(["absent", "unavailable", "failed"] as const)("keeps settings reachable when Trust is %s", (state) => {
+    const onPropose = vi.fn();
+    const onConfirm = vi.fn();
+    const view = render(<Trust {...base} result={state === "failed" ? { state, reason: "read_failed" } : { state, reason: "not_read" }} settings={controls({ onPropose, onConfirm })} />);
+    expect(view.getAllByText("Model connection settings")).toHaveLength(1);
+    fireEvent.click(view.getByText("Model connection settings"));
+    expect(view.getByLabelText("Named exactly")).toBeVisible();
+    if (state === "failed") expect(view.getByText("Trust details could not be read", { selector: "strong" })).toBeVisible();
+    if (state === "unavailable") expect(view.getByText("Trust details unavailable", { selector: "strong" })).toBeVisible();
+    expect(onPropose).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("keeps model details collapsed until activation and never treats disclosure as consent", async () => {
+    const user = userEvent.setup();
+    const onPropose = vi.fn();
+    const onConfirm = vi.fn();
+    const view = render(<Trust {...base} settings={controls({ onPropose, onConfirm })} />);
+    const summary = view.getByText("Model connection settings");
+    expect(summary.closest("details")).not.toHaveAttribute("open");
+    expect(view.getByText("None. Nothing can be sent anywhere.")).toBeVisible();
+    await user.click(summary);
+    expect(summary.closest("details")).toHaveAttribute("open");
+    expect(view.getByLabelText("Named exactly")).toBeVisible();
+    expect(onPropose).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it("renders no form at all where the engine offered none", () => {

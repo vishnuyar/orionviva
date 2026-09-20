@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { ProofLinks } from "../../components/ProofLinks";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
@@ -19,7 +20,7 @@ export type CaptureControls = { state: CaptureActionState; onChoose: (() => void
 // What a screen needs to send this vault back over what it already holds, and
 // to say what came of it. A source that cannot do it carries none of this.
 export type RescanControls = { state: RescanActionState; onRescan: () => void; onReviewMovement?: (movementId: string) => void };
-type DocumentsProps = { rescan: RescanControls | null; result: FeatureResult<DocumentsData>; selectedDocument: string; capture: CaptureControls | null; jobStatus?: "available" | "unavailable"; jobCheck?: "idle" | "checking" | "failed" | "succeeded"; onRecheckJobs?: () => void; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void; openingSample?: boolean };
+type DocumentsProps = { recoveryJobs?: readonly JobView[]; onRecoverDocument?: (jobId: string) => void; onOpenSettings?: () => void; rescan: RescanControls | null; result: FeatureResult<DocumentsData>; selectedDocument: string; capture: CaptureControls | null; jobStatus?: "available" | "unavailable"; jobCheck?: "idle" | "checking" | "failed" | "succeeded"; onRecheckJobs?: () => void; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void; openingSample?: boolean };
 
 // The one sentence this panel says, and the only place it is said. What the
 // vault answered the last capture with stands until the next capture; where
@@ -42,13 +43,15 @@ function panelSentence(result: FeatureResult<DocumentsData>): string {
 // The control a person pressed keeps its place in the tab order for as long as
 // the vault is answering. A second press is refused in the handler and said in
 // words beside it.
-function CapturePanel({ state, onChoose, jobUnavailable }: { state: CaptureActionState; onChoose: () => void; jobUnavailable: boolean }) {
+function CapturePanel({ state, onChoose, jobUnavailable, onOpenSettings }: { onOpenSettings?: () => void; state: CaptureActionState; onChoose: () => void; jobUnavailable: boolean }) {
   const working = state.state === "working";
   const choose = () => { if (!working) onChoose(); };
   return <section className="document-capture-status" id="document-capture-status" tabIndex={-1} aria-labelledby="document-capture-title">
     <div className="detail-panel-label">Capture</div>
     <h2 id="document-capture-title">Add a statement</h2>
     <p>Choose one statement or financial document. It is encrypted and saved in this vault on this machine.</p>
+    <p>A configured model may read this document using its service and incur charges. Without a reader, the saved file waits for reading.</p>
+    {onOpenSettings ? <button className="text-button" type="button" onClick={onOpenSettings}>Check document-reading settings</button> : null}
     <button className="secondary-button" type="button" aria-disabled={working || jobUnavailable} aria-describedby={working ? "document-capture-waiting" : jobUnavailable ? "document-job-unavailable" : undefined} onClick={() => { if (!jobUnavailable) choose(); }}>Choose statement file</button>
     {working ? <span className="action-explanation" id="document-capture-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
   </section>;
@@ -65,6 +68,7 @@ function JobProgress({ job, cancel, onStop }: { job: JobView; cancel: CancelActi
   return <section className="document-job" aria-labelledby="document-job-title">
     <div className="detail-panel-label">Progress</div>
     <h2 id="document-job-title">{job.operation === "viva.documents.upload" ? "Adding your statement" : "Work in progress"}</h2>
+    {job.operation === "viva.documents.upload" || job.operation === "viva.documents.recover" ? <p>Import reference: <code>{job.jobId}</code></p> : null}
     <p className="document-job-step" role="status" aria-live="polite">{running ? `Step ${job.completed} of ${job.total}${job.step ? ` — ${job.step}` : ""}` : `Finished at step ${job.completed} of ${job.total}`}</p>
     {job.attempt > 1 ? <p className="document-job-attempt">This is attempt {job.attempt}. The earlier one did not finish.</p> : null}
     {job.message ? <p className="document-job-message">{job.message}</p> : null}
@@ -142,6 +146,16 @@ function DocumentDetail({ document, onOpenEvidence }: { document: SurfaceDocumen
   </div><details className="document-technical-details"><summary>Technical details</summary><div className="detail-panel-grid document-detail-grid"><DetailField label="Document ID" value={document.id} help="The stable identity used inside this vault." /><DetailField label="Lifecycle" value="Lifecycle is not supplied by this vault read." /><DetailField label="Pages" value="Page details are not supplied by this vault read." /><DetailField label="Source region" value="Source region is not supplied by this vault read." /><DetailField label="Provenance" value="Provenance is not supplied by this vault read." /></div>{document.evidenceLinks.length ? <ProofLinks label="Source links" links={document.evidenceLinks} onOpen={onOpenEvidence} /> : null}<RelatedEvidence /><Limitations /></details></aside>;
 }
 
+// A disappearing action records focus ownership before its DOM node is removed.
+function RecoveryButton({ job, working, unavailable, onRecover, removedWhileFocused }: { job: JobView; working: boolean; unavailable: boolean; onRecover: (jobId: string) => void; removedWhileFocused: { current: boolean } }) {
+  const button = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => () => {
+    const element = button.current;
+    if (element && element.ownerDocument.activeElement === element) removedWhileFocused.current = true;
+  }, [removedWhileFocused]);
+  return <button ref={button} type="button" className="secondary-button" aria-label={`Read saved original again — import ${job.jobId}`} aria-describedby={`document-recovery-consent${working ? " document-capture-waiting" : ""}${unavailable ? " document-job-unavailable" : ""}`} aria-disabled={working || unavailable} onClick={() => { if (!working && !unavailable) onRecover(job.jobId); }}>Read saved original again</button>;
+}
+
 // What became of the last capture a person asked for, and the capture control
 // itself, both sit outside the documents read's state gate. A file that was
 // sealed and a read that then failed still says the capture happened, instead
@@ -151,13 +165,32 @@ function DocumentDetail({ document, onOpenEvidence }: { document: SurfaceDocumen
 // The region announcing it is mounted for the life of the screen and only its
 // text changes, because a live region that arrives with its words is one
 // several screen readers never announce.
-export function Documents({ result, selectedDocument, capture, rescan, jobStatus = "available", jobCheck = "idle", onRecheckJobs, onSelectDocument, onOpenEvidence, onExploreSample, openingSample = false }: DocumentsProps) {
+export function Documents({ recoveryJobs = [], onRecoverDocument, onOpenSettings, result, selectedDocument, capture, rescan, jobStatus = "available", jobCheck = "idle", onRecheckJobs, onSelectDocument, onOpenEvidence, onExploreSample, openingSample = false }: DocumentsProps) {
+  const panel = useRef<HTMLElement>(null);
+  const recoveryHeading = useRef<HTMLHeadingElement>(null);
+  const removedWhileFocused = useRef(false);
+  useLayoutEffect(() => {
+    if (!removedWhileFocused.current) return;
+    removedWhileFocused.current = false;
+    const target = recoveryHeading.current ?? panel.current;
+    if (target && target.ownerDocument.activeElement === target.ownerDocument.body) target.focus();
+  });
   const said = capturePresentation(capture ? capture.state : { state: "idle" }, panelSentence(result));
-  const captureRegion = capture?.onChoose ? <CapturePanel state={capture.state} onChoose={capture.onChoose} jobUnavailable={jobStatus === "unavailable"} /> : null;
+  const captureRegion = capture?.onChoose ? <CapturePanel onOpenSettings={onOpenSettings} state={capture.state} onChoose={capture.onChoose} jobUnavailable={jobStatus === "unavailable"} /> : null;
   const job = capture?.job ?? null;
-  if (result.state === "absent" && !captureRegion && !said && !job && !rescan && jobStatus !== "unavailable") return null;
-  return <section className="feature-panel documents-surface">
+  if (result.state === "absent" && !captureRegion && !said && !job && !rescan && jobStatus !== "unavailable" && !recoveryJobs.some((job) => job.recovery)) return null;
+  return <section ref={panel} tabIndex={-1} aria-label="Statements" className="feature-panel documents-surface">
     {captureRegion}
+    {recoveryJobs.some((job) => job.recovery) ? <section className="document-job" aria-labelledby="document-recovery-title">
+      <h2 ref={recoveryHeading} tabIndex={-1} id="document-recovery-title">Interrupted statements</h2>
+      <p id="document-recovery-consent">Reading a saved original uses your configured document reader, may send it to that service, and may incur charges again. Nothing starts until you choose to read it again.</p>
+      {capture?.state.state === "working" && !capture.onChoose ? <span className="action-explanation" id="document-capture-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
+      <ul>{recoveryJobs.filter((job) => job.recovery).map((job) => <li key={job.jobId}>
+        <p>Import reference: <code>{job.jobId}</code></p>
+        <p>{job.recovery?.message}</p>
+        {job.recovery?.state === "available" && onRecoverDocument ? <RecoveryButton job={job} working={capture?.state.state === "working"} unavailable={jobStatus === "unavailable"} onRecover={onRecoverDocument} removedWhileFocused={removedWhileFocused} /> : null}
+      </li>)}</ul>
+    </section> : null}
     {jobStatus === "unavailable" ? <div className="action-explanation" id="document-job-unavailable"><strong>Job status unavailable.</strong> Recheck the job status. If it still cannot be read, reopen this vault before adding or rescanning statements. {onRecheckJobs ? <button className="secondary-button" type="button" aria-disabled={jobCheck === "checking"} aria-describedby={jobCheck === "checking" ? "document-job-check-status" : undefined} onClick={() => { if (jobCheck !== "checking") onRecheckJobs(); }}>Recheck job status</button> : null}</div> : null}
     {jobCheck !== "idle" ? <div className="visually-hidden" id="document-job-check-status" role="status" aria-live="polite">{jobCheck === "checking" ? "Checking job status…" : jobCheck === "failed" ? "Job status is still unavailable. Reopen this vault before starting the job again." : "Job status checked successfully."}</div> : null}
     {rescan ? <RescanPanel rescan={rescan} jobUnavailable={jobStatus === "unavailable"} /> : null}

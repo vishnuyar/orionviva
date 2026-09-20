@@ -46,7 +46,7 @@ from typing import Any
 from viva.surface import ActionOutcome
 
 from .handlers import BridgeRequestError
-from .jobs import JobCancelled, JobRegistry
+from .jobs import JobCancelled, JobRegistry, JobState
 from .conversation_actions import UnreadableOutcome
 
 # Why a capture was refused, in the machine's own words. An outcome refuses to
@@ -127,7 +127,7 @@ class DocumentActions:
                     return _with_job(unreadable, job.job_id)
                 job.reached(OPENED)
                 job.checkpoint()
-                result = upload(self._vault, path.name, data, read_fn)
+                result = self._ingest(job, path.name, data, read_fn)
                 if reading:
                     job.reached(READ)
                 job.reached(SETTLED)
@@ -142,6 +142,71 @@ class DocumentActions:
                 ActionOutcome("refused", moment("jobs_stopped_capture"),
                               reason=CANCELLED),
                 job.job_id)
+
+    def _ingest(self, job, filename, data, read_fn, *, before_read=None):
+        from viva.engine import upload
+
+        def reader(data, doc_id):
+            try:
+                return read_fn(data, doc_id)
+            finally:
+                # This receipt precedes every event the pipeline may append.
+                job.settling()
+
+        def captured(doc_id):
+            job.bind_document(doc_id)
+            job.checkpoint()
+
+        return upload(self._vault, filename, data, reader,
+                      on_captured=captured, before_read=before_read)
+
+    def recover(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Explicitly read a saved original only before any posting began."""
+        from viva.ingest.reader import build_reader, live_reading_configured
+        from viva.persona import moment
+
+        if set(payload) != {"job_id", "confirm_reading"} or payload.get("confirm_reading") is not True:
+            raise BridgeRequestError("recovery requires job_id and confirm_reading=true")
+        job_id = _cancel_request({"job_id": payload.get("job_id")})
+        try:
+            original = self._jobs.record(job_id)
+        except KeyError:
+            return _refused(NO_SUCH_JOB, "jobs_unknown").as_dict()
+        status = document_recovery(self._vault, original)
+        if status is None or status["state"] != "available":
+            return ActionOutcome("refused", (status or {}).get("message") or moment("documents_recovery_blocked"),
+                                 reason="recovery_unavailable").as_dict()
+        read_fn, reading = build_reader()
+        if not reading:
+            return _refused("reader_not_configured", "documents_recovery_no_reader").as_dict()
+        try:
+            data = self._vault.raw.get(original.document_id)
+            if self._vault.raw.fingerprint(data) != original.document_id:
+                raise ValueError("address mismatch")
+        except Exception:
+            return _refused("saved_original_unavailable", "documents_recovery_missing").as_dict()
+
+        def permitted(doc_id):
+            # Called under the same document lock as ordinary ingestion, after
+            # any earlier reader/poster has finished and before spending again.
+            current = document_recovery(self._vault, original)
+            if current is None or current["state"] != "available":
+                raise RecoveryUnavailable()
+
+        job = self._jobs.open("viva.documents.recover", READING_STEPS)
+        try:
+            with job:
+                job.checkpoint()
+                job.reached(CHECKED)
+                job.reached(OPENED)
+                result = self._ingest(job, "", data, read_fn, before_read=permitted)
+                job.reached(READ)
+                job.reached(SETTLED)
+                return _with_job(_outcome(result, live_reading_configured()), job.job_id)
+        except RecoveryUnavailable:
+            return _with_job(_refused("recovery_unavailable", "documents_recovery_blocked"), job.job_id)
+        except JobCancelled:
+            return _with_job(_refused(CANCELLED, "jobs_stopped_capture"), job.job_id)
 
     def cancel(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Ask one job to stop, and say what asking reached.
@@ -296,3 +361,30 @@ def _outcome(result: Mapping[str, Any], reading_configured: bool) -> ActionOutco
                              state={"terminal_state": "duplicate",
                                     "ingest_action": action})
     raise UnreadableOutcome(moment("documents_outcome_unstated"))
+
+
+class RecoveryUnavailable(RuntimeError):
+    """A saved job no longer precedes the document's first ledger event."""
+
+
+def document_recovery(vault, record, *, inspect_ledger=True) -> dict[str, str] | None:
+    """Conservative recovery eligibility, reconciled with durable ledger facts."""
+    from viva.persona import moment
+
+    if record.operation not in {"viva.documents.upload", "viva.documents.recover"} or record.state != JobState.FAILED or not record.document_id:
+        return None
+    doc_id = record.document_id
+    if len(doc_id) != 64 or any(c not in "0123456789abcdef" for c in doc_id):
+        return {"state": "blocked", "message": moment("documents_recovery_missing")}
+    if inspect_ledger:
+        projection = vault.ledger.projection()
+        if projection.is_resolved(doc_id):
+            return {"state": "settled", "message": moment("documents_recovery_settled")}
+        if any(event.provenance.doc_id == doc_id or event.body.get("doc_id") == doc_id
+               for event in vault.ledger.events()):
+            return {"state": "blocked", "message": moment("documents_recovery_blocked")}
+    if record.recovery_stage != "reading":
+        return {"state": "blocked", "message": moment("documents_recovery_blocked")}
+    if not vault.raw.has(doc_id):
+        return {"state": "blocked", "message": moment("documents_recovery_missing")}
+    return {"state": "available", "message": moment("documents_recovery_available")}

@@ -39,6 +39,9 @@ export function adaptJob(raw: unknown): JobView | null {
     // as one that cannot, so nothing offers a control that would reach
     // nothing.
     cancellable: raw.cancellable === true,
+    ...(isRecord(raw.recovery) && ["available", "blocked", "settled"].includes(textValue(raw.recovery.state)) && textValue(raw.recovery.message)
+      ? { recovery: { state: raw.recovery.state as "available" | "blocked" | "settled", message: textValue(raw.recovery.message) } }
+      : {}),
   };
 }
 

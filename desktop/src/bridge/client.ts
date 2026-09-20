@@ -109,6 +109,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     // sidecar's to mint, so this side never sends one and the field set alone
     // refuses one that was sent.
     uploadDocument: (path: string) => request("viva.documents.upload", { path }),
+    recoverDocument: (jobId: string) => request("viva.documents.recover", { job_id: jobId, confirm_reading: true }),
   };
 }
 

@@ -51,6 +51,17 @@ describe("document presentation", () => {
 });
 
 describe("Documents surface", () => {
+  it("offers settings before capture without starting a read or hiding failed document state", () => {
+    const onChoose = vi.fn();
+    const onOpenSettings = vi.fn();
+    const view = render(<Documents rescan={null} capture={idle(onChoose)} onOpenSettings={onOpenSettings} result={{ state: "failed", reason: "read_failed" }} selectedDocument="" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
+    fireEvent.click(view.getByRole("button", { name: "Check document-reading settings" }));
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+    expect(onChoose).not.toHaveBeenCalled();
+    expect(view.getByText("Documents could not be read")).toBeVisible();
+    expect(view.getByRole("button", { name: "Choose statement file" })).toBeVisible();
+  });
+
 
   it("renders only the four returned live fields even when demo-shaped fields are injected", () => {
     const injected = { ...document("live-document-identity", "quarter-close.pdf"), docType: "statement", resolved: true, rawAvailable: false, phase: "verified" as const, phaseLabel: "MALICIOUS-PHASE", detail: "MALICIOUS-DETAIL", source: "MALICIOUS-SOURCE", pages: "MALICIOUS-PAGES", provenance: "MALICIOUS-PROVENANCE", sample: { region: "MALICIOUS-REGION", contribution: "MALICIOUS-CONTRIBUTION", waitReason: "MALICIOUS-WAIT" }, evidenceLinks: [{ targetDocumentId: "hidden-target", label: "MALICIOUS-LINK", relation: "same_period" as const, page: "MALICIOUS-PAGE" }] };
@@ -362,4 +373,75 @@ describe("going back over what is already here", () => {
     const { getByText } = render(<Documents {...props} rescan={controls(settled)} result={ready([])} />);
     expect(getByText(/Nothing came back, so this screen will not say whether anything was recorded/)).toBeInTheDocument();
   });
+});
+
+
+describe("saved-original recovery", () => {
+  it("requires an explicit gesture after cost and egress disclosure even without document rows", () => {
+    const onRecoverDocument = vi.fn();
+    const jobs = [runningJob({ state: "failed", recovery: { state: "available", message: "Saved original can be checked." } })];
+    const view = render(<Documents result={{ state: "absent", reason: "not_read" }} selectedDocument="" capture={idle()} rescan={null} onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} recoveryJobs={jobs} onRecoverDocument={onRecoverDocument} />);
+    expect(onRecoverDocument).not.toHaveBeenCalled();
+    const button = view.getByRole("button", { name: /^Read saved original again/ });
+    expect(button).toHaveAccessibleDescription(/may send it to that service, and may incur charges again/);
+    fireEvent.click(button);
+    expect(onRecoverDocument).toHaveBeenCalledWith(jobs[0].jobId);
+  });
+
+  it("retains refusal guidance and blocks recovery while job status is unavailable", () => {
+    const onRecoverDocument = vi.fn();
+    const jobs = [runningJob({ recovery: { state: "blocked", message: "Inspect the partial result." } })];
+    const props = { result: ready([]), selectedDocument: "", capture: idle(), rescan: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction, recoveryJobs: jobs, onRecoverDocument };
+    const view = render(<Documents {...props} />);
+    expect(view.getByText("Inspect the partial result.")).toBeVisible();
+    expect(view.queryByRole("button", { name: /^Read saved original again/ })).not.toBeInTheDocument();
+    view.rerender(<Documents {...props} recoveryJobs={[runningJob({ recovery: { state: "available", message: "Check saved original." } })]} jobStatus="unavailable" />);
+    fireEvent.click(view.getByRole("button", { name: /^Read saved original again/ }));
+    expect(onRecoverDocument).not.toHaveBeenCalled();
+  });
+});
+
+
+it("distinguishes interrupted imports visibly and accessibly and explains blocked controls", () => {
+  const onRecoverDocument = vi.fn();
+  const jobs = ["viva.documents.upload-1", "viva.documents.upload-2"].map((jobId) => runningJob({ jobId, state: "failed", recovery: { state: "available", message: "Saved original can be checked." } }));
+  const props = { result: ready([]), selectedDocument: "", capture: { ...idle(), job: jobs[0] }, rescan: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction, recoveryJobs: jobs, onRecoverDocument };
+  const view = render(<Documents {...props} />);
+  expect(view.getAllByText(jobs[0].jobId)).toHaveLength(2);
+  expect(view.getByText(jobs[1].jobId)).toBeVisible();
+  const secondName = `Read saved original again — import ${jobs[1].jobId}`;
+  fireEvent.click(view.getByRole("button", { name: secondName }));
+  expect(onRecoverDocument).toHaveBeenCalledExactlyOnceWith(jobs[1].jobId);
+  view.rerender(<Documents {...props} capture={{ ...working(), onChoose: null }} />);
+  const waiting = view.getByRole("button", { name: secondName });
+  expect(waiting).toHaveAttribute("aria-disabled", "true");
+  expect(waiting).toHaveAccessibleDescription(/Your vault is answering the last request/);
+  fireEvent.click(waiting);
+  expect(onRecoverDocument).toHaveBeenCalledTimes(1);
+  view.rerender(<Documents {...props} jobStatus="unavailable" />);
+  const unavailable = view.getByRole("button", { name: secondName });
+  expect(unavailable).toHaveAttribute("aria-disabled", "true");
+  expect(unavailable).toHaveAccessibleDescription(/Job status unavailable/);
+  expect(unavailable).toHaveAccessibleDescription(/may incur charges again/);
+});
+
+it.each(["blocked", "settled", "removed"] as const)("keeps a focused recovery outcome reachable when its action becomes %s", (outcome) => {
+  const job = runningJob({ state: "failed", recovery: { state: "available", message: "Saved original can be checked." } });
+  const props = { result: ready([]), selectedDocument: "", capture: idle(), rescan: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction, onRecoverDocument: noAction };
+  const view = render(<Documents {...props} recoveryJobs={[job]} />);
+  view.getByRole("button", { name: /^Read saved original again/ }).focus();
+  const recoveryJobs = outcome === "removed" ? [] : [{ ...job, recovery: { state: outcome, message: "The saved original has been checked." } }];
+  view.rerender(<Documents {...props} recoveryJobs={recoveryJobs} />);
+  expect(outcome === "removed" ? view.getByRole("region", { name: "Statements" }) : view.getByRole("heading", { name: "Interrupted statements" })).toHaveFocus();
+});
+
+it("does not steal focus when the user leaves a recovery action before its outcome arrives", () => {
+  const job = runningJob({ state: "failed", recovery: { state: "available", message: "Saved original can be checked." } });
+  const props = { result: ready([]), selectedDocument: "", capture: idle(), rescan: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction, onRecoverDocument: noAction };
+  const view = render(<Documents {...props} recoveryJobs={[job]} />);
+  view.getByRole("button", { name: /^Read saved original again/ }).focus();
+  const elsewhere = view.getByRole("button", { name: "Choose statement file" });
+  elsewhere.focus();
+  view.rerender(<Documents {...props} recoveryJobs={[]} />);
+  expect(elsewhere).toHaveFocus();
 });

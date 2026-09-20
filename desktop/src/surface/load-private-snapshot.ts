@@ -156,6 +156,7 @@ export function privateJobStream(client: BridgeClient): JobStream | null {
 export function privateDocumentActions(client: BridgeClient): DocumentActions {
   return {
     upload: (path) => acted(client.uploadDocument(path)),
+    recover: client.recoverDocument ? (jobId) => acted(client.recoverDocument!(jobId)) : undefined,
     reread: () => readDocumentsFeature(client),
     cancel: (jobId) => acted(client.cancelJob(jobId)),
     readJobs: () => readJobsFeature(client),

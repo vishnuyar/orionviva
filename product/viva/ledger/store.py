@@ -28,7 +28,6 @@ record format or rewriting existing records.
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import hmac
 import json
@@ -47,6 +46,8 @@ from ..crypto import (HEAD_BOUND_HEADER_VERSION, HEAD_CAPABILITY_VERSION,
                       open_vault_header, open_sealed, rebind_vault_header,
                       seal, verify_vault_header)
 from .events import Event
+from .platform_io import (WINDOWS_LOCK_OFFSET, lock_writer,
+                          replace_commit_head, unlock_writer)
 
 GENESIS = "0" * 64
 
@@ -157,6 +158,9 @@ def _record_hash(seq: int, prev_hash: str, sealed: dict) -> str:
 
 def _write_batch(stream, content: str) -> None:
     """Write one prepared batch, rejecting a silent short write."""
+    if (os.name == "nt" and os.fstat(stream.fileno()).st_size
+            + len(content.encode("utf-8")) >= WINDOWS_LOCK_OFFSET):
+        raise OSError("event log exceeds the supported Windows extent")
     written = stream.write(content)
     if written != len(content):
         raise OSError(
@@ -261,19 +265,11 @@ def write_head(path: Path, key: bytes, count: int, head_hash: str) -> None:
     # next open and look exactly like tampering.
     target = head_path_for(path)
     tmp = target.with_suffix(target.suffix + ".tmp")
-    with tmp.open("w") as f:
+    with tmp.open("w", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(head, ensure_ascii=False) + "\n")
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp, target)
-    # The rename is the commit point.  Sync its directory so returning from a
-    # successful append means that commit point itself, not only the temp file,
-    # has reached durable storage.
-    directory_fd = os.open(target.parent, os.O_RDONLY)
-    try:
-        os.fsync(directory_fd)
-    finally:
-        os.close(directory_fd)
+    replace_commit_head(tmp, target)
 
 
 def _authenticated_head(path: Path, key: bytes, *,
@@ -468,15 +464,15 @@ class EventStore:
             raise CryptoError(
                 "this event-store handle cannot be forked after an uncertain "
                 "write; reopen the vault to recover its committed boundary")
-        with self.path.open("a", encoding="utf-8") as locked:
-            fcntl.flock(locked.fileno(), fcntl.LOCK_EX)
+        with self.path.open("a", encoding="utf-8", newline="\n") as locked:
+            lock_writer(locked.fileno())
             try:
                 self._refresh_trusted_tail(locked.fileno())
             except Exception:
                 self._write_failed = True
                 raise
             finally:
-                fcntl.flock(locked.fileno(), fcntl.LOCK_UN)
+                unlock_writer(locked.fileno())
         forked = EventStore(
             self.path, self._key, self._kdf,
             trusted_head=(self._count, self._last_hash, self._size))
@@ -507,7 +503,7 @@ class EventStore:
         token, even for an empty store."""
         path = Path(path)
         if path.exists():
-            with path.open() as f:
+            with path.open(encoding="utf-8") as f:
                 header_line = f.readline()
             if not header_line.strip():
                 raise CryptoError(f"{path} exists but has no header")
@@ -524,14 +520,14 @@ class EventStore:
             else:
                 # Legacy logs and interrupted/corrupt tails take the strict
                 # recovery path; only an ordinary modern warm open is O(1).
-                with path.open("a", encoding="utf-8") as locked:
-                    fcntl.flock(locked.fileno(), fcntl.LOCK_EX)
+                with path.open("a", encoding="utf-8", newline="\n") as locked:
+                    lock_writer(locked.fileno())
                     try:
                         recovered = _recover_to_authenticated_head(
                             path, key, required=required,
                             truncate_fd=locked.fileno())
                     finally:
-                        fcntl.flock(locked.fileno(), fcntl.LOCK_UN)
+                        unlock_writer(locked.fileno())
             trusted = ((recovered[0], recovered[1], recovered[2])
                        if recovered is not None else None)
             store = cls(path, key, KdfParams.from_dict(header["kdf"]),
@@ -548,7 +544,7 @@ class EventStore:
         with span("credential_kdf"):
             header, key = new_vault_header(
                 passphrase, header_version=HEAD_BOUND_HEADER_VERSION)
-        with path.open("w", encoding="utf-8") as f:
+        with path.open("w", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps(header, ensure_ascii=False) + "\n")
             f.flush()
             os.fsync(f.fileno())
@@ -572,8 +568,8 @@ class EventStore:
         through this method and none that does not.
 
         Durable before it returns: the line is flushed and fsynced and its
-        authenticated head commit is directory-synced, so a record this method
-        has returned is a committed record on the platter.
+        authenticated head uses a write-through rename on Windows or a
+        directory-synced replacement on Unix.
         """
         return self.append_atomically(lambda _events: (event,))[0]
 
@@ -589,8 +585,8 @@ class EventStore:
             raise CryptoError(
                 "this event-store handle observed an incomplete write and "
                 "will not append again; repair the interrupted tail and reopen")
-        with self.path.open("a", encoding="utf-8") as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        with self.path.open("a", encoding="utf-8", newline="\n") as f:
+            lock_writer(f.fileno())
             try:
                 # The authenticated head, not file metadata, is the security
                 # witness. Validate it on every append even when the JSONL size
@@ -686,7 +682,7 @@ class EventStore:
                     self._size = candidate_size
                     self._committed_head = (candidate_count, candidate_hash)
             finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                unlock_writer(f.fileno())
         for record, event in zip(records, events):
             log.debug("append seq=%d type=%s", record["seq"], event.event_type)
         observer = self._commit_observer
@@ -813,7 +809,7 @@ class EventStore:
 
     def _authenticate_current_header(self) -> bool:
         try:
-            with self.path.open("r", encoding="utf-8") as source:
+            with self.path.open("r", encoding="utf-8", newline="\n") as source:
                 header = json.loads(source.readline())
             verify_vault_header(header, self._key)
             if KdfParams.from_dict(header["kdf"]) != self._kdf:
@@ -849,7 +845,7 @@ class EventStore:
         the header. No key needed."""
         if not self.path.exists():
             return
-        with self.path.open() as f:
+        with self.path.open(encoding="utf-8") as f:
             first = True
             yielded = 0
             for line_no, line in enumerate(f):
@@ -919,8 +915,8 @@ class EventStore:
         # Recovery may need to truncate an uncommitted suffix, so snapshots use
         # the exclusive writer lock.  Reads remain local and deterministic;
         # they simply cannot overlap the small commit/recovery critical section.
-        with self.path.open("a", encoding="utf-8") as source:
-            fcntl.flock(source.fileno(), fcntl.LOCK_EX)
+        with self.path.open("a", encoding="utf-8", newline="\n") as source:
+            lock_writer(source.fileno())
             try:
                 try:
                     self._reread_tail(source.fileno())
@@ -930,7 +926,7 @@ class EventStore:
                 events = tuple(self._events_unlocked())
                 return events, self._cached_identity()
             finally:
-                fcntl.flock(source.fileno(), fcntl.LOCK_UN)
+                unlock_writer(source.fileno())
 
     def committed_snapshot(self) -> CommittedSnapshot:
         """Return committed events and their exact chain identities under lock.
@@ -943,8 +939,8 @@ class EventStore:
             raise CryptoError(
                 "this event-store handle cannot snapshot after an uncertain "
                 "write; reopen the vault to recover its committed boundary")
-        with self.path.open("a", encoding="utf-8") as source:
-            fcntl.flock(source.fileno(), fcntl.LOCK_EX)
+        with self.path.open("a", encoding="utf-8", newline="\n") as source:
+            lock_writer(source.fileno())
             try:
                 try:
                     self._reread_tail(source.fileno())
@@ -955,7 +951,7 @@ class EventStore:
                 return CommittedSnapshot(
                     self._committed_identity(end_offset), entries)
             finally:
-                fcntl.flock(source.fileno(), fcntl.LOCK_UN)
+                unlock_writer(source.fileno())
 
     def committed_suffix_after(
             self, prefix: CommittedIdentity) -> CommittedSnapshot:
@@ -978,8 +974,8 @@ class EventStore:
             raise CryptoError(
                 "this event-store handle cannot read after an uncertain write; "
                 "reopen the vault to recover its committed boundary")
-        with self.path.open("a", encoding="utf-8") as source:
-            fcntl.flock(source.fileno(), fcntl.LOCK_EX)
+        with self.path.open("a", encoding="utf-8", newline="\n") as source:
+            lock_writer(source.fileno())
             try:
                 try:
                     required = self._authenticate_current_header()
@@ -1017,7 +1013,7 @@ class EventStore:
                     self._identity_for(count, head_hash, end_offset),
                     entries)
             finally:
-                fcntl.flock(source.fileno(), fcntl.LOCK_UN)
+                unlock_writer(source.fileno())
 
     def verify_committed_log(self) -> CommittedIdentity:
         """Fully authenticate every physical byte in the committed log.
@@ -1033,8 +1029,8 @@ class EventStore:
             raise CryptoError(
                 "this event-store handle cannot audit after an uncertain write; "
                 "reopen the vault to recover its committed boundary")
-        with self.path.open("a", encoding="utf-8") as source:
-            fcntl.flock(source.fileno(), fcntl.LOCK_EX)
+        with self.path.open("a", encoding="utf-8", newline="\n") as source:
+            lock_writer(source.fileno())
             try:
                 try:
                     self._reread_tail(source.fileno())
@@ -1044,7 +1040,7 @@ class EventStore:
                     raise
                 return self._committed_identity(end_offset)
             finally:
-                fcntl.flock(source.fileno(), fcntl.LOCK_UN)
+                unlock_writer(source.fileno())
 
     def _committed_entries_unlocked(
             self, *, start: int = 0,
@@ -1137,8 +1133,8 @@ class EventStore:
             raise CryptoError(
                 "this event-store handle cannot validate after an uncertain "
                 "write; reopen the vault to recover its committed boundary")
-        with self.path.open("a", encoding="utf-8") as source:
-            fcntl.flock(source.fileno(), fcntl.LOCK_EX)
+        with self.path.open("a", encoding="utf-8", newline="\n") as source:
+            lock_writer(source.fileno())
             try:
                 try:
                     self._reread_tail(source.fileno())
@@ -1147,7 +1143,7 @@ class EventStore:
                     raise
                 return self._cached_identity()
             finally:
-                fcntl.flock(source.fileno(), fcntl.LOCK_UN)
+                unlock_writer(source.fileno())
 
     def _cached_identity(self) -> tuple[int | None, str | None, int]:
         if self._committed_head is None:

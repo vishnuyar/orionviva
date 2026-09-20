@@ -113,13 +113,27 @@ def sweep(ledger: Ledger) -> dict:
 
 def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
                        read_fn: ReadFn, filename: str = "",
-                       captured_at: str = "") -> IngestResult:
+                       captured_at: str = "", *, on_captured=None,
+                       before_read=None) -> IngestResult:
+    """Keep one document's read and posting exclusive through its result."""
+    with raw.document_lock(raw.fingerprint(data)):
+        return _capture_and_ingest(raw, ledger, data, read_fn, filename,
+                                   captured_at, on_captured=on_captured,
+                                   before_read=before_read)
+
+
+def _capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
+                       read_fn: ReadFn, filename: str = "",
+                       captured_at: str = "", *, on_captured=None,
+                       before_read=None) -> IngestResult:
     """Raw-capture a file, read it, and either post it or park it.
 
     Returns an ``IngestResult``; a file whose content has already been ingested
     comes back as DUPLICATE without being read again, and a read that raises is
     recorded as a failed read and parked rather than lost."""
     doc_id = raw.put(data)                       # (1) capture first, always
+    if on_captured is not None:
+        on_captured(doc_id)
     log.info("ingest start: %s (%d bytes) doc_id=%s",
              filename or "<upload>", len(data), doc_id[:12])
     if ledger.projection().is_resolved(doc_id):
@@ -127,6 +141,8 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
         return IngestResult(doc_id=doc_id, action=DUPLICATE, doc_type="",
                             message="Already posted or held (same content); no change.")
     posted_before = ledger.projection().posted_doc_ids()
+    if before_read is not None:
+        before_read(doc_id)
 
     try:
         rr = read_fn(data, doc_id)               # (2) the model read (a proposal)

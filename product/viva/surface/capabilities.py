@@ -242,7 +242,7 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         CapabilityDestination.DOCUMENTS,
         "when a local document is selected or dropped",
         "DocumentIngestResult.v1",
-        ("upload", "cancel"),
+        ("upload", "cancel", "recover"),
         (
             TrustEffect.READS_DATA,
             TrustEffect.WRITES_EVENT,

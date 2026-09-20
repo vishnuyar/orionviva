@@ -34,8 +34,8 @@ To create one:
 3. Select **Make a new vault in that folder**.
 4. Choose **Make and open vault**.
 
-To open an existing vault, choose its folder, enter its vaultphrase, leave the
-creation option clear, and choose **Open local vault**.
+To open an existing vault, select **Open an existing vault**, choose its folder,
+enter its vaultphrase, and choose **Open local vault**.
 
 After a successful open on macOS or Windows, OrionViva protects the folder and
 vaultphrase in the operating system credential store. That private vault opens
@@ -47,6 +47,11 @@ using another operating-system account, or losing the protected credential
 requires the vaultphrase again.
 
 ## Add statements
+
+A new private vault with no accounts shows a first-statement guide on Overview.
+Use its settings link to review document-reading configuration, or its statement
+link to begin adding a file. Saving an original and interpreting it are separate
+steps: configuration can allow relevant document data to reach the chosen model.
 
 Use the always-available **Add statement** action or open **Statements**.
 
@@ -60,9 +65,23 @@ OrionViva takes one document per capture. A saved document can remain waiting
 when no reader is configured; saved and fully interpreted are different states.
 A failed read does not mean the encrypted source was deleted.
 
-Use **Rescan** when the interface offers it to revisit already captured
-documents after relevant knowledge or configuration changes. Rescanning should
-not create a second financial effect for the same source.
+Use **Look again** when the interface offers it to reconcile information already in
+the vault, including matching transfers and resolving gaps. Rescan does not send
+documents to a model or read their contents again, and should not create a
+second financial effect for the same source.
+
+If the app closes while reading a statement, reopen the vault and check
+**Interrupted statements** in Statements. Match the **Import reference** to the
+original attempt. When offered, **Read saved original again** uses the encrypted
+copy already in the vault, so the source file need not still exist. Choosing it
+authorizes another read by the configured service, which may send the document
+and incur charges again. Nothing retries automatically.
+
+The app checks the saved original and financial history before another read.
+Cancelled jobs and uncertain or partial financial writes cannot use this retry.
+Follow the displayed inspection guidance in those cases; do not assume a failed
+job means nothing was saved. Older jobs without a saved recovery receipt may
+not appear here.
 
 ## Read the financial picture
 
@@ -171,7 +190,10 @@ Open **Trust & settings** to inspect:
 - Maintenance and privacy-filtered diagnostics when available.
 - Vault export and restore controls.
 
-Model configuration changes use a propose-and-confirm flow. Provider keys must
+Expand **Model connection settings** in Trust & settings to edit the provider,
+exact model name, service address, and key. Current settings and any proposed
+change remain visible outside that disclosure. Model configuration changes use
+a propose-and-confirm flow. Provider keys must
 not be included in screenshots, reports, diagnostics, or shared configuration.
 
 ## Close, switch, export, and restore

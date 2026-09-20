@@ -35,7 +35,7 @@ export type JobLifecycle = "queued" | "running" | "completed" | "failed" | "canc
 // told separately. Nothing here is composed on this side: the count, the step
 // and the sentence are all the sidecar's, and this interface neither counts a
 // step nor writes a word for one.
-export type JobView = { jobId: string; operation: string; state: JobLifecycle; completed: number; total: number; message: string; step: string; attempt: number; steps: readonly string[]; cancellable: boolean };
+export type JobView = { jobId: string; operation: string; state: JobLifecycle; completed: number; total: number; message: string; step: string; attempt: number; steps: readonly string[]; cancellable: boolean; recovery?: { state: "available" | "blocked" | "settled"; message: string } };
 export type JobsData = { jobs: readonly JobView[]; running: readonly string[] };
 // A subscription to what the sidecar is doing, already read into rows. A
 // source that carries none is one whose host cannot deliver a statement
@@ -445,6 +445,7 @@ export type RescanActionState =
 export type DocumentActions = {
   // One document per call, and one call per gesture.
   upload: (path: string) => Promise<ActionResult>;
+  recover?: (jobId: string) => Promise<ActionResult>;
   // Stop one job by the identity the sidecar minted for it, and read the
   // registry back. The read is separate because a stop that reached nothing
   // and a stop that worked both answer, and only the registry says which

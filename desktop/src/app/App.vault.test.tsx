@@ -14,6 +14,24 @@ const priorityEnvelope = (overview: unknown, revision = "vault-fixture") => ({
 });
 
 describe("vault", () => {
+  it("lets the keyboard choose creation explicitly without opening anything", async () => {
+    const user = userEvent.setup();
+    const request = vi.fn();
+    window.orionVivaBridge = { request: async <T,>() => { request(); return { protocol: "2.0", request_id: "req", ok: true, result: {} as T }; } };
+    const view = render(<App />);
+    const existing = view.getByRole("radio", { name: "Open an existing vault" });
+    expect(existing).toBeChecked();
+    existing.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(view.getByRole("radio", { name: "Make a new vault in that folder" })).toBeChecked();
+    expect(view.getByLabelText("Passphrase")).toHaveAttribute("autocomplete", "new-password");
+    expect(view.getByRole("button", { name: "Make and open vault" })).toBeVisible();
+    await user.keyboard("{ArrowUp}");
+    expect(existing).toBeChecked();
+    expect(view.getByLabelText("Passphrase")).toHaveAttribute("autocomplete", "current-password");
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("announces an automatic-open timeout and restores the manual recovery control", async () => {
     vi.useFakeTimers();
     window.orionVivaBridge = {
@@ -429,6 +447,10 @@ describe("vault", () => {
       await user.click(getByRole("button", { name: "Open local vault" }));
 
       await waitFor(() => expect(getByText("No accounts yet", { selector: "strong" })).toBeInTheDocument());
+      expect(getByRole("heading", { name: "Start with a statement" })).toBeVisible();
+      await user.click(getByRole("button", { name: "Go to statements" }));
+      expect(getByRole("heading", { level: 1, name: "Statements & documents" })).toBeVisible();
+      await user.click(getByRole("button", { name: "Overview" }));
       expect(getByText("Local source", { selector: ".privacy-lock span" })).toBeInTheDocument();
       expect(getByText("Vault & privacy").closest("details")).not.toHaveAttribute("open");
       expect(getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
@@ -539,7 +561,7 @@ describe("vault", () => {
       expect(control).toHaveAttribute("aria-disabled", "true");
       // Both sentences reach the control: how the default is protected and
       // why pressing again does nothing.
-      expect(control).toHaveAccessibleDescription("This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there. Your vault is answering the last request. Pressing again does nothing until it has.");
+      expect(control).toHaveAccessibleDescription("Keep your passphrase somewhere safe: it is needed to unlock a copy on another device. Opening an existing vault never creates one. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there. Your vault is answering the last request. Pressing again does nothing until it has.");
       resolveRequest?.();
       // Destination reads begin only after authentication completes and do not lock the
       // shell or the vault controls while they settle.

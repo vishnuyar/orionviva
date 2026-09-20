@@ -35,7 +35,8 @@ QUALIFICATION_COPY = {
 
 def test_protocol_accepts_additive_minor_changes_only():
     assert CURRENT_PROTOCOL.accepts(ProtocolVersion(2, 0))
-    assert not CURRENT_PROTOCOL.accepts(ProtocolVersion(2, 1))
+    assert CURRENT_PROTOCOL.accepts(ProtocolVersion(2, 1))
+    assert not CURRENT_PROTOCOL.accepts(ProtocolVersion(2, 2))
     assert not CURRENT_PROTOCOL.accepts(ProtocolVersion(1, 0))
 
 

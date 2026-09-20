@@ -1,11 +1,11 @@
 {
   "artifact": "orionviva.overview-parity-v1",
   "locale": "en-US",
-  "protocol": "2.0",
+  "protocol": "2.1",
   "reads": {
     "account_ledger": {
       "ok": true,
-      "protocol": "2.0",
+      "protocol": "2.1",
       "request_id": "parity-account_ledger",
       "result": {
         "data": {
@@ -271,7 +271,7 @@
     },
     "activity": {
       "ok": true,
-      "protocol": "2.0",
+      "protocol": "2.1",
       "request_id": "parity-activity",
       "result": {
         "data": {
@@ -1624,7 +1624,7 @@
     },
     "conversation": {
       "ok": true,
-      "protocol": "2.0",
+      "protocol": "2.1",
       "request_id": "parity-conversation",
       "result": {
         "data": {
@@ -2564,7 +2564,7 @@
     },
     "documents": {
       "ok": true,
-      "protocol": "2.0",
+      "protocol": "2.1",
       "request_id": "parity-documents",
       "result": {
         "data": {
@@ -2727,7 +2727,7 @@
     },
     "overview": {
       "ok": true,
-      "protocol": "2.0",
+      "protocol": "2.1",
       "request_id": "parity-overview",
       "result": {
         "data": {
@@ -3705,7 +3705,7 @@
     },
     "plans": {
       "ok": true,
-      "protocol": "2.0",
+      "protocol": "2.1",
       "request_id": "parity-plans",
       "result": {
         "data": {
@@ -4027,7 +4027,7 @@
     },
     "review": {
       "ok": true,
-      "protocol": "2.0",
+      "protocol": "2.1",
       "request_id": "parity-review",
       "result": {
         "data": {
@@ -4852,7 +4852,7 @@
     },
     "spending": {
       "ok": true,
-      "protocol": "2.0",
+      "protocol": "2.1",
       "request_id": "parity-spending",
       "result": {
         "data": {
@@ -5105,7 +5105,7 @@
     },
     "trust": {
       "ok": true,
-      "protocol": "2.0",
+      "protocol": "2.1",
       "request_id": "parity-trust",
       "result": {
         "data": {

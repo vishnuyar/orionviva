@@ -1266,7 +1266,7 @@
       "missing_evidence"
     ]
   },
-  "protocol": "2.0",
+  "protocol": "2.1",
   "registry": [
     {
       "actions": [],
@@ -1624,7 +1624,8 @@
     {
       "actions": [
         "upload",
-        "cancel"
+        "cancel",
+        "recover"
       ],
       "availability": "when a local document is selected or dropped",
       "contract": "DocumentIngestResult.v1",

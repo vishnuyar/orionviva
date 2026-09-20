@@ -117,6 +117,12 @@ INTENT_FIELDS: dict[str, dict[str, str]] = {
 # The only personal slot is the name, derived deterministically from the
 # vault's own account holders, never asked of a model.
 MOMENT_FIELDS: dict[str, frozenset] = {
+    "documents_recovery_available": frozenset(),
+    "documents_recovery_blocked": frozenset(),
+    "documents_recovery_settled": frozenset(),
+    "documents_recovery_missing": frozenset(),
+    "documents_recovery_no_reader": frozenset(),
+
     "answer_interpretation":         frozenset({"asked", "matched"}),
     "answer_interpretation_question": frozenset(),
     "plans_title":                 frozenset(),

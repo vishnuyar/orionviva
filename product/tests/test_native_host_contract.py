@@ -77,6 +77,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # a caller asserting which work an identity stands for, which is the same
     # fence the upload's single field keeps from the other side.
     DOCUMENTS_OPERATIONS["cancel"]: {"job_id"},
+    DOCUMENTS_OPERATIONS["recover"]: {"job_id", "confirm_reading"},
     # A copy out names where to write it. A copy back names what to read, where
     # to put it, and the passphrase that proves it can be read — the third is
     # there because a restore is verified by being opened, and nothing but the
@@ -198,6 +199,7 @@ COMPLETE_PAYLOADS: dict[str, dict[str, object]] = {
     BRIDGE_HANDSHAKE: {},
     SURFACE_CAPABILITIES: {},
     SURFACE_READ: {"surface": "overview", "parameters": {}, "job_id": "job-id"},
+    DOCUMENTS_OPERATIONS["recover"]: {"job_id": "missing-job", "confirm_reading": True},
 }
 
 # The host separates requests that can be replayed into a fresh sidecar from a
@@ -385,6 +387,7 @@ def test_the_host_only_retries_operations_the_sidecar_serves():
     assert BRIDGE_OPEN_VAULT not in retried
     assert BRIDGE_OPEN_DEMO_VAULT not in retried
     assert DOCUMENTS_OPERATIONS["upload"] not in retried
+    assert DOCUMENTS_OPERATIONS["recover"] not in retried
 
 
 def _refusing_handler(payload: dict[str, object]) -> object:
@@ -433,3 +436,20 @@ def test_every_frame_field_the_host_names_is_one_the_protocol_defines():
     assert not unknown, (
         f"the host names frame fields the protocol does not define: {sorted(unknown)}"
     )
+
+
+def test_recovery_payload_requires_exact_fields_and_explicit_reading_consent():
+    operation = DOCUMENTS_OPERATIONS["recover"]
+    handler = handlers_for_opened_vault(object()).handlers[operation]
+    payload = COMPLETE_PAYLOADS[operation]
+    assert set(payload) == PAYLOAD_FIELDS[operation]
+    # A complete request reaches job lookup; malformed requests must stop
+    # before looking for a saved original or invoking a configured reader.
+    assert handler(dict(payload))["reason"] == "job_unknown"
+    with pytest.raises(ValueError):
+        handler({**payload, UNDECLARED_FIELD: "v"})
+    for field in PAYLOAD_FIELDS[operation]:
+        with pytest.raises(ValueError):
+            handler({key: value for key, value in payload.items() if key != field})
+    with pytest.raises(ValueError):
+        handler({**payload, "confirm_reading": False})

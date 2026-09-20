@@ -284,10 +284,24 @@ class OpenedVaultSurfaceProvider:
             raise BridgeRequestError("current read store could not answer Trust") from None
 
     def _job_registry(self) -> dict[str, Any]:
-        """Read bounded operational job receipts without opening a projection."""
+        """Read bounded receipts; financial reconciliation happens on explicit recovery."""
         if self._jobs is None:
             return {"state": "absent", "jobs": [], "running": []}
-        return self._jobs.read()
+        from .document_actions import document_recovery
+        result = self._jobs.read()
+        records = {record.job_id: record for record in self._jobs.records()}
+        newest = {record.document_id: record.job_id for record in records.values()
+                  if record.document_id}
+        for row in result["jobs"]:
+            record = records.get(row["job_id"])
+            if record is None:
+                continue
+            if record.document_id and newest.get(record.document_id) != record.job_id:
+                continue
+            recovery = document_recovery(self._vault, record, inspect_ledger=False)
+            if recovery is not None:
+                row["recovery"] = recovery
+        return result
 
     def _conversation(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         from ..surface.conversation import timeline

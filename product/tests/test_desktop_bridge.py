@@ -46,10 +46,10 @@ def test_handshake_is_versioned_framed_and_says_which_build_answered():
     response = json.loads(dispatch_frame(frame(), default_handlers().handlers))
 
     assert response == {
-        "protocol": "2.0",
+        "protocol": "2.1",
         "request_id": "req-1",
         "ok": True,
-        "result": {"protocol": "2.0", "transport": "json-lines",
+        "result": {"protocol": "2.1", "transport": "json-lines",
                    "revision": source_revision()},
     }
     assert response["result"]["revision"]
@@ -174,7 +174,7 @@ def test_newer_minor_protocol_is_rejected_without_calling_handler():
 
     response = json.loads(
         dispatch_frame(
-            frame(protocol="2.1", operation="viva.surface.snapshot"),
+            frame(protocol="2.2", operation="viva.surface.snapshot"),
             {"viva.surface.snapshot": handler},
         )
     )

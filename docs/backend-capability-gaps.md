@@ -80,9 +80,10 @@ missing input.
   absences explicitly.
 - **Automatic updates.** The application reports its build and explains that no
   update channel exists. Releases are downloaded and installed manually.
-- **Background-job resumption.** Bounded job receipts survive sidecar restart,
-  and work interrupted by exit is restored honestly as failed. The operation is
-  not resumed; a person must start it again.
+- **General background-job resumption.** Interrupted work is not automatically
+  resumed. Statements now offers explicit saved-original retries for bounded
+  pre-posting interruptions, after consent and a ledger check. Settling or
+  partially posted documents and other job types remain non-resumable.
 
 ## Intentionally deferred
 
@@ -93,6 +94,30 @@ missing input.
 
 Each deferred item needs its own design decision before it becomes a registered
 surface capability. A roadmap checkbox alone does not authorize it.
+
+## Bounded interrupted-document recovery
+
+Protocol 2.1 adds `viva.documents.recover` with `job_id` and explicit
+`confirm_reading: true`. Job receipts can bind an opaque document address and a
+reading/settling boundary. Statements offers an explicit saved-original read
+after restart even if the selected source file has disappeared. The configured
+reader and its existing consent still apply; retry may send the document and
+incur charges again. No background retry occurs.
+
+Before spending, recovery authenticates the saved blob and checks the ledger
+under the same per-document process lock used by ordinary ingestion. Posted or
+held documents are refused without another read; any recorded event for an
+unresolved document or a settling receipt blocks retry. This deliberately does
+not resume a partially posted statement/paystub or repair an interrupted ledger
+tail. The original and existing entries remain available for inspection and
+verified-copy/support recovery. Cancelled jobs, legacy jobs without bindings,
+and receipts evicted from the bounded job registry are not retryable here.
+
+Jobs listing remains independent of SQL rebuild and whole-ledger replay:
+its offer is a candidate to check, with authoritative reconciliation performed
+only when requested. A later receipt suppresses older offers for the same
+original. New raw envelopes and headers are flushed before atomic publication;
+job receipts are also flushed before publishing their stage.
 
 ## Closed by the live desktop bridge
 

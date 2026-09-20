@@ -33,4 +33,4 @@ class ProtocolVersion:
         return cls(int(parts[0]), int(parts[1]))
 
 
-CURRENT_PROTOCOL = ProtocolVersion(2, 0)
+CURRENT_PROTOCOL = ProtocolVersion(2, 1)

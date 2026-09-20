@@ -34,7 +34,7 @@ describe("naming a folder", () => {
     }
   });
 
-  it("asks for a vault to be made only when the box is ticked, and says so on the control", async () => {
+  it("asks for a vault to be made only when the create option is selected, and says so on the control", async () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     const sent: Array<Record<string, unknown>> = [];

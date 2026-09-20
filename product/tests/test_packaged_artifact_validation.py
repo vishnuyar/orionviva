@@ -108,7 +108,7 @@ def _stand_in(tmp_path: Path, replies: dict, name: str = "sidecar") -> Path:
         "            count = sum(len(g['items']) for g in data['groups'])\n"
         "            data['actionable_count'] = data['shown_count'] = count\n"
         "            data['remaining_count'] = 0\n"
-        "    said.setdefault('protocol', '2.0')\n"
+        "    said.setdefault('protocol', '2.1')\n"
         "    said['request_id'] = asked['request_id']\n"
         "    sys.stdout.write(json.dumps(said) + '\\n')\n"
         "    sys.stdout.flush()\n",
@@ -141,7 +141,7 @@ def _working(**overrides) -> dict:
     } for identity in ids]
     replies = {
         "bridge.handshake": {"ok": True, "result": {
-            "protocol": "2.0", "transport": "json-lines", "revision": "abcdef123456"}},
+            "protocol": "2.1", "transport": "json-lines", "revision": "abcdef123456"}},
         "viva.lifecycle.read": {"ok": True, "result": {
             "state": "absent", "origin": "packaged", "revision": "abcdef123456"}},
         "bridge.open_demo_vault": {"ok": True, "result": {
@@ -307,7 +307,7 @@ def test_a_build_that_cannot_name_itself_fails(tmp_path: Path):
     """The build somebody is filing a report about is the one that most needs
     naming."""
     replies = _working(**{"bridge.handshake": {"ok": True, "result": {
-        "protocol": "2.0", "transport": "json-lines", "revision": "unknown"}}})
+        "protocol": "2.1", "transport": "json-lines", "revision": "unknown"}}})
 
     with pytest.raises(SystemExit, match="which revision it is"):
         _run(tmp_path, replies)

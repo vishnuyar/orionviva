@@ -115,6 +115,12 @@ def test_model_free_goal_request_routes_to_a_durable_needs_input_form(
 
 def test_configured_goal_request_carries_the_same_deterministic_draft_to_plans(
         tmp_path, monkeypatch):
+    from viva.goals import GoalService
+
+    # Three contribution dates remain between this clock and the target date.
+    monkeypatch.setattr(
+        "viva.desktop_bridge.plan_actions.GoalService",
+        lambda vault: GoalService(vault, clock=lambda: "2026-08-29"))
     monkeypatch.setattr("viva.speak.speak_spec", lambda: _spec())
     bound = {
         "verb": "create", "title": "Trip", "target_amount": "600",

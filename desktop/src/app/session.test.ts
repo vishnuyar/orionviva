@@ -1962,3 +1962,90 @@ describe("surface session", () => {
     expect(second.result.current.session.jobStatus).toBe("unavailable");
   });
 });
+
+describe("explicit saved-original recovery", () => {
+  const interruptedJob = { job_id: "viva.documents.upload-1", operation: "viva.documents.upload", state: "failed", completed: 2, total: 4, message: "Interrupted", step: "opened", attempt: 1, steps: ["checked", "opened", "read", "settled"], cancellable: false, recovery: { state: "available", message: "The saved original can be checked." } };
+
+  it("sends explicit reading consent once and blocks another recovery after an uncertain timeout", async () => {
+    const recoveries: BridgeRequest[] = [];
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.documents.recover") { recoveries.push(frame); throw new BridgeTimeout(frame.operation, true); }
+      if (frame.operation === "viva.surface.read") {
+        const surface = frame.payload.surface as SurfaceName;
+        return ok(frame.requestId, { surface, data: surface === "jobs" ? { state: "ready", jobs: [interruptedJob], running: [] } : completeSurfacePayload(surface) } as T);
+      }
+      return ok(frame.requestId, {} as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "synthetic", false); });
+    await waitFor(() => expect(result.current.session.jobs).toHaveLength(1));
+    expect(recoveries).toHaveLength(0);
+    await act(async () => { await result.current.recoverDocument(interruptedJob.job_id); });
+    expect(recoveries[0].payload).toEqual({ job_id: interruptedJob.job_id, confirm_reading: true });
+    expect(result.current.session.captureAction).toMatchObject({ state: "settled", result: { state: "interrupted" } });
+    expect(result.current.session.jobStatus).toBe("unavailable");
+    await act(async () => { await result.current.recoverDocument(interruptedJob.job_id); });
+    expect(recoveries).toHaveLength(1);
+  });
+
+  it("does not publish a recovered document's receipt into a newly opened vault", async () => {
+    const pending = deferred<{ kind: string; message: string }>();
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.documents.recover") return ok(frame.requestId, await pending.promise as T);
+      if (frame.operation === "viva.surface.read") {
+        const surface = frame.payload.surface as SurfaceName;
+        return ok(frame.requestId, { surface, data: surface === "jobs" ? { state: "ready", jobs: [interruptedJob], running: [] } : completeSurfacePayload(surface) } as T);
+      }
+      return ok(frame.requestId, {} as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/first", "synthetic", false); });
+    await waitFor(() => expect(result.current.session.jobs).toHaveLength(1));
+    let running!: Promise<void>;
+    act(() => { running = result.current.recoverDocument(interruptedJob.job_id); });
+    await act(async () => { await result.current.openVault("/second", "synthetic", false); });
+    await act(async () => { pending.resolve({ kind: "completed", message: "Old vault result." }); await running; });
+    expect(result.current.session.captureAction.state).toBe("idle");
+  });
+});
+
+describe("file gestures retain the vault they were started for", () => {
+  it("refuses a picker result returned after switching vaults before sending an upload", async () => {
+    const picked = deferred<readonly string[]>();
+    const uploaded: BridgeRequest[] = [];
+    window.orionVivaBridge = { pickDocumentPaths: () => picked.promise, request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "viva.documents.upload") uploaded.push(frame);
+      if (frame.operation === "viva.surface.read") { const surface = frame.payload.surface as SurfaceName; return ok(frame.requestId, { surface, data: completeSurfacePayload(surface) } as T); }
+      return ok(frame.requestId, {} as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/first", "synthetic", false); });
+    let choosing!: Promise<string>;
+    act(() => { choosing = result.current.chooseDocuments(); });
+    await act(async () => { await result.current.openVault("/second", "synthetic", false); });
+    await act(async () => { picked.resolve(["/first-vault-statement.pdf"]); expect(await choosing).toBe("none"); });
+    expect(uploaded).toHaveLength(0);
+    expect(result.current.session.captureAction.state).toBe("idle");
+  });
+
+  it("ignores a dropped-path callback from a replaced vault even before subscription setup finishes", async () => {
+    const callbacks: Array<(paths: readonly string[]) => void> = [];
+    const subscription = deferred<() => void>();
+    const uploaded: BridgeRequest[] = [];
+    const onDropped = vi.fn();
+    window.orionVivaBridge = { subscribeToDroppedPaths: (callback) => { callbacks.push(callback); return subscription.promise; }, request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "viva.documents.upload") uploaded.push(frame);
+      if (frame.operation === "viva.surface.read") { const surface = frame.payload.surface as SurfaceName; return ok(frame.requestId, { surface, data: completeSurfacePayload(surface) } as T); }
+      return ok(frame.requestId, {} as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession(onDropped));
+    await act(async () => { await result.current.openVault("/first", "synthetic", false); });
+    await waitFor(() => expect(callbacks).toHaveLength(1));
+    await act(async () => { await result.current.openVault("/second", "synthetic", false); });
+    await act(async () => { callbacks[0](["/first-vault-statement.pdf"]); });
+    expect(uploaded).toHaveLength(0);
+    expect(onDropped).not.toHaveBeenCalled();
+  });
+});

@@ -102,7 +102,7 @@
 .vault-source-card p { margin: 6px 0 0; color: var(--ink); font-size: var(--text-fine); line-height: 1.45; }
 .vault-open-form { display: grid; gap: 8px; margin-top: 13px; padding-top: 12px; border-top: 1px solid #dce6db; }
 .vault-open-form label { display: grid; gap: 4px; color: var(--ink); font-size: var(--text-fine); font-weight: 700; }
-.vault-open-form input { width: 100%; min-height: var(--control-min-height); padding: 8px 9px; color: #31473d; background: #fffef9; border: 1px solid #aebdaf; border-radius: 7px; font-size: var(--text-fine); }
+.vault-open-form input:not([type="radio"]):not([type="checkbox"]) { width: 100%; min-height: var(--control-min-height); padding: 8px 9px; color: #31473d; background: #fffef9; border: 1px solid #aebdaf; border-radius: 7px; font-size: var(--text-fine); }
 .vault-open-form input:focus { outline: 2px solid #b8ceb8; outline-offset: 1px; }
 .vault-directory-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
 .vault-picker-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: var(--control-min-height); padding: 7px 9px; color: #40594b; background: #edf2eb; border: 1px solid #aebdaf; border-radius: 7px; font-size: var(--text-fine); font-weight: 700; white-space: nowrap; }
@@ -245,3 +245,14 @@ a:focus-visible,
   .content-wrap { max-width: none; padding: 0; }
   body, :root { background: white; color: black; }
 }
+
+.vault-start-choice { display: grid; gap: var(--space-sm); margin: 0; padding: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.vault-start-choice legend { color: var(--ink); font-weight: var(--weight-medium); }
+.vault-start-choice .vault-create-choice { display: flex; align-items: center; min-height: var(--control-min-height); }
+.vault-start-choice input[type="radio"] { width: var(--icon-lg); height: var(--icon-lg); min-width: 0; min-height: 0; padding: 0; margin: 0; flex-shrink: 0; }
+.first-statement-guide { display: grid; gap: var(--space-md); margin-bottom: var(--space-lg); }
+.first-statement-guide h2 { font-size: var(--text-title); }
+.first-statement-guide p, .first-statement-guide ol { margin: 0; line-height: var(--leading-body); }
+.first-statement-guide ol { padding-left: var(--space-xl); }
+.first-statement-guide li + li { margin-top: var(--space-sm); }
+.first-statement-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }

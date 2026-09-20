@@ -1,7 +1,7 @@
 // The protocol version this shell speaks. The sidecar refuses a frame whose
 // major version is not its own, so this is the shell's half of one constant
 // and moves only when the sidecar's does.
-export const BRIDGE_PROTOCOL = "2.0";
+export const BRIDGE_PROTOCOL = "2.1";
 
 export type SurfaceName = "overview" | "overview_accounts" | "spending" | "documents" | "conversation" | "review" | "jobs" | "trust" | "activity" | "account_ledger" | "plans";
 export type SurfaceParameters = Record<string, string | number>;
@@ -144,6 +144,7 @@ export type BridgeClient = {
   // One path per call. Several files are several frames, one after another,
   // because the sidecar answers one request before it reads the next.
   uploadDocument: (path: string) => Promise<unknown>;
+  recoverDocument?: (jobId: string) => Promise<unknown>;
   pickDocumentPaths?: () => Promise<readonly string[]>;
   subscribeToDroppedPaths?: (listen: DroppedPathsListener) => Promise<() => void>;
   subscribeToJobProgress?: (listen: JobProgressListener) => Promise<() => void>;

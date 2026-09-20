@@ -203,6 +203,7 @@ def handlers_for_opened_vault(
         **reads.handlers,
         DOCUMENTS_OPERATIONS["upload"]: captures.upload,
         DOCUMENTS_OPERATIONS["cancel"]: captures.cancel,
+        DOCUMENTS_OPERATIONS["recover"]: captures.recover,
         TRANSFER_OPERATIONS["export"]: transfers.export,
         TRANSFER_OPERATIONS["restore"]: transfers.restore,
         RESCAN_OPERATIONS["rescan"]: sweeps.run,

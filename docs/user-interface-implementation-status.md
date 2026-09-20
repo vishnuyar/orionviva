@@ -149,6 +149,7 @@ name. The destination shown to people is **Transactions**.
 | `viva.conversation.confirm` | yes | opened vault | yes |
 | `viva.conversation.decline` | yes | opened vault | yes |
 | `viva.documents.cancel` | yes | opened vault | yes |
+| `viva.documents.recover` | yes | opened vault | yes |
 | `viva.documents.rescan` | yes | opened vault | yes |
 | `viva.documents.upload` | yes | opened vault | yes |
 | `viva.lifecycle.read` | yes | before a vault opens | yes |
@@ -195,3 +196,24 @@ Close a row only when the capability registry, operation table, sidecar handler,
 desktop client, interface behavior, and relevant tests agree. If the claim can
 be derived from code, strengthen the gate instead of replacing the row with a
 positive prose claim.
+
+
+## Incremental reliability and first-use implementation
+
+The session coordinator now composes separate vault lifecycle, read/refresh,
+job observation, document intake, and feature action hooks. They share one
+reducer and explicit source/request generations; private operation flags stay
+with their owner. Public controls and stale-result protection are preserved.
+
+Statements can show interrupted saved originals after reopening. Its explicit
+read-again button explains model egress and possible repeated cost. The backend
+checks whether retry is safe before invoking a reader. Settling/partial-post
+cases retain inspection guidance and do not receive a retry button. This is
+bounded pre-posting recovery, not general job resumption. Job-state uncertainty
+blocks another request until an authoritative recheck.
+
+Model configuration remains reachable even when the independent Trust read is
+absent, unavailable, or failed. Trust keeps its existing failure message; model
+proposal and confirmation remain required.
+
+Recovery outcomes use persona `pack-v45`, preserving the previous released packs.
