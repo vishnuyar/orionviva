@@ -1410,22 +1410,6 @@
       "subcategory": "hospital",
       "version": "enrich-v6+cat-v3+merch-v2"
     },
-    "mettle solutions": {
-      "aliases": [
-        "mettle solutions"
-      ],
-      "attributes": {
-        "counterparty_kind": "business",
-        "description": "Business services provider"
-      },
-      "canonical_name": "Mettle Solutions",
-      "category": "services",
-      "grade": "corroborated",
-      "key": "mettle solutions",
-      "source": "model",
-      "subcategory": "uncategorised",
-      "version": "enrich-v6+cat-v3+merch-v2"
-    },
     "ms gov mdah": {
       "aliases": [
         "ms gov mdah"
@@ -1736,44 +1720,6 @@
       "key": "samsclub",
       "source": "model",
       "subcategory": "wholesale club",
-      "version": "enrich-v6+cat-v3+merch-v2"
-    },
-    "schoolcafe": {
-      "aliases": [
-        "schoolcafe"
-      ],
-      "attributes": {
-        "billing": "per_purchase",
-        "counterparty_kind": "business",
-        "description": "School meal payment platform",
-        "logo_url": "https://logo.clearbit.com/schoolcafe.com",
-        "website": "schoolcafe.com"
-      },
-      "canonical_name": "SchoolCafe",
-      "category": "groceries",
-      "grade": "corroborated",
-      "key": "schoolcafe",
-      "source": "model",
-      "subcategory": "canteen",
-      "version": "enrich-v6+cat-v3+merch-v2"
-    },
-    "schoolcafe schoolcafe": {
-      "aliases": [
-        "schoolcafe schoolcafe"
-      ],
-      "attributes": {
-        "billing": "either",
-        "counterparty_kind": "business",
-        "description": "School meal payment and cafeteria service",
-        "logo_url": "https://logo.clearbit.com/schoolcafe.com",
-        "website": "schoolcafe.com"
-      },
-      "canonical_name": "SchoolCaf\u00e9",
-      "category": "dining",
-      "grade": "corroborated",
-      "key": "schoolcafe schoolcafe",
-      "source": "model",
-      "subcategory": "canteen",
       "version": "enrich-v6+cat-v3+merch-v2"
     },
     "sci tech discovery cente": {

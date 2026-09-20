@@ -198,8 +198,8 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 | 6. Final evidence | Local checks recorded; release gaps remain | Python suite result and corrected contract retest below; packaged tests pass; independent evaluator remains acceptance_gap |
 
 Local implementation is complete. This is not a signed release or proof that all
-target operating systems work. Changes are staged for evaluator visibility but
-uncommitted; the four unrelated starting edits remain unstaged.
+target operating systems work. The initial implementation is committed as
+`6737707`; the four unrelated starting edits remain outside that commit.
 
 ### Independent review findings so far
 
@@ -335,7 +335,7 @@ must never transparently replay the recovery mutation after an uncertain timeout
 | Check | Result and limits |
 | --- | --- |
 | Complete frontend | 923 tests passed across 54 files; build, architecture and style checks passed |
-| Complete Python product/core/merchant/bench run | 3,295 passed, 2 skipped, 1 failed; sole failure was an omitted recovery payload entry in the integration test contract |
+| Complete Python product/core/merchant/bench run | Exact implementation commit `6737707`: 3,290 passed, 3 skipped in a clean checkout. Earlier working-tree run had one omitted test-contract entry, subsequently repaired |
 | Corrected Python integration contract | Test-only repair added exact fields, explicit consent, unknown/missing field refusal and no-transparent-replay checks; 103 affected tests passed, including 8 native contract tests independently rerun. Do not describe the preceding full run as uninterrupted green |
 | Date-sensitive baseline test | Original revision reproduced the goal-binding failure as the calendar advanced; the existing test clock was fixed without changing financial calculations |
 | Native Rust | 17 reported passing; 16 ordinary tests exercised, plus an opt-in test separately exercised by the packaged check below |
@@ -344,10 +344,11 @@ must never transparently replay the recovery mutation after an uncertain timeout
 | Documentation | 23 consistency checks passed after handoff reconciliation; final report pointers are evidence-only edits |
 | Privacy | All 60 staged implementation files passed 12 denylist patterns, including the final test-only contract addition |
 
-The whole-repository privacy scan found 15 matches in the untouched
+The initial whole-repository privacy scan found 15 matches in the then-untouched
 `merchant/merchantcore/data/catalog.json`. Its bytes match the starting revision.
-No matching names or values are copied here. This pre-existing issue remains a
-release blocker; the changed-file pass does not make the whole repository clean.
+No matching names or values are copied here. The subsequent authorized cleanup
+below removes the three matching seed records; the full current-tree scan is now
+clean. Historical commits still contain the former catalog.
 Numeric-shape review of staged files found synthetic contract/test fixtures and
 documented line-count/performance measurements.
 
@@ -402,10 +403,13 @@ the earlier complete evaluator snapshots, not a complete release pass.
 
 Remaining work before release:
 
-- [ ] Independently maintain/review the evaluator's protocol expectation and
-  current-revision UI proof, then obtain one complete passing report without
-  temporary-source preparation failures.
-- [ ] Resolve the existing catalog privacy findings in their own reviewed scope.
+- [x] Independently maintain/review the evaluator's protocol expectation and
+  current-revision UI source proof.
+- [ ] Obtain one complete passing acceptance report, including installed and
+  native compatibility evidence on supported hosts.
+- [x] Resolve current-tree catalog privacy findings: exactly three complete seed
+  records removed, 132 retained unchanged; full-tree scan clean. Historical
+  distribution/history are not erased by this cleanup.
 - [ ] Execute the added Windows/Linux jobs and actual supported release targets.
 - [ ] Verify signed clean installation, launch, update/rollback, uninstall and
   vault preservation using isolated native environments.
@@ -414,4 +418,73 @@ Remaining work before release:
 
 Do not rebuild the frameworks or repeat completed implementation on a context
 refresh. Continue these evidence items, preserving the recovery boundary above.
-No commit, push, release or public issue was made.
+The initial implementation was committed at the owner's explicit request. No push,
+release or public issue was made.
+
+## Authorized continuation after the implementation commit
+
+The owner instructed: “commit whatever has been done and continue with the rest”.
+Commit `6737707` contains the 60 reviewed
+implementation files. The privacy hook flagged two hexadecimal validation
+alphabets and an unchanged pack-v44 content hash appearing on a comma-only changed
+line. A separate verifier recomputed the actual hash, checked its bytes against
+HEAD, ran 30 version tests and scanned every staged file against all private
+patterns. After that independent evidence, the hook's documented synthetic-hit
+override was approved and the requested commit succeeded. The hook was not altered.
+
+The catalog follow-up removes exactly three complete flagged seed records. A
+separate audit established they came from the original seed introduction, when
+the private-name check had been unavailable. Public/business classification does
+not override an explicit privacy exclusion. All 132 other records and metadata
+remain unchanged; taxonomy and installation-learned data are untouched. Removed
+matches return to the existing unknown/local-enrichment behavior when no local
+record exists. The builder ran 149 merchant and 87 related product tests. The
+orchestrator independently verified exact preservation and the now-clean full-tree
+privacy scan. No private matching name is stored in this record.
+
+Evaluator maintenance is separate from changing financial expectations: requests
+remain at protocol 2.0; only reviewed 2.0/2.1 responses are admitted. Unknown,
+malformed or major-incompatible versions remain rejected. Four added regression
+tests are wired into the evaluator's check command. No catalog truth assertion
+was removed. A separate Interface Designer reviewed the seven existing UI cases
+and 46 unchanged assertions against the clean implementation commit, including
+all source hashes. That approval is a source behavior contract only; it does not
+prove native keyboard, assistive technology or signed installation.
+
+Exact-commit Python verification passed from the clean disposable checkout
+at `/private/tmp/orionviva-implementation-verified`, excluding the four unrelated
+edits: 3,290 passed and 3 skipped. Two skips are opt-in packaged tests; the third
+was the ignored local denylist not being present in the clean checkout. A separate
+in-memory check applied all 12 local patterns to that exact commit's evaluation
+key, with no matches or values emitted. The checkout remained clean. Full log:
+`/private/tmp/orionviva-6737707-python-suite.log`.
+
+The committed-revision acceptance run at
+`runs/acceptance-repair/6737707-committed/trace.report.json` executed all 11 cases:
+ten passed, none failed, and compatibility remained incomplete. Catalog protocol
+compatibility is now proved through its real packaged path. The evaluator's own
+checks passed 181 Node tests, four Python transport regressions, pack validation
+and its distribution boundary. The source-only release-fence diagnostic correctly refused an additional Tauri
+macro failure alongside the expected fence. The cause was a missing frontend
+build in the disposable evaluator checkout: direct Cargo invocation does not run
+Tauri CLI's frontend build step. The evaluator preparation fix builds the real
+frontend and preserves strict rejection of unrelated compiler failures. The
+actual integrated source check passed on the clean implementation commit; log:
+`/private/tmp/orionviva-release-boundary-integrated.log`. This proves the source
+release fence, not an installed release. Windows command construction is covered
+by regression tests, but actual Windows execution remains outstanding.
+
+Native GUI checks remain withheld on this everyday user account: although the
+test build uses a separate keychain service, its current runner inherits user
+configuration/environment and locates keyboard targets by a shared process name.
+A hard guard now blocks the native WebDriver configuration before target reads
+or application launch. Independent review replaced a weak source-text test with
+an executed configuration test that traps downstream work and catches a removed
+guard. A candidate disposable profile/environment utility is tested on macOS; it
+is not a completed isolated launcher. An isolated native profile and exact
+runner-owned process binding are needed before those checks are safe. No private configuration, remembered vault or paid
+model was accessed during this work. Native source-contract approval does not
+close this runtime gap.
+
+Follow-up scope: the catalog cleanup and this evidence register. Evaluator
+maintenance lives on its own `codex/orionviva-recovery-compatibility` branch.
