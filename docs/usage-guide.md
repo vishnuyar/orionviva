@@ -4,6 +4,33 @@ OrionViva turns financial statements into a local, evidence-backed financial
 picture. The application separates currencies, shows what each figure rests on,
 and exposes uncertainty rather than filling gaps silently.
 
+## Open in browser
+
+In a build containing this feature, choose **Open in browser** in OrionViva.
+Keep the installed app running while you use the browser on the same computer.
+The browser uses the same vault format and financial engine as the desktop.
+If a private vault is already open, it remains active in the browser. You can
+also create or open another vault using the controls below. A sample session
+can be re-entered with **Open the sample vault**; it never opens a private default.
+
+**Choose folder** and **Choose statement file** open operating-system dialogs supplied
+by OrionViva. They may appear beside the app rather than inside the browser.
+Select one document at a time. Browser drag-and-drop is not supported; use the
+file action. The selected original is not moved or rewritten and the host does
+not stage a plaintext upload copy.
+
+Reloading the authorized tab reconnects when its previous page releases control.
+Duplicated or additional tabs cannot take over. If a crash or interrupted reload
+leaves access unavailable, stop browser access in the app and open a new session.
+The vaultphrase is never saved in browser storage; a revocable session credential
+is held in that tab's session storage until access ends.
+
+Choose **Return to desktop** after current work finishes. **Stop browser access**
+revokes the browser immediately; if a request was already admitted, it finishes
+before desktop control returns. An interrupted display is not proof that an
+import was cancelled: inspect the vault before repeating work. Quitting the app
+closes its local service. This is not remote access or an installation-free website.
+
 ## If a request stops answering
 
 The desktop app stops waiting at a bounded deadline instead of leaving a
@@ -198,9 +225,13 @@ not be included in screenshots, reports, diagnostics, or shared configuration.
 
 ## Close, switch, export, and restore
 
-Closing a vault removes its contents from the current screen. On macOS and
-Windows it does not erase the protected default; the same vault opens on the
-next application launch unless another private vault is successfully opened.
+In the installed desktop and its browser interface, closing a vault releases
+the active engine and removes its contents from the screen. Reloading or moving
+between those interfaces does not reopen it; open a vault explicitly to resume.
+On macOS and Windows, closing does not erase the protected default: the same
+vault may open on the next application launch unless another private vault is
+successfully opened. The development acceptance host has no native close
+capability and clears only its interface.
 
 To switch defaults, open or create another private vault successfully.
 

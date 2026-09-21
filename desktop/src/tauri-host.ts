@@ -36,6 +36,7 @@ export function installTauriBridge(): boolean {
       return JSON.parse(response) as BridgeResponse<T>;
     },
     openRememberedVault: () => invoke<RememberedVaultOpen>("open_remembered_vault"),
+    closeVault: () => invoke<void>("close_vault"),
     rememberVault: (vaultDirectory, passphrase) => invoke<void>("remember_vault", { vaultDirectory, passphrase }),
     pickVaultDirectory: async () => {
       const selected = await open({
@@ -73,4 +74,16 @@ export function installTauriBridge(): boolean {
   };
   window.orionVivaBridge = transport;
   return true;
+}
+
+export function desktopBrowserControls() {
+  if (typeof window === "undefined" || !window.__TAURI_INTERNALS__) return null;
+  const invoke = window.__TAURI_INTERNALS__.invoke;
+  return {
+    status: () => invoke<boolean>("browser_status"),
+    start: () => invoke<void>("browser_start"),
+    stop: () => invoke<void>("browser_stop"),
+    returnToDesktop: () => invoke<void>("browser_return"),
+    subscribe: (changed: (active: boolean) => void) => listen<boolean>("orionviva://browser-mode", (event) => changed(event.payload)),
+  };
 }

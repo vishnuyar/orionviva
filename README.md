@@ -55,8 +55,11 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ## Start here
 
-The supported product interface is the Tauri desktop application backed by a
-packaged Python sidecar.
+The product uses a Tauri desktop application backed by a packaged Python
+sidecar. This source build also provides **Open in browser**: an optional
+same-computer browser interface served by the installed app. Keep the app
+running; vaults and the engine remain local. See the usage guide for the
+session boundaries and the implementation-status document for verification limits.
 
 - [Installation guide](./docs/installation-guide.md) — install a release or
   build a local desktop application on macOS, Windows, or Linux.

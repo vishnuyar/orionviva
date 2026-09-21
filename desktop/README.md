@@ -65,3 +65,25 @@ workflow and prerequisites; see [RELEASING.md](../RELEASING.md).
   release metadata.
 - The capability registry and operation allowlist are owned by the Python
   package, not duplicated as desktop truth.
+
+## Local browser mode
+
+The native **Open in browser** control serves the production-built
+`loopback.html` and shared assets from the application's bundle on 127.0.0.1.
+`src-tauri/src/browser.rs` owns authenticated session/page admission, revocation,
+vault-generation checks and native file/folder dialogs. Both interfaces share
+one supervised Python process. Only one interface controls it at a time.
+`src/bridge/browser-transport.ts` implements the installed-host transport;
+`loopback-transport.ts` remains the independent evaluator's development adapter.
+
+Build the frontend before a native development launch. `npm run build` now emits
+both entry points. `npm run desktop:build` packages the interface and engine.
+
+`npm run test:browser-host` builds the production interface and exercises it in
+headless Chrome through the actual Rust HTTP handlers and a disposable Python
+engine. It requires the sibling evaluator's WebdriverIO dependencies, a local
+Chrome driver, and this checkout's Python environment. It creates only synthetic
+vaults/files, disables model configuration and protected credential access, and
+uses test-only file-dialog selections. Its native test is explicitly opt-in in
+`cargo test`; run this command to execute it. It does not prove an OS dialog,
+a signed installation, or supported behavior on another platform/browser.

@@ -1,3 +1,5 @@
+mod browser;
+
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
@@ -516,6 +518,9 @@ fn route_stdout<R: tauri::Runtime>(
             return;
         };
         if response.get("event").is_some() {
+            if let Some(browser) = app.try_state::<browser::BrowserState>() {
+                browser.progress(&response);
+            }
             if let Err(error) = app.emit(JOB_PROGRESS_EVENT, &response) {
                 eprintln!("unable to deliver OrionViva job progress: {error}");
             }
@@ -530,12 +535,12 @@ fn route_stdout<R: tauri::Runtime>(
     }
 }
 
-fn spawn_bridge(app: &AppHandle) -> Result<BridgeProcess, String> {
+fn spawn_bridge<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<BridgeProcess, String> {
     // An explicit path wins, so a developer can point the host at a bridge of
     // their own. Otherwise the bundled executable, which is what every
     // installed copy runs. Only a build with neither — a checkout being worked
     // on — falls back to the repository's Python module.
-    let mut command = if let Ok(path) = std::env::var("ORIONVIVA_SIDECAR") {
+    let command = if let Ok(path) = std::env::var("ORIONVIVA_SIDECAR") {
         Command::new(path)
     } else if let Some(path) = bundled_sidecar() {
         Command::new(path)
@@ -547,6 +552,13 @@ fn spawn_bridge(app: &AppHandle) -> Result<BridgeProcess, String> {
         command
     };
 
+    spawn_bridge_command(app, command)
+}
+
+fn spawn_bridge_command<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    mut command: Command,
+) -> Result<BridgeProcess, String> {
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -680,7 +692,10 @@ fn deadline_policy(operation: Option<&str>) -> DeadlinePolicy {
 fn is_long_job(operation: &str) -> bool {
     matches!(
         operation,
-        "viva.documents.upload" | "viva.documents.recover" | "viva.documents.rescan" | "viva.maintenance.run"
+        "viva.documents.upload"
+            | "viva.documents.recover"
+            | "viva.documents.rescan"
+            | "viva.maintenance.run"
     )
 }
 
@@ -923,6 +938,9 @@ fn request_bridge_with<R: tauri::Runtime>(
                         _ => None,
                     };
                     if let Some(next_active) = next_active {
+                        if let Some(browser) = app.try_state::<browser::BrowserState>() {
+                            browser.vault_closed.store(false, Ordering::SeqCst);
+                        }
                         *state
                             .active_vault
                             .lock()
@@ -995,7 +1013,11 @@ fn request_bridge_with<R: tauri::Runtime>(
     Err("OrionViva bridge recovery attempts were exhausted".to_string())
 }
 
-fn request_bridge(app: &AppHandle, state: &BridgeState, frame: Value) -> Result<Value, String> {
+fn request_bridge<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &BridgeState,
+    frame: Value,
+) -> Result<Value, String> {
     request_bridge_with(app, state, frame, spawn_bridge, deadline_policy, || {})
 }
 
@@ -2038,6 +2060,7 @@ fn bridge_request(
     state: State<'_, BridgeState>,
     frame: String,
 ) -> Result<String, String> {
+    let _permit = app.state::<browser::BrowserState>().enter(None)?;
     let mut request: Value =
         serde_json::from_str(&frame).map_err(|error| format!("invalid bridge request: {error}"))?;
     let object = request
@@ -2052,7 +2075,12 @@ fn bridge_request(
 }
 
 #[tauri::command]
-fn remember_vault(vault_directory: String, passphrase: String) -> Result<(), String> {
+fn remember_vault(
+    app: AppHandle,
+    vault_directory: String,
+    passphrase: String,
+) -> Result<(), String> {
+    let _permit = app.state::<browser::BrowserState>().enter(None)?;
     if vault_directory.trim().is_empty() || passphrase.is_empty() {
         return Err("a vault directory and vaultphrase are required".to_string());
     }
@@ -2064,6 +2092,29 @@ fn open_remembered_vault(
     app: AppHandle,
     state: State<'_, BridgeState>,
 ) -> Result<RememberedVaultOpen, String> {
+    let _permit = app.state::<browser::BrowserState>().enter(None)?;
+    if app
+        .state::<browser::BrowserState>()
+        .vault_closed
+        .load(Ordering::SeqCst)
+    {
+        return Ok(RememberedVaultOpen::Absent);
+    }
+    {
+        let active = state
+            .active_vault
+            .lock()
+            .map_err(|_| "Active vault unavailable")?;
+        match &active.vault {
+            ActiveVault::Private(directory) => {
+                return Ok(RememberedVaultOpen::Opened {
+                    directory: directory.clone(),
+                })
+            }
+            ActiveVault::Sample => return Ok(RememberedVaultOpen::Absent),
+            ActiveVault::None => {}
+        }
+    }
     let Some(remembered) = load_remembered_vault()? else {
         return Ok(RememberedVaultOpen::Absent);
     };
@@ -2088,18 +2139,56 @@ fn open_remembered_vault(
 
 #[tauri::command]
 fn bridge_restart(app: AppHandle, state: State<'_, BridgeState>) -> Result<(), String> {
+    let _permit = app.state::<browser::BrowserState>().enter(None)?;
     state.restart(&app)
 }
 
 #[tauri::command]
-fn bridge_shutdown(state: State<'_, BridgeState>) -> Result<(), String> {
+fn bridge_shutdown(app: AppHandle, state: State<'_, BridgeState>) -> Result<(), String> {
+    let _permit = app.state::<browser::BrowserState>().enter(None)?;
     state.shutdown()
+}
+
+fn close_active_vault<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    app.state::<browser::BrowserState>()
+        .vault_closed
+        .store(true, Ordering::SeqCst);
+    let state = app.state::<BridgeState>();
+    state.shutdown()?;
+    *state.active_vault.lock().map_err(|_| "Vault unavailable")? = ActiveVaultRecord {
+        vault: ActiveVault::None,
+        generation: 0,
+    };
+    state.read_recovery_claimed.store(false, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+fn close_vault(app: AppHandle) -> Result<(), String> {
+    let _permit = app.state::<browser::BrowserState>().enter_close()?;
+    close_active_vault(&app)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(browser::BrowserState::default())
+        .setup(|app| {
+            let directory = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&directory)?;
+            let lock = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(directory.join("instance.lock"))?;
+            lock.try_lock().map_err(|_| {
+                std::io::Error::other("OrionViva is already running. Use its existing window.")
+            })?;
+            app.manage(lock);
+            Ok(())
+        })
         .manage(BridgeState {
             process: Mutex::new(None),
             active_vault: Mutex::new(ActiveVaultRecord {
@@ -2111,11 +2200,16 @@ pub fn run() {
             recovery_gate: RecoveryGate::new(),
         })
         .invoke_handler(tauri::generate_handler![
+            browser::browser_start,
+            browser::browser_stop,
+            browser::browser_return,
+            browser::browser_status,
             bridge_request,
             remember_vault,
             open_remembered_vault,
             bridge_restart,
-            bridge_shutdown
+            bridge_shutdown,
+            close_vault
         ])
         .build(tauri::generate_context!())
         .expect("error while building OrionViva");

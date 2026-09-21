@@ -102,6 +102,20 @@ later as its own full-lane cycle ("design phase: issue #N").
 
 ## The loop (full lane)
 
+### Acceptance surface policy
+
+Owner-approved on 2026-09-21: all future OrionViva product acceptance journeys
+run through the browser by default. Use desktop acceptance only for behavior
+specific to the native app: launch and exit, native file/folder dialogs,
+operating-system credential storage, desktop/browser handoff, bundled sidecar,
+and installer/signing lifecycle. Shared financial, document, review, conversation,
+privacy and recovery journeys must not require a duplicate desktop run. Unit,
+integration, build and architecture checks remain applicable to their packages.
+Record the exact product revision and browser host used; test-host evidence
+does not by itself prove installed-host delivery. Missing browser coverage is
+an acceptance gap, never a reason to silently substitute a desktop result.
+
+
 1. **Idea or bug** → Design Partner produces a brief.
    - **1b — Fact-checker, before the brief is read:** every factual claim in it
      reproduced against the code, every cited document checked against the code

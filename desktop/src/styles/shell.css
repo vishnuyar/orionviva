@@ -256,3 +256,19 @@ a:focus-visible,
 .first-statement-guide ol { padding-left: var(--space-xl); }
 .first-statement-guide li + li { margin-top: var(--space-sm); }
 .first-statement-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+
+.browser-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding: var(--space-lg) var(--space-xl);
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.browser-controls p { margin: var(--space-xs) 0; color: var(--muted); }
+.browser-controls h1 { font-size: var(--text-section); }
+.browser-actions { display: flex; flex-wrap: wrap; gap: var(--space-md); }
+
+.browser-controls h2 { font-size: var(--text-lead); margin: 0; }

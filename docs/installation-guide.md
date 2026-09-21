@@ -45,6 +45,17 @@ For an AppImage, mark the downloaded file executable and run it. For a Debian
 package, install it with the package-management tool approved for the machine.
 Required WebKit and desktop libraries vary by distribution.
 
+## Browser option
+
+Builds containing **Open in browser** can serve the interface to your default
+browser on the same computer. Launch OrionViva, then choose that action. The app
+must keep running; no separate Python, Node.js or web server setup is required
+for an installed build. Older published installers may not contain this feature.
+See [usage](usage-guide.md) for creating/opening vaults and ending browser access.
+
+Only one instance of this build runs per operating-system user. Use the existing
+app if a second launch reports that OrionViva is already running.
+
 ## First launch
 
 The first screen offers two paths:

@@ -67,6 +67,15 @@
 1. The head hash of the event log is submitted periodically to a public timestamp (OpenTimestamps, RFC 3161, or an equivalent), so history is tamper-evident to a third party.
 2. Anchoring sends a fingerprint only; no data leaves the machine.
 
+## Browser access
+
+The optional browser surface uses the installed local host and the same encrypted
+vault. Native file selection passes a path to the capture-first engine; it does
+not create a plaintext upload staging copy. The browser keeps a revocable session
+credential in tab session storage, but never persists the vaultphrase or vault
+key there. Protected remembering remains a native-host operation on supported
+platforms. See [the local-browser decision](decisions/ADR-016-local-browser-interface.md).
+
 ## Why
 
 Data at rest must be encrypted with keys the user holds, so a stolen laptop or a copied disk yields nothing. That much is settled engineering; the hard part is the two failure directions the same design has to survive at once. A breach must be a bad day, not ruin — and *equally*, a lost key must not be ruin either. A single unrecoverable key trades one catastrophe for another, which is why the second wrap is a requirement rather than a nicety, and why a recovery story that does not exist is stated out loud instead of implied.

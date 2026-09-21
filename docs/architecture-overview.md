@@ -12,6 +12,16 @@ buildable record, and a person arriving fresh still needs one page that says
 where everything sits before choosing which record to open. Its companion is
 [data-flow.md](data-flow.md), which walks the same machine in motion.
 
+## Optional local browser interface
+
+The installed native host can serve the same built React application to a browser
+on 127.0.0.1. A one-use launch credential establishes a revocable session; the
+host admits one browser page at a time and rejects old page or vault-generation
+requests. Native dialogs select local paths for the existing capture pipeline.
+The browser and desktop share the supervised sidecar, with only one active
+interface. The browser server serves bundle assets, not the filesystem or a
+development server. See [the decision](decisions/ADR-016-local-browser-interface.md).
+
 ## Desktop request supervision
 
 The native desktop host owns each sidecar request and routes replies by request

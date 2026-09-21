@@ -14,6 +14,26 @@ const priorityEnvelope = (overview: unknown, revision = "vault-fixture") => ({
 });
 
 describe("vault", () => {
+  it("announces pending host close and focuses the heading after access ends", async () => {
+    installSampleBridge();
+    let finish!: () => void;
+    const close = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    window.orionVivaBridge!.closeVault = close;
+    const view = render(<App />);
+    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    await waitFor(() => expect(view.getByText(moments.sample_frame)).toBeInTheDocument());
+    await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
+    fireEvent.click(view.getAllByRole("button", { name: moments.sample_frame_leave })[0]);
+    const closing = view.getAllByRole("button", { name: "Closing vault…" })[0];
+    expect(closing).toHaveAttribute("aria-disabled", "true");
+    expect(closing).toHaveAccessibleDescription("Closing vault… Wait for OrionViva to end access.");
+    fireEvent.click(closing);
+    expect(close).toHaveBeenCalledOnce();
+    await act(async () => finish());
+    await waitFor(() => expect(view.getByRole("heading", { name: "Your financial picture" })).toHaveFocus());
+    expect(view.queryByText("Vault open")).not.toBeInTheDocument();
+  });
+
   it("lets the keyboard choose creation explicitly without opening anything", async () => {
     const user = userEvent.setup();
     const request = vi.fn();
@@ -561,7 +581,7 @@ describe("vault", () => {
       expect(control).toHaveAttribute("aria-disabled", "true");
       // Both sentences reach the control: how the default is protected and
       // why pressing again does nothing.
-      expect(control).toHaveAccessibleDescription("Keep your passphrase somewhere safe: it is needed to unlock a copy on another device. Opening an existing vault never creates one. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there. Your vault is answering the last request. Pressing again does nothing until it has.");
+      expect(control).toHaveAccessibleDescription("Keep your passphrase somewhere safe: it is needed to unlock a copy on another device. Opening an existing vault never creates one. Keep your vaultphrase available. This session does not save it for automatic opening after restarting OrionViva. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there. Your vault is answering the last request. Pressing again does nothing until it has.");
       resolveRequest?.();
       // Destination reads begin only after authentication completes and do not lock the
       // shell or the vault controls while they settle.

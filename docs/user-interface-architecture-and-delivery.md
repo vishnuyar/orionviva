@@ -10,13 +10,21 @@ on the current branch is recorded in
 
 ## Rules
 
+The owner approved an optional installed-app-backed browser surface in
+ADR-016. This supersedes the earlier exclusion of a localhost-browser
+interface; it does not replace the desktop or adopt a hosted service. See
+[the decision](decisions/ADR-016-local-browser-interface.md).
+
 ### VOICE-100 — the product is an installed desktop application, not a server
 **State:** enforced-with-exception
 **Code:** product/viva/desktop_bridge/rpc.py, desktop/src-tauri/
 **Test:** product/tests/test_desktop_bridge.py::test_handshake_is_versioned_framed_and_says_which_build_answered
 
 1. The shell and the bundled Python sidecar communicate over a small, allowlisted, typed JSON-lines protocol.
-2. No localhost HTTP server is opened.
+2. Ordinary desktop operations use standard input/output. The optional,
+   owner-approved browser mode serves bundled interface assets and authenticated
+   requests on 127.0.0.1 through the same native host and supervised sidecar.
+   It never listens on a LAN or public address.
 3. A person on a clean machine needs no terminal, no Python and no knowledge of API keys.
 
 **Exception:** the repository builds the Tauri application and packaged sidecar,
@@ -181,7 +189,7 @@ the ingest request itself.
 **Code:** none found
 **Test:** none
 
-1. Not reconsidered unless the product vision changes: a hosted service holding readable financial data; chat-first navigation; a terminal as the end-user product; a localhost-browser UI as the shipped experience; Electron; a macOS-only UI without an explicit platform decision; a button for every command; raw event records exposed to the frontend; frontend calculation of totals, grades, direction or completeness; remote UI plugins or a component marketplace; a setup wizard requiring every account before value appears; push notifications, streaks, urgency badges or engagement mechanics; voice-only answers with no mirrored evidence; a separate UI repository.
+1. Not reconsidered unless the product vision changes: a hosted service holding readable financial data; chat-first navigation; a terminal as the end-user product; Electron; a macOS-only UI without an explicit platform decision; a button for every command; raw event records exposed to the frontend; frontend calculation of totals, grades, direction or completeness; remote UI plugins or a component marketplace; a setup wizard requiring every account before value appears; push notifications, streaks, urgency badges or engagement mechanics; voice-only answers with no mirrored evidence; a separate UI repository.
 2. The retained alternative is PySide6/QML, if a mostly-Python toolchain is later ruled to outweigh the frontend and distribution shape.
 
 ### VOICE-114 — with no reader configured, a document is saved privately and reading waits

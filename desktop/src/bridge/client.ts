@@ -45,6 +45,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
       }
     },
     ...(transport.openRememberedVault ? { openRememberedVault: transport.openRememberedVault } : {}),
+    ...(transport.closeVault ? { closeVault: transport.closeVault } : {}),
     ...(transport.rememberVault ? { rememberVault: transport.rememberVault } : {}),
     openSampleVault: async () => {
       const opened = await request<{ surfaces?: unknown; priority_reads?: unknown }>("bridge.open_demo_vault", {});

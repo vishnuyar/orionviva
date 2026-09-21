@@ -47,6 +47,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
     sourceIdentity,
   } = context;
   const opening = useRef(false);
+  const [closingVault, setClosingVault] = useState(false);
   const [rememberedVaultDirectory, setRememberedVaultDirectory] = useState("");
   const [automaticOpenTimedOut, setAutomaticOpenTimedOut] = useState(false);
   const rememberedOpenStarted = useRef(false);
@@ -88,6 +89,9 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
     automaticOpenTimedOut,
     hostAvailable: Boolean(hostBridge),
     pickerAvailable: Boolean(hostBridge?.pickVaultDirectory),
+    remembersVault: Boolean(hostBridge?.rememberVault),
+    hostCloseAvailable: Boolean(hostBridge?.closeVault),
+    closingVault,
     async openVault(vaultDirectory: string, passphrase: string, create: boolean) {
       if (!hostBridge || opening.current) return false;
       opening.current = true;
@@ -161,6 +165,16 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
       return true;
     },
     async pickVaultDirectory() { return hostBridge?.pickVaultDirectory?.() ?? null; },
+    async closeVault() {
+      if (opening.current) return false;
+      opening.current = true;
+      setClosingVault(true);
+      try { await hostBridge?.closeVault?.(); return true; }
+      catch {
+        dispatch({ type: "notice", notice: { kind: "refused", text: "The vault could not be closed. Wait for current work to finish and try again, or quit OrionViva to end access." } });
+        return false;
+      } finally { opening.current = false; setClosingVault(false); }
+    },
     resetDemo() {
       const nextRequestId = ++requestId.current;
       sourceIdentity.current = null;

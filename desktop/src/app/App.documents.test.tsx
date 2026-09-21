@@ -84,7 +84,7 @@ describe("documents", () => {
 
   it("explains device-protected default-vault storage to the field and control", async () => {
     const previousBridge = window.orionVivaBridge;
-    window.orionVivaBridge = { request: async <T,>(frame: { requestId: string }) => ({ protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }) };
+    window.orionVivaBridge = { rememberVault: async () => undefined, request: async <T,>(frame: { requestId: string }) => ({ protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }) };
     const consequence = "Keep your passphrase somewhere safe: it is needed to unlock a copy on another device. Opening an existing vault never creates one. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there.";
     try {
       const { container, getByLabelText, getByRole, getByText } = render(<App />);

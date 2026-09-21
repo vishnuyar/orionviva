@@ -80,6 +80,7 @@ export const JOB_PROGRESS_EVENT = "orionviva://job-progress";
 // window.
 export type DroppedPathsListener = (paths: readonly string[]) => void;
 export type BridgeTransport = {
+  closeVault?: () => Promise<void>;
   request: <T>(frame: BridgeRequest) => Promise<BridgeResponse<T>>;
   openRememberedVault?: () => Promise<RememberedVaultOpen>;
   rememberVault?: (vaultDirectory: string, passphrase: string) => Promise<void>;
@@ -89,6 +90,7 @@ export type BridgeTransport = {
   subscribeToJobProgress?: (listen: JobProgressListener) => Promise<() => void>;
 };
 export type BridgeClient = {
+  closeVault?: () => Promise<void>;
   // `create` is the person's own word for making a vault where they said to.
   // It is never inferred: a path typed with a letter wrong would otherwise be
   // answered with a brand-new empty vault, which reads as their records having

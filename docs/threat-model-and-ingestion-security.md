@@ -92,6 +92,24 @@
 
 **Why:** page *size* is not bounded by file size. A 263-byte PDF may declare the largest MediaBox the format allows, which at the render scale is a 28,800px square and 3.3 GB of bitmap; a 448 KB file may declare 5,000 pages, whose renders were all retained in one list. The process that runs out of memory is the one holding the vault key. `bench/vivabench/corpus.py` already capped its longest edge and closed its handles; the product copy had done neither.
 
+## Local browser boundary
+
+Optional browser mode adds a loopback-only HTTP listener in the installed host.
+Host and Origin validation reject cross-site requests and DNS rebinding; a
+single-use launch credential is replaced by a revocable, page-bound session.
+The URL fragment is removed by the interface and no-referrer/no-store policies
+apply. The browser holds a session credential, never the stored vaultphrase.
+The session does not defend against malicious code already running as the user
+or a compromised browser while authorized; those remain local-device threats.
+
+Only bundled interface assets are served. Requests have header/body/connection
+bounds, and the native host retains its engine supervision deadlines. Native
+file dialogs supply local paths; browser mode creates no plaintext upload
+staging directory. Vault generations reject delayed writes after switching.
+Revocation rejects new calls and withholds late private responses while already
+admitted work settles. Default browser handoff retains the existing operating-
+system credential boundary and existing model-provider egress policy.
+
 ## Why
 
 Trust is the whole product, so each threat is classified by whether its worst

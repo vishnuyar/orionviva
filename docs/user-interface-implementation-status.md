@@ -36,6 +36,15 @@ The earlier pre-bridge measurement is preserved in
 
 ## What is live
 
+The optional local-browser implementation shares the React interface and native
+supervised engine. It includes production browser assets, page-bound session
+admission, vault-generation checks, revocation, progress polling and native
+file/folder selection. It is source implementation, not a claim that an older
+published installer contains it. Native lifecycle/dialog/credential and signed-
+installer checks remain separate from browser functional evidence. Browser
+coverage uses the owner-approved default policy in WORKFLOW.md; platform and
+browser combinations without explicit run evidence remain unverified.
+
 The installed-app path is a React/Vite interface inside Tauri, backed by the
 packaged Python sidecar. The desktop consumes every operation the sidecar
 declares. A private vault and persistent sample vault both use the live bridge;

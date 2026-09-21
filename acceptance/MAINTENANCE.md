@@ -21,7 +21,9 @@ Use these families:
 
 ## Adding a test
 
-1. Choose the closest family and next unused identifier.
+1. Default to browser execution. Add a desktop requirement only when the
+   asserted behavior is specific to the native application, and name that
+   boundary explicitly. Choose the closest family and next unused identifier.
 2. State one user outcome. Keep implementation details and click coordinates
    out of the test unless the control itself is the requirement.
 3. Provide prerequisites, actions, and observable pass conditions.

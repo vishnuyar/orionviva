@@ -5,7 +5,7 @@ human tester or an AI product tester what to do, what to observe, and what
 constitutes a pass without requiring knowledge of OrionViva's implementation.
 
 The suite complements automated unit and integration tests. It exercises the
-installed desktop application as a user would, including the boundaries that
+browser application as a user would, using the installed local host, including the boundaries that
 are difficult to prove below the interface: persistence across restarts,
 keyboard access, useful failure states, evidence navigation, and a private
 multi-document financial picture.
@@ -51,8 +51,12 @@ but the tester remains responsible for inspecting every proposed commit.
 
 ## How to run
 
-1. Install a release build using the [installation guide](../docs/installation-guide.md).
-   Test a packaged application, not a development web preview.
+1. Install the build under test using the [installation guide](../docs/installation-guide.md)
+   and choose **Open in browser**. Run shared product journeys in that browser.
+   Use desktop tests only for native-specific boundaries such as launch, native
+   file/folder dialogs, protected credentials, handoff, and installation.
+   A development loopback test is useful evidence but does not prove the packaged
+   host. Record which host and revision each result exercised.
 2. Start from the prerequisite named by each scenario. Do not reuse an old
    vault unless the scenario explicitly requires retained state.
 3. Run the baseline scenarios in the catalog on each release platform in scope.
@@ -69,3 +73,17 @@ but the tester remains responsible for inspecting every proposed commit.
 Use a fresh report for every tested build and platform. Do not combine passing
 moments from different runs into one pass.
 
+
+## Browser-first policy
+
+The owner approved browser-default acceptance on 2026-09-21. Future scenarios
+follow [WORKFLOW.md](../WORKFLOW.md): shared behavior runs through the browser;
+only native-specific behavior requires desktop execution. Existing references
+to launching or restarting the application mean restarting its local host and
+reopening the browser for shared journeys. Credential-store, file-dialog and
+installation assertions retain their native-boundary checks. Never count a
+missing browser case as passed because a desktop case passed.
+
+See [browser session checks](browser-sessions.md) for the new host boundaries.
+These supplemental checks do not change the numbered 45-scenario catalog or
+claim that the independent evaluator automates all of it.
