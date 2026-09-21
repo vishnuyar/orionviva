@@ -838,3 +838,49 @@ def test_symlinks_at_every_read_store_boundary_are_refused(tmp_path: Path, targe
         victim.symlink_to(replacement, target_is_directory=replacement.is_dir())
     with pytest.raises(ReadStoreError, match="read-store"):
         ReadStore.open(path, PASSPHRASE)
+
+
+@pytest.mark.parametrize("flush_fails", [False, True])
+def test_generation_flush_uses_writable_descriptor_and_always_closes(
+        tmp_path, monkeypatch, flush_fails):
+    with ReadStore.create(tmp_path / "reads", PASSPHRASE) as reads:
+        previous = reads.current_generation
+        real_open, real_fsync, real_close = os.open, os.fsync, os.close
+        database_descriptors = {}
+        flushed, closed = [], []
+
+        def open_file(path, flags, *args, **kwargs):
+            descriptor = real_open(path, flags, *args, **kwargs)
+            if Path(path).name == module.DATABASE_NAME and not flags & os.O_CREAT:
+                database_descriptors[descriptor] = flags
+            return descriptor
+
+        def flush_file(descriptor):
+            if descriptor in database_descriptors:
+                flags = database_descriptors[descriptor]
+                # Model Windows' writable-handle requirement on every CI host.
+                if not flags & (os.O_WRONLY | os.O_RDWR):
+                    raise OSError("synthetic Windows flush refused read-only handle")
+                flushed.append(descriptor)
+                if flush_fails:
+                    raise OSError("synthetic database flush failure")
+            return real_fsync(descriptor)
+
+        def close_file(descriptor):
+            if descriptor in database_descriptors:
+                closed.append(descriptor)
+                del database_descriptors[descriptor]
+            return real_close(descriptor)
+
+        monkeypatch.setattr(module, "os", SimpleNamespace(
+            **{**vars(os), "open": open_file, "fsync": flush_file,
+               "close": close_file}))
+        if flush_fails:
+            with pytest.raises(OSError, match="synthetic database flush failure"):
+                reads.publish()
+            assert reads.current_generation == previous
+        else:
+            assert reads.publish() != previous
+        assert len(flushed) == 1
+        assert closed == flushed
+        assert not database_descriptors

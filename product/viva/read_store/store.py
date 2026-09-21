@@ -2259,7 +2259,9 @@ class ReadStore:
                                    "WHERE singleton=1", (epoch,))
                 connection.commit(); self._inject(fail_at, "after_ready")
                 connection.close(); connection = None; _restrict(database, 0o600)
-                descriptor = os.open(database, os.O_RDONLY)
+                # Windows FlushFileBuffers requires a writable handle. This
+                # generation is still unpublished and owned by this writer.
+                descriptor = os.open(database, os.O_RDWR)
                 try: os.fsync(descriptor)
                 finally: os.close(descriptor)
                 _fsync_dir(path); self._inject(fail_at, "after_database_fsync")

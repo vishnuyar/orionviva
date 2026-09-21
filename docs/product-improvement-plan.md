@@ -2,7 +2,7 @@
 
 **Approved:** by the owner in this task. **Status:** implementation complete locally;
 release evidence remains incomplete.
-**Branch:** `codex/product-reliability-usability`.
+**Integration branch:** `main`; original work branch: `codex/product-reliability-usability`.
 
 ## Authorization and context-refresh instructions
 
@@ -630,3 +630,52 @@ Do not call the entire plan or release acceptance complete while these remain.
 The native runner and release check implementations above are independently
 reviewed; the remaining unavailable execution and installer infrastructure are
 explicit continuation requirements rather than passing checkboxes.
+
+## Owner-authorized branch integration
+
+The owner subsequently instructed: “merge all of them to main and delete all the
+branches”. This authorizes integration and branch cleanup; it does not establish
+signed-release or human-observer evidence. The four previously unrelated files
+were identified by the owner as honesty-branch work and saved in `d607707`.
+Independent review found two scoring edge cases, repaired in `72a7f6a`: a refusal
+cannot silently satisfy expected figures, and an empty structured answer needs
+explicit delivery review. All 28 focused tests passed; seven regression cases
+independently failed against the previous code. The combined histories meet at
+merge commit `9c85c04`.
+
+Actual Windows and Linux jobs exposed test-fixture portability defects. The
+repair in `6df8bf8` preserves exact ledger bytes in header-tampering tests and
+uses a supported offset only for mocked Windows locks on non-Windows hosts.
+The production Windows offset and real process-lock tests remain unchanged.
+Independent verification passed all 86 affected tests and reproduced both old
+fixture failures. The corrected remote run is the Quality run for `6df8bf8`.
+
+Both Linux and macOS desktop jobs completed successfully on that corrected run.
+Windows passed the formerly failing storage checks, but the packaged sample
+revealed a read-store publication failure. The direct synthetic startup check
+added in `2f93331` reproduced Windows rejecting a flush of a read-only descriptor;
+the repair opens only the writer-owned, unpublished database with write access
+before flushing. Flush errors still propagate, descriptors still close, and
+published readers remain read-only. All 74 affected publication and sample tests
+passed. Two new regressions independently failed against the old code and passed
+with the repair, including preservation of the previous generation on failure.
+Do not call Windows validated until the repair passes the real target job.
+
+The combined local suite passed 3,345 tests with two opt-in tests skipped. The
+Linux full suite separately found a historical-query test depending on an
+ambient installed merchant profile. The test-only repair in `21ab180` supplies
+an explicit synthetic profile; all 28 affected tests passed with an empty profile
+directory, and both byte-guard refusal cases still reject an independently
+introduced guard bypass. These findings reinforce why local results do not
+replace clean-host execution.
+
+Remote privacy checking refuses to
+run because the repository's `DENYLIST` secret is missing or empty. The local
+full-tree check passed all 1,069 tracked files against 12 private patterns.
+Uploading that private list requires separate permission; do not bypass the
+remote gate or describe the overall workflow as green while it is unresolved.
+
+Historical statements above about no push and pending merge authority describe
+their earlier checkpoints. The owner has now authorized publication and cleanup.
+Keep signed installation, physical accessibility and representative-person
+evidence open even after the branch merge.
