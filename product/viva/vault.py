@@ -253,7 +253,7 @@ class Vault:
             self.read_store_lifecycle = ("stale" if self._has_read_revision()
                                          else "rebuilding")
 
-    def poll_read_store_worker(self) -> str:
+    def poll_read_store_worker(self, *, retry_stale: bool = False) -> str:
         """Refresh lifecycle without ever waiting on projection work."""
         worker = self._read_store_worker
         if worker is None:
@@ -284,6 +284,11 @@ class Vault:
         with self._read_store_visibility_lock:
             if self._read_store_visibility_held:
                 self.read_store_lifecycle = "stale"
+            elif (retry_stale and self.read_store_lifecycle in {"stale", "rebuilding"}
+                  and self._read_store_worker_managed
+                  and self._read_store_worker is not None
+                  and not self._read_store_worker_busy):
+                self.synchronize_read_store()
         return self.read_store_lifecycle
 
     def _arm_read_store_watchdog(self, worker, token: str, serial: int,

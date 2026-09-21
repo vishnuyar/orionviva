@@ -916,6 +916,43 @@ describe("surface session", () => {
     expect(refreshes).toBe(1);
   });
 
+  it("settles imported documents without turning read progress into a refresh loop", async () => {
+    let listener: ((frame: { protocol: string; request_id: string; event: string; result: unknown }) => void) | null = null;
+    let afterUpload = false;
+    let reads = 0;
+    let refreshes = 0;
+    window.orionVivaBridge = {
+      subscribeToJobProgress: async (listen) => { listener = listen; return () => undefined; },
+      request: async <T>(frame: BridgeRequest) => {
+        if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+        const surface = frame.payload.surface as SurfaceName;
+        if (afterUpload) {
+          reads += 1;
+          if ((frame.payload.parameters as { refresh?: number } | undefined)?.refresh === 1) refreshes += 1;
+          // Bound the fake host so a feedback defect fails instead of hanging the test.
+          if (reads <= 24) listener?.({ protocol: "2.1", request_id: frame.requestId, event: "progress",
+            result: { job_id: `read-${reads}`, operation: "", status: "completed", completed: 1, total: 1, attempt: 1 } });
+        }
+        const data = afterUpload && surface === "documents"
+          ? { documents: [{ id: "synthetic-import", filename: "synthetic.txt", doc_type: "document" }] }
+          : completeSurfacePayload(surface, afterUpload);
+        return ok(frame.requestId, { surface, job_id: "read", data } as T);
+      },
+    };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    await waitFor(() => expect(listener).not.toBeNull());
+    afterUpload = true;
+    await act(async () => { listener?.({ protocol: "2.1", request_id: "upload", event: "progress",
+      result: { job_id: "upload-1", operation: "viva.documents.upload", status: "completed", completed: 3, total: 3, attempt: 1 } }); });
+    await waitFor(() => expect(result.current.session.snapshot.documents.state).toBe("ready"));
+    expect(result.current.session.snapshot.documents).toMatchObject({ data: { documents: [{ id: "synthetic-import", name: "synthetic.txt" }] } });
+    expect(refreshes).toBe(1);
+    expect(reads).toBe(8);
+    expect(result.current.session.jobs.map((job) => job.jobId)).toEqual(["upload-1"]);
+    expect(result.current.session.notice).toBeNull();
+  });
+
   it("publishes post-job secondary data only when its surrounding priority reads name one generation", async () => {
     let listener: ((frame: { protocol: string; request_id: string; event: string; result: unknown }) => void) | null = null;
     const delayedDocuments = deferred<BridgeResponse<unknown>>();
@@ -1282,6 +1319,19 @@ describe("surface session", () => {
         expect(after.notice?.kind).toBe("refused");
       }
     }
+  });
+
+  it("clears a failed destination only after accepting its coherent mutation snapshot", () => {
+    const before = withReadyReview();
+    const initial = { ...initialSession(), requestId: 7, source: liveSource, snapshot: before };
+    const state = sessionReducer(initial, { type: "destination-failed", requestId: 7, destination: "documents" });
+    const candidate = { ...before, documents: { state: "ready" as const, data: { documents: [], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } } };
+    const accepted = sessionReducer(state, { type: "mutation-loaded", requestId: 7, snapshot: candidate });
+    expect(accepted.snapshot).toBe(candidate);
+    expect(accepted.destinationReads.documents).toBe("ready");
+    const rejected = sessionReducer(state, { type: "mutation-loaded", requestId: 7, snapshot: { ...candidate, documents: { state: "failed", reason: "read_failed" } } });
+    expect(rejected.snapshot).toBe(state.snapshot);
+    expect(rejected.destinationReads.documents).toBe("failed");
   });
 
   it("commits a mutation snapshot only when Review and conversation both carry data", () => {

@@ -1,10 +1,97 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BridgeTimeout } from "../bridge/contracts";
-import type { BridgeClient, SurfaceName } from "../bridge/contracts";
-import { loadCoherentSnapshot, loadPrivateDestination, loadPrivateSnapshot, loadPrioritySnapshot, loadSecondarySnapshot, loadStartupSecondarySnapshot, privateActivityActions, privateDocumentActions, privateSettingsActions, privateTransferActions, privateTrustActions } from "./load-private-snapshot";
+import type { BridgeClient, JobProgressListener, SurfaceName } from "../bridge/contracts";
+import { loadCoherentSnapshot, loadPrivateDestination, loadPrivateSnapshot, loadPrioritySnapshot, loadSecondarySnapshot, loadStartupSecondarySnapshot, privateActivityActions, privateDocumentActions, privateJobStream, privateSettingsActions, privateTransferActions, privateTrustActions } from "./load-private-snapshot";
 import { privateSource } from "./sources";
 
 const read = (surface: SurfaceName, data: unknown) => Promise.resolve({ surface, job_id: `job-${surface}`, data });
+
+it("keeps read correlation out of the job stream while retaining named job progress", async () => {
+  let emit: JobProgressListener = () => { throw new Error("not subscribed"); };
+  const observed: string[] = [];
+  const source = Object.assign(client(), {
+    subscribeToJobProgress: async (listener: JobProgressListener) => { emit = listener; return () => undefined; },
+  });
+  const stop = await privateJobStream(source)!((job) => { observed.push(`${job.operation}:${job.state}`); });
+  for (const operation of ["", "   ", "viva.documents.upload"]) {
+    for (const status of ["started", "progress", "completed", "failed", "cancelled"]) {
+      emit({ protocol: "2.1", request_id: "synthetic", event: "progress",
+        result: { job_id: "synthetic-job", operation, status, completed: status === "completed" ? 1 : 0, total: 1, attempt: 1 } });
+    }
+  }
+  expect(observed).toEqual(["running", "running", "completed", "failed", "cancelled"].map((state) => `viva.documents.upload:${state}`));
+  stop();
+});
+
+it("waits for asynchronous publication before reading a coherent document snapshot", async () => {
+  vi.useFakeTimers();
+  try {
+    let priorities = 0;
+    let documents = 0;
+    const source = Object.assign(client(), {
+      readOverviewAccounts: () => {
+        priorities += 1;
+        return read("overview_accounts", priorities === 1
+          ? { state: "degraded", freshness: "unavailable", lifecycle: "rebuilding", revision: "", overview: null, accounts: null, error: "read_store_unavailable" }
+          : { state: "ready", freshness: "current", lifecycle: "caught_up", revision: "g-published", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" });
+      },
+      readDocuments: () => { documents += 1; return read("documents", { documents: [{ id: "synthetic", filename: "synthetic.txt" }] }); },
+    });
+    const pending = loadCoherentSnapshot(source);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(documents).toBe(0);
+    await vi.advanceTimersByTimeAsync(250);
+    const result = await pending;
+    expect(result.revision).toBe("g-published");
+    expect(result.snapshot.documents).toMatchObject({ data: { documents: [{ name: "synthetic.txt" }] } });
+    expect(priorities).toBe(3);
+    expect(documents).toBe(1);
+  } finally { vi.useRealTimers(); }
+});
+
+it("requests catch-up once and only polls reads while a job's publication is stale", async () => {
+  vi.useFakeTimers();
+  try {
+    const refreshes: boolean[] = [];
+    const source = Object.assign(client(), {
+      readOverviewAccounts: (refresh = false) => {
+        refreshes.push(refresh);
+        const ready = refreshes.length === 3;
+        return read("overview_accounts", { state: ready ? "ready" : "stale", freshness: ready ? "current" : "stale", lifecycle: ready ? "caught_up" : "stale", revision: ready ? "g-new" : "g-old", overview: { accounts: [] }, accounts: { accounts: [] }, error: ready ? "" : "read_store_stale" });
+      },
+    });
+    const pending = loadPrioritySnapshot(source, undefined, true);
+    await vi.advanceTimersByTimeAsync(500);
+    expect((await pending).revision).toBe("g-new");
+    expect(refreshes).toEqual([true, false, false]);
+  } finally { vi.useRealTimers(); }
+});
+
+it("bounds publication polling and leaves permanently stale or degraded reads unready", async () => {
+  vi.useFakeTimers();
+  try {
+    let calls = 0;
+    let lifecycle = "stale";
+    const source = Object.assign(client(), {
+      readOverviewAccounts: () => {
+        calls += 1;
+        return read("overview_accounts", lifecycle === "stale"
+          ? { state: "stale", freshness: "stale", lifecycle, revision: "g-old", overview: { accounts: [] }, accounts: { accounts: [] }, error: "read_store_stale" }
+          : { state: "degraded", freshness: "unavailable", lifecycle, revision: "", overview: null, accounts: null, error: "read_store_unavailable" });
+      },
+    });
+    const pending = loadCoherentSnapshot(source).catch((error: Error) => error.message);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await pending).toBe("aggregate_revision_unavailable");
+    expect(calls).toBe(241);
+    lifecycle = "degraded";
+    calls = 0;
+    expect((await loadPrioritySnapshot(source, undefined, true)).freshness).toBe("unavailable");
+    expect(calls).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+
 function client(conversation: unknown = { state: "ready", turns: [], questions: [], total: 0 }, planRead: unknown = { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }): BridgeClient {
   return {
     openVault: async () => undefined,

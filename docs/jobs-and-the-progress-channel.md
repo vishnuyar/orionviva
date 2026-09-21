@@ -40,10 +40,15 @@ doing while it is doing it. That way is the progress channel.
 
 Document work and paid maintenance now produce jobs. The sidecar mints an
 identity, the registry records named steps, and progress frames travel through
-the host's event subscriber into the desktop session. Terminal progress causes
+the host's event subscriber into the desktop or browser session. Terminal job progress causes
 the session to reread the financial surfaces and the job registry rather than
 patching either from an event. Bounded receipts are also available through the
 reviewed jobs read.
+
+Surface reads also emit correlation events, with no named operation. They stay
+on the transport channel but do not enter the UI job stream or trigger another
+refresh. Only progress for a named registry operation is admitted there; a read
+finishing is not new background work.
 
 ### A job's identity is minted by the sidecar, and the caller's request id travels beside it
 
@@ -188,3 +193,15 @@ blocked; unrelated inspection and navigation remain usable.
   would be a projection dressed as a finding; the honest position is that the
   question is re-asked against real vaults when one is much larger, not
   inherited.
+
+Post-job explicit refresh requests synchronization once, then observes a stale or
+rebuilding read store with bounded read-only polls (240 attempts, 250 ms apart).
+Coherent reads likewise wait for transitional publication before reading secondary
+surfaces. A degraded lifecycle or exhausted wait remains a failed refresh; the
+revision checks still reject a snapshot that changed while its surfaces were read.
+
+If committed events advance while a managed worker publishes, authentication
+still rejects that old publication. A subsequent priority read requests another
+catch-up only for an idle, live, stale worker outside a held visibility window.
+An accepted coherent mutation snapshot also updates destination read status, so
+an earlier loading failure does not remain after the data has been refreshed.

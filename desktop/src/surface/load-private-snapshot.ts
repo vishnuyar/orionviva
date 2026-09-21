@@ -145,7 +145,8 @@ export function privateJobStream(client: BridgeClient): JobStream | null {
   if (!subscribe) return null;
   return (listen) => subscribe((frame) => {
     const job = adaptProgress(frame.result);
-    if (job) listen(job);
+    // Only named registry operations enter the UI job stream.
+    if (job?.operation.trim()) listen(job);
   });
 }
 
@@ -276,7 +277,7 @@ export function privatePlanActions(client: BridgeClient): PlanActions {
 export type CoherentSnapshot = { snapshot: SurfaceSnapshot; revision: string };
 
 export async function loadCoherentSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string, start?: PrioritySnapshot): Promise<CoherentSnapshot> {
-  const first = start ?? await loadPrioritySnapshot(client, disclosure);
+  const first = await waitForPublication(client, disclosure, start ?? await loadPrioritySnapshot(client, disclosure));
   if (first.freshness !== "current" || !first.revision) throw new Error("aggregate_revision_unavailable");
   const activityParameters = { ...(activityLimit ? { limit: activityLimit } : {}), ...(activityFocus ? { focus: activityFocus } : {}) };
   const [documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
@@ -299,6 +300,16 @@ export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: Sur
 }
 
 export type PrioritySnapshot = { snapshot: SurfaceSnapshot; revision: string; freshness: "current" | "stale" | "unavailable"; lifecycle: string; retryable: boolean };
+
+async function waitForPublication(client: BridgeClient, disclosure: SurfaceSnapshot["disclosure"] | undefined, initial: PrioritySnapshot): Promise<PrioritySnapshot> {
+  let latest = initial;
+  for (let attempt = 0; attempt < 240 && latest.freshness !== "current" && (latest.lifecycle === "stale" || latest.lifecycle === "rebuilding"); attempt += 1) {
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 250));
+    // Observe publication without requesting synchronization on every poll.
+    latest = await loadPrioritySnapshot(client, disclosure);
+  }
+  return latest;
+}
 
 export async function loadPrioritySnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], refresh = false): Promise<PrioritySnapshot> {
   const unavailable = (reason: "invalid_payload" | "read_failed" = "read_failed"): PrioritySnapshot => ({
@@ -332,11 +343,12 @@ export async function loadPrioritySnapshot(client: BridgeClient, disclosure?: Su
       ? { state: panel.state as "partial" | "needs_input", data: overview, issues: panel.issues }
       : { state: "ready", data: overview }
     : { state: "failed", reason: "read_failed" };
-  return {
+  const priority: PrioritySnapshot = {
     snapshot: buildLiveSnapshot(result, { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" }, { state: "absent", reason: "reading" }, disclosure, { state: "absent", reason: "reading" }),
     revision: raw.revision, freshness: raw.freshness, lifecycle: raw.lifecycle,
     retryable: raw.state !== "ready",
   };
+  return refresh ? waitForPublication(client, disclosure, priority) : priority;
 }
 
 export async function loadSecondarySnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string): Promise<SurfaceSnapshot> {

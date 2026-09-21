@@ -674,7 +674,7 @@ describe("vault", () => {
     expect(priorityCalls).toBe(2);
     expect(view.getByRole("button", { name: "Retrying…" })).toHaveAttribute("aria-disabled", "true");
     expect(view.getAllByText("Last complete account").length).toBeGreaterThan(0);
-    await act(async () => retryReplies.shift()?.({ ...priorityEnvelope(staleOverview, "old"), state: "stale", freshness: "stale", lifecycle: "stale" }));
+    await act(async () => retryReplies.shift()?.({ state: "degraded", freshness: "unavailable", lifecycle: "degraded", revision: "", overview: null, accounts: null, error: "read_store_unavailable" }));
     await waitFor(() => expect(view.getByText(/still could not be brought up to date/i)).toBeInTheDocument());
     expect(view.getAllByText("Last complete account").length).toBeGreaterThan(0);
     expect(view.getByRole("button", { name: "Retry" })).toHaveFocus();

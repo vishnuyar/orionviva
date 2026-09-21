@@ -128,7 +128,7 @@ class OpenedVaultSurfaceProvider:
 
     def _overview_accounts(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         """Return Overview and Accounts from one immutable SQL revision."""
-        self._vault.poll_read_store_worker()
+        self._vault.poll_read_store_worker(retry_stale=parameters.get("refresh") != 1)
         if parameters.get("refresh") == 1:
             self._vault.synchronize_read_store()
         read_on = parameters.get("read_on") or _now()

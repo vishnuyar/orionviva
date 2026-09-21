@@ -12,6 +12,7 @@ import time
 import pytest
 
 from viva.desktop_bridge.__main__ import Sidecar
+from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
 from viva.ledger import account_opened
 from viva.ledger.store import EventStore
 from viva.read_store import ReadStoreDegraded
@@ -19,6 +20,38 @@ from viva.vault import Vault
 
 
 PASSPHRASE = "startup-rebuild-worker-passphrase"
+
+
+def test_priority_read_catches_up_after_startup_publication_is_superseded(tmp_path):
+    vault = Vault.open(tmp_path / "vault", PASSPHRASE,
+                       start_read_store_worker=True)
+    try:
+        deadline = time.monotonic() + 5
+        while vault._read_store_worker_messages.empty() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not vault._read_store_worker_messages.empty()
+        vault.ledger.append(account_opened(
+            "cash", "depository", "Synthetic", "USD", "2026-01-01"))
+        identity = vault.ledger.store.authenticated_identity()
+        assert vault._read_store_worker_expected[0] == 0
+        assert identity[0] == 1
+        provider = OpenedVaultSurfaceProvider(vault)
+        reply = provider.read_surface("overview_accounts", {})
+        assert reply["freshness"] != "current"
+        deadline = time.monotonic() + 5
+        while reply["freshness"] != "current" and time.monotonic() < deadline:
+            time.sleep(0.01)
+            reply = provider.read_surface("overview_accounts", {})
+        assert reply["freshness"] == "current"
+        with vault.read_store.open_reader() as revision:
+            published = vault.read_store.authenticated_source_identity(revision)
+        assert (published["count"], published["head"]) == identity[:2]
+        assert vault.ledger.store.authenticated_identity() == identity
+        serial = vault._read_store_worker_serial
+        assert provider.read_surface("overview_accounts", {})["freshness"] == "current"
+        assert vault._read_store_worker_serial == serial
+    finally:
+        vault.close()
 
 
 def _frame(request_id, operation, payload=None):

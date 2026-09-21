@@ -505,6 +505,9 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         phase: "settled",
         snapshot,
         readRevision: snapshot === action.snapshot && action.revision ? action.revision : state.readRevision,
+        destinationReads: snapshot === action.snapshot
+          ? { documents: destinationOutcome(snapshot, "documents"), review: destinationOutcome(snapshot, "review"), trust: destinationOutcome(snapshot, "trust"), activity: destinationOutcome(snapshot, "activity"), plans: destinationOutcome(snapshot, "plans") }
+          : state.destinationReads,
         jobs: action.jobs ?? state.jobs,
         jobStatus: action.jobStatus ?? state.jobStatus,
         selectedDocument: retainSelection(state.selectedDocument, ids.documents),

@@ -61,11 +61,10 @@ try {
   await browser.$('aria/Choose statement file').waitForClickable({ timeout: 30_000 });
   await browser.$('aria/Choose statement file').click();
   await browser.waitUntil(async () => {
-    if ((await text()).includes("synthetic.txt")) return true;
-    const retry = await browser.$('aria/Retry this screen');
-    if (await retry.isExisting() && await retry.isClickable()) await retry.click();
+    if (await browser.$(".document-list").isExisting() && (await browser.$(".document-list").getText()).includes("synthetic.txt") && !(await text()).includes("could not be refreshed")) return true;
     return false;
   }, { timeout: 30_000, interval: 1000 });
+  await browser.$(".document-list").scrollIntoView();
   await browser.saveScreenshot(join(root, "browser-import.png"));
   assert.equal(await readFile(join(root, "synthetic.txt"), "utf8"), "Synthetic browser import fixture. No personal financial data.\n");
   await browser.$('aria/Close this vault').click();
