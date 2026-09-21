@@ -32,9 +32,10 @@ def _seed(store):
 
 
 def _rewrite_header(path, transform):
-    lines = path.read_text().splitlines(True)
-    header = transform(json.loads(lines[0]))
-    path.write_text(json.dumps(header) + "\n" + "".join(lines[1:]))
+    first_line, separator, body = path.read_bytes().partition(b"\n")
+    header = transform(json.loads(first_line))
+    # Mutate only the header; text-mode writes add CRLF bytes on Windows.
+    path.write_bytes(json.dumps(header).encode("utf-8") + separator + body)
     return header
 
 
@@ -905,6 +906,8 @@ def test_open_handle_refuses_authenticated_header_downgrade(
         "chk", "depository", "Checking", "USD", "2026-01-01"))
     before_log = path.read_bytes()
     _rewrite_header(path, lambda header: {**header, "v": VERSION})
+    attacked_log = path.read_bytes()
+    assert len(attacked_log) == len(before_log)
 
     with pytest.raises(CryptoError):
         if operation == "snapshot":
@@ -912,7 +915,7 @@ def test_open_handle_refuses_authenticated_header_downgrade(
         else:
             store.append(simple_transaction(
                 "chk", "-1", "SECOND", "2026-01-02"))
-    assert len(path.read_bytes()) == len(before_log)
+    assert path.read_bytes() == attacked_log
 
 
 def test_unauthenticated_pre_release_head_marker_is_never_trusted(tmp_path):

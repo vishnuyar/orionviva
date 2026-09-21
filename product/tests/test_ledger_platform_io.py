@@ -118,8 +118,18 @@ EventStore.open(Path(sys.argv[1]), 'synthetic-passphrase').append(
     assert EventStore.open(path, "synthetic-passphrase").verify_chain() == (True, 1)
 
 
+@pytest.fixture
+def windows_lock_offset(monkeypatch):
+    # These unit tests mock msvcrt. Unix filesystems may reject Windows' full
+    # 64-bit reservation; Windows itself must exercise the production offset.
+    if os.name != "nt":
+        monkeypatch.setattr(platform_io, "WINDOWS_LOCK_OFFSET", 1 << 20)
+    return platform_io.WINDOWS_LOCK_OFFSET
+
+
 @pytest.mark.parametrize("failure", [errno.EACCES, errno.EAGAIN, errno.EBADF])
-def test_windows_lock_restores_position_and_only_retries_contention(tmp_path, monkeypatch, failure):
+def test_windows_lock_restores_position_and_only_retries_contention(
+        tmp_path, monkeypatch, failure, windows_lock_offset):
     calls = []
     with (tmp_path / "lock").open("w+b") as stream:
         stream.write(b"header")
@@ -141,11 +151,12 @@ def test_windows_lock_restores_position_and_only_retries_contention(tmp_path, mo
             platform_io._windows_lock(stream.fileno(), release=False)
             assert len(calls) == 2
         assert os.lseek(stream.fileno(), 0, os.SEEK_CUR) == 2
-        assert all(call == (platform_io.WINDOWS_LOCK_OFFSET, 2, 1) for call in calls)
+        assert all(call == (windows_lock_offset, 2, 1) for call in calls)
         assert os.fstat(stream.fileno()).st_size == 6
 
 
-def test_windows_unlock_failure_propagates_without_retry(tmp_path, monkeypatch):
+def test_windows_unlock_failure_propagates_without_retry(
+        tmp_path, monkeypatch, windows_lock_offset):
     calls = []
 
     def locking(fd, mode, count):
