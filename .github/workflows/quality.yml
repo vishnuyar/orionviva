@@ -101,6 +101,9 @@ jobs:
       - name: Test native-platform ledger storage and release contracts
         working-directory: .
         run: python -m pytest product/tests/test_store.py product/tests/test_ledger_platform_io.py product/tests/test_native_release_contract.py -q
+      - name: Test synthetic sample read-store startup
+        working-directory: .
+        run: python -m pytest product/tests/test_demo_read_store_open.py -q
       - run: npm ci
       - name: Check frontend architecture boundaries
         run: npm run check:architecture

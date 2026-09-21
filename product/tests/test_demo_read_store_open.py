@@ -91,3 +91,23 @@ def test_sample_projection_failure_closes_attempt_and_a_later_open_recovers(
     assert sidecar._vault is not None
     assert sidecar._vault.read_store_lifecycle in {"equal", "caught_up", "rebuilt"}
     sidecar._vault.close()
+
+
+def test_sample_creation_directly_publishes_authenticated_read_store(tmp_path, monkeypatch):
+    # Exercise the real sample API outside the bridge's intentionally generic
+    # refusal so platform failures retain their traceback in synthetic CI.
+    from viva.demo import open_demo_vault
+
+    monkeypatch.setenv("VIVA_DEMO_HOME", str(tmp_path / "sample"))
+    vault, made = open_demo_vault()
+    try:
+        assert made is True
+        assert vault.read_store_lifecycle in {"rebuilt", "caught_up", "equal"}
+        assert vault.read_store is not None
+        expected = vault.ledger.store.authenticated_identity()
+        with vault.read_store.open_reader() as revision:
+            source = vault.read_store.authenticated_source_identity(revision)
+        assert source["count"] == expected[0]
+        assert source["head"] == expected[1]
+    finally:
+        vault.close()
