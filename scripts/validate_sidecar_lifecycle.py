@@ -29,7 +29,7 @@ def snapshot(root: Path, *, canonical: bool = False) -> dict[str, str]:
     paths = ([root / "events.jsonl", root / "events.jsonl.head",
               *sorted((root / "raw").rglob("*"))] if canonical
              else sorted(root.rglob("*")))
-    result = {str(path.relative_to(root)): digest(path)
+    result = {path.relative_to(root).as_posix(): digest(path)
               for path in paths if path.is_file()}
     if not result or (canonical and ("events.jsonl" not in result or "events.jsonl.head" not in result or
                                     not any(name.startswith("raw/") for name in result))):

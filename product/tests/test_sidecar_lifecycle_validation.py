@@ -295,3 +295,36 @@ def test_quality_lifecycle_rejects_missing_or_ineffective_gates(mutation):
         upload["with"]["if-no-files-found"] = "warn"
     with pytest.raises(AssertionError):
         _assert_quality_lifecycle(workflow)
+
+
+@pytest.mark.parametrize("windows_relative_paths", [False, True])
+@pytest.mark.parametrize("canonical", [False, True])
+def test_snapshot_uses_portable_names_and_real_file_digests(
+        tmp_path, windows_relative_paths, canonical):
+    import hashlib
+    from pathlib import PureWindowsPath
+
+    files = {
+        "events.jsonl": b"synthetic encrypted ledger",
+        "events.jsonl.head": b"synthetic authenticated head",
+        "raw/nested/document": b"synthetic encrypted original",
+        "read-model/cache": b"disposable projection",
+    }
+    for name, data in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+    class WindowsRelativePath(type(tmp_path)):
+        # Retain real host filesystem IO, but expose Windows relative spelling.
+        def relative_to(self, *args, **kwargs):
+            return PureWindowsPath(*super().relative_to(*args, **kwargs).parts)
+
+    root = WindowsRelativePath(tmp_path) if windows_relative_paths else tmp_path
+    if windows_relative_paths:
+        assert str((root / "raw/nested/document").relative_to(root)) == (
+            "raw\\nested\\document")
+    expected = {name: hashlib.sha256(data).hexdigest()
+                for name, data in files.items()
+                if not canonical or not name.startswith("read-model/")}
+    assert lifecycle.snapshot(root, canonical=canonical) == expected
