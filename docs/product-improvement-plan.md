@@ -672,10 +672,25 @@ replace clean-host execution.
 Remote privacy checking refuses to
 run because the repository's `DENYLIST` secret is missing or empty. The local
 full-tree check passed all 1,069 tracked files against 12 private patterns.
-Uploading that private list requires separate permission; do not bypass the
-remote gate or describe the overall workflow as green while it is unresolved.
+Uploading that private list requires separate permission; do not disable the
+remote privacy check or describe the overall workflow as green while it is unresolved.
 
 Historical statements above about no push and pending merge authority describe
 their earlier checkpoints. The owner has now authorized publication and cleanup.
 Keep signed installation, physical accessibility and representative-person
 evidence open even after the branch merge.
+
+### Integrated verification
+
+The final code candidate `3796776` passed the remote full suite: 3,351 tests,
+with three skips. Linux and macOS desktop jobs passed. Windows passed storage,
+sample startup, frontend, packaged-backend, lifecycle preservation, native-host
+checks and the final desktop bundle build.
+The lifecycle repair normalizes snapshot names across operating systems without
+changing hashes or missing-evidence checks; all 31 focused tests passed and both
+Windows-spelling regressions failed against the old implementation.
+
+The remote privacy job remains failed because no usable private pattern list is
+configured. A successful local privacy scan does not turn that remote job green.
+The merged implementation is not a signed release or a completed accessibility
+and human-usability trial.
