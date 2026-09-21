@@ -89,16 +89,14 @@ def test_historical_merchant_json_refuses_before_python_fetch(tmp_path, glyph):
 
 
 @pytest.mark.parametrize("glyph", ["X", "雪"])
-def test_historical_resolver_profile_refuses_before_python_fetch(tmp_path, glyph):
+def test_historical_resolver_profile_refuses_before_python_fetch(glyph):
     import sqlite3
     from types import SimpleNamespace
+    from merchantcore.profile import Profile, Template
     from viva.read_store import temporal_activity as temporal
 
-    vault = build_demo_vault(tmp_path / "sample")
-    with vault.read_store.open_reader() as revision:
-        original = revision.connection.execute(
-            "SELECT profile_json FROM resolver_profiles LIMIT 1").fetchone()[0]
-    base = json.loads(original)
+    base = Profile(institution="Synthetic bank", kind="depository", version="v1",
+                   templates=[Template("PAYMENT {counterparty}")]).to_dict()
     bound = temporal.MAX_OVERLAY_JSON_BYTES
     shell = json.dumps({**base, "padding": ""}, ensure_ascii=False)
     room = bound - len(shell.encode("utf-8"))
@@ -115,7 +113,7 @@ def test_historical_resolver_profile_refuses_before_python_fetch(tmp_path, glyph
         assert len(encoded.encode("utf-8")) == bound + len(extra)
         connection.execute("DELETE FROM resolver_profiles")
         connection.execute("INSERT INTO resolver_profiles VALUES(?,?,?)",
-                           ("", "depository", encoded))
+                           ("Synthetic bank", "depository", encoded))
         assert json.loads(connection.execute(
             "SELECT profile_json FROM resolver_profiles LIMIT 1"
         ).fetchone()[0]) == json.loads(encoded)
