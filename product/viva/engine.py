@@ -708,17 +708,31 @@ def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
 
 
 def _finalize_new_documents(vault: Vault, posted_before: set[str]) -> None:
-    """Apply priors and require a complete two-level movement classification."""
+    """Apply priors and complete merchant enrichment before review is read."""
     projection = vault.ledger.projection()
     captured_types = projection.captured_docs()
     newly_posted = projection.posted_doc_ids() - posted_before
-    from .enrich import sync_installed_merchants
+    from .enrich import enrich_live_merchants, sync_installed_merchants
     from .ingest import assign_default_categories
     for doc_id in sorted(newly_posted):
         profile = profile_for(captured_types.get(doc_id, ""))
         if profile is not None and profile.identity == BALANCE_IDENTITY:
             sync_installed_merchants(vault, doc_id)
         assign_default_categories(vault.ledger, doc_id)
+    if newly_posted:
+        # The review surface is a read model over the ledger. Finish the
+        # bounded commons/model enrichment before the upload returns so a new
+        # merchant is not turned into a question while its answer is already
+        # available through the configured route.
+        try:
+            enrich_live_merchants(vault)
+        except Exception:  # noqa: BLE001
+            # Do not expose a review queue that was built before the model had
+            # a chance to classify its new merchants. The posted document and
+            # raw read remain durable, so the same upload can be retried after
+            # the configured route recovers.
+            log.exception("merchant enrichment did not complete")
+            raise
 
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn, *,

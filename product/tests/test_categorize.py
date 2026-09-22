@@ -461,6 +461,34 @@ def test_engine_finalizes_posted_movements_without_a_balance_profile(tmp_path):
     assert record["subcategory"] == "unclassified"
 
 
+def test_engine_waits_for_live_merchant_enrichment_before_upload_returns(
+        tmp_path, monkeypatch):
+    """A posted first sighting must finish enrichment before Review can read."""
+    from viva import engine
+    from viva.vault import Vault
+
+    vault = Vault.open(tmp_path / "vault", "pw")
+    statement = _facts(
+        "100.00", [("2026-01-05", "NEW MERCHANT", "-20.00")], "80.00",
+        ref="Checking 1111", doc_type="checking_statement",
+        number="000000001111")
+    calls = []
+
+    def enrich(current):
+        calls.append(current)
+
+    monkeypatch.setenv("VIVA_MODEL_ADAPTER", "openai-compatible")
+    monkeypatch.setenv("VIVA_MODEL", "test-model")
+    monkeypatch.setattr("viva.enrich.enrich_live_merchants", enrich)
+
+    result = engine.upload(
+        vault, "statement.pdf", b"statement",
+        lambda _data, doc_id: _stamp(statement, doc_id))
+
+    assert result["action"] == POSTED
+    assert calls == [vault]
+
+
 def test_categorization_survives_a_replay(tmp_path):
     raw, ledger = _checking_with_spend(tmp_path)
     kroger = next(m for m in ledger.projection().movements() if "KROGER" in m.description)
