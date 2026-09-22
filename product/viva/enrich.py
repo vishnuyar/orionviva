@@ -96,6 +96,70 @@ def sync_installed_merchants(vault, doc_id: str) -> int:
     return sync_merchant_records(vault.ledger, catalog, offered)
 
 
+def enrich_live_merchants(vault, *, chunk_size: int | None = None) -> dict:
+    """Enrich newly posted merchants before the caller exposes review.
+
+    The interactive document path used to apply only the installed commons
+    records. That left a first sighting at the default category, so the review
+    surface immediately asked the person to classify a merchant the product
+    could have learned itself. Keep this at the same model boundary as the
+    explicit enrichment command and make it a no-op when live reading is not
+    configured. The returned counts are safe for a job log; no merchant text
+    crosses this function's boundary.
+
+    Enrichment is deliberately synchronous from the upload caller's point of
+    view. A document is not settled until this attempt has finished, which
+    means a review read after the upload cannot race the catalog sync.
+    """
+    adapter = os.environ.get("VIVA_MODEL_ADAPTER", "").strip()
+    model = os.environ.get("VIVA_MODEL", "").strip()
+    if not adapter or not model:
+        return {"submitted": 0, "enriched": 0, "synced": 0,
+                "unanswered": 0, "minted": 0, "offered": 0,
+                "withheld_people": 0}
+
+    from merchantcore import Catalog, home
+    from merchantcore.enrich import model_extractor
+    from vivacore.models import ModelSpec
+
+    from .induce_profile import profile_store
+
+    spec = ModelSpec(
+        name="merchant-enricher", adapter=adapter, model=model,
+        base_url=os.environ.get("VIVA_MODEL_BASE_URL"),
+        api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "OPENROUTER_API_KEY"),
+        json_mode=True)
+    catalog = Catalog(
+        catalog_path(getattr(vault, "directory", None)),
+        shipped=home.shipped_catalog_file())
+    projection = vault.ledger.projection()
+    profiles: dict = {}
+    kinds: dict = {}
+
+    def profile_for(movement):
+        try:
+            info = projection.account_info(movement.account)
+        except Exception:  # noqa: BLE001
+            return None
+        pair = (info.institution or "?", info.kind or "?")
+        if pair not in profiles:
+            profiles[pair] = profile_store().latest_for(*pair)
+        return profiles[pair]
+
+    def kind_for(movement):
+        if movement.account not in kinds:
+            try:
+                kinds[movement.account] = (
+                    projection.account_info(movement.account).kind or "")
+            except Exception:  # noqa: BLE001
+                kinds[movement.account] = ""
+        return kinds[movement.account]
+
+    return enrich_merchants(
+        vault.ledger, catalog, model_extractor(spec),
+        profile_for=profile_for, kind_for=kind_for, chunk_size=chunk_size)
+
+
 def read_chunk_size(args, environ=None) -> tuple[int, list[str]]:
     """How many merchants ride in one model call, and the arguments left over.
 
