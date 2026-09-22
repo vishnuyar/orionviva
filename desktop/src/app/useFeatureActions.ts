@@ -121,7 +121,7 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
       try {
         ++surfaceRevision.current;
         const snapshotWork = activeSource.loadCoherent
-          ? activeSource.loadCoherent(activityLimit.current, movementId)
+          ? activeSource.loadCoherent(activityLimit.current, movementId, undefined, true)
           : activeSource.load(activityLimit.current, movementId).then((snapshot) => ({ snapshot, revision: "" }));
         const activeJobs = activeSource.loadJobs ? ++jobsGeneration.current : 0;
         const jobsWork = activeSource.loadJobs

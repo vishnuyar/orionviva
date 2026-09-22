@@ -67,6 +67,18 @@ it("requests catch-up once and only polls reads while a job's publication is sta
   } finally { vi.useRealTimers(); }
 });
 
+it("requests catch-up before a post-action coherent reread", async () => {
+  const refreshes: boolean[] = [];
+  const source = Object.assign(client(), {
+    readOverviewAccounts: (refresh = false) => {
+      refreshes.push(refresh);
+      return read("overview_accounts", { state: "ready", freshness: "current", lifecycle: "caught_up", revision: "g-after-action", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" });
+    },
+  });
+  await loadCoherentSnapshot(source, undefined, undefined, undefined, undefined, true);
+  expect(refreshes[0]).toBe(true);
+});
+
 it("bounds publication polling and leaves permanently stale or degraded reads unready", async () => {
   vi.useFakeTimers();
   try {

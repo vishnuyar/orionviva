@@ -95,7 +95,7 @@ export function useSessionReads(context: Coordination) {
     ++surfaceRevision.current;
     try {
       const snapshotWork = activeSource.loadCoherent
-        ? activeSource.loadCoherent(activityLimit.current)
+        ? activeSource.loadCoherent(activityLimit.current, undefined, undefined, true)
         : activeSource.load(activityLimit.current).then((snapshot) => ({ snapshot, revision: "" }));
       const activeJobs = activeSource.loadJobs ? ++jobsGeneration.current : 0;
       const jobsWork = activeSource.loadJobs

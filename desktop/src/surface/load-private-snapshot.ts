@@ -276,8 +276,8 @@ export function privatePlanActions(client: BridgeClient): PlanActions {
 
 export type CoherentSnapshot = { snapshot: SurfaceSnapshot; revision: string };
 
-export async function loadCoherentSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string, start?: PrioritySnapshot): Promise<CoherentSnapshot> {
-  const first = await waitForPublication(client, disclosure, start ?? await loadPrioritySnapshot(client, disclosure));
+export async function loadCoherentSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string, start?: PrioritySnapshot, refresh = false): Promise<CoherentSnapshot> {
+  const first = await waitForPublication(client, disclosure, start ?? await loadPrioritySnapshot(client, disclosure, refresh));
   if (first.freshness !== "current" || !first.revision) throw new Error("aggregate_revision_unavailable");
   const activityParameters = { ...(activityLimit ? { limit: activityLimit } : {}), ...(activityFocus ? { focus: activityFocus } : {}) };
   const [documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
