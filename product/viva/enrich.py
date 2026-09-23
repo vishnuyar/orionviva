@@ -123,6 +123,7 @@ def enrich_live_merchants(vault, *, chunk_size: int | None = None) -> dict:
     from vivacore.models import ModelSpec
 
     from .induce_profile import profile_store
+    from .ingest import enrich_merchants
 
     spec = ModelSpec(
         name="merchant-enricher", adapter=adapter, model=model,
