@@ -115,12 +115,14 @@ def test_the_interpret_prompt_is_addressable_like_every_other():
     """An unversioned prompt is rewritable in place, which would mean that
     tuning it silently reinterprets every ruling made before the change."""
     text, version = pl.interpret_prompt()
-    assert version == "interpret-v3"
+    assert version == "interpret-v4"
     assert pl.resolve(version) == text          # a recorded ruling round-trips
-    # v1 and v2 are retained, unchanged: rulings recorded under them stay
+    # Earlier versions are retained unchanged: rulings recorded under them stay
     # explainable.
     assert pl.resolve("interpret-v1") != text
     assert pl.resolve("interpret-v2") != text
+    assert pl.resolve("interpret-v3") != text
+    assert "not the instrument where the movement was recorded" in text
 
 
 def test_the_interpret_prompt_assumes_no_particular_instrument():

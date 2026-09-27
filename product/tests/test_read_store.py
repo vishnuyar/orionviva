@@ -403,7 +403,7 @@ def test_required_connection_settings_and_projection_metadata(tmp_path: Path):
                 "applied_events_digest, state "
                 "FROM projection_meta").fetchone() == (
                     module.CONTROL_SCHEMA_VERSION, module.PROJECTOR_VERSION,
-                    "resolver-v1", "as-of-v1",
+                    module.RESOLVER_VERSION, module.AS_OF_VERSION,
                     METADATA_VERSION, 0, "0" * 64, -1, "0" * 64,
                     module._applied_events_genesis(module.CONTROL_SCHEMA_VERSION,
                                                    module.PROJECTOR_VERSION), "ready")

@@ -1099,7 +1099,7 @@ def test_a_conduit_is_answered_one_transaction_at_a_time(tmp_path):
     assert len(qs) == 2, "one question per check, not one for the bucket"
     assert all(q["scope"] == "one" and q["count"] == 1 for q in qs)
     assert all(q["refs"]["movement"] for q in qs)
-    assert "not who received it" in qs[0]["why"]
+    assert "don't yet know what this transaction was for" in qs[0]["why"]
     # Ranked by consequence, so the earnest money surfaces above the small one.
     assert Decimal(qs[0]["amount"]) > Decimal(qs[1]["amount"])
 

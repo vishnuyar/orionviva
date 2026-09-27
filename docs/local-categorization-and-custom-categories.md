@@ -9,13 +9,15 @@
 
 ### MON-90 — a peer descriptor is ruled per transaction, never everywhere
 **State:** enforced
-**Code:** product/viva/listen.py:566 (`generalizes = merchant and is_shareable(descriptor) and not instrument`); product/viva/engine.py (`_write_answer`)
+**Code:** product/viva/question_evidence.py (`decide`, `group_decision`); product/viva/listen.py (`propose`); product/viva/engine.py (`_write_answer`)
 **Test:** product/tests/test_questions.py::test_a_peer_payment_is_scoped_to_itself_not_a_rule
 
 1. A commercial merchant's ruling is scoped to the merchant and settles every payment to it.
 2. A peer or instrument descriptor is scoped to the single movement.
 3. A movement-scoped answer covering more than one movement with no key is refused rather than quietly applied to the whole conduit bucket.
-4. Answering a one-scoped merchant question assigns the category only to the movement keys the question carried; it creates no merchant-wide prior.
+4. Answering a one-scoped merchant question assigns the category only to the movement keys the question carried; it creates no merchant-wide prior. The wording states the displayed population, which can contain several transactions.
+5. Privacy refusal limits scope independently of identity evidence. Typed peers and instruments retain movement scope even when their descriptions pass sharing lint. Missing or unsupported kinds make no identity claim; ordinary shareable unidentified merchant questions keep existing pattern behavior. A stale pattern answer is refused if current evidence requires movement scope.
+6. An identity-insufficient target requires an explicitly selected movement before a proposal can be applied. Normalized prefix matching cannot redirect its answer to a different, sufficiently identified movement. Existing grammar-supported identities and ordinary shareable unidentified patterns remain eligible under the same scope rules.
 
 ### MON-91 — a custom category is personal, and what crosses to a model is the shareable part of the vocabulary
 **State:** enforced

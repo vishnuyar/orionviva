@@ -100,7 +100,7 @@
 
 1. A grammar or published parser may name a normalized brand. Where a proven occurrence slot such as a store number supplies a boundary, its exact left-hand prefix is also a candidate; location after the boundary remains occurrence context.
 2. A versioned catalog may map one of those candidates to a permanent merchant id only through an exact reviewed alias. No substring, fuzzy score, city list, or model-authored display name establishes identity.
-3. Where no layer or reviewed alias identifies the merchant, the key falls back to the whole normalized line, which still carries whoever was on it — never to the institution. Unknown remains unknown.
+3. Where no layer or reviewed alias identifies the merchant, ordinary independently supported descriptors retain the normalized-line fallback. A parsed processor-only remainder after merchant evidence was discarded is explicitly insufficient: no brand, merchant alias candidate, lookup key or enrichment hint is asserted. Exact differing descriptors stay separate within their account using a private grouping discriminator; repeated identical descriptors may group. The discriminator is never a merchant identity or exported value. Unknown remains unknown.
 4. Refused and person-declared lines never consult business aliases. Context travels with a hint only where every occurrence of the merchant agreed on it.
 
 ### MER-11 — A rail is proven by structure, never by a word
@@ -414,8 +414,8 @@ does not.
   every brand-slot hint is withheld, and no third signal exists in the code
   (I3, I5).
 - Where a grammar's template names no brand at all, the key falls back to the
-  whole normalized line, which crosses without passing through the corroboration
-  gate or the substring fallback.
+  whole normalized line where structural identity evidence remains admissible;
+  processor-only remainders are withheld before that fallback.
 - A peer payment written in a language the marker list does not speak still
   crosses where no grammar exists (MER-19).
 - The enrichment prompt does not say a brand string may be hard-truncated, so a

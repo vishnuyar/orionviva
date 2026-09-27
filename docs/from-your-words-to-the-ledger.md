@@ -77,25 +77,29 @@
 
 1. An expense or income leg with no named thing goes to the Uncategorized bucket the ledger already has, where the category does the descriptive work.
 2. An answer saying the person now owns or owes something without saying *what* returns the verdict `unnamed`, which is a question, not a path built from a placeholder.
-3. Expense and income never enter the priority list that decides what a person is shown as holding.
+3. Expense and income never enter the priority list that decides what a person is shown as holding, and never request `AccountOpened`. Named components remain distinct counteraccount paths rather than independent value-holding relationships.
+4. Expense/income candidates stay under their own major. Every selected movement must resolve to a locally known source account; an exact normalized source alias is cleared to the ordinary default even if the person repeats or deliberately requests that label.
+5. Without complete source identity, a single expense/income leg uses the default. A compound answer with any nonempty expense/income hint requires a valid transaction selection; no extra model call can supply that local evidence. Empty-hint compound answers retain their ordinary path.
+6. Applying a proposal validates every new registration's path, root and name before appending any financial event. Only Assets/Liabilities may register; invalid older held proposals are refused without migration and require a fresh answer.
 
 ### PROJ-31 — resolution asks only when ambiguous
 **State:** enforced
 **Code:** product/viva/listen.py:255
 **Test:** product/tests/test_listen.py::test_resolution_asks_only_when_ambiguous
 
-1. One exact match posts silently; more than one, or a substring match either way, returns `ambiguous` with the candidate named.
+1. One exact match resolves to the existing path; more than one, or a substring match either way, returns `ambiguous` with the candidate named. Proposal confirmation is a separate decision under PROJ-32.
 2. Exact matches are counted by account, not by name pair, so one account answering to two names does not read as two accounts.
-3. Nothing matching returns `new` with a proposed path, and creating an account is the one verdict this path always confirms.
+3. Nothing matching returns `new` with a proposed path. Asset/liability creation requires confirmation; expense/income component names are reviewed without registering an account.
 
-### PROJ-32 — confirmation is scoped to the account, not to every parse
+### PROJ-32 — confirmation covers account changes and expense/income naming hints
 **State:** enforced
 **Code:** product/viva/listen.py:658
 **Test:** product/tests/test_ask.py::test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written
 
-1. Nothing is written without an explicit yes; `listen` produces a reviewable Proposal and applying is a separate act.
-2. An answer that would bring an account into being is not applied in the request that raised it; it comes back as a proposal.
-3. After the binding is confirmed, the learned ruling applies silently and the question that prompted it is retired.
+1. `listen` and direct `propose` construct reviewable proposals without applying them. The engine holds a proposal when `new_accounts` or `confirm_accounts` is nonempty, or when the original checked Interpretation contains any expense/income leg with a nonempty stripped hint. This condition is checked on the original hints even when source-role normalization clears them.
+2. Held proposals apply only after explicit confirmation. Their summary names retained components in leg order, describes default legs as ordinary spending/income with no separate named component, preserves category and unknown-split disclosures, and never describes expense/income naming as account creation. Existing durable proposal identity carries the hold across reload without a new saved flag.
+3. Interpretation and conversation/proposal audit events may be appended before confirmation; financial rulings, categories and registrations remain held. Existing ordinary empty-hint answers still apply immediately when no structural trigger holds them. This is the scoped implementation exception to the unqualified X3 promise recorded in `design-invariants.md`, not an amendment to that invariant.
+4. After a binding is confirmed, the learned ruling applies to its established scope and the question that prompted it is retired.
 
 ### PROJ-33 — every asserted account invites the document that would prove it
 **State:** enforced
@@ -185,14 +189,14 @@ are stored and never spoken. That also makes locally-phrased questions a
 surface-only change later: phrasing touches no figure and no account, so it sits
 entirely outside the T2 boundary.
 
-**Confirmation is per account, not per parse.** The expensive,
-sprawl-creating, hard-to-reverse act is binding money to an account for the first
-time, and that is exactly what gets the explicit yes. Once *"Harborline is my
-mortgage"* is confirmed, the next twelve payments post without a question. The
-default, after the first answer, is silence — and **account sprawl is the failure
-mode**, so the disciplines that tamed merchant descriptors apply: normalize the
-name, suggest existing accounts before offering new, let the matcher offer
-merges later.
+**Confirmation covers both value-holding accounts and hinted components.**
+Binding money to a new account and resolving an ambiguous account require an
+explicit yes. Expense/income answers with any original nonempty hint also come
+back for review, including a source label conservatively cleared to the default.
+This keeps component names visible without pretending they create accounts.
+Ordinary empty-hint answers preserve the existing immediate path; held proposals
+are separately durable and remain financially unapplied until confirmed.
+Learned rulings continue to apply over the scope the person settled.
 
 **What the build falsified, kept because a log that only reports its wins would
 refute this project's thesis.** A fifth nature was forced into existence: the
@@ -248,7 +252,7 @@ for instruments.
 
 **A prompt is a file, and a slice that makes a model call puts its prompt in the
 library and its version on the event.** The interpreter reads under
-`interpret-v3`, which is a prompt about *any question a person was asked* rather
+`interpret-v4`, which adds explicit source-instrument versus destination-component guidance to the generic prompt about *any question a person was asked* rather
 than about one movement of money: it takes the question, a context block and the
 typed slots that question declares, and turns language into structure without
 deciding anything. Its instructions began as a
@@ -274,7 +278,7 @@ supplies a figure, picks an account or posts), T3 (the sentence and the parse ar
 captured verbatim), T4 (a confirmed ruling is an append-only event), T8 (a
 recorded `prompt_version` resolves to the exact text that produced the reading),
 X2 (a proposal states what it changes, how much money it moves, and what it does
-not know), X3 (nothing applied without an explicit yes), I5, and M1 (a created
+not know), X3 (held financial proposals wait for explicit yes, with the existing direct-answer exception documented rather than treated as compliance), I5, and M1 (a created
 asset records what you paid, not what it is worth). The proposal type and the
 answering surface are
 [viva-listens-and-speaks.md](viva-listens-and-speaks.md); the corroboration asks
@@ -283,14 +287,12 @@ route into [document-coverage.md](document-coverage.md); the failure taxonomy is
 
 ## Open
 
-- **T3 is unmet on the interpretation edge.** There is no `interpret` capture
-  phase and never was: the only phases in the codebase are `classify`, `extract`
-  and `speak`. The model's parse is held for one retry and discarded, so a
-  sentence that never reaches a write — and any answer to an identity, transfer,
-  merchant, corroboration or expectation question — leaves no verbatim record. A
-  better model cannot re-derive a reading from what a vault holds. This is on the
-  one path whose own risk register says a mis-parse persists and generalizes, and
-  `speak.py` already shows how to capture a read with no document behind it.
+- **Interpretation capture exists on the engine path.** `engine._record_interpret`
+  records raw exchanges and their prompt version under the `interpret` phase,
+  including answers that do not produce a financial write. Durable conversation
+  turns and held proposals are captured separately. Convenience `listen` only
+  constructs a proposal and does not itself persist those captures; callers must
+  not infer engine-level audit guarantees from that helper.
 - No real-document run. Every slice is supposed to meet real statements before
   being called done, and this one has met only fixtures. Until a real mortgage or
   car purchase goes through the sentence path, treat it as built and unproven.

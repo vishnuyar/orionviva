@@ -66,7 +66,7 @@ def account_ledger(projection, account_id: str, locale: str,
             "the requested account could not be identified exactly")
     info = matches[0]
     number = masked(info.number)
-    if (not all((info.account, info.name, info.kind, info.currency, number))
+    if (not all((info.account, info.name, info.kind, info.currency))
             or info.kind not in ("depository", "liability", "investment")):
         raise AccountLedgerIdentityError(
             "the requested account does not have a complete safe identity")

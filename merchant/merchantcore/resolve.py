@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .descriptor import (brand_candidate, is_never_templatable, linted_example,
-                         parse_descriptor)
+from .descriptor import (brand_candidate, brand_evidence, is_never_templatable,
+                         linted_example, parse_descriptor)
 from .normalize import is_shareable, normalize_merchant
 from .profile import PERSONAL_SLOTS
 
-RESOLVER_VERSION = "resolve-v1"
+RESOLVER_VERSION = "resolve-v2"
 
 # Ordered best to worst. A caller comparing two resolutions compares these.
 LAYERS = ("grammar", "published", "normalizer", "refused")
@@ -35,6 +35,7 @@ class Resolution:
     borrowed_from: str = ""              # profile id, when another bank's grammar explained it
     refused: bool = False
     identity_candidates: tuple[str, ...] = ()
+    identity_insufficient: bool = False
 
     @property
     def is_person(self) -> bool:
@@ -66,6 +67,8 @@ class Resolution:
 
         ``identity_candidates`` may later resolve to a permanent catalog id.
         """
+        if self.identity_insufficient:
+            return ""
         return normalize_merchant(self.brand) or self.key
 
     def shareable(self) -> dict:
@@ -82,7 +85,7 @@ class Resolution:
 
         The grammar's brand slot when the layer is `grammar`; otherwise the
         Layer 0 lint over the raw line. A refused line yields ""."""
-        if self.refused:
+        if self.refused or self.identity_insufficient:
             return ""
         return self.brand if self.layer == "grammar" else linted_example(self.raw)
 
@@ -185,8 +188,7 @@ def _slot_from(res: Resolution, match, parse, ach_split, raw: str) -> Resolution
     res.counterparty = match.party()
     # Only a brand slot names a brand. An institution is the conduit the money
     # crossed, not the party at the other end, so it is not read as one: where a
-    # grammar names no brand, `merchant_key` falls back to the whole line, which
-    # still carries whoever was on it.
+    # grammar names no brand, recognition still needs independent evidence.
     res.brand = res.fields.get("brand") or ""
     # A peer rail is one the grammar identified as such, by putting a person in
     # a slot named for one. A proven card or wire channel is not overwritten.
@@ -204,7 +206,14 @@ def _slot_from(res: Resolution, match, parse, ach_split, raw: str) -> Resolution
 
 def _with_identity_candidates(res: Resolution, parse) -> Resolution:
     """Attach the exact normalized strings eligible for reviewed alias lookup."""
-    if res.refused or res.is_person or not is_shareable(res.raw):
+    _candidate, origin = brand_evidence(parse)
+    res.identity_insufficient = (origin == "aggregator"
+                                 and not res.refused and not res.is_person
+                                 and not (res.layer == "grammar" and res.brand))
+    if res.identity_insufficient:
+        res.brand = ""
+    if (res.refused or res.is_person or res.identity_insufficient
+            or not is_shareable(res.raw)):
         res.identity_candidates = ()
         return res
     candidates: list[str] = []

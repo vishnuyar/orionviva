@@ -25,9 +25,9 @@ Two rules this path keeps:
 * **A missing document never blocks a ruling.** The account is created, the cash
   is posted, only the *decomposition* is marked provisional, and the 1098 or the
   invoice is asked for as corroboration.
-* **Confirmation is scoped to the account, not to every parse.** Binding money
-  to an account for the first time is confirmed; after that the learned ruling
-  applies in silence.
+* **Confirmation covers account changes and named expense/income hints.**
+  An original nonempty component hint is reviewed even if source-role checks
+  clear it. Ordinary empty-hint answers retain their immediate path.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ from .ledger.events import (ASSERTED, ISSUED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE
                             VERIFIED, account_alias_confirmed, account_opened,
                             ruling_recorded)
 from .ledger.merchants import is_shareable, normalize_merchant
+from .question_evidence import decide, group_decision
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
 from .ledger.projection import BY_CATEGORY, BY_DEFAULT, BY_RULING
 from .ledger.projection.movements import money_effect
@@ -394,18 +395,40 @@ def _candidates(proj, major: str) -> list:
              for account in set(proj.ruled_accounts())
              | {a for a in proj.accounts()
                 if a.split(":")[0] == MAJOR_ROOTS.get(major)}}
+    if major in (MAJOR_EXPENSE, MAJOR_INCOME):
+        pairs |= {(leg["account"].rsplit(":", 1)[-1], leg["account"])
+                  for ruling in proj.rulings() for leg in ruling.get("legs", ())}
+        pairs = {(name, account) for name, account in pairs
+                 if account.split(":")[0] == MAJOR_ROOTS[major]}
     for info in proj.account_infos():
         if info.kind not in _ISSUED_KINDS.get(major, ()):
             continue
-        aliases = {info.name, info.institution}
-        if info.institution:
-            product = "brokerage" if info.kind == "investment" else info.kind
-            aliases |= {
-                f"{info.institution} {product}",
-                f"{info.institution} {product} account",
-            }
-        pairs |= {(name, info.account) for name in aliases if name}
+        pairs |= {(name, info.account) for name in _account_aliases(info) if name}
     return sorted(pairs)
+
+
+def _account_aliases(info) -> set[str]:
+    """The names an account record already answers to."""
+    aliases = {info.name, info.institution}
+    if info.institution:
+        product = "brokerage" if info.kind == "investment" else info.kind
+        aliases |= {f"{info.institution} {product}",
+                    f"{info.institution} {product} account"}
+    return aliases
+
+
+def _source_aliases(proj, selected: set[str], held_movements) -> set[str] | None:
+    """Resolve every selected movement locally before trusting component names."""
+    found = {m.key: m.account for m in held_movements if m.key in selected}
+    if not selected or set(found) != selected:
+        return None
+    infos = {info.account: info for info in proj.account_infos()}
+    if not set(found.values()) <= infos.keys():
+        return None
+    aliases = set()
+    for account in set(found.values()):
+        aliases |= _account_aliases(infos[account]) | {account, account.rsplit(":", 1)[-1]}
+    return {_norm(name) for name in aliases if _norm(name)}
 
 
 # --------------------------------------------------------------------- step 5
@@ -529,6 +552,16 @@ class Proposal:
         if self.new_accounts:
             parts.append("This creates " + self._named(self.new_accounts)
                          + " — new, and only you say it exists.")
+        for leg in self.legs:
+            major = leg["major"]
+            if major not in (MAJOR_EXPENSE, MAJOR_INCOME):
+                continue
+            treatment = "spending" if major == MAJOR_EXPENSE else "income"
+            if leg["account"] == MAJOR_UNCATEGORIZED[major]:
+                parts.append(f"I'll use ordinary {treatment} with no separate named component.")
+            else:
+                name = self._named([leg["account"]])
+                parts.append(f"I'll record {name} as a {treatment} component.")
         # Guessed existing accounts are named explicitly for confirmation.
         if self.confirm_accounts:
             parts.append("I've taken this to be your existing "
@@ -608,6 +641,10 @@ def movements_also_settled(proj, merchant: str, asked: set) -> list:
             and m.nature_reason != BY_RULING]
 
 
+class MovementSelectionRequired(ValueError):
+    """A target lacks identity authority and needs an explicit movement."""
+
+
 def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
             currency: str = "", movement_key: str = "", locale: str = "",
             merchant_key: str = "", movements=()) -> Proposal:
@@ -629,38 +666,66 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
     count and its amount were computed over, carried in rather than rebuilt
     here. A caller with no question behind it passes none, and the population is
     derived instead."""
-    merchant = merchant_key or normalize_merchant(descriptor)
+    from merchantcore.resolve import resolve_descriptor
+
+    held_movements = proj.movements()
+    described = [m for m in held_movements if m.description == descriptor]
+    if not described and movement_key:
+        described = [m for m in held_movements if m.key == movement_key]
+    insufficient = (any(not proj.merchant_key_of(m) for m in described) if described
+                    else resolve_descriptor(descriptor).identity_insufficient)
+    if insufficient and not movement_key:
+        raise MovementSelectionRequired(f"{descriptor!r} needs a specific transaction: "
+                         "its description does not establish a counterparty")
+    merchant = "" if insufficient else merchant_key or normalize_merchant(descriptor)
     # An instrument — a check, an ATM withdrawal, a wire — never generalizes,
     # even when several share a descriptor. The kind comes from enrichment
     # (`counterparty_kind`), not from a list of words kept by hand.
-    is_instrument = proj.kind_of_merchant(merchant) in ("instrument", "peer")
-    generalizes = bool(merchant) and is_shareable(descriptor) and not is_instrument
+    matches = (described if insufficient else
+               [m for m in held_movements if merchant in proj.merchant_keys_of(m)])
+    evidence = [decide(m.description, proj.counterparty_kind(m)) for m in matches]
+    decision = (group_decision(evidence) if evidence else
+                decide(descriptor, proj.kind_of_merchant(merchant)))
+    generalizes = bool(merchant) and decision.generalizes
     scope = SCOPE_MERCHANT if generalizes and not movement_key else SCOPE_MOVEMENT
     subject = merchant if scope == SCOPE_MERCHANT else movement_key
     if scope == SCOPE_MOVEMENT and not subject:
         # Refuse rather than quietly settle a whole conduit bucket on one answer.
-        matches = [m for m in proj.movements()
-                   if merchant in proj.merchant_keys_of(m)]
         if len(matches) != 1:
             raise ValueError(
                 f"{descriptor!r} needs a specific transaction: it covers "
                 f"{len(matches)} movements that may each mean something different")
         subject = matches[0].key
 
+    selected = {str(key) for key in movements}
+    if movement_key:
+        selected.add(movement_key)
+    elif not selected:
+        selected = ({subject} if scope == SCOPE_MOVEMENT else
+                    {m.key for m in movements_answered_about(proj, merchant)})
+    source_aliases = _source_aliases(proj, selected, held_movements)
+    if (source_aliases is None and interp.compound
+            and any(leg["major"] in (MAJOR_EXPENSE, MAJOR_INCOME)
+                    and leg.get("account_hint", "").strip() for leg in interp.legs)):
+        raise MovementSelectionRequired("named components need complete source context")
+
     legs, new_accounts, confirm, unnamed = [], [], [], []
     confirm_names: list = []
-    implied = proj.implication_for(merchant)
+    implied = proj.implication_for(merchant) if merchant else None
     # A counterparty named by a key carried in opens its new accounts in the
     # fallback group. Which group an account belongs in is a thing to know about
     # the account rather than a level in its path, and until that is where it
     # lives, one flat group is what a person reads.
     group = "" if merchant_key else (implied or {}).get("account_group", "")
     for leg in interp.legs:
-        match = resolve_account(proj, leg["major"], leg.get("account_hint", ""),
-                                group=group)
+        hint = leg.get("account_hint", "")
+        component = leg["major"] in (MAJOR_EXPENSE, MAJOR_INCOME)
+        if component and (source_aliases is None or _norm(hint) in source_aliases):
+            hint = ""
+        match = resolve_account(proj, leg["major"], hint, group=group)
         legs.append({"major": leg["major"], "account": match.account,
                      "share": leg.get("share", "")})
-        if match.verdict == "new":
+        if match.verdict == "new" and not component:
             new_accounts.append(match.account)
         elif match.verdict == "ambiguous":
             # The path goes to the write; the name goes to the sentence the
@@ -731,6 +796,10 @@ def one_shot_extractor(spec):
 # --------------------------------------------------------------------- step 6
 
 
+class InvalidAccountRegistration(ValueError):
+    """A proposed registration does not name a value-holding relationship."""
+
+
 def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
                    by: str = "human") -> dict:
     """Write it. Deterministic, and the only path from a sentence to the ledger.
@@ -750,14 +819,17 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
     for account in proposal.new_accounts:
         # An account path is root, group and the person's name for the thing;
         # anything shorter or emptier names a group.
+        if not isinstance(account, str):
+            raise InvalidAccountRegistration("an account path must be text")
         parts = account.split(":")
         if (len(parts) < 3 or not all(p.strip() for p in parts)
                 or not any(ch.isalnum() for ch in parts[-1])):
-            raise ValueError(f"{account!r} names nothing — an account needs a "
+            raise InvalidAccountRegistration(f"{account!r} names nothing — an account needs a "
                              "name the person gave it")
-        if parts[0] not in MAJOR_ROOTS.values():
-            raise ValueError(f"{account!r} is outside the chart of accounts; "
-                             f"a root is one of {sorted(set(MAJOR_ROOTS.values()))}")
+        if parts[0] not in ("Assets", "Liabilities"):
+            raise InvalidAccountRegistration(
+                f"{account!r} does not name an asset or liability relationship")
+    for account in proposal.new_accounts:
         major_root = account.split(":")[0]
         kind = "liability" if major_root == "Liabilities" else "asset"
         ledger.append(account_opened(

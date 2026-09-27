@@ -29,9 +29,9 @@
 **Code:** product/viva/ledger/projection/merchants.py:59 (`merchant_keys_of`), :96 (`merchant_graded`); product/viva/ingest/categorize.py (`assign_merchant_category`)
 **Test:** product/tests/test_merchant_keys.py::test_reviewed_aliases_group_two_location_forms_under_one_merchant, ::test_a_verified_old_alias_record_beats_the_canonical_commons_prior, ::test_a_descriptor_keyed_answer_still_reads, ::test_the_brand_wins_a_tie
 
-1. A movement first tries the canonical id resolved from exact reviewed aliases, then its structural/brand candidates and normalized descriptor.
-2. The highest-graded record among the candidates answers; ties go to the canonical id.
-3. Knowledge recorded before grammars existed sits under the descriptor and is not stranded by a lookup that only knew the brand.
+1. A movement first tries the canonical id resolved from exact reviewed aliases, then its structurally admissible brand candidates and normalized descriptor. A processor-only remainder after merchant evidence was discarded supplies none of these keys; this holds with and without a resolver and on indexed reads.
+2. The highest-graded record among admissible candidates answers; ties go to the canonical id.
+3. Independently supported legacy descriptor keys remain readable. Historical merchant-wide rulings under an insufficient processor prefix retain their event, grade and scope, but cannot attach through that unsupported match. Movement corrections remain authoritative.
 4. A question's resolved key is recorded exactly when the projection already holds it; only an unresolved raw descriptor is normalized again before filing.
 
 ### MER-43 — The sync reaches only merchants this vault holds
@@ -40,8 +40,9 @@
 **Test:** product/tests/test_merchant_enrich.py::test_a_record_about_a_merchant_this_vault_never_paid_is_not_synced
 
 1. Only keys this vault offered, plus keys its ledger already carries a record for, are synced into the ledger.
-2. A catalog record about a merchant this vault never paid appends no event to this vault's append-only log.
-3. A balance-statement import performs the same bounded sync for that document before assigning defaults. A shipped or learned hit therefore categorizes immediately without an enrichment/model call; a miss keeps the replaceable default.
+2. Existing-key refresh may retain or strengthen a record even with no eligible hints; this never restores an inadmissible movement match.
+3. A catalog record about a merchant this vault never paid appends no event to this vault's append-only log.
+4. A balance-statement import performs the same bounded sync for that document before assigning defaults. A shipped or learned hit therefore categorizes immediately without an enrichment/model call; a miss keeps the replaceable default.
 
 ### MER-44 — The subcategory vocabulary is seeded, and grows without displacing
 **State:** enforced
@@ -86,10 +87,11 @@
 **Code:** merchant/merchantcore/normalize.py (`normalize_merchant`), merchant/merchantcore/resolve.py (`Resolution.identity_candidates`), merchant/merchantcore/catalog.py (`CATALOG_FORMAT`, `IDENTITY_VERSION`, `resolve`)
 **Test:** merchant/tests/test_merchantcore.py::test_store_number_boundaries_offer_exact_identity_candidates, ::test_reviewed_aliases_resolve_exactly_and_near_names_do_not, ::test_a_broken_v2_identity_pack_is_refused, product/tests/test_merchant_keys.py::test_reviewed_aliases_do_not_match_a_near_name_or_arbitrary_text
 
-1. Normalization and structural parsing produce ordered recognition candidates: a proven grammar brand, a published-parser brand, the exact prefix before a proven occurrence slot such as a store number, and the normalized full descriptor.
+1. Normalization and structural parsing produce ordered admissible recognition candidates: a proven grammar brand, a published-parser brand, the exact prefix before a proven occurrence slot such as a store number, and the normalized full descriptor.
 2. Only an exact, reviewed alias can map a candidate onto a permanent merchant id. Substrings, token similarity, edit distance, embeddings, model judgement, city lists, wildcards and regexes have no identity authority.
 3. Catalog format and identity algorithm versions travel with the alias pack; incompatible or malformed packs, unnormalized aliases and collisions are refused.
-4. A model-authored `canonical_name` remains display metadata. It cannot mint or merge identity, and an unmatched descriptor remains honestly unknown.
+4. Resolution explicitly declares a processor-only remainder insufficient; neither an exact alias nor a stronger grade supplies the missing merchant evidence. This declaration is derived and versioned, not a catalog identity or a persisted event.
+5. A model-authored `canonical_name` remains display metadata. It cannot mint or merge identity, and an unmatched descriptor remains honestly unknown.
 
 ### MER-49 — An unknown merchant stays unknown while its movement gets a replaceable default
 **State:** enforced
@@ -97,7 +99,7 @@
 **Test:** product/tests/test_categorize.py::test_import_defaults_peer_payments_before_asking_questions, product/tests/test_merchants.py::test_merchant_ruling_fills_all_its_transactions
 
 1. A successfully posted bank or card statement gives each otherwise unknown movement an unverified, movement-scoped first category, so import does not become an interview. A grammar slot that declared a person permits the `transfers` default and its transfer treatment, keeping it outside spending unless the person corrects it; every other unidentified movement starts at `other` and ordinary spending treatment.
-2. The default does not identify the merchant and does not generalize to older or future movements. Unknown merchants remain in the pending enrichment set, and later catalog knowledge replaces the default on the read side.
+2. The default does not identify the merchant and does not generalize to older or future movements. Eligible unknown merchants join the pending enrichment set; structurally insufficient hints are withheld entirely. Historical pending entries remain independently of current eligibility. Later admissibly matched catalog knowledge replaces the default on the read side.
 3. A person's movement correction outranks both the import default and catalog knowledge.
 
 ### MER-59 — The enrichment run names the catalog it loaded
@@ -196,3 +198,20 @@ it under.
 - The privacy lint `is_shareable` remains the fallback wherever no grammar exists;
   it over-blocks by design and is retired per institution by inducing one. See
   MER-13 in [the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md).
+
+## Structural recognition qualification — Director authority
+
+The bounded processor-only insufficiency qualification to MER-42 and MER-48
+has independent Director approval under WORKFLOW’s delegated Checkpoint 1
+warrant. A parsed conduit left after distinguishing evidence was
+discarded is not merchant identity. Differing unresolved descriptors remain
+separate within their account through a private, derived grouping distinction;
+that distinction never becomes an alias, catalog key, prompt or export. This
+refuses an unsupported match without deleting or reinterpreting historical human
+rulings. Independently supported legacy recognition, grade ordering and movement
+corrections remain unchanged. It authorizes no historical cleanup, rebinding,
+reference recovery, persisted schema change or permanent identity migration.
+
+The regression chain is in `product/tests/test_merchant_normalization_evidence.py`,
+including resolver-free lookup, retained existing-key refresh, isolated fresh
+batch refusal, historical pending preservation and indexed rebuild/reopen.

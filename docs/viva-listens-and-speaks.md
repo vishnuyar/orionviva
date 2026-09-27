@@ -6,7 +6,7 @@
 ## Rules
 
 ### VOICE-50 — a Proposal is the only path to a change, and it is never applied unconfirmed
-**State:** enforced
+**State:** enforced for held financial proposals; audit/direct-answer exceptions documented
 **Code:** product/viva/listen.py (`Proposal`, `apply_proposal`), product/viva/engine.py (`confirm_proposal`), product/viva/desktop_bridge/conversation_actions.py (`outcome_of`)
 **Test:** product/tests/test_listen.py::test_applying_is_a_separate_explicit_act, product/tests/test_conversation_actions.py::test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written, product/tests/test_conversation_actions.py::test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account
 
@@ -16,6 +16,21 @@
 4. X3 is satisfied structurally rather than by prompt: a Proposal is by definition not applied until confirmed.
 5. The interface boundary preserves an unconfirmed Proposal as `proposal`, never as a completed write or an unreadable outcome; setting a question aside is likewise its own `set_aside` outcome rather than an answered question.
 6. The opened-vault bridge retains the unapplied structure under an opaque identity. Confirmation applies that retained structure through its typed `yes_no` slot; declining writes nothing and closes it.
+
+**Scoped implementation qualification (normative assertions above unchanged):**
+The existing engine direct-answer path immediately applies ordinary
+expense/income answers whose hints are empty when no structural confirmation
+trigger exists. Assertions 2 and 4 therefore describe the intended promise,
+not an unqualified claim of current implementation compliance with X3.
+Held proposals, including every original nonempty expense/income hint, remain
+financially unapplied until explicit confirmation and survive durable reload.
+Interpretation and conversation/proposal audit events can precede that yes;
+declining appends audit events but no financial ruling, category assignment or
+account registration. Thus “writes nothing” in assertions 2 and 6 is not
+literally true of all ledger events. See the matching X3 implementation
+qualification in [design-invariants.md](design-invariants.md). Evidence:
+`product/tests/test_fee_account_hint_boundary.py::test_empty_hint_ordinary_answer_still_applies_immediately`
+and `test_hint_review_survives_durable_reload_and_confirm_or_decline`.
 
 ### VOICE-51 — the interpreter never supplies a figure
 **State:** enforced

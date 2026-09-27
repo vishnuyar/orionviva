@@ -524,44 +524,19 @@ def _announced(currency: str) -> dict[str, str]:
 
 
 def _covers(point: dict, figures: list, vault_accounts: set) -> str:
-    """The one sentence the panel says about how far the picture reaches.
+    """Count rendered accounts against the accounts recorded in this vault.
 
-    It is said of the picture and never of a total. Where a person holds money
-    in two currencies they meet two totals and no third, so a line opening
-    "this total" would name either a figure nothing may compose or one of the
-    two, of which it is false. What is true at one currency and at four is how
-    much of what they hold is counted here.
+    The sentence describes the picture across all displayed currencies, never
+    a combined total or a complete external financial inventory. The numerator
+    comes from rendered figures; a withheld figure cannot count as displayed.
+    The denominator includes both the accounts the point considered and known
+    vault accounts that have no measurement yet.
 
-    Counts, and names nothing. The claim belongs here, over every figure the
-    picture stated, because a count said once about one figure reads as being
-    about the whole of it.
-
-    **What is counted is counted off the figures this panel renders**, never
-    off the read behind them. A total that was kept back is not on the screen,
-    and a sentence computed over the read would say a person's accounts were
-    all counted here while the currency holding some of them is absent — true
-    of the read, false of the thing a person is looking at. What they are held
-    against is every account the read ranged over, which is what a person
-    holds; neither number is a tally this surface made and neither comes from
-    the balances read.
-
-    Whole reviewed sentences, chosen by comparing two numbers and by the
-    boolean the read declares about itself: a verb agreeing with a count would
-    otherwise be a word dropped into a frame. Saying nothing where every
-    account is counted would leave silence standing for completeness, which is
-    the one thing silence never means.
-
-    **And where every account is counted, the sentence still says whether
-    anything else is missing.** This sentence answers how many accounts; a
-    person reads it as whether this is everything. Standing "every account you
-    hold is counted here" over a read that declares itself short of something —
-    a document read and not posted, a side it could not place — is false in the
-    way the sentence is actually read, whatever it is true of.
-
-    It resolves itself rather than handing off. What else is short of whole is
-    said on a figure, and a figure is a different card and may be one of
-    several, so a sentence relying on the line after it relies on a layout it
-    cannot see."""
+    When every recorded account is counted, the point's declared completeness
+    still decides whether omitted vault information must be disclosed. That
+    qualification stands in the panel sentence itself; per-figure disclosures
+    remain independent and unchanged. Empty pictures make no completeness claim.
+    """
     if not figures:
         return moment(PICTURE + "no_figure")
     counted, held = _reach(point, figures, vault_accounts)
@@ -580,26 +555,16 @@ def _covers(point: dict, figures: list, vault_accounts: set) -> str:
 
 def _reach(point: dict, figures: list,
            vault_accounts: set) -> tuple[int, int]:
-    """How many accounts the panel counts, against how many a person holds.
+    """Rendered account count against the known vault account population.
 
-    The numerator is read off the figures the panel renders — the accounts
-    those figures declare they stand on — so it cannot say more than what is
-    on the screen. A figure kept back takes its accounts out of the count by
-    not being there, which is the only way a count and a screen stay in step
-    without either being told about the other.
+    The denominator unions the accounts the point valued, skipped or could not
+    measure with every account recorded in the vault. An account introduced by
+    a ruling may not yet have a posting or measurement, so neither set alone
+    describes that population. Neither set attests to accounts outside the vault.
 
-    The denominator is the union of two declared sets: every account the read
-    ranged over — those that contributed a line, those it refused a figure for,
-    and those it has never seen a balance of — and every account the vault
-    holds. Neither alone is authority for this claim. **The point is
-    authoritative about what it valued and is not authoritative about what is
-    held:** an account a ruling brought into being that nothing has yet been
-    posted to is in no line, no refusal and no skip, so a denominator taking
-    the point's word for it would report a person's whole picture as covered
-    while something they hold sat outside it, with nothing red.
-
-    One account counted once however many of the two sets hold it, and the
-    number does not shrink because a figure could not be shown."""
+    Each account is counted once, and withholding a figure never shrinks the
+    denominator. The numerator comes only from the figures actually displayed.
+    """
     counted = {str(account) for figure in figures
                for account in figure["record_ids"] if account}
     held = {str(line.get("account", ""))

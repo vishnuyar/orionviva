@@ -1710,7 +1710,7 @@
                   "open_transaction"
                 ],
                 "item_id": "question:merchant:possible transfer to savings",
-                "label": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. (This looks like a payment to a person, so I'll only apply your answer here \u2014 not as a rule.)",
+                "label": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. I'll apply your answer only to this transaction, without creating a rule for other transactions.",
                 "primary_action": "open_transaction",
                 "question_id": "merchant:possible transfer to savings",
                 "question_kind": "merchant",
@@ -1765,7 +1765,7 @@
                   "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
                 }
               ],
-              "text": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. (This looks like a payment to a person, so I'll only apply your answer here \u2014 not as a rule.)",
+              "text": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. I'll apply your answer only to this transaction, without creating a rule for other transactions.",
               "why": "I don't yet have a category for this merchant."
             },
             {
@@ -1792,7 +1792,7 @@
                 "primary_action": "open_transaction",
                 "question_id": "nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
                 "question_kind": "nature",
-                "reason": "The description names how the money moved, not who received it \u2014 so I have to ask about each one separately.",
+                "reason": "I don't yet know what this transaction was for, so I'm asking about this transaction separately.",
                 "refs": {
                   "account": "",
                   "candidates": [],
@@ -1882,7 +1882,7 @@
                 }
               ],
               "text": "2026-06-22: possible transfer to savings \u2014 USD 275.00. Could you tell me what this one was for?",
-              "why": "The description names how the money moved, not who received it \u2014 so I have to ask about each one separately."
+              "why": "I don't yet know what this transaction was for, so I'm asking about this transaction separately."
             },
             {
               "amount": "275.00",
@@ -3488,7 +3488,7 @@
           },
           "issues": [],
           "picture": {
-            "coverage": "7 of the 9 accounts you hold are counted here, so this is not the whole of what you hold.",
+            "coverage": "7 of the 9 accounts recorded in this vault are counted here.",
             "figures": [
               {
                 "as_of": "2026-09-30",
@@ -4099,7 +4099,7 @@
                       "open_transaction"
                     ],
                     "item_id": "question:merchant:possible transfer to savings",
-                    "label": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. (This looks like a payment to a person, so I'll only apply your answer here \u2014 not as a rule.)",
+                    "label": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. I'll apply your answer only to this transaction, without creating a rule for other transactions.",
                     "primary_action": "open_transaction",
                     "question_id": "merchant:possible transfer to savings",
                     "question_kind": "merchant",
@@ -4133,7 +4133,7 @@
                     "merchant": "possible transfer to savings"
                   },
                   "id": "question:merchant:possible transfer to savings",
-                  "label": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. (This looks like a payment to a person, so I'll only apply your answer here \u2014 not as a rule.)",
+                  "label": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. I'll apply your answer only to this transaction, without creating a rule for other transactions.",
                   "marker": "?",
                   "marker_label": "Viva needs an answer",
                   "primary_action": "open_transaction",
@@ -4166,7 +4166,7 @@
                     "primary_action": "open_transaction",
                     "question_id": "nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
                     "question_kind": "nature",
-                    "reason": "The description names how the money moved, not who received it \u2014 so I have to ask about each one separately.",
+                    "reason": "I don't yet know what this transaction was for, so I'm asking about this transaction separately.",
                     "refs": {
                       "account": "",
                       "candidates": [],
@@ -4200,7 +4200,7 @@
                   "marker": "?",
                   "marker_label": "Viva needs an answer",
                   "primary_action": "open_transaction",
-                  "reason": "The description names how the money moved, not who received it \u2014 so I have to ask about each one separately.",
+                  "reason": "I don't yet know what this transaction was for, so I'm asking about this transaction separately.",
                   "status": "open",
                   "target": {
                     "account_id": "acct:everyday-checking",

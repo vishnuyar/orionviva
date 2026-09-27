@@ -1,3 +1,4 @@
+import { within } from "@testing-library/react";
 import { act, fireEvent, render, waitFor, createRef, userEvent,
   afterEach, beforeEach, describe, expect, it, vi, App,
   ConversationDialogShell, moments, sampleVault, SAVED_NO_READER,
@@ -22,7 +23,7 @@ describe("conversation questions and corrections", () => {
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
         if (operation === "viva.conversation.decline") {
           setAside = true;
-          return { protocol: "1.0", request_id: "decline", ok: true, result: { kind: "completed", message: "Set aside until something changes.", state: null, reason: null } as T };
+          return { protocol: "1.0", request_id: "decline", ok: true, result: { kind: "set_aside", message: "Set aside until something changes.", state: null, reason: null } as T };
         }
         const surface = payload.surface;
         const data = surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { as_of: "2026-08-18", accounts: [] }, accounts: { as_of: "2026-08-18", accounts: [] }, error: "" }
@@ -54,6 +55,7 @@ describe("conversation questions and corrections", () => {
       await waitFor(() => expect(getByRole("heading", { name: "What is this payment for?" })).toBeInTheDocument());
       await waitFor(() => expect(document.getElementById("selected-question-title")).toHaveFocus());
       expect(getAllByRole("status").some((status) => status.textContent?.includes("Set aside until something changes."))).toBe(true);
+      expect(within(getByRole("dialog", { name: "Review question" })).queryByText(/no longer knows what is still open/)).not.toBeInTheDocument();
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -119,7 +121,7 @@ describe("conversation questions and corrections", () => {
     }
   });
 
-  it("gives focus somewhere to land when the read after a write fails, and says the queue is unread", async () => {
+  it.each(["failed", "inconsistent"] as const)("keeps the set-aside receipt and unconfirmed queue accessible inside the dialog after a %s reread", async (reread) => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     let setAside = false;
@@ -128,14 +130,15 @@ describe("conversation questions and corrections", () => {
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
         if (operation === "viva.conversation.decline") {
           setAside = true;
-          return { protocol: "1.0", request_id: "decline", ok: true, result: { kind: "completed", message: "Set aside until something changes.", state: null, reason: null } as T };
+          return { protocol: "1.0", request_id: "decline", ok: true, result: { kind: "set_aside", message: "Set aside until something changes.", state: null, reason: null } as T };
         }
         const surface = payload.surface;
-        if (surface === "conversation" && setAside) throw new Error("bounded read failure");
+        if (surface === "conversation" && setAside && reread === "failed") throw new Error("bounded read failure");
         const data = surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { as_of: "2026-08-18", accounts: [] }, accounts: { as_of: "2026-08-18", accounts: [] }, error: "" }
           : surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
             : surface === "conversation" ? { turns: [], questions: [reviewBoundQuestion({ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." })], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
+              : surface === "review" && setAside && reread === "inconsistent" ? reviewQuestionPayload([])
               : surface === "review" ? reviewQuestionPayload([{ id: "first-question", text: "Is this your account?", why: "Account identity is unresolved." }])
               : surface === "trust" ? trustPayload
                 : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
@@ -145,7 +148,7 @@ describe("conversation questions and corrections", () => {
     };
 
     try {
-      const { getAllByRole, getByLabelText, getByRole, getByText } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -155,10 +158,13 @@ describe("conversation questions and corrections", () => {
 
       await user.click(getByRole("button", { name: "Set aside for now" }));
 
-      // A failed post-write refresh retains the prior queue and marks it stale.
-      await waitFor(() => expect(getByText("The action finished, but some surfaces could not be read again. Anything still shown there may be stale.")).toBeInTheDocument());
-      expect(getAllByRole("status").some((status) => status.textContent?.includes("Set aside until something changes."))).toBe(true);
-      expect(document.activeElement).not.toBe(document.body);
+      const dialog = getByRole("dialog", { name: "Review question" });
+      const qualification = "This screen could not read the queue afterwards, so it no longer knows what is still open.";
+      await waitFor(() => expect(within(dialog).getByText(qualification)).toBeInTheDocument());
+      expect(within(dialog).getByText("Question set aside")).toBeInTheDocument();
+      expect(within(dialog).getByText("Set aside until something changes.")).toBeInTheDocument();
+      expect(within(dialog).getAllByRole("status").some((status) => status.textContent?.includes("Question set aside") && status.textContent.includes(qualification))).toBe(true);
+      expect(dialog.contains(document.activeElement)).toBe(true);
     } finally {
       window.orionVivaBridge = previousBridge;
     }

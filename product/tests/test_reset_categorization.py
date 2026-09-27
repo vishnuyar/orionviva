@@ -27,7 +27,7 @@ def _stamp(f, doc_id):
 def _seed_vault(directory):
     """A vault with a real card statement AND categorization overlays on top."""
     vault = Vault.open(directory, "pw")
-    txns = [("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00"),
+    txns = [("2026-01-05", "HARBOR GOODS #1234", "50.00"),
             ("2026-01-06", "NETFLIX.COM", "15.00"),
             ("2026-01-08", "COSTCO WHSE #123", "80.00")]
     total = sum(Decimal(a) for _, _, a in txns)
@@ -44,7 +44,7 @@ def _seed_vault(directory):
     # Overlay categorization three ways: merchant enrichment (MerchantEnriched)
     # and one per-transaction human ruling (CategoryAssigned).
     enrich_merchants(vault.ledger, Catalog(),
-                     lambda p: ('{"amzn mktp us":{"category":"shopping"},'
+                     lambda p: ('{"harbor goods":{"category":"shopping"},'
                                 '"netflix com":{"category":"entertainment",'
                                 '"subcategory":"streaming"},'
                                 '"costco whse":{"category":"groceries"}}'),

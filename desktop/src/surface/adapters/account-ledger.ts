@@ -107,8 +107,8 @@ export function adaptAccountLedger(raw: unknown): AccountLedgerData | null {
   const account = raw.account;
   if (!accountId || !revision || !isRecord(account) || !exact(account, ["id", "name", "number_masked", "type", "currency", "balance"])) return null;
   const accountType = ACCOUNT_TYPES.find((item) => item === account.type);
-  const name = nonblank(account.name); const maskedNumber = nonblank(account.number_masked); const currency = nonblank(account.currency);
-  if (account.id !== accountId || !accountType || !name || !maskedNumber || !/^\u2022{4}\d{4}$/.test(maskedNumber) || !currency) return null;
+  const name = nonblank(account.name); const maskedNumber = account.number_masked; const currency = nonblank(account.currency);
+  if (account.id !== accountId || !accountType || !name || typeof maskedNumber !== "string" || (maskedNumber !== "" && (maskedNumber.length !== 8 || !/^\u2022{4}\d{4}$/.test(maskedNumber))) || !currency) return null;
   const parsedBalance = balance(account.balance, accountType);
   if (!parsedBalance) return null;
 

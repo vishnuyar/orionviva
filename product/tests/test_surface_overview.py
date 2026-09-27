@@ -316,7 +316,7 @@ def test_the_picture_says_how_far_it_reaches_and_names_no_total_doing_it():
     A person holding money in two currencies meets two totals and no third, so
     a sentence opening "this total" would name either a figure nothing may
     compose or one of the two, of which it is false. What the panel says is how
-    much of what they hold is counted here, which is true at one currency and
+    much of what the vault records is counted here, true at one currency and
     at four."""
     picture = _picture()
 
@@ -900,7 +900,7 @@ def test_a_refused_gap_that_names_no_remedy_cannot_be_built_at_all():
 
 
 def _two_currencies():
-    """A vault where every account a person holds is valued, in two
+    """A vault where every recorded account is valued, in two
     currencies — so the panel's own sentence is the all-accounts one."""
     return [
         account_opened("acct:home", "depository", "Everyday Checking", "USD",
@@ -1267,14 +1267,13 @@ def test_the_shapes_no_vault_reaches_are_each_exercised_somewhere():
 
 def test_the_denominator_sees_an_account_no_read_has_ever_met():
     """The point is authoritative about what it valued. It is not authoritative
-    about what is held.
+    about every account recorded in the vault.
 
     A ruling brings an account into being by naming it on a leg. One nothing
     has yet been posted to reaches no read at all — every read that would find
     it finds it through movements it has none of — so it is in no line, no
-    refusal and no skip. A denominator taking the point's word for what a
-    person holds would report their whole picture as covered while something
-    they hold sat outside it, and nothing would go red.
+    refusal and no skip. A denominator taking the point alone would report
+    every recorded account as covered while a known account sat outside it.
 
     Two declared sets, compared as data: neither can shrink the count on its
     own."""

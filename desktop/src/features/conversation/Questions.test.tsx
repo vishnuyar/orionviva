@@ -2,6 +2,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ActionOutcomeView, FeatureResult, QuestionSlot, QuestionActionState, QuestionQueueData, QuestionView } from "../../surface/types";
 import { Questions } from "./Questions";
+import currentMoments from "../../../../product/viva/persona/pack-v46/moments.json";
 import moments from "../../../../product/viva/persona/pack-v31/moments.json";
 
 const question = (id: string, overrides: Partial<QuestionView> = {}): QuestionView => ({ id, label: "Returned question", detail: "Returned reason", status: "Read only", action: "", type: "identity", evidence: "", state: "needs_input", outcome: null, disposition: null, scope: "account", count: 7, amount: "101.25", currency: "USD", ...overrides });
@@ -17,6 +18,23 @@ const inert = { state: { state: "idle" } as const, onAnswer: noAnswer, onDecline
 const acted = (state: QuestionActionState) => ({ state, onAnswer: noAnswer, onDecline: noAction });
 
 describe("Questions inside the conversation", () => {
+  it.each([
+    ["question_changed", currentMoments.reply_question_changed],
+    ["movement_required", currentMoments.reply_select_transaction],
+  ])("announces a %s refusal and its recovery without claiming an answer", (reason, message) => {
+    const actions = acted({ state: "settled", questionId: "live-question", verb: "answer",
+      result: { state: "settled", outcome: { kind: "refused", message, reason } } });
+    const { getByRole, getByText, queryByText } = render(<Questions
+      result={ready(data([question("live-question")]))} selectedQueue="live-question"
+      onSelectQueue={noAction} actions={actions} />);
+    expect(getByRole("status")).toHaveTextContent(message);
+    expect(getByRole("status")).toHaveAttribute("aria-live", "polite");
+    expect(getByText(message)).toBeVisible();
+    expect(queryByText("Answered")).not.toBeInTheDocument();
+    expect(queryByText(reason)).not.toBeInTheDocument();
+    expect(queryByText(/invalid request/i)).not.toBeInTheDocument();
+  });
+
   it("renders live fields exactly and never combines supplied amount and currency", () => {
     const live = question("live-question");
     const { container, getByRole, getByText, queryByText, queryByRole } = render(<Questions result={ready(data([live]))} selectedQueue="live-question" onSelectQueue={noAction} actions={inert} />);

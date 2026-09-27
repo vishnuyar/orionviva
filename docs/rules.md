@@ -113,7 +113,7 @@ What a person may be asked to know, see and confirm.
 | --- | --- | --- | --- | --- |
 | **X1** | Target user skill: "can install an app" | **unmet** | [design-invariants.md](design-invariants.md) | — |
 | **X2** | Uncertainty is visible, never decorative | enforced *(exception)* | [design-invariants.md](design-invariants.md) | `test_every_grade_a_figure_can_carry_has_a_reviewed_sentence` |
-| **X3** | Irreversible actions wait for an explicit yes | enforced | [design-invariants.md](design-invariants.md) | `test_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched` |
+| **X3** | Irreversible actions wait for an explicit yes | enforced for held financial proposals; audit/direct-answer exceptions documented | [design-invariants.md](design-invariants.md) | `test_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched` |
 
 ## SPINE — how the documents themselves work
 
@@ -214,7 +214,7 @@ What counts as spending, what a category is, how two accounts are recognized as 
 | **MON-49** | every question declares what structure an answer has | enforced | [the-question-queue.md](the-question-queue.md) | `test_the_model_never_supplies_a_figure` |
 | **MON-50** | a substantive answer has no button payload | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_reply_she_could_not_read_leaves_the_question_where_it_was` |
 | **MON-51** | confirmation is an explicit typed decision (X3) | enforced | [the-question-queue.md](the-question-queue.md) | `test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
-| **MON-52** | a nature question is raised only where the evidence is weak | enforced | [the-question-queue.md](the-question-queue.md) | `test_an_ordinary_known_merchant_is_never_asked_about`, `test_import_defaults_peer_payments_before_asking_questions` |
+| **MON-52** | a nature question is raised only where the evidence is weak | enforced-with-exception | [the-question-queue.md](the-question-queue.md) | `test_an_ordinary_known_merchant_is_never_asked_about`, `test_import_defaults_peer_payments_before_asking_questions` |
 | **MON-53** | a rhythm question is one proposal per counterparty and direction, licensed by the catalog | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_standing_prior_raises_one_grouped_proposal_per_pair` |
 | **MON-54** | a stake is money already measured | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_question_is_ranked_on_money_already_measured` |
 | **MON-55** | a cash withdrawal is a spend until an unexplained asset says otherwise | **unmet** | [the-question-queue.md](the-question-queue.md) | — |
@@ -252,7 +252,7 @@ What counts as spending, what a category is, how two accounts are recognized as 
 | **MON-87** | two different unknowns, and only one is a trust problem | enforced | [net-worth.md](net-worth.md) | `test_a_liability_from_cash_flow_alone_is_refused_and_named` |
 | **MON-88** | reuse the grade ladder; do not invent an issued/asserted badge | enforced | [net-worth.md](net-worth.md) | `test_provable_is_the_existing_grade_not_a_new_badge` |
 | **MON-89** | subtotal per currency; never convert | enforced | [net-worth.md](net-worth.md) | `test_two_currencies_give_two_subtotals_and_no_grand_total` +2 |
-| **MON-90** | a peer descriptor is ruled per transaction, never everywhere | enforced | [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md) | `test_a_peer_payment_is_scoped_to_itself_not_a_rule` |
+| **MON-90** | a peer descriptor is ruled per transaction, never everywhere | enforced | [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md) | `test_a_peer_payment_is_scoped_to_itself_not_a_rule`, `test_merchant_answer_writes_only_displayed_population` |
 | **MON-91** | a custom category is personal, and what crosses to a model is the shareable part of the vocabulary | enforced | [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md) | `test_the_known_vocabulary_is_what_every_minting_path_is_offered` |
 | **MON-92** | a per-transaction assignment can say what a movement *is* | enforced | [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md) | `test_a_human_ruling_beats_the_implication` |
 | **MON-93** | the spending answer says what its total is made of | enforced *(exception)* | [categorization-and-spending.md](categorization-and-spending.md) | `test_answer_spending_reports_categories` |
@@ -292,12 +292,12 @@ How a read is bounded, what a figure declares, and how a sentence is built from 
 | **PROJ-27** | four majors, fixed at the top and free below | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_the_major_is_fixed_code_and_everything_below_it_is_data` |
 | **PROJ-28** | the chart of accounts is materialized by the projection | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_i_bought_a_car_stops_being_spending_with_no_reingest` |
 | **PROJ-29** | an unknown split is its own nature | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_a_compound_payment_is_neither_counted_nor_dropped` |
-| **PROJ-30** | only a major that brings a thing into being opens an account | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_ordinary_spending_creates_no_account` |
+| **PROJ-30** | only a major that brings a thing into being opens an account | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_registration_preflight_checks_all_entries_before_writing` + `test_named_components_are_preserved_without_registration` |
 | **PROJ-31** | resolution asks only when ambiguous | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_resolution_asks_only_when_ambiguous` |
-| **PROJ-32** | confirmation is scoped to the account, not to every parse | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
+| **PROJ-32** | confirmation covers account changes and expense/income naming hints | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
 | **PROJ-33** | every asserted account invites the document that would prove it | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_the_corroboration_ask_is_the_path_from_asserted_to_issued` |
 | **PROJ-34** | what a counterparty implies is impersonal knowledge, learned once | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_a_counterparty_that_implies_structure_is_proposed_not_asked` |
-| **PROJ-35** | three tiers, and the rule is ask only where the counterparty cannot tell us | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_an_ordinary_counterparty_is_settled_and_silent` |
+| **PROJ-35** | three tiers, and the rule is ask only where the counterparty cannot tell us | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_an_ordinary_counterparty_is_settled_and_silent`, `test_abstention_and_private_business_preserve_tiers` |
 | **PROJ-36** | direction is part of the implication, never a branch in the caller | enforced *(exception)* | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_the_same_counterparty_means_opposite_things_by_direction` |
 | **PROJ-37** | the confidence ladder decides how decisively an implication is applied | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_forced_is_decisive_and_suggested_says_it_is_not` |
 | **PROJ-38** | a model writes the rules and deterministic code applies them | by-review *(exception)* | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | — |
@@ -507,7 +507,7 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-47** | a kind with no schema asks nothing and records the gap | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_kind_with_no_schema_asks_nothing_and_records_the_gap` |
 | **VOICE-48** | every question says what it unlocks, and a choice enumerates its alternatives | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_question_must_say_what_it_unlocks` |
 | **VOICE-49** | what a document already said is not asked again | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_what_a_statement_already_said_is_not_asked_again` |
-| **VOICE-50** | a Proposal is the only path to a change, and it is never applied unconfirmed | enforced | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_applying_is_a_separate_explicit_act` |
+| **VOICE-50** | a Proposal is the only path to a change, and it is never applied unconfirmed | enforced for held financial proposals; audit/direct-answer exceptions documented | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_applying_is_a_separate_explicit_act` |
 | **VOICE-51** | the interpreter never supplies a figure | enforced | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_the_model_never_supplies_a_figure` |
 | **VOICE-52** | the interpreter is an edge, quarantined like the reader | enforced | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_the_interpreter_is_configured_separately_and_can_be_local` |
 | **VOICE-53** | with no model configured, nothing is guessed and the queue still works | enforced | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_with_no_model_nothing_is_guessed` |

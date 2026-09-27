@@ -1059,13 +1059,14 @@ def test_revision_binds_registered_resolver_identity(tmp_path: Path):
     canonical = _event_store(tmp_path, _corpus())
     with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
         with pytest.raises(ReadStoreError, match="not registered"):
-            reads.synchronize(canonical, resolver_version="resolver-v2")
+            reads.synchronize(canonical, resolver_version="resolver-unregistered")
         reads.synchronize(canonical)
         with reads.open_reader() as revision:
-            assert revision.resolver_version == "resolver-v1"
-            assert callable(revision.resolver(expected_version="resolver-v1"))
-            with pytest.raises(ReadStoreError, match="not 'resolver-v2'"):
-                revision.resolver(expected_version="resolver-v2")
+            from viva.read_store.store import RESOLVER_VERSION
+            assert revision.resolver_version == RESOLVER_VERSION
+            assert callable(revision.resolver(expected_version=RESOLVER_VERSION))
+            with pytest.raises(ReadStoreError, match="not 'resolver-unregistered'"):
+                revision.resolver(expected_version="resolver-unregistered")
 
 
 def test_resolver_snapshot_hash_has_versioned_domain_and_semantic_binding():

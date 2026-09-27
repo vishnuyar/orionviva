@@ -6,6 +6,8 @@ retain descriptor candidates and rank records by grade, then key order.
 
 from __future__ import annotations
 
+from merchantcore.resolve import resolve_descriptor
+
 from ..events import SCOPE_MERCHANT
 from ..merchant_keys import MerchantKeys
 from ..merchants import normalize_merchant
@@ -47,6 +49,12 @@ def merchant_keys_of(core: ProjectionCore, m) -> tuple:
         return cached
     descriptor_key = normalize_merchant(m.description)
     key_map = merchant_key_map(core)
+    insufficient = key_map.identity_insufficient.get((m.account, m.description))
+    if insufficient is None:
+        insufficient = resolve_descriptor(m.description).identity_insufficient
+    if insufficient:
+        core._mkeys_of[(m.account, m.description)] = ("",)
+        return ("",)
     brand_key = key_map.get((m.account, m.description), descriptor_key)
     structural = key_map.candidates.get((m.account, m.description), ())
     aliases: dict[str, str] = {}
@@ -60,8 +68,7 @@ def merchant_keys_of(core: ProjectionCore, m) -> tuple:
                 aliases[alias] = merchant_id
     canonical = next((aliases[candidate] for candidate in structural
                       if candidate in aliases and candidate not in conflicted), "")
-    ordered = [canonical, brand_key, *structural, descriptor_key]
-    keys = tuple(dict.fromkeys(key for key in ordered if key)) or ("",)
+    keys = candidate_keys(canonical, brand_key, structural, descriptor_key)
     core._mkeys_of[(m.account, m.description)] = keys
     return keys
 
@@ -84,17 +91,29 @@ def is_person(core: ProjectionCore, m) -> bool:
     return (m.account, m.description) in merchant_key_map(core).persons
 
 
-def merchant_graded(core: ProjectionCore, get, m) -> dict | None:
-    """The highest-graded record `get(key)` finds among the candidates, or
-    None. Ties go to the first candidate, which is the brand."""
+def candidate_keys(canonical, brand, structural, descriptor) -> tuple:
+    """Ordered identity candidates, with the grouping key leading ties."""
+    return tuple(dict.fromkeys(key for key in
+        (canonical, brand, *structural, descriptor) if key)) or ("",)
+
+
+def record_for_keys(keys, get) -> dict | None:
+    """Highest graded candidate record; ties retain the first candidate."""
     best = None
-    for key in merchant_keys_of(core, m):
+    for key in keys:
+        if not key:
+            continue
         found = get(key)
         if found is None:
             continue
         if best is None or _grade_rank(found.get("grade")) > _grade_rank(best.get("grade")):
             best = found
     return best
+
+
+def merchant_graded(core: ProjectionCore, get, m) -> dict | None:
+    """Select a record with the movement's complete ordered identity evidence."""
+    return record_for_keys(merchant_keys_of(core, m), get)
 
 
 def merchant_record(core: ProjectionCore, m) -> dict | None:

@@ -158,7 +158,7 @@ def main() -> int:
     recurring = [(s, f) for s, f in flows if f.recurring]
     cp_moves = sum(s.n for s in streams)
     print(f"\n    {len(recurring)} recurring flow(s) in "
-          f"{len({s.key for s, _f in recurring})} stream(s), covering "
+          f"{sum(s.recurring for s in streams)} stream(s), covering "
           f"{sum(f.n for _s, f in recurring)} of {cp_moves} counterparty movement(s)")
     for label in ("fixed", "variable", "unknown"):
         n = sum(1 for _s, f in recurring if f.amount_stability == label)

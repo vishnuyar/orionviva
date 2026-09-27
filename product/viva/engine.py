@@ -115,6 +115,16 @@ def _write_answer(vault: Vault, q, parsed, spoken: str) -> dict:
         return {"ok": True, "linked": False}
 
     if q.kind == MERCHANT:
+        from .question_evidence import decide, group_decision
+
+        projection = vault.ledger.projection()
+        members = [m for m in projection.uncategorized_expenses()
+                   if projection.merchant_key_of(m) == refs["merchant"]]
+        decision = group_decision(decide(m.description, projection.counterparty_kind(m))
+                                  for m in members)
+        if q.scope != "one" and not decision.generalizes:
+            return {"ok": False, "why": "question_changed",
+                    "message": moment("reply_question_changed")}
         category = parsed.value("category")
         movement_keys = tuple(refs.get("movements") or ())
         if q.scope == "one":
@@ -519,23 +529,31 @@ def record_ruling(vault: Vault, interp, descriptor: str = "",
     into being, the proposal comes back for confirmation with the name the
     person would see, and existing accounts are offered first. Where it names
     nothing at all, the reply is the question rather than a placeholder path.
-    Only an answer that changes nothing structural applies in this request."""
-    from .listen import apply_proposal, propose
+    Original expense/income naming hints also require review, including hints
+    cleared by source-role checks. Empty-hint ordinary answers still apply here."""
+    from .listen import MovementSelectionRequired, propose
     proj = vault.ledger.projection()
     # A `movement_key` scopes the answer to one transaction rather than to every
     # movement sharing the descriptor. The unknown tier — a cheque, an ATM
     # withdrawal, a peer — is asked one at a time for that reason.
-    proposal = propose(proj, interp, descriptor, amount, currency,
-                       movement_key, locale=locale_from_env(),
-                       merchant_key=merchant, movements=movements)
+    try:
+        proposal = propose(proj, interp, descriptor, amount, currency,
+                           movement_key, locale=locale_from_env(),
+                           merchant_key=merchant, movements=movements)
+    except MovementSelectionRequired:
+        return {"ok": False, "why": "movement_required",
+                "message": moment("reply_select_transaction")}
     if proposal.needs_name:
         return {"ok": False, "why": "needs_name",
                 "message": proposal.summary(),
                 "proposal": proposal.to_dict()}
-    if proposal.new_accounts or proposal.confirm_accounts:
+    named_component = any(
+        leg["major"] in ("expense", "income") and leg.get("account_hint", "").strip()
+        for leg in interp.legs)
+    if proposal.new_accounts or proposal.confirm_accounts or named_component:
         return {"ok": True, "confirm": True, "proposal": proposal.to_dict()}
-    applied = apply_proposal(vault.ledger, proposal, _today())
-    return {"ok": True, "confirm": False, **applied}
+    applied = apply_ruling(vault, proposal.to_dict())
+    return {"confirm": False, **applied}
 
 
 def open_kind(vault: Vault, kind: str, name: str = "", secures: str = "",
@@ -627,9 +645,14 @@ def open_kind(vault: Vault, kind: str, name: str = "", secures: str = "",
 def apply_ruling(vault: Vault, proposal: dict) -> dict:
     """Apply a proposal a nature answer produced. The only path from a sentence
     to the ledger. `summary` is dropped; it is display text, not a field."""
-    from .listen import Proposal, apply_proposal
+    from .listen import InvalidAccountRegistration, Proposal, apply_proposal
     fields = {k: v for k, v in proposal.items() if k != "summary"}
-    return {"ok": True, **apply_proposal(vault.ledger, Proposal(**fields), _today())}
+    try:
+        applied = apply_proposal(vault.ledger, Proposal(**fields), _today())
+    except InvalidAccountRegistration:
+        return {"ok": False, "why": "invalid_proposal",
+                "message": moment("reply_invalid_proposal")}
+    return {"ok": True, **applied}
 
 
 def decline_question(vault: Vault, question_id: str,

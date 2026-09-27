@@ -5,7 +5,8 @@ import json
 from datetime import date, timedelta
 from decimal import Decimal
 
-from merchantcore import is_shareable
+from merchantcore import is_shareable, normalize_merchant
+from ..question_evidence import decide, group_decision
 from merchantcore.descriptor import linted_example
 
 from .. import render
@@ -93,6 +94,8 @@ def candidates(connection, *, as_of: str, locale: str = "",
     rows = _rows(connection)
     by_key = {row["movement_key"]: row for row in rows}
     records, _owners, _conflicts = _merchant_records(connection, "9999-12-31")
+    from .question_evidence import movement_records
+    evidence_records = movement_records(connection, rows, records)
     used = sorted({(record.get("category") or "").strip()
                    for record in records.values()} - {""})
     from merchantcore import FALLBACK_CATEGORY, PRIMARY_CATEGORIES
@@ -154,28 +157,33 @@ def candidates(connection, *, as_of: str, locale: str = "",
     groups = {}
     for row in uncategorized:
         key = row["merchant_key"]
-        if not key: continue
+        if not key or not normalize_merchant(row["description"]): continue
         group = groups.setdefault(key, {"amount": Decimal(0), "rows": [],
-            "currency": row["currency"], "example": linted_example(row["description"]),
-            "shareable": is_shareable(row["description"])})
+            "currency": row["currency"], "example": linted_example(row["description"])})
         group["amount"] += abs(row["amount"]); group["rows"].append(row)
     for key, group in groups.items():
-        count = len(group["rows"]); shareable = group["shareable"]
+        count = len(group["rows"])
+        decision = group_decision(decide(row["description"],
+            ((evidence_records.get(row["movement_key"]) or {}).get("attributes") or {}).get(
+                "counterparty_kind", "")) for row in group["rows"])
+        generalizes = decision.generalizes
         text = say("merchant", example=render.merchant({"example": group["example"]}),
                    count=render.count(count), money=render.money(
                        group["amount"], group["currency"], locale=locale))
-        if not shareable: text += " " + say("merchant_peer_note")
+        if decision.kind == "peer": text += " " + say("merchant_peer_note")
+        if not generalizes:
+            text += " " + say(decision.scope_note(count), count=render.count(count))
         out.append(_question(f"merchant:{key}", "merchant", text,
             say("merchant_why"), group["amount"], group["currency"], count,
-            "pattern" if shareable else "one",
+            "pattern" if generalizes else "one",
             (Slot("category", ANSWER_CHOICE, choices=tuple(categories),
                   offered=tuple(x for x in categories if is_shareable(x)), required=True),),
             {"merchant": key, "example": group["example"], "categories": tuple(categories),
-             "movements": [] if shareable else [row["movement_key"] for row in group["rows"]]}))
+             "movements": [] if generalizes else [row["movement_key"] for row in group["rows"]]}))
     singles, structural = [], {}
     for row in expenses:
         if row["nature_reason"] not in ("category_hint", "default"): continue
-        record = records.get(row["merchant_key"]) or {}
+        record = evidence_records.get(row["movement_key"]) or {}
         attrs = record.get("attributes") or {}
         kind = attrs.get("counterparty_kind", "")
         unknown = kind in ("instrument", "peer") or not is_shareable(row["description"])
@@ -194,7 +202,10 @@ def candidates(connection, *, as_of: str, locale: str = "",
             say("nature_single", date=render.date(row["occurred_at"]),
                 description=render.merchant({"example": row["description"]}),
                 money=render.money(amount, row["currency"], locale=locale)),
-            say("nature_single_why"), amount, row["currency"], slots=_ruling_slots(categories),
+            say(decide(row["description"],
+                ((evidence_records.get(row["movement_key"]) or {}).get("attributes") or {}).get(
+                    "counterparty_kind", "")).nature_reason),
+            amount, row["currency"], slots=_ruling_slots(categories),
             refs={"movement": row["movement_key"], "movements": [row["movement_key"]],
                   "descriptor": row["description"], "category": row["category"],
                   "subcategory": row["subcategory"]}))

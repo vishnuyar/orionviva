@@ -1293,7 +1293,15 @@ screen or navigation, and timeout cleanup leaves no runaway process.
   when an attempt succeeds. Failure retains stale data when one exists and
   otherwise becomes degraded; the same resident worker can retry without a
   reopen or canonical write replay.
-- Close, source replacement, and the worker deadline terminate and reap the
+- A correctly correlated completion from the current worker ends its attempt's
+  deadline immediately on receipt, even when the interface is idle. Dispatch
+  installs attempt state and sends under the lifecycle lock; receipt uses that
+  lock too. Deadline arbitration has a separate lock so timeout termination can
+  unblock a stalled pipe writer before lifecycle cleanup. Foreground polling
+  still authenticates the durable source against two canonical reads before
+  advertising a current publication. Malformed, obsolete-process, old-token,
+  duplicate, and post-timeout replies cannot acknowledge another attempt.
+- Close, source replacement, and an unfinished attempt's deadline terminate and reap the
   worker. Termination escalates to kill and completes within two seconds.
   Projection work never occupies the foreground JSON-lines request loop, so
   Jobs and other requests remain answerable.
@@ -1344,7 +1352,10 @@ post-head lost acknowledgements by reopening the authenticated canonical head
 before SQL synchronization. It accepts only the legal whole-batch prefixes,
 never repeats the write, and checks the old held revision until catch-up.
 The reply matrix refuses a false success after SQL metadata interruption,
-then catches up without replay and rejects the late old-token reply.
+then catches up without replay and rejects the late old-token reply. Completion
+lifecycle coverage also exercises immediate replies during dispatch, idle time
+beyond a completed attempt's deadline followed by a synthetic decline, and
+hard termination while dispatch holds the lifecycle lock on a full stdin pipe.
 
 Internal macOS arm64 packaged packet: a fresh PyInstaller sidecar was staged
 in an isolated temporary build tree, then Tauri built `OrionViva.app` there

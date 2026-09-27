@@ -215,7 +215,7 @@ The desktop takes a vault passphrase and model details without requiring a termi
 **Exception:** assertion 1 holds for the grade line the machine places and not for the prose a model writes around a hole; nothing stops a model typing a strength word into its own clause text ([ADR-013](decisions/ADR-013-the-shape-before-the-data.md), *Exception*).
 
 ### X3 — Irreversible actions wait for an explicit yes
-**State:** enforced
+**State:** enforced for held financial proposals; audit/direct-answer exceptions documented
 **Code:** product/viva/engine.py:165 · product/viva/engine.py:162
 **Test:** product/tests/test_ask.py::test_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched
 
@@ -224,6 +224,19 @@ The desktop takes a vault passphrase and model details without requiring a termi
 3. A confirmation that never arrives leaves the ledger exactly as it was.
 4. What the design excludes is a channel that writes with nobody saying anything, not a second function with this gate between its halves.
 5. A loop that cannot confirm cannot satisfy this invariant at all.
+
+**Scoped implementation qualification (normative assertions above unchanged):**
+The engine appends interpretation and conversation/proposal audit events before a
+held financial proposal is confirmed, so assertion 3 is not literally enforced
+for every ledger event. Financial rulings, category assignments and account
+registrations remain unapplied for held proposals. The existing direct-answer
+path also applies ordinary expense/income answers with empty hints immediately
+when no structural confirmation trigger exists; this is an implementation
+exception to the unqualified confirmation promise, not a weakening of X3.
+Original nonempty expense/income hints now require review even when normalized
+to a default, and that hold survives durable reload. Evidence:
+`product/tests/test_fee_account_hint_boundary.py::test_hint_review_survives_durable_reload_and_confirm_or_decline`
+and `test_empty_hint_ordinary_answer_still_applies_immediately`.
 
 ### SPINE-12 — An invariant joins the checklist by deliberate decision
 **State:** unmet

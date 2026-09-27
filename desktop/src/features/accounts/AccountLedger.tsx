@@ -601,7 +601,7 @@ export function AccountLedger({ accountId, loadingAccountName, requestedReviewTa
 <button ref={backRef} className="text-button" type="button" onClick={onBack}>
 <ChevronLeft className="account-ledger-icon" />{backLabel}</button>
 <div>
-<span className="detail-panel-label">{data.account.type} · {data.account.maskedNumber}</span>
+<span className="detail-panel-label">{data.account.type} · {data.account.maskedNumber || "Account number not shown"}</span>
 <h2>{data.account.name}</h2>{data.account.balance.state === "available" ? <p className="account-ledger-balance">
 <strong>{data.account.balance.display}</strong>
 <span>{data.account.balance.kind === "amount_owed" ? "Amount owed" : "Current balance"} · {data.account.balance.asOf} · Evidence {data.account.balance.grade}</span>

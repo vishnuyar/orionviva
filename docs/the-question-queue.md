@@ -82,13 +82,15 @@
 4. The opened-vault bridge retains the proposed structure and gives the interface only an opaque identity, summary and decision sentence; a client cannot submit replacement legs.
 
 ### MON-52 — a nature question is raised only where the evidence is weak
-**State:** enforced
+**State:** enforced-with-exception
 **Code:** product/viva/questions.py (`_nature_questions`, the import-default and nature-reason guards); product/viva/ledger/projection/tiers.py (`tier_of`)
 **Test:** product/tests/test_questions.py::test_an_ordinary_known_merchant_is_never_asked_about, product/tests/test_categorize.py::test_import_defaults_peer_payments_before_asking_questions
 
 1. A movement is asked about only where its nature rests on a category hint or the plain default and no statement-import default already supplies a usable first answer. Anything a link, an own account or a ruling settled is not asked about again, at any tier.
 2. A settled counterparty raises nothing; a counterparty implying a relationship raises one grouped proposal; an instrument or a peer raises one question per movement; an unidentified merchant raises the merchant question instead, so the two never collide.
 3. There is no list of capital-looking categories anywhere — leverage ranking is the filter (I5).
+
+**Existing implementation drift:** privacy-refused unresolved spending can produce both merchant and nature questions. The no-collision policy in assertion 2 remains the intended policy; the evidence-and-scope repair neither ratifies nor resolves that collision. The active persona pack is `pack-v48`, which preserves `pack-v47` coverage wording about accounts recorded in the vault and adds only a scoped invalid-proposal refusal. All earlier packs remain immutable for recorded questions. A refused sharing check does not identify a person or channel. Canonical and indexed wording uses typed evidence or neutral uncertainty, and a grouped claim must be supported by every member.
 
 ### MON-53 — a rhythm question is one proposal per counterparty and direction, licensed by the catalog
 **State:** enforced

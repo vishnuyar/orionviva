@@ -34,7 +34,7 @@
     },
     "interpret": {
       "in": "prompts",
-      "active": "interpret-v3"
+      "active": "interpret-v4"
     },
     "interpret_retry": {
       "in": "prompts",
@@ -42,7 +42,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v45"
+      "active": "pack-v48"
     },
     "schema_pack": {
       "in": "schemas",
@@ -237,9 +237,13 @@
     "pack-v39": "643801b4964312fe",
     "pack-v40": "23635571e7912ba5",
     "pack-v41": "0d16d1df2252a9a2",
-      "pack-v42": "572cf601a62fcd1e",
-      "pack-v43": "5f409d119e08c06d",
-      "pack-v44": "4104975265aa9c7e",
-      "pack-v45": "8eec7e3a7d8063a3"
+    "pack-v42": "572cf601a62fcd1e",
+    "pack-v43": "5f409d119e08c06d",
+    "pack-v44": "4104975265aa9c7e",
+    "pack-v45": "8eec7e3a7d8063a3",
+    "pack-v46": "61e41450b955e6e4",
+    "pack-v47": "78b2937f9fc156f1",
+    "interpret-v4": "e91e7d9afd9e132c",
+    "pack-v48": "e77e781b89b0c766"
   }
 }

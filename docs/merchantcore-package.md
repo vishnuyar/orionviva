@@ -11,7 +11,7 @@
 **Test:** product/tests/test_merchant_enrich.py::test_only_impersonal_hints_cross_the_boundary, product/tests/test_streams.py::test_no_digit_reaches_the_boundary
 
 1. What crosses product → merchantcore is an ordered set of structurally justified, normalized identity candidates and an impersonal example composed of the brand plus context slots.
-2. No amount, date, account, transaction reference or count crosses.
+2. No amount, date, account, transaction reference, private unresolved grouping discriminator or count crosses. A processor-only remainder supplies no independent merchant evidence; its entire hint, including context, is withheld before catalog submission.
 3. `linted_example` removes every span a published rule proves, then every token carrying a digit, then anything shorter than two characters, and truncates.
 4. A linted example is not a guarantee of impersonality on its own; only the slot a value came from settles that (MER-3, MER-13 in [the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md)).
 
@@ -22,7 +22,8 @@
 
 1. `submit` lints every example again, whatever the caller did.
 2. The pending queue persists to plain unencrypted JSON, and anything submitted and never enriched sits in it indefinitely, so the invariant belongs to the store rather than to whoever writes the next caller.
-3. `submit` skips merchants already in the catalog and merchants already queued against the same example, so it is idempotent.
+3. Withholding fresh insufficient hints does not clear historical pending entries. Enrichment consumes the retained pending queue independently; zero model calls are guaranteed only for an isolated fresh all-insufficient batch.
+4. `submit` skips merchants already in the catalog and merchants already queued against the same example, so it is idempotent.
 
 ### MER-22 — An enriched record is graded and stamped
 **State:** enforced
@@ -179,7 +180,7 @@ The trust envelope rides all the way from a document read to a spending answer.
 Two operational rules were forced by real runs. **Chunking is not a tuning knob**:
 an oversized batch does not fail loudly, it returns zero records, which reads
 exactly like "there was nothing to enrich". And **the pending set is every
-uncategorized counterparty, not the expense-shaped ones**: walking only expenses
+eligible uncategorized counterparty, not just the expense-shaped ones**: walking only expenses
 made employers, transfers, card payments and every inflow structurally invisible
 to enrichment — permanently unidentified, never asked about, never settled. It
 surfaced because two instruments that should have agreed did not, one reporting

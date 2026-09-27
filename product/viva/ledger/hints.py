@@ -78,7 +78,7 @@ def enrichment_hints(streams) -> dict:
     out: dict = {}
     withheld: set = set()
     for s in streams:
-        if s.is_person or s.refused:
+        if s.is_person or s.refused or s.identity_insufficient:
             continue
         if s.role not in (COUNTERPARTY, MIXED):
             continue

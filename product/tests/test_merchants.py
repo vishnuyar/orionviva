@@ -54,48 +54,48 @@ def test_peer_payment_is_not_shareable():
 # --- categorize the merchant once, fill every transaction -------------------
 
 def test_merchant_ruling_fills_all_its_transactions(tmp_path):
-    ledger = _card_with([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00"),
-                         ("2026-01-09", "AMZN MKTP US*RH4DD6YM1", "30.00"),
+    ledger = _card_with([("2026-01-05", "HARBOR GOODS #1234", "50.00"),
+                         ("2026-01-09", "HARBOR GOODS #5678", "30.00"),
                          ("2026-01-12", "KROGER #0548", "100.00")], tmp_path)
     proj = ledger.projection()
-    # 2 distinct merchants (two Amazon variants collapse), 3 uncategorized txns.
+    # 2 distinct merchants (two Harbor Goods variants collapse), 3 uncategorized txns.
     assert len(proj.uncategorized_merchants()) == 2
     assert len(proj.uncategorized_expenses()) == 3
 
-    assign_merchant_category(ledger, "AMZN MKTP US*RA30Z3BP0", "shopping")
+    assign_merchant_category(ledger, "HARBOR GOODS #1234", "shopping")
     proj2 = ledger.projection()
-    # BOTH Amazon transactions are now categorized from the one ruling.
+    # BOTH Harbor Goods transactions are now categorized from the one ruling.
     assert proj2.spending_by_category() == {"shopping": Decimal("80.00"),
                                             "other": Decimal("100.00")}
     assert len(proj2.uncategorized_expenses()) == 1        # only Kroger left
 
 
 def test_per_transaction_override_beats_the_merchant_rule(tmp_path):
-    ledger = _card_with([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00"),
-                         ("2026-01-09", "AMZN MKTP US*RH4DD6YM1", "30.00")], tmp_path)
-    amazon_key = normalize_merchant("AMZN MKTP US*RA30Z3BP0")   # the queue's key
-    assign_merchant_category(ledger, amazon_key, "shopping")    # merchant prior
-    amazon1 = next(m for m in ledger.projection().movements() if "RA30Z" in m.description)
-    assign_category(ledger, amazon1.key, "groceries")          # override this one
+    ledger = _card_with([("2026-01-05", "HARBOR GOODS #1234", "50.00"),
+                         ("2026-01-09", "HARBOR GOODS #5678", "30.00")], tmp_path)
+    merchant_key = normalize_merchant("HARBOR GOODS #1234")   # the queue's key
+    assign_merchant_category(ledger, merchant_key, "shopping")    # merchant prior
+    first_movement = next(m for m in ledger.projection().movements() if "#1234" in m.description)
+    assign_category(ledger, first_movement.key, "groceries")          # override this one
     proj = ledger.projection()
     # The overridden one is groceries (verified), the other stays shopping.
     assert proj.spending_by_category() == {"groceries": Decimal("50.00"),
                                            "shopping": Decimal("30.00")}
-    assigned = proj.derived_category(amazon1)
+    assigned = proj.derived_category(first_movement)
     assert assigned["grade"] == "unverified"  # weakest component: fallback finer label
     assert assigned["category_grade"] == "verified"
     assert assigned["subcategory_grade"] == "unverified"
 
 
 def test_batched_categorizer_is_one_call_over_deduped_merchants(tmp_path):
-    ledger = _card_with([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00"),
-                         ("2026-01-09", "AMZN MKTP US*RH4DD6YM1", "30.00"),
+    ledger = _card_with([("2026-01-05", "HARBOR GOODS #1234", "50.00"),
+                         ("2026-01-09", "HARBOR GOODS #5678", "30.00"),
                          ("2026-01-12", "KROGER #0548", "100.00")], tmp_path)
     calls = []
 
     def categorize_fn(merchants):          # {normalized -> example}
         calls.append(sorted(merchants))
-        return {"amzn mktp us": "shopping", "kroger": "groceries"}
+        return {"harbor goods": "shopping", "kroger": "groceries"}
 
     n = categorize_merchants_batch(ledger, categorize_fn, threshold=1)
     assert n == 2 and len(calls) == 1      # ONE call over the 2 deduped merchants
@@ -109,8 +109,8 @@ def test_batched_categorizer_is_one_call_over_deduped_merchants(tmp_path):
 
 
 def test_merchant_ruling_survives_a_replay(tmp_path):
-    ledger = _card_with([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00")], tmp_path)
-    assign_merchant_category(ledger, normalize_merchant("AMZN MKTP US*RA30Z3BP0"), "shopping")
+    ledger = _card_with([("2026-01-05", "HARBOR GOODS #1234", "50.00")], tmp_path)
+    assign_merchant_category(ledger, normalize_merchant("HARBOR GOODS #1234"), "shopping")
     replayed = LedgerProjection(ledger.events())
     assert replayed.spending_by_category().get("shopping") == Decimal("50.00")
 

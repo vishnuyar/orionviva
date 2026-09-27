@@ -341,6 +341,14 @@ def brand_candidate(parse: DescriptorParse) -> str:
     where the retailer belongs leaves nothing usable).
 
     A candidate for identification, not an identity."""
+    return brand_evidence(parse)[0]
+
+
+def brand_evidence(parse: DescriptorParse) -> tuple[str, str]:
+    """Return the existing candidate and the structural slot that supplied it."""
     residue = parse.residue
     usable = any(len(tok) >= 3 and tok.isalpha() for tok in re.split(r"[^A-Za-z]+", residue))
-    return residue if usable else parse.get("aggregator")
+    if usable:
+        return residue, "residue"
+    aggregator = parse.get("aggregator")
+    return aggregator, "aggregator" if aggregator else ""

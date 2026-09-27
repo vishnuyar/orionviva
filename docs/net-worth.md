@@ -88,7 +88,7 @@
 **Code:** product/viva/ledger/networth.py (`NetWorthPoint.complete`, `net_worth` missing/skipped/held)
 **Test:** product/tests/test_networth.py::test_a_point_is_not_complete_while_a_document_sits_held
 
-1. A point is incomplete while anything known to be owed has no usable figure, or while a read document sits unposted.
+1. A point is incomplete while anything known to be owed has no usable figure, or while a read document sits unposted. Completeness describes these known gaps; it does not attest to a complete inventory of accounts outside the vault.
 2. An account the point cannot value is named with the reason, never dropped (product/tests/test_networth.py::test_an_account_it_cannot_value_is_named_not_dropped).
 3. An empty vault reports absence rather than zero (product/tests/test_networth.py::test_an_empty_vault_reports_absence_not_zero).
 

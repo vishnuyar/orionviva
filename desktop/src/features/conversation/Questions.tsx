@@ -46,7 +46,10 @@ function ActionOutcomeNotice({ state, unread, actions }: { state: QuestionAction
   const notice = state.state === "idle" ? null
     : state.state === "working" ? workingPresentation(state.verb)
       : outcomePresentation(state.verb, state.result);
-  const unreadable = notice && state.state === "settled" && unread ? "This screen could not read the queue afterwards, so it no longer knows what is still open." : "";
+  const unconfirmedQueue = state.state === "settled" && state.authoritative === false
+    && state.result.state === "settled"
+    && (state.result.outcome.kind === "completed" || state.result.outcome.kind === "set_aside");
+  const unreadable = notice && state.state === "settled" && (unread || unconfirmedQueue) ? "This screen could not read the queue afterwards, so it no longer knows what is still open." : "";
   const proposal = state.state === "settled" && state.result.state === "settled" && state.result.outcome.kind === "proposal" ? state.result.outcome : null;
   const deciding = actions.state.state === "working";
   const decide = (said: "yes" | "no") => {

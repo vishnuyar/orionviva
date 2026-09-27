@@ -15,7 +15,7 @@ from merchantcore.descriptor import split_ach_heads
 from merchantcore.normalize import normalize_merchant
 from merchantcore.resolve import rail_of, resolve_descriptor
 
-STREAM_VERSION = "stream-v2"
+STREAM_VERSION = "stream-v3"
 
 # Below this many observations a stream is reported but never described as
 # recurring: one interval is not a rhythm.
@@ -241,6 +241,7 @@ class Stream:
     entry_description: str = ""
     refused: bool = False
     identity_candidates: list[str] = field(default_factory=list)
+    identity_insufficient: bool = False
     roles: list = field(default_factory=list)     # one per occurrence
     # Every impersonal value each slot has ever held on this stream, not just
     # the first, so `agreed` can tell a brand-level fact from a per-visit one.
@@ -420,14 +421,17 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
         when = _as_date(m.date)
         # A movement with an unreadable date is skipped rather than defaulted
         # into a rhythm it would put wrong.
-        if not counterparty or when is None:
+        if (not counterparty and not res.identity_insufficient) or when is None:
             continue
-        resolved.append((m, res, counterparty, when))
+        local_party = (("unresolved", m.account, m.description)
+                       if res.identity_insufficient
+                       else ("counterparty", counterparty, m.account))
+        resolved.append((m, res, counterparty, when, local_party))
         if res.channel != "unknown":
-            proven.setdefault((counterparty, m.account), set()).add(res.channel)
+            proven.setdefault(local_party, set()).add(res.channel)
 
     streams: dict = {}
-    for m, res, counterparty, when in resolved:
+    for m, res, counterparty, when, local_party in resolved:
         kind = kind_for(m)
         if not (kind or "").strip():
             raise ValueError(
@@ -435,15 +439,20 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
                 "its money went cannot be read from the posted amount alone"
             )
         role = movement_role(m, kind)
-        rail = rail_of(res, proven.get((counterparty, m.account), ()))
-        st = streams.get((counterparty, rail))
+        rail = rail_of(res, proven.get(local_party, ()))
+        # Exact descriptors distinguish unresolved observations only inside
+        # this local grouping map; they never become merchant or export keys.
+        group = ((m.account, m.description, rail) if res.identity_insufficient
+                 else (counterparty, rail))
+        st = streams.get(group)
         if st is None:
             st = Stream(counterparty=counterparty, channel=rail,
                         is_person=res.is_person, brand=res.brand, layer=res.layer,
                         entry_description=res.fields.get("entry_description", ""),
                         refused=res.refused,
+                        identity_insufficient=res.identity_insufficient,
                         identity_candidates=list(res.identity_candidates))
-            streams[st.key] = st
+            streams[group] = st
         else:
             st.identity_candidates = sorted(set(
                 [*st.identity_candidates, *res.identity_candidates]))
@@ -456,8 +465,9 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
                 st.field_values.setdefault(slot, set()).add(value.strip())
     # Sorted so the output itself is order-independent, not merely the features.
     for st in streams.values():
-        st.occurrences.sort(key=lambda o: (o.date, o.amount, o.description))
+        st.occurrences.sort(key=lambda o: (o.date, o.amount, o.description, o.account))
     for st in streams.values():
         st.roles.sort()                  # order-independent, like the occurrences
     return sorted(streams.values(),
-                  key=lambda s: (-s.n, -float(s.total), s.counterparty, s.channel))
+                  key=lambda s: (-s.n, -float(s.total), s.counterparty, s.channel,
+                                 tuple((o.account, o.description) for o in s.occurrences)))

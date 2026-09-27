@@ -37,7 +37,7 @@ def _stamp(f, doc_id):
 
 
 def test_only_impersonal_hints_cross_the_boundary(tmp_path):
-    ledger = _card([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00"),
+    ledger = _card([("2026-01-05", "HARBOR GOODS #1234", "50.00"),
                     ("2026-01-06", "VENMO PAYMENT TO JOHN", "20.00")], tmp_path)
     cat = Catalog()
     seen = {}
@@ -45,7 +45,7 @@ def test_only_impersonal_hints_cross_the_boundary(tmp_path):
     def extract(prompt):
         # The prompt (all that reaches the model) must carry no amount/account.
         seen["prompt"] = prompt
-        return '{"amzn mktp us": {"canonical_name":"Amazon","category":"shopping"}}'
+        return '{"harbor goods": {"canonical_name":"Harbor Goods","category":"shopping"}}'
 
     enrich_merchants(ledger, cat, extract,
                      kind_for=lambda m: m.kind)
@@ -58,18 +58,18 @@ def test_only_impersonal_hints_cross_the_boundary(tmp_path):
 
 
 def test_enrichment_syncs_as_events_and_categorizes_retrospectively(tmp_path):
-    ledger = _card([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00"),
-                    ("2026-01-09", "AMZN MKTP US*RH4DD6YM1", "30.00")], tmp_path)
+    ledger = _card([("2026-01-05", "HARBOR GOODS #1234", "50.00"),
+                    ("2026-01-09", "HARBOR GOODS #5678", "30.00")], tmp_path)
     cat = Catalog()
 
     def extract(prompt):
-        return '{"amzn mktp us": {"canonical_name":"Amazon","category":"shopping"}}'
+        return '{"harbor goods": {"canonical_name":"Harbor Goods","category":"shopping"}}'
 
     res = enrich_merchants(ledger, cat, extract,
                      kind_for=lambda m: m.kind)
     assert res["synced"] == 1
     proj = ledger.projection()
-    # BOTH Amazon transactions categorized from the one synced merchant record.
+    # BOTH Harbor Goods transactions categorized from the one synced merchant record.
     assert proj.spending_by_category() == {"shopping": Decimal("80.00")}
     # The ledger is self-contained: a replay WITHOUT the catalog keeps the category
     # (the enrichment is a MerchantEnriched event in the log).
@@ -78,11 +78,11 @@ def test_enrichment_syncs_as_events_and_categorizes_retrospectively(tmp_path):
 
 
 def test_human_override_beats_the_synced_enrichment(tmp_path):
-    ledger = _card([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00")], tmp_path)
+    ledger = _card([("2026-01-05", "HARBOR GOODS #1234", "50.00")], tmp_path)
     cat = Catalog()
-    enrich_merchants(ledger, cat, lambda p: '{"amzn mktp us":{"category":"shopping"}}',
+    enrich_merchants(ledger, cat, lambda p: '{"harbor goods":{"category":"shopping"}}',
                      kind_for=lambda m: m.kind)
-    amazon = next(m for m in ledger.projection().movements() if "RA30Z" in m.description)
+    amazon = next(m for m in ledger.projection().movements() if "#1234" in m.description)
     assign_category(ledger, amazon.key, "groceries")      # per-transaction override
     proj = ledger.projection()
     assert proj.spending_by_category() == {"groceries": Decimal("50.00")}
@@ -268,9 +268,9 @@ def test_the_uncategorized_caveat_states_what_is_actually_unnamed(tmp_path):
 
 
 def test_sync_is_idempotent(tmp_path):
-    ledger = _card([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00")], tmp_path)
+    ledger = _card([("2026-01-05", "HARBOR GOODS #1234", "50.00")], tmp_path)
     cat = Catalog()
-    ext = lambda p: '{"amzn mktp us":{"category":"shopping"}}'
+    ext = lambda p: '{"harbor goods":{"category":"shopping"}}'
     enrich_merchants(ledger, cat, ext,
                      kind_for=lambda m: m.kind)
     n_events = len(list(ledger.events()))
@@ -282,24 +282,24 @@ def test_sync_is_idempotent(tmp_path):
 def test_installed_sync_replaces_matches_and_leaves_unmatched_defaults_reviewable(
         tmp_path):
     ledger = _card([
-        ("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00"),
+        ("2026-01-05", "HARBOR GOODS #1234", "50.00"),
         ("2026-01-06", "UNMATCHED SHOP", "20.00"),
     ], tmp_path)
     catalog = Catalog()
     catalog.add(MerchantRecord(
-        key="amzn mktp us", canonical_name="Amazon", category="shopping",
+        key="harbor goods", canonical_name="Harbor Goods", category="shopping",
         subcategory="online retail", grade="corroborated"))
 
     assert sync_merchant_records(
-        ledger, catalog, ["amzn mktp us", "unmatched shop"]) == 1
+        ledger, catalog, ["harbor goods", "unmatched shop"]) == 1
     projection = ledger.projection()
-    matched = next(m for m in projection.movements() if "AMZN" in m.description)
+    matched = next(m for m in projection.movements() if "HARBOR" in m.description)
     unmatched = next(m for m in projection.movements() if "UNMATCHED" in m.description)
     assert projection.derived_category(matched)["category"] == "shopping"
     assert projection.derived_category(unmatched)["by"] == "default"
     before = len(list(ledger.events()))
     assert sync_merchant_records(
-        ledger, catalog, ["amzn mktp us", "unmatched shop"]) == 0
+        ledger, catalog, ["harbor goods", "unmatched shop"]) == 0
     assert len(list(ledger.events())) == before
 
 

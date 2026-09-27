@@ -118,3 +118,61 @@ def test_desktop_account_ledger_refuses_failed_post_write_projection_then_recove
     after = provider.read_surface("account_ledger", {"account_id": account})
     assert after["revision"] != before["revision"]
     assert after["groups"][0]["movements"][0]["description"] == "AFTER FAILURE"
+
+
+@pytest.mark.parametrize(("number", "display"), [
+    ("", ""), ("SYNTHETIC-REF", ""), ("SYNTHETIC-7", ""),
+    ("123", ""), ("••••4417", "••••4417"), ("000000004417", "••••4417"),
+])
+def test_optional_display_number_preserves_canonical_indexed_bridge_parity(
+        tmp_path, number, display, monkeypatch):
+    from viva.ledger import account_opened
+    from viva.surface.account_ledger import sql_account_ledger_page
+    from viva.vault import Vault
+
+    monkeypatch.setenv("VIVA_LOCALE", "en-US")
+    vault = Vault.open(tmp_path / "synthetic", "pw")
+    account = "acct:synthetic-card"
+    vault.ledger.append(account_opened(
+        account, "liability", "Synthetic Card", "USD", "2026-01-01",
+        account_number=number))
+    for day in ("2026-01-02", "2026-01-03"):
+        vault.ledger.append(simple_transaction(
+            account, "7", "SYNTHETIC PURCHASE", day, kind="liability"))
+    vault.synchronize_read_store()
+    secret = b"optional-display-number-secret-32-bytes"
+    provider = OpenedVaultSurfaceProvider(vault, cursor_secret=secret)
+    with vault.read_store.open_reader() as held:
+        head = held.connection.execute(
+            "SELECT source_head FROM projection_meta WHERE singleton=1").fetchone()[0]
+        indexed = sql_account_ledger_page(held.account_ledger_page(
+            account, cursor_secret=secret, limit=1))
+    canonical = account_ledger(vault.ledger.projection(), account, "en-US", head,
+                               cursor_secret=secret, limit=1)
+    bridge = provider.read_surface("account_ledger", {"account_id": account, "limit": 1})
+    def without_cursor(payload):
+        return {**payload, "page": {**payload["page"], "next_cursor": None}}
+    assert without_cursor(canonical) == without_cursor(indexed) == without_cursor(bridge)
+    assert bridge["account"]["number_masked"] == display
+    assert set(bridge["account"]) == {"id", "name", "number_masked", "type", "currency", "balance"}
+    assert bridge["page"]["next_cursor"]
+    vault.ledger.append(simple_transaction(
+        account, "3", "LATER SYNTHETIC PURCHASE", "2026-01-04", kind="liability"))
+    vault.synchronize_read_store()
+    with pytest.raises(BridgeRequestError, match="stale"):
+        provider.read_surface("account_ledger", {
+            "account_id": account, "cursor": bridge["page"]["next_cursor"], "limit": 1})
+
+
+@pytest.mark.parametrize("kind", ["asset", "income", "expense"])
+def test_bridge_numberless_account_still_refuses_unsupported_family(tmp_path, kind):
+    from viva.ledger import account_opened
+    from viva.vault import Vault
+
+    vault = Vault.open(tmp_path / "synthetic", "pw")
+    vault.ledger.append(account_opened(
+        "acct:unsupported", kind, "Synthetic Unsupported", "USD", "2026-01-01"))
+    vault.synchronize_read_store()
+    with pytest.raises(BridgeRequestError, match="complete safe identity"):
+        OpenedVaultSurfaceProvider(vault).read_surface(
+            "account_ledger", {"account_id": "acct:unsupported"})

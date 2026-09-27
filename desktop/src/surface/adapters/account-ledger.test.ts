@@ -42,6 +42,15 @@ const payload = () => ({
 });
 
 describe("AccountLedger.v1 adapter", () => {
+  it("accepts deliberate display absence while rejecting every unsafe number shape", () => {
+    const raw = payload(); raw.account.number_masked = "";
+    expect(adaptAccountLedger(raw)?.account.maskedNumber).toBe("");
+    for (const number of [null, undefined, 4417, " ", "\n", "4417", "000000004417", "\u2022\u2022\u20224417", "\u2022\u2022\u2022\u2022441", "\u2022\u2022\u2022\u2022ABCD", " \u2022\u2022\u2022\u20224417", "\u2022\u2022\u2022\u20224417\n"]) {
+      (raw.account as { number_masked: unknown }).number_masked = number;
+      expect(adaptAccountLedger(raw)).toBeNull();
+    }
+  });
+
   it("keeps backend grouping, account scope, coverage, overlap, evidence, and movement order", () => {
     const read = adaptAccountLedger(payload());
     expect(read?.scope).toEqual({ kind: "account", accountId: "acct:checking" });

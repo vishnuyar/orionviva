@@ -1110,7 +1110,7 @@ describe("surface session", () => {
     expect(result.current.session.notice).not.toBeNull();
   });
 
-  it("setting a question aside sends the reason, re-reads review, and reports what happened", async () => {
+  it.each(["not_now", "dont_know"] as const)("setting a question aside with %s sends the reason, re-reads review, and reports what happened", async (reason) => {
     const frames: BridgeRequest[] = [];
     let declined = false;
     const transport: BridgeTransport = { request: async <T>(frame: BridgeRequest) => {
@@ -1118,7 +1118,7 @@ describe("surface session", () => {
       if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
       if (frame.operation === "viva.conversation.decline") {
         declined = true;
-        return ok(frame.requestId, { kind: "completed", message: "Set aside until something changes.", state: null, reason: null } as T);
+        return ok(frame.requestId, { kind: "set_aside", message: "Set aside until something changes.", state: null, reason: null } as T);
       }
       const surface = frame.payload.surface as SurfaceName;
       const review = declined
@@ -1139,20 +1139,27 @@ describe("surface session", () => {
     await waitFor(() => expect(result.current.session.selectedQueue).toBe("question-live"));
     expect(result.current.session.selectedQueue).toBe("question-live");
 
-    await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
+    await act(async () => { await result.current.declineQuestion("question-live", reason); });
 
     const sent = frames.filter((frame) => frame.operation === "viva.conversation.decline");
-    expect(sent.map((frame) => frame.payload)).toEqual([{ question_id: "question-live", reason: "not_now" }]);
+    expect(sent.map((frame) => frame.payload)).toEqual([{ question_id: "question-live", reason }]);
     expect(result.current.session.questionAction).toEqual({
       state: "settled",
       questionId: "question-live",
       verb: "decline",
-      result: { state: "settled", outcome: { kind: "completed", message: "Set aside until something changes.", reason: "" } },
+      result: { state: "settled", outcome: { kind: "set_aside", message: "Set aside until something changes.", reason: "" } },
       authoritative: true,
       resolved: true,
     });
     // The question is set aside, not destroyed: the read that followed says so.
-    if (result.current.session.snapshot.conversation.state === "ready") expect(result.current.session.snapshot.conversation.data.questions.meta.pending).toEqual({ count: 1 });
+    expect(result.current.session.snapshot.conversation.state).toBe("ready");
+    if (result.current.session.snapshot.conversation.state === "ready") {
+      expect(result.current.session.snapshot.conversation.data.questions.meta.pending).toEqual({ count: 1 });
+      expect(result.current.session.snapshot.conversation.data.questions.meta.total).toBe(0);
+      expect(result.current.session.snapshot.conversation.data.questions.queue).toEqual([]);
+    }
+    expect(result.current.session.snapshot.review?.state).toBe("ready");
+    if (result.current.session.snapshot.review?.state === "ready") expect(result.current.session.snapshot.review.data.actionableCount).toBe(0);
     expect(result.current.session.selectedQueue).toBe("");
     // A mutation refreshes every financial surface.
     expect(frames.filter((frame) => frame.payload.surface === "overview_accounts")).toHaveLength(3);
@@ -1162,7 +1169,7 @@ describe("surface session", () => {
     expect(result.current.session.questionAction).toEqual({ state: "idle" });
   });
 
-  it("does not let a deferred question reply update or reread after navigation", async () => {
+  it.each(["navigation", "vault-close"] as const)("does not let a repeated or late set-aside update or reread after %s", async (change) => {
     const reply = deferred<BridgeResponse<unknown>>();
     const frames: BridgeRequest[] = [];
     let declineRequestId = "";
@@ -1183,13 +1190,49 @@ describe("surface session", () => {
     let pending!: Promise<void>;
     act(() => { pending = result.current.declineQuestion("question-live", "not_now"); });
     expect(result.current.session.questionAction).toMatchObject({ state: "working", questionId: "question-live" });
-    act(() => result.current.navigate("accounts"));
-    reply.resolve(ok(declineRequestId, { kind: "completed", message: "Set aside.", state: null, reason: null }));
+    await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
+    expect(frames.filter((frame) => frame.operation === "viva.conversation.decline")).toHaveLength(1);
+    act(() => { if (change === "navigation") result.current.navigate("accounts"); else result.current.resetDemo(); });
+    reply.resolve(ok(declineRequestId, { kind: "set_aside", message: "Set aside.", state: null, reason: null }));
     await act(async () => { await pending; });
 
-    expect(result.current.session.destination).toBe("accounts");
+    if (change === "navigation") expect(result.current.session.destination).toBe("accounts");
     expect(result.current.session.questionAction).toEqual({ state: "idle" });
     expect(frames.filter((frame) => frame.operation === "viva.surface.read")).toHaveLength(readsBefore);
+  });
+
+  it.each(["still-open", "inconsistent", "failed"] as const)("preserves a set-aside receipt without invented resolution after a %s refresh", async (refresh) => {
+    const frames: BridgeRequest[] = [];
+    let declined = false;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.conversation.decline") {
+        declined = true;
+        return ok(frame.requestId, { kind: "set_aside", message: "Proposal declined.", state: null, reason: null } as T);
+      }
+      const surface = frame.payload.surface as SurfaceName;
+      if (declined && surface === "conversation" && refresh === "failed") throw new Error("synthetic refresh failure");
+      const questionPresent = !(declined && refresh === "inconsistent");
+      const data = surface === "conversation"
+        ? { turns: [], questions: questionPresent ? [conversationQuestion()] : [], total: questionPresent ? 1 : 0, pending: { count: 0 } }
+        : surface === "review" ? reviewPayload() : emptyPayload(surface);
+      return ok(frame.requestId, { surface, job_id: "read", data } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+    act(() => { result.current.navigate("review"); });
+    await waitFor(() => expect(result.current.session.selectedQueue).toBe("question-live"));
+    const readsBefore = frames.filter((frame) => frame.payload.surface === "conversation").length;
+    await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
+    expect(frames.filter((frame) => frame.operation === "viva.conversation.decline")).toHaveLength(1);
+    expect(frames.filter((frame) => frame.payload.surface === "conversation").length).toBeGreaterThan(readsBefore);
+    expect(result.current.session.questionAction).toMatchObject({
+      state: "settled", authoritative: refresh === "still-open", resolved: false,
+      result: { state: "settled", outcome: { kind: "set_aside", message: "Proposal declined." } },
+    });
+    expect(result.current.session.selectedQueue).toBe("question-live");
+    if (refresh !== "still-open") expect(result.current.session.notice?.text).toContain("stale");
   });
 
   it("does not carry what was done on one screen to another", async () => {

@@ -22,10 +22,11 @@ class MerchantKeys(dict):
     privacy or resolution supplied no authority.
     """
 
-    def __init__(self, keys=(), persons=(), candidates=()) -> None:
+    def __init__(self, keys=(), persons=(), candidates=(), identity_insufficient=()) -> None:
         super().__init__(keys)
         self.persons = frozenset(persons)
         self.candidates = dict(candidates)
+        self.identity_insufficient = dict(identity_insufficient)
 
 
 def resolve_keys(rows, profile_for=None) -> MerchantKeys:
@@ -46,6 +47,7 @@ def resolve_keys(rows, profile_for=None) -> MerchantKeys:
     out: dict = {}
     persons: set = set()
     candidates: dict = {}
+    identity_insufficient: dict = {}
     seen: set = set()
     for account, institution, kind, descriptor in rows:
         if (account, descriptor) in seen:
@@ -58,10 +60,11 @@ def resolve_keys(rows, profile_for=None) -> MerchantKeys:
         if res.is_person:
             persons.add((account, descriptor))
         candidates[(account, descriptor)] = res.identity_candidates
+        identity_insufficient[(account, descriptor)] = res.identity_insufficient
         key = res.merchant_key
         if key:
             out[(account, descriptor)] = key
-    return MerchantKeys(out, persons, candidates)
+    return MerchantKeys(out, persons, candidates, identity_insufficient)
 
 
 def installed_resolver():

@@ -310,7 +310,7 @@ def test_a_peer_payment_is_scoped_to_itself_not_a_rule(tmp_path):
     ledger = _checking(tmp_path, [("2026-03-05", "ZELLE PAYMENT TO JOHN", "-200.00")])
     (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == MERCHANT]
     assert q["scope"] == "one"
-    assert "only apply your answer here" in q["text"]
+    assert "only to this transaction" in q["text"]
 
 
 def _enrich(ledger, merchant, category, implies=(), kind="business", subcategory=""):

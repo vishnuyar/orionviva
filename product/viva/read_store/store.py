@@ -40,8 +40,8 @@ RETAIN_QUARANTINED_GENERATIONS = 2
 _MANIFEST_DOMAIN = b"viva-read-store-manifest-key-v1"
 _DATABASE_DOMAIN = b"viva-read-store-database-key-v1"
 CONTROL_SCHEMA_VERSION = 30
-PROJECTOR_VERSION = "materialized-v19"
-RESOLVER_VERSION = "resolver-v1"
+PROJECTOR_VERSION = "materialized-v20"
+RESOLVER_VERSION = "resolver-v2"
 AS_OF_VERSION = "as-of-v1"
 _APPLIED_EVENTS_GENESIS_DOMAIN = b"viva-read-store-applied-events-genesis-v1\0"
 _APPLIED_EVENTS_ENTRY_DOMAIN = b"viva-read-store-applied-events-entry-v1\0"
@@ -2146,9 +2146,13 @@ class ReadStore:
                                  if candidate in alias_owner and candidate not in conflicted), "")
             merchant_keys = tuple(dict.fromkeys(value for value in
                                   (canonical_id, brand_key, *structural, descriptor_key) if value)) or ("",)
+            if resolved.identity_insufficient.get((account, description), False):
+                merchant_keys = ("",)
             merchant = merchant_keys[0]
             merchant_record = None
             for candidate in merchant_keys:
+                if not candidate:
+                    continue
                 found = merchants.get(candidate)
                 if found is not None and (merchant_record is None or
                         rank.get(found["grade"], 0) > rank.get(merchant_record["grade"], 0)):
@@ -2172,6 +2176,8 @@ class ReadStore:
             movement_ruling = rulings.get(("movement", key))
             merchant_ruling = None
             for candidate in merchant_keys:
+                if not candidate:
+                    continue
                 found = rulings.get(("merchant", candidate))
                 if found is not None and (merchant_ruling is None or
                         rank.get(found["grade"], 0) > rank.get(merchant_ruling["grade"], 0)):

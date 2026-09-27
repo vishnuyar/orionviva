@@ -34,6 +34,9 @@ INTENT_FIELDS: dict[str, dict[str, str]] = {
     "merchant":                    {"example": MERCHANT, "count": COUNT,
                                     "money": MONEY},
     "merchant_peer_note":          {},
+    "merchant_movement_single_note": {},
+    "merchant_movement_note":      {"count": COUNT},
+    "nature_peer_why":             {},
     "merchant_why":                {},
     "nature_single":               {"date": DATE, "description": MERCHANT,
                                     "money": MONEY},
@@ -195,6 +198,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # reader has already been given its one chance to fix its own reply.
     "reply_unreachable":        frozenset(),
     "reply_ask_again":          frozenset(),
+    "reply_invalid_proposal":   frozenset(),
     # The ledger will not take a figure the sentence did not carry, however
     # well-formed the reading of it was.
     "reply_figure_not_said":    frozenset(),
@@ -205,6 +209,8 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # settled records nothing further — and says so, rather than reading as a
     # reply that could not be understood.
     "reply_already_linked":     frozenset(),
+    "reply_question_changed":   frozenset(),
+    "reply_select_transaction": frozenset(),
     # What is said when a reply about an action can be read as no outcome
     # word: one that does not say whether it was accepted, a refusal that
     # names no reason, and a reply held for a confirmation, which is transient
@@ -301,8 +307,8 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # names nothing: a total is shown above the accounts it was taken over, so
     # the names are already below it and what is left to say is how many. What
     # says why one account is not in a total does name it, because it is read
-    # where somebody went looking for exactly that. How much of what a person
-    # holds is counted is a claim about the picture and is said once, over the
+    # where somebody went looking for exactly that. How many recorded accounts
+    # are counted is a claim about the picture and is said once, over the
     # figures the panel shows, rather than on any one of them. Singular and
     # plural, and all against some, are whole sentences chosen by comparing two
     # integers rather than a frame with a word dropped into it.
@@ -311,8 +317,9 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # opening "this total" would name either a figure nothing may compose or
     # one of the two, of which it is false. Three lines rather than two,
     # because a verb agreeing with a count is a word dropped into a frame.
+    # Coverage ranges over known vault accounts, never an external inventory.
     "picture_accounts_all":               frozenset(),
-    # And the same where every account is counted and the read still declares
+    # And the same where every recorded account is counted and the read declares
     # itself short of something. A person reads "every account is counted" as
     # "is this everything", so a completeness claim standing over a read that
     # says it is incomplete is false in the way it is actually read. The

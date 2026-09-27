@@ -76,6 +76,30 @@ describe("Review and Ask Viva separation", () => {
     expect(view.getByLabelText("Viva needs an answer")).toBeInTheDocument();
   });
 
+  it("opens a numberless account from Review, reaches its exact answer controls, and returns", async () => {
+    const user = userEvent.setup();
+    const ledger = structuredClone(sampleReads.account_ledger.result.data) as { account: { number_masked: string } };
+    ledger.account.number_masked = "";
+    const view = await openSample({ account_ledger: ledger });
+    await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
+    await view.findByLabelText("15 actionable review items");
+    await user.click(view.getAllByRole("button", { name: /review transaction/i })[0]);
+    const transaction = await view.findByRole("dialog", { name: "possible transfer to savings" });
+    expect(view.getByText(/Account number not shown/)).toBeInTheDocument();
+    const marker = view.getByLabelText("Viva needs an answer");
+    const ledgerRow = marker.closest<HTMLElement>(".account-ledger-row")!;
+    await user.click(within(transaction).getByRole("button", { name: "Answer this question" }));
+    expect(await view.findByRole("dialog", { name: "Review question" })).toBeInTheDocument();
+    expect(view.getByLabelText("Viva needs an answer")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(view.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(ledgerRow).toHaveFocus());
+    expect(view.getByLabelText("Viva needs an answer")).toBeInTheDocument();
+    await user.click(view.getByRole("button", { name: "Back to Review" }));
+    expect(view.getByRole("heading", { name: "Review", level: 1 })).toBeInTheDocument();
+    await waitFor(() => expect(document.getElementById("review-item-question:merchant:possible transfer to savings")).toHaveFocus());
+  });
+
   it("returns a direct Review question to its exact item and falls back to the Review heading if that item was removed", async () => {
     const user = userEvent.setup();
     const view = await openSample();

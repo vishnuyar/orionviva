@@ -24,7 +24,8 @@
 2. A counterparty implying structure is `structural`: an informed proposal carrying its grounds and specific options, never a naive open question.
 3. An instrument or a peer is `unknown`: one real question per transaction, free text first-class.
 4. A counterparty enrichment has not reached is `unenriched` and raises no nature question at all — the order is ingest, enrich, then ask.
-5. A descriptor that may never be shared is `unknown` rather than `unenriched`, because an identification that cannot arrive must not be promised.
+5. A descriptor that may never be shared is `unknown` rather than `unenriched`, because an identification that cannot arrive must not be promised. This attention rule remains ahead of local category and implication knowledge. Moving that knowledge ahead of privacy is reserved to the owner.
+6. Sharing refusal supplies no evidence of a person or payment channel. Questions use existing typed counterparty records; absent or unsupported kinds abstain. Privacy-only uncertainty receives neutral wording, while peer wording requires uniformly supported peer evidence. Canonical and indexed reads select the highest-graded record across the same ordered identity candidates; ties keep the leading candidate. Direct proposals use that same movement evidence and conservative group scope.
 
 ### PROJ-36 — direction is part of the implication, never a branch in the caller
 **State:** enforced-with-exception

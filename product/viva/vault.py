@@ -87,6 +87,8 @@ class Vault:
     _read_store_worker_serial: int = 0
     _read_store_worker_cancel: threading.Event | None = None
     _read_store_worker_lock: threading.RLock | None = None
+    _read_store_worker_deadline_lock: threading.RLock = field(
+        default_factory=threading.RLock, repr=False)
     _read_store_visibility_held: bool = False
     _read_store_visibility_serial: int = 0
     _read_store_visibility_lock: threading.RLock = field(
@@ -217,9 +219,6 @@ class Vault:
             command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, close_fds=(os.name != "nt"))
         assert worker.stdin is not None
-        worker.stdin.write(payload)
-        worker.stdin.flush()
-        payload[:] = b"\0" * len(payload)
         with self._read_store_worker_lock:
             self._read_store_worker = worker
             self._read_store_worker_started = time.monotonic()
@@ -231,24 +230,36 @@ class Vault:
             serial = self._read_store_worker_serial
             cancel = threading.Event()
             self._read_store_worker_cancel = cancel
-        messages: queue.SimpleQueue[dict[str, str]] = queue.SimpleQueue()
-        self._read_store_worker_messages = messages
+            messages: queue.SimpleQueue[dict[str, str]] = queue.SimpleQueue()
+            self._read_store_worker_messages = messages
 
-        def receive() -> None:
-            assert worker.stdout is not None
-            for line in worker.stdout:
-                try:
-                    reply = json.loads(line.decode("utf-8"))
-                except Exception:
-                    continue
-                if isinstance(reply, dict):
-                    messages.put(reply)
+            def receive() -> None:
+                assert worker.stdout is not None
+                while True:
+                    try:
+                        line = worker.stdout.readline()
+                    except (OSError, ValueError):
+                        return
+                    if not line:
+                        return
+                    try:
+                        reply = json.loads(line.decode("utf-8"))
+                    except Exception:
+                        continue
+                    with self._read_store_worker_lock:
+                        if self._acknowledge_read_store_reply(worker, reply):
+                            messages.put(reply)
 
-        reader = threading.Thread(target=receive, name="read-store-worker-replies",
-                                  daemon=True)
-        self._read_store_worker_reader = reader
-        reader.start()
-        self._arm_read_store_watchdog(worker, token, serial, cancel)
+            reader = threading.Thread(target=receive, name="read-store-worker-replies",
+                                      daemon=True)
+            self._read_store_worker_reader = reader
+            reader.start()
+            self._arm_read_store_watchdog(worker, token, serial, cancel)
+            try:
+                worker.stdin.write(payload)
+                worker.stdin.flush()
+            finally:
+                payload[:] = b"\0" * len(payload)
         if self.read_store_lifecycle != "rebuilding":
             self.read_store_lifecycle = ("stale" if self._has_read_revision()
                                          else "rebuilding")
@@ -267,8 +278,9 @@ class Vault:
                 reply = messages.get_nowait()
             except queue.Empty:
                 break
-            if not self._accept_read_store_reply(reply):
-                continue
+            with self._read_store_worker_lock:
+                if self._read_store_worker is worker:
+                    self._accept_read_store_reply(reply)
         if worker.poll() is not None:
             lock = self._read_store_worker_lock
             if lock is None:
@@ -300,10 +312,24 @@ class Vault:
             lock = self._read_store_worker_lock
             if lock is None:
                 return
+            # Pipe writes hold the lifecycle lock. Terminate the captured
+            # attempt first so a blocked writer releases that lock.
+            with self._read_store_worker_deadline_lock:
+                if (cancel.is_set() or self._read_store_worker is not worker
+                        or not self._read_store_worker_busy
+                        or self._read_store_worker_token != token
+                        or self._read_store_worker_serial != serial):
+                    return
+                cancel.set()
+                if worker.poll() is None:
+                    worker.terminate()
+                    try:
+                        worker.wait(timeout=0.5)
+                    except subprocess.TimeoutExpired:
+                        worker.kill()
+                        worker.wait(timeout=1.0)
             with lock:
                 if (self._read_store_worker is worker
-                        and self._read_store_worker_busy
-                        and self._read_store_worker_token == token
                         and self._read_store_worker_serial == serial):
                     self._stop_read_store_worker_locked(worker)
                     self.read_store_lifecycle = (
@@ -312,20 +338,35 @@ class Vault:
         threading.Thread(target=watch, name="read-store-worker-watchdog",
                          daemon=True).start()
 
-    def _accept_read_store_reply(self, reply: object) -> bool:
-        """Authenticate IPC correlation, then authenticate durable publication."""
+    def _valid_read_store_reply(self, reply: object) -> bool:
         if not isinstance(reply, dict) or set(reply) != {"state", "token"}:
             return False
         state, token = reply.get("state"), reply.get("token")
-        if (state not in {"equal", "caught_up", "rebuilt", "degraded"}
-                or not isinstance(token, str)
-                or not secrets.compare_digest(token, self._read_store_worker_token or "")):
-            return False
-        cancel = self._read_store_worker_cancel
-        if cancel is not None:
+        return (isinstance(state, str)
+                and state in {"equal", "caught_up", "rebuilt", "degraded"}
+                and isinstance(token, str) and token.isascii()
+                and bool(self._read_store_worker_token)
+                and secrets.compare_digest(token, self._read_store_worker_token))
+
+    def _acknowledge_read_store_reply(self, worker, reply: object) -> bool:
+        """Finish only the producing process's current, unfinished attempt."""
+        with self._read_store_worker_lock, self._read_store_worker_deadline_lock:
+            cancel = self._read_store_worker_cancel
+            if (self._read_store_worker is not worker
+                    or not self._read_store_worker_busy
+                    or cancel is None or cancel.is_set()
+                    or not self._valid_read_store_reply(reply)):
+                return False
             cancel.set()
-        self._read_store_worker_busy = False
-        self._read_store_worker_started = None
+            self._read_store_worker_busy = False
+            self._read_store_worker_started = None
+            return True
+
+    def _accept_read_store_reply(self, reply: object) -> bool:
+        """Authenticate publication separately from completion receipt."""
+        if not self._valid_read_store_reply(reply):
+            return False
+        state = reply["state"]
         if state == "degraded":
             self.read_store_lifecycle = "stale" if self._has_read_revision() else "degraded"
             return True
@@ -424,29 +465,31 @@ class Vault:
                        else self.ledger.store)
         self.poll_read_store_worker()
         if self._read_store_worker is not None:
-            if not self._read_store_worker_busy:
-                try:
-                    token = secrets.token_urlsafe(32)
-                    expected = event_store.authenticated_identity()
-                    assert self._read_store_worker.stdin is not None
-                    request = json.dumps({"command": "synchronize", "token": token},
-                                         separators=(",", ":")).encode() + b"\n"
-                    self._read_store_worker.stdin.write(request)
-                    self._read_store_worker.stdin.flush()
-                    self._read_store_worker_busy = True
-                    self._read_store_worker_started = time.monotonic()
-                    self._read_store_worker_token = token
-                    self._read_store_worker_expected = expected
-                    self._read_store_worker_serial += 1
-                    serial = self._read_store_worker_serial
-                    cancel = threading.Event()
-                    self._read_store_worker_cancel = cancel
-                    self._arm_read_store_watchdog(
-                        self._read_store_worker, token, serial, cancel)
-                    self.read_store_lifecycle = ("stale" if self._has_read_revision()
-                                                 else "rebuilding")
-                except (OSError, BrokenPipeError):
-                    self.stop_read_store_worker()
+            with self._read_store_worker_lock:
+                worker = self._read_store_worker
+                if worker is not None and not self._read_store_worker_busy:
+                    try:
+                        token = secrets.token_urlsafe(32)
+                        expected = event_store.authenticated_identity()
+                        assert worker.stdin is not None
+                        request = json.dumps({"command": "synchronize", "token": token},
+                                             separators=(",", ":")).encode() + b"\n"
+                        with self._read_store_worker_deadline_lock:
+                            self._read_store_worker_busy = True
+                            self._read_store_worker_started = time.monotonic()
+                            self._read_store_worker_token = token
+                            self._read_store_worker_expected = expected
+                            self._read_store_worker_serial += 1
+                            serial = self._read_store_worker_serial
+                            cancel = threading.Event()
+                            self._read_store_worker_cancel = cancel
+                        self._arm_read_store_watchdog(worker, token, serial, cancel)
+                        worker.stdin.write(request)
+                        worker.stdin.flush()
+                        self.read_store_lifecycle = ("stale" if self._has_read_revision()
+                                                     else "rebuilding")
+                    except (OSError, BrokenPipeError):
+                        self.stop_read_store_worker()
             return self.read_store_lifecycle
         if self._read_store_worker_managed:
             self.read_store_lifecycle = ("stale" if self._has_read_revision()

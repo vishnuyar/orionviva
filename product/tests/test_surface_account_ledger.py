@@ -213,8 +213,10 @@ def test_account_ledger_unions_nested_and_overlapping_runs_before_finding_gaps()
     assert len(assigned) == len(set(assigned))
 
 
-def test_account_ledger_refuses_malformed_stale_cross_account_and_missing_identity():
+@pytest.mark.parametrize("number", ["", "SYNTHETIC-7", "000000004417"])
+def test_account_ledger_refuses_malformed_stale_cross_account_and_missing_identity(number):
     projection = Projection()
+    projection._infos[0].number = number
     first = read_ledger(projection, projection.ACCOUNT, "r1", limit=2)
     cursor = first["page"]["next_cursor"]
 
@@ -257,17 +259,21 @@ def test_account_ledger_refuses_duplicate_stable_account_identity():
         read_ledger(projection, projection.ACCOUNT, "r1")
 
 
-def test_account_ledger_refuses_an_unsupported_account_family():
+@pytest.mark.parametrize("number", ["", "SYNTHETIC-7", "000000004417"])
+def test_account_ledger_refuses_an_unsupported_account_family(number):
     projection = Projection()
+    projection._infos[0].number = number
     projection._infos[0] = SimpleNamespace(
         account=projection.ACCOUNT, name="House", kind="asset",
-        currency="USD", number="000000004417")
+        currency="USD", number=number)
     with pytest.raises(AccountLedgerIdentityError):
         read_ledger(projection, projection.ACCOUNT, "r1")
 
 
-def test_account_ledger_refuses_statement_projection_contaminated_by_another_account():
+@pytest.mark.parametrize("number", ["", "SYNTHETIC-7", "000000004417"])
+def test_account_ledger_refuses_statement_projection_contaminated_by_another_account(number):
     projection = Projection()
+    projection._infos[0].number = number
     contaminated = list(projection._statements.records)
     contaminated[0] = StatementRecord(
         "jan", projection.OTHER, "2026-01-01", Decimal("100"),

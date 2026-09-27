@@ -94,7 +94,7 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
     if (requestId.current !== nextRequestId || questionGeneration.current !== nextGeneration) return;
     let authoritative = false;
     let resolved = false;
-    if (result.state === "settled" && result.outcome.kind === "completed") {
+    if (result.state === "settled" && (result.outcome.kind === "completed" || result.outcome.kind === "set_aside")) {
       const snapshot = await refreshAfterAction(activeSource, nextRequestId, () => questionGeneration.current === nextGeneration);
       authoritative = authoritativeQuestionReread(snapshot);
       resolved = Boolean(authoritative && snapshot && !reviewHoldsQuestion(snapshot, questionId) && !conversationHoldsQuestion(snapshot, questionId));

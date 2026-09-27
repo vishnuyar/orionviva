@@ -55,7 +55,7 @@ from decimal import Decimal
 from merchantcore.enrich import BILLING_PERIODS, BILLING_STANDING
 
 from .ingest import held_items, other_holds
-from .ledger.merchants import is_shareable
+from .question_evidence import decide, group_decision
 from .ledger.identity import masked
 from .ledger.events import (ASSERTED, PERIOD_ANNUAL, PERIOD_IRREGULAR,
                             PERIOD_MONTHLY, PERIOD_ONE_TIME, PERIODICITIES)
@@ -324,8 +324,8 @@ def _transfer_questions(proj, locale: str = "") -> list[Question]:
 
 
 def _merchant_questions(proj, locale: str = "") -> list[Question]:
-    """Merchants we have no category for. Scoped to the MERCHANT — one ruling
-    fills every transaction from it, past and future.
+    """Merchants we have no category for, with conservative answer scope.
+    Only permitted patterns apply to past and future transactions.
 
     The count and the money in the question are over one set of movements: the
     expense-shaped ones. The wider view — every counterparty, inflows and card
@@ -335,29 +335,34 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
     totals: dict[str, Decimal] = {}
     currency: dict[str, str] = {}
     movements: dict[str, list] = {}
+    evidence: dict[str, list] = {}
     for m in proj.uncategorized_expenses():
         key = proj.merchant_key_of(m)
         if key:
             totals[key] = totals.get(key, Decimal("0")) + abs(m.amount)
             currency.setdefault(key, m.currency)
             movements.setdefault(key, []).append(m.key)
+            evidence.setdefault(key, []).append(
+                decide(m.description, proj.counterparty_kind(m)))
     # The picker's options, read from the one definition of the vocabulary.
     categories = category_vocabulary(proj)
     for key, row in proj.uncategorized_merchants(expenses_only=True).items():
         amount = totals.get(key, Decimal("0"))
         cur = currency.get(key, "")
-        shareable = row.get("shareable", True)
+        decision = group_decision(evidence.get(key, ()))
+        generalizes = decision.generalizes
         out.append(Question(
             id=f"{MERCHANT}:{key}", kind=MERCHANT,
             text=(say("merchant",
                       example=render_merchant({"example": row["example"]}),
                       count=render_count(row["count"]),
                       money=render_money(amount, cur, locale=locale))
-                  + ("" if shareable else " " + say("merchant_peer_note"))),
+                  + (" " + say("merchant_peer_note") if decision.kind == "peer" else "")
+                  + ("" if generalizes else " " + say(decision.scope_note(row["count"]),
+                     count=render_count(row["count"])))),
             why=say("merchant_why"),
             amount=amount, currency=cur, count=row["count"],
-            # A commercial merchant generalizes; a peer descriptor does not.
-            scope="pattern" if shareable else "one",
+            scope="pattern" if generalizes else "one",
             # What this merchant is, from the categories this vault knows. The
             # vocabulary is validation, not a set of buttons: an answer outside
             # it is asked again with the alternatives named, rather than minting
@@ -370,9 +375,7 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
                         required=True),),
             refs={"merchant": key, "example": row["example"],
                   "categories": categories,
-                  # A peer is answered per transaction, so the surface needs the
-                  # movements; a commercial merchant is answered once, for all.
-                  "movements": movements.get(key, []) if not shareable else []}))
+                  "movements": movements.get(key, []) if not generalizes else []}))
     return out
 
 
@@ -384,7 +387,7 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
       settled     an ordinary counterparty implying nothing  → no question
       structural  the counterparty implies a relationship    → one grouped
                                                                proposal per key
-      unknown     an instrument or a peer                    → one question per
+      unknown     typed or privacy-limited uncertainty       → one question per
                                                                movement
       unenriched  → nothing here; it is a merchant question instead"""
     out: list[Question] = []
@@ -408,7 +411,7 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
         if m.nature_reason not in (BY_CATEGORY, BY_DEFAULT):
             continue                      # a link, an own account or a ruling settled it
         if tier == TIER_UNKNOWN:
-            singles.append(m)             # a check, an ATM, a peer: one at a time
+            singles.append(m)             # unresolved movement: one at a time
             continue
         key = proj.merchant_key_of(m)
         g = groups.setdefault(key, {
@@ -430,7 +433,7 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
                      description=render_merchant({"example": m.description}),
                      money=render_money(abs(m.amount), m.currency,
                                         locale=locale)),
-            why=say("nature_single_why"),
+            why=say(decide(m.description, proj.counterparty_kind(m)).nature_reason),
             amount=abs(m.amount), currency=m.currency, count=1, scope="one",
             # What the money became, in the person's own words. Several slots,
             # because one payment can be several things at once — and that is

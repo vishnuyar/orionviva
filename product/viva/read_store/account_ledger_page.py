@@ -564,7 +564,7 @@ def read_page(revision, account_id, locale, *, cursor_secret,
         _scalar(label, "account label")
     number = masked(info.number)
     if (info.account != account_id or not all((info.name, info.kind,
-                                                info.currency, number))
+                                                info.currency))
             or info.kind not in ("depository", "liability", "investment")):
         raise AccountLedgerIdentityError(
             "the requested account does not have a complete safe identity")

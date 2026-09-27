@@ -771,10 +771,22 @@ def test_a_guessed_existing_account_is_named_in_the_sentence_it_confirms(vault):
 def test_an_account_that_names_nothing_cannot_be_written(vault):
     """The confirmation endpoint trusts its own body less than the ledger
     does: a path whose last part is empty is a group, not a thing."""
-    with pytest.raises(ValueError):
-        engine.apply_ruling(vault, {
-            "scope": "movement", "subject": "m", "legs": [],
-            "new_accounts": ["Assets:Other:"], "summary": ""})
+    from viva.listen import InvalidAccountRegistration, Proposal, apply_proposal
+
+    proposal = {"scope": "movement", "subject": "m", "legs": [],
+                "new_accounts": ["Assets:Other:"]}
+    before = list(vault.events())
+    result = engine.apply_ruling(vault, {**proposal, "summary": ""})
+    assert result == {
+        "ok": False, "why": "invalid_proposal",
+        "message": (
+            "I can't apply this proposal as shown. This attempt made no changes "
+            "to your financial records. Please answer the original question "
+            "again so I can prepare a fresh proposal.")}
+    assert list(vault.events()) == before
+    with pytest.raises(InvalidAccountRegistration):
+        apply_proposal(vault.ledger, Proposal(**proposal), "2026-05-03")
+    assert list(vault.events()) == before
 
 
 def test_a_name_cannot_inject_a_level_into_the_hierarchy(vault):

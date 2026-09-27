@@ -62,7 +62,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 
 ### VOICE-128 — tags gain account scope, and the model copies the person's word
 **State:** unmet
-**Code:** product/viva/prompts/interpret-v3.txt (a label is the person's own word, copied, never coined), product/viva/ledger/events.py:732 (a tag assertion is restricted to `SCOPE_MOVEMENT` or `SCOPE_MERCHANT`), :382 (`SCOPE_ACCOUNT` exists in the scopes tuple and the constructor refuses it)
+**Code:** product/viva/prompts/interpret-v4.txt (a label is the person's own word, copied, never coined), product/viva/ledger/events.py:732 (a tag assertion is restricted to `SCOPE_MOVEMENT` or `SCOPE_MERCHANT`), :382 (`SCOPE_ACCOUNT` exists in the scopes tuple and the constructor refuses it)
 **Test:** none — the account-scope half is not built, and the copied-word half is held by the prompt in force rather than by a test.
 
 1. No model coins a tag: a label is the person's own short word for a thing they named, copied from their sentence, and the interpret prompt in force tells the model to invent no name ([categories-and-tags.md](categories-and-tags.md), MON-76).

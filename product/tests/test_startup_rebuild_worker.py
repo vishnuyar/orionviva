@@ -183,11 +183,11 @@ def test_resident_worker_retries_with_derived_keys_not_parent_passphrase(tmp_pat
             "later", "depository", "Later", "USD", "2026-01-01"))
         vault.synchronize_read_store()
         assert vault._read_store_worker is worker
-        assert vault._read_store_worker_busy is True
         deadline = time.monotonic() + 5
         while vault._read_store_worker_busy and time.monotonic() < deadline:
             vault.poll_read_store_worker()
             time.sleep(0.01)
+        vault.poll_read_store_worker()
         assert vault.read_store_lifecycle in {"caught_up", "rebuilt", "equal"}
         assert vault._read_store_worker is worker and worker.poll() is None
     finally:
@@ -234,6 +234,7 @@ def test_close_escalates_and_reaps_a_stuck_worker_within_two_seconds():
 
 
 @pytest.mark.parametrize("program", [
+    "import time; time.sleep(60)",
     "while True: pass",
     "import os; os.write(1, b'x' * (32 * 1024 * 1024))",
 ])
@@ -254,7 +255,7 @@ def test_watchdog_autonomously_reaps_real_cpu_and_pipe_blocked_children(
         started = time.monotonic()
         vault._arm_read_store_watchdog(worker, "t" * 43, 9, cancel)
         deadline = started + 2
-        while worker.poll() is None and time.monotonic() < deadline:
+        while (worker.poll() is None or vault._read_store_worker is not None) and time.monotonic() < deadline:
             time.sleep(0.01)
         assert worker.poll() is not None
         assert time.monotonic() - started < 2
@@ -431,3 +432,261 @@ def test_read_store_root_symlink_is_never_followed_or_replaced(tmp_path):
     reads, lifecycle = Vault._open_read_store(root, PASSPHRASE)
     assert reads is None and lifecycle == "degraded"
     assert root.is_symlink() and marker.read_text() == "present"
+
+
+def _wait_until(predicate, timeout=5):
+    deadline = time.monotonic() + timeout
+    while not predicate() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert predicate()
+
+
+def test_completed_wait_survives_idle_deadline_and_later_decline(tmp_path):
+    from viva.ledger.events import (
+        conversation_turn_opened, conversation_turn_settled, question_declined,
+    )
+
+    vault = Vault.open(tmp_path / "vault", PASSPHRASE,
+                       start_read_store_worker=True)
+    try:
+        _wait_until(lambda: not vault._read_store_worker_messages.empty())
+        vault.poll_read_store_worker()
+        vault.ledger.append(account_opened(
+            "cash", "depository", "Synthetic", "USD", "2026-01-01"))
+        assert vault.wait_for_read_store(timeout=5)
+        worker = vault._read_store_worker
+        # Start an equal attempt whose receipt is observable without polling.
+        _wait_until(lambda: not vault._read_store_worker_messages.empty())
+        vault.poll_read_store_worker()
+        vault._read_store_worker_timeout = 0.3
+        vault.synchronize_read_store()
+        cancel = vault._read_store_worker_cancel
+        _wait_until(lambda: not vault._read_store_worker_messages.empty())
+        assert cancel.is_set(), "received completion must end its own deadline"
+        time.sleep(0.4)
+        assert vault._read_store_worker is worker and worker.poll() is None
+        assert not vault._read_store_worker_busy
+
+        stamp = "2026-01-02"
+        vault.ledger.append(conversation_turn_opened(
+            "synthetic-turn", "decline", "Synthetic question", stamp,
+            question_id="synthetic-question"))
+        vault.ledger.append(question_declined(
+            "synthetic-question", "merchant", stamp))
+        vault.ledger.append(conversation_turn_settled(
+            "synthetic-turn", "set_aside", "Set aside", stamp))
+        identity = vault.ledger.store.authenticated_identity()
+        assert identity[0] == 4
+        assert vault.wait_for_read_store(timeout=5)
+        with vault.read_store.open_reader() as revision:
+            source = vault.read_store.authenticated_source_identity(revision)
+        assert (source["count"], source["head"]) == identity[:2]
+        assert vault.ledger.store.authenticated_identity() == identity
+    finally:
+        vault.close()
+
+
+def test_immediate_completion_cannot_be_overwritten_by_dispatch(tmp_path):
+    vault = Vault.open(tmp_path / "vault", PASSPHRASE)
+    receiving = threading.Event()
+    acknowledged = threading.Event()
+    replies = []
+
+    class ImmediatePipe:
+        def write(self, request):
+            token = json.loads(request)["token"]
+
+            def complete():
+                receiving.set()
+                replies.append(vault._acknowledge_read_store_reply(
+                    worker, {"state": "equal", "token": token}))
+                acknowledged.set()
+
+            threading.Thread(target=complete, daemon=True).start()
+            assert receiving.wait(2)
+
+        def flush(self):
+            assert vault._read_store_worker_busy
+            assert not acknowledged.is_set()
+
+    class ImmediateWorker:
+        stdin = ImmediatePipe()
+
+        def poll(self):
+            return None
+
+    worker = ImmediateWorker()
+    vault._read_store_worker_lock = threading.RLock()
+    vault._read_store_worker = worker
+    try:
+        vault.synchronize_read_store()
+        assert acknowledged.wait(2)
+        assert replies == [True]
+        assert vault._read_store_worker_cancel.is_set()
+        assert not vault._read_store_worker_busy
+        assert vault._read_store_worker_started is None
+        assert vault.read_store_lifecycle in {"stale", "rebuilding"}
+    finally:
+        vault._read_store_worker = None
+        vault.close()
+
+
+@pytest.mark.parametrize("reply", [
+    None, [], {}, {"state": [], "token": "current"},
+    {"state": "equal", "token": []},
+    {"state": "equal", "token": "non-ascii-\u2603"},
+    {"state": "equal", "token": "old"},
+    {"state": "equal", "token": "current", "extra": True},
+])
+def test_malformed_or_wrong_attempt_completion_preserves_deadline(tmp_path, reply):
+    vault = Vault.open(tmp_path / "vault", PASSPHRASE)
+    worker = object()
+    vault._read_store_worker_lock = threading.RLock()
+    vault._read_store_worker = worker
+    vault._read_store_worker_busy = True
+    vault._read_store_worker_token = "current"
+    cancel = vault._read_store_worker_cancel = threading.Event()
+    try:
+        assert not vault._acknowledge_read_store_reply(worker, reply)
+        assert not cancel.is_set()
+        assert vault._read_store_worker_busy
+        assert vault.read_store_lifecycle == "rebuilding"
+    finally:
+        cancel.set()
+        vault._read_store_worker = None
+        vault.close()
+
+
+def test_obsolete_receiver_cannot_acknowledge_current_process(tmp_path):
+    vault = Vault.open(tmp_path / "vault", PASSPHRASE)
+    current = object()
+    vault._read_store_worker_lock = threading.RLock()
+    vault._read_store_worker = current
+    vault._read_store_worker_busy = True
+    vault._read_store_worker_token = "current"
+    cancel = vault._read_store_worker_cancel = threading.Event()
+    try:
+        reply = {"state": "equal", "token": "current"}
+        assert not vault._acknowledge_read_store_reply(object(), reply)
+        assert not cancel.is_set() and vault._read_store_worker_busy
+        assert vault._acknowledge_read_store_reply(current, reply)
+        assert cancel.is_set() and not vault._read_store_worker_busy
+        assert not vault._acknowledge_read_store_reply(current, reply)
+        assert vault.read_store_lifecycle == "rebuilding"
+    finally:
+        cancel.set()
+        vault._read_store_worker = None
+        vault.close()
+
+
+def test_late_completion_after_timeout_cannot_revive_worker(tmp_path):
+    vault = Vault.open(tmp_path / "vault", PASSPHRASE)
+    worker = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    vault._read_store_worker_lock = threading.RLock()
+    vault._read_store_worker = worker
+    vault._read_store_worker_busy = True
+    vault._read_store_worker_managed = True
+    vault._read_store_worker_token = "expired"
+    vault._read_store_worker_timeout = 0.05
+    cancel = vault._read_store_worker_cancel = threading.Event()
+    try:
+        vault._arm_read_store_watchdog(worker, "expired", 0, cancel)
+        _wait_until(lambda: vault._read_store_worker is None)
+        assert worker.poll() is not None
+        assert not vault._acknowledge_read_store_reply(
+            worker, {"state": "equal", "token": "expired"})
+        assert vault.synchronize_read_store() in {"stale", "degraded"}
+        assert vault._read_store_worker is None
+    finally:
+        if worker.poll() is None:
+            worker.kill()
+        worker.wait()
+        vault.close()
+
+
+def test_watchdog_reaps_when_dispatch_holds_lock_on_full_stdin(tmp_path):
+    import os
+
+    vault = Vault.open(tmp_path / "vault", PASSPHRASE)
+    worker = subprocess.Popen(
+        [sys.executable, "-c", "import os, time; os.write(1, b'ready\\n'); time.sleep(60)"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    assert worker.stdout.readline() == b"ready\n"
+    fd = worker.stdin.fileno()
+    os.set_blocking(fd, False)
+    try:
+        while True:
+            os.write(fd, b"x" * 4096)
+    except BlockingIOError:
+        pass
+    finally:
+        os.set_blocking(fd, True)
+    flushing = threading.Event()
+    finished = threading.Event()
+    original = worker.stdin
+
+    class ObservedPipe:
+        def write(self, request):
+            return original.write(request)
+
+        def flush(self):
+            flushing.set()
+            return original.flush()
+
+        def close(self):
+            return original.close()
+
+    worker.stdin = ObservedPipe()
+    vault._read_store_worker_lock = threading.RLock()
+    vault._read_store_worker = worker
+    vault._read_store_worker_managed = True
+    vault._read_store_worker_timeout = 0.1
+
+    def dispatch():
+        try:
+            vault.synchronize_read_store()
+        finally:
+            finished.set()
+
+    thread = threading.Thread(target=dispatch, daemon=True)
+    started = time.monotonic()
+    thread.start()
+    try:
+        assert flushing.wait(1)
+        assert finished.wait(2)
+        assert time.monotonic() - started < 2
+        assert worker.poll() is not None
+        assert vault._read_store_worker is None
+    finally:
+        if worker.poll() is None:
+            worker.kill()
+        worker.wait()
+        thread.join(2)
+        vault.close()
+
+
+def test_completion_ends_deadline_without_authenticating_advanced_source(tmp_path):
+    vault = Vault.open(tmp_path / "vault", PASSPHRASE)
+    assert vault.synchronize_read_store() in {"equal", "rebuilt"}
+    worker = object()
+    vault._read_store_worker_lock = threading.RLock()
+    vault._read_store_worker = worker
+    vault._read_store_worker_busy = True
+    vault._read_store_worker_token = "current"
+    vault._read_store_worker_expected = vault.ledger.store.authenticated_identity()
+    cancel = vault._read_store_worker_cancel = threading.Event()
+    try:
+        EventStore.open(vault.ledger.store.path, PASSPHRASE).append(account_opened(
+            "later", "depository", "Synthetic", "USD", "2026-01-01"))
+        identity = vault.ledger.store.authenticated_identity()
+        reply = {"state": "equal", "token": "current"}
+        assert vault._acknowledge_read_store_reply(worker, reply)
+        assert cancel.is_set() and not vault._read_store_worker_busy
+        assert not vault._accept_read_store_reply(reply)
+        assert vault.read_store_lifecycle == "stale"
+        assert vault.ledger.store.authenticated_identity() == identity
+    finally:
+        cancel.set()
+        vault._read_store_worker = None
+        vault.close()
