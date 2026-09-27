@@ -79,7 +79,7 @@ def compiler_factory(spec, *, purpose="runtime", profile=None, report=None,
             raise ValueError(
                 "runtime answering needs VIVA_ADMISSION_PROFILE; admission and "
                 "Witness runs must opt into their explicit purpose")
-        from .answer_program import (AdmissionProfile, AdmissionThresholds,
+        from .answer_program import (AdmissionProfile,
                                      admission_report_digest)
         payload = json.loads(pathlib.Path(bundle_path).read_text(encoding="utf-8"))
         raw_profile = dict(payload.get("profile") or payload)
@@ -89,9 +89,7 @@ def compiler_factory(spec, *, purpose="runtime", profile=None, report=None,
                 != admission_report_digest(raw_report)):
             raise ValueError("runtime admission bundle is not tied to its report")
         report = raw_report
-        raw_profile["thresholds"] = AdmissionThresholds(
-            **dict(raw_profile["thresholds"]))
-        profile = AdmissionProfile(**raw_profile)
+        profile = AdmissionProfile.from_dict(raw_profile)
     if purpose == "runtime":
         from .answer_program import (admission_report_digest,
                                      validate_admission_report)

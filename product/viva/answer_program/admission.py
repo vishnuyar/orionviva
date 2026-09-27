@@ -177,7 +177,6 @@ class AdmissionProfile:
     provider: str
     requested_model: str
     resolved_model: str
-    model_version: str
     endpoint: str
     modality: str
     locale_family: str
@@ -208,7 +207,7 @@ class AdmissionProfile:
             raise ValueError(
                 f"unsupported admission profile version {self.profile_version!r}")
         if not all((self.provider, self.requested_model, self.resolved_model,
-                    self.model_version, self.endpoint, self.modality,
+                    self.endpoint, self.modality,
                     self.capability_manifest_digest,
                     self.program_schema_digest, self.resource_policy_digest,
                     self.financial_query_schema_digest,
@@ -231,9 +230,18 @@ class AdmissionProfile:
                 raise ValueError(
                     f"admission profile threshold {name!r} is below policy")
 
+    @classmethod
+    def from_dict(cls, raw):
+        """Read current profiles and unambiguous legacy model identities."""
+        payload = dict(raw)
+        if "model_version" in payload:
+            if payload.pop("model_version") != payload.get("resolved_model"):
+                raise ValueError("legacy model_version differs from resolved_model")
+        payload["thresholds"] = AdmissionThresholds(**dict(payload["thresholds"]))
+        return cls(**payload)
+
     def to_dict(self):
-        out = asdict(self)
-        return out
+        return asdict(self)
 
 
 def evaluate(case_scores, *, attempts, first_attempt_valid, thresholds,
@@ -357,7 +365,7 @@ def admitted_profile(measured_run, *, manifest, policy=None):
     return AdmissionProfile(
         provider=identity["provider"], requested_model=identity["requested_model"],
         resolved_model=identity["resolved_model"],
-        model_version=identity["resolved_model"], endpoint=identity["endpoint"],
+        endpoint=identity["endpoint"],
         modality=identity["modality"], locale_family=identity["locale_family"],
         capability_manifest_digest=manifest.digest,
         program_schema_digest=schema_digest,

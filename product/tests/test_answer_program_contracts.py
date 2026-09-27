@@ -1694,3 +1694,183 @@ def test_single_path_gate_scans_non_python_runtime_sources(tmp_path):
 
     assert not checked.passed
     assert any("compile_answer_program" in item for item in checked.failures)
+
+
+def _identity_test_profile(monkeypatch):
+    from viva.answer_program import admission as admission_module
+
+    manifest = CapabilityManifest.from_registry(admission_registry())
+    report = _fully_validated_forged_report(manifest)
+    monkeypatch.setattr(admission_module, "_report_from_measured_run",
+                        lambda _measured: report)
+    return admitted_profile(object(), manifest=manifest), manifest, report
+
+
+def test_profile_identity_codec_accepts_legacy_but_refuses_conflicts(monkeypatch):
+    from viva.answer_program import AdmissionProfile
+
+    profile, _manifest, _report = _identity_test_profile(monkeypatch)
+    raw = profile.to_dict()
+    assert "model_version" not in raw
+    assert AdmissionProfile.from_dict(raw) == profile
+    legacy = dict(raw, model_version=profile.resolved_model)
+    assert AdmissionProfile.from_dict(legacy) == profile
+    assert "model_version" in legacy  # Loading does not mutate the input.
+    for bad in ("different-model", "", None):
+        with pytest.raises(ValueError, match="differs from resolved_model"):
+            AdmissionProfile.from_dict(dict(raw, model_version=bad))
+
+
+def test_candidate_preflight_never_constructs_provider(monkeypatch, capsys):
+    from viva.answer_program import candidate
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("offline preflight accessed provider configuration")
+
+    monkeypatch.setattr(candidate, "speak_spec", forbidden)
+    monkeypatch.setattr(candidate, "compiler_factory", forbidden)
+    monkeypatch.setattr(candidate, "run_live_suite", forbidden)
+    assert candidate.main([]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["cases"] == len(load_cases())
+    assert output["model_evaluated"] is False
+
+
+def test_candidate_failed_measurement_preserves_existing_bundle(
+        monkeypatch, tmp_path, capsys):
+    from viva.answer_program import candidate
+
+    target = tmp_path / "approved.json"
+    target.write_text("previous approval")
+    report = AdmissionReport(True, False, {}, ("model_identity_mismatch",), ())
+    monkeypatch.setattr(candidate, "speak_spec", lambda: object())
+    monkeypatch.setattr(candidate, "compiler_factory", lambda *a, **k: object())
+    monkeypatch.setattr(candidate, "run_live_suite", lambda **k:
+                        (SimpleNamespace(report=report), (), ()))
+    assert candidate.main(["--live", "--output", str(target)]) == 1
+    assert target.read_text() == "previous approval"
+    diagnostic = json.loads((tmp_path / "approved.json.report.json").read_text())
+    assert diagnostic["hard_failures"] == ["model_identity_mismatch"]
+    assert json.loads(capsys.readouterr().out)["status"] == "not_admitted"
+
+
+def test_candidate_success_uses_canonical_suite_and_publishes_through_gate(
+        monkeypatch, tmp_path, capsys):
+    from viva.answer_program import candidate
+    from viva.answer_program import release as release_module
+    from viva.answer_program.admission_fixture import ADMISSION_TODAY
+
+    profile, _manifest, report = _identity_test_profile(monkeypatch)
+    measured = SimpleNamespace(report=report)
+    monkeypatch.setattr(release_module, "_report_from_measured_run",
+                        lambda held: report if held is measured else None)
+    factory = object()
+    monkeypatch.setattr(candidate, "speak_spec", lambda: object())
+    monkeypatch.setattr(candidate, "compiler_factory", lambda *a, **k: factory)
+
+    def run(**kwargs):
+        assert "cases" not in kwargs and "registry_factory" not in kwargs
+        assert kwargs["compiler_factory"] is factory
+        assert kwargs["today"] == ADMISSION_TODAY
+        assert kwargs["thresholds"] == MINIMUM_ADMISSION_THRESHOLDS
+        return measured, (), ()
+
+    monkeypatch.setattr(candidate, "run_live_suite", run)
+    target = tmp_path / "approved.json"
+    assert candidate.main(["--live", "--output", str(target)]) == 0
+    bundle = json.loads(target.read_text())
+    assert "model_version" not in bundle["profile"]
+    assert bundle["profile"]["resolved_model"] == profile.resolved_model
+    assert bundle["admission_report"]["admitted"]
+    assert json.loads(capsys.readouterr().out)["status"] == "admitted"
+
+
+def test_release_bundle_failed_replace_preserves_previous_approval(
+        monkeypatch, tmp_path):
+    from viva.answer_program import release as release_module
+
+    profile, manifest, report = _identity_test_profile(monkeypatch)
+    monkeypatch.setattr(release_module, "_report_from_measured_run",
+                        lambda _: report)
+    target = tmp_path / "approved.json"
+    target.write_text("previous approval")
+
+    def fail_replace(*args):
+        raise OSError("simulated publication failure")
+
+    monkeypatch.setattr(release_module.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="simulated publication failure"):
+        write_release_bundle(target, profile=profile, manifest=manifest,
+                             measured_run=object())
+    assert target.read_text() == "previous approval"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_candidate_rejects_report_bundle_collision_before_provider(
+        monkeypatch, tmp_path):
+    from viva.answer_program import candidate
+
+    target = tmp_path / "same.json"
+    monkeypatch.setattr(candidate, "speak_spec", lambda: pytest.fail("provider"))
+    with pytest.raises(SystemExit):
+        candidate.main(["--live", "--output", str(target), "--report", str(target)])
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_runtime_loads_current_and_legacy_identity_bundles(
+        monkeypatch, tmp_path, legacy):
+    from vivacore.models import ModelSpec
+    from viva.speak import compiler_factory
+
+    profile, manifest, report = _identity_test_profile(monkeypatch)
+    raw = profile.to_dict()
+    if legacy:
+        raw["model_version"] = raw["resolved_model"]
+    target = tmp_path / "bundle.json"
+    target.write_text(json.dumps({"profile": raw, "admission_report": asdict(report)}))
+    monkeypatch.setenv("VIVA_ADMISSION_PROFILE", str(target))
+    monkeypatch.delenv("VIVA_SPEAK_PROTOCOL", raising=False)
+    monkeypatch.setattr("vivacore.models.adapter_for",
+                        lambda spec: SimpleNamespace(converse=lambda: None))
+    spec = ModelSpec(name="test", adapter=profile.provider,
+                     model=profile.requested_model, base_url=profile.endpoint)
+    factory = compiler_factory(spec, locale="en-US")
+    compiler = factory(ProgramValidator(manifest, AnswerResourcePolicy()),
+                       manifest, AnswerResourcePolicy())
+    assert compiler.expected_resolved_model == profile.resolved_model
+    with pytest.raises(ValueError, match="differs from admitted requested_model"):
+        compiler_factory(replace(spec, model="different-model"), locale="en-US")
+
+
+def test_candidate_rejects_hardlinked_report_before_evaluation(
+        monkeypatch, tmp_path):
+    from viva.answer_program import candidate
+
+    target = tmp_path / "approved.json"
+    target.write_text("previous approval")
+    report_path = tmp_path / "report.json"
+    report_path.hardlink_to(target)
+    monkeypatch.setattr(candidate, "speak_spec", lambda: pytest.fail("provider"))
+    with pytest.raises(SystemExit):
+        candidate.main(["--live", "--output", str(target),
+                        "--report", str(report_path)])
+    assert target.read_text() == "previous approval"
+
+
+@pytest.mark.parametrize("error_name", ["AdapterError", "ConfigError"])
+def test_candidate_reports_setup_failure_without_provider_details(
+        monkeypatch, tmp_path, capsys, error_name):
+    from viva.answer_program import candidate
+
+    def broken(*args, **kwargs):
+        raise getattr(candidate, error_name)("private provider detail")
+
+    monkeypatch.setattr(candidate, "speak_spec", lambda: object())
+    monkeypatch.setattr(candidate, "compiler_factory", broken)
+    target = tmp_path / "approved.json"
+    target.write_text("previous approval")
+    assert candidate.main(["--live", "--output", str(target)]) == 1
+    output = capsys.readouterr().out
+    assert "private provider detail" not in output
+    assert json.loads(output) == {"status": "failed", "error_type": error_name}
+    assert target.read_text() == "previous approval"

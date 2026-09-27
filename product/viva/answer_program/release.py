@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 import pathlib
+import tempfile
 
 from vivacore import promptstore, versions
 
@@ -99,11 +101,11 @@ def check_profile(profile, manifest, report=None, policy=None):
     return ReleaseCheck(not failures, tuple(failures))
 
 
-def write_release_bundle(path, *, profile, manifest, measured_run):
+def write_release_bundle(path, *, profile, manifest, measured_run, policy=None):
     report = _report_from_measured_run(measured_run)
     if not report.admitted:
         raise ValueError("release bundle needs an admitted measured report")
-    checked = check_profile(profile, manifest, report)
+    checked = check_profile(profile, manifest, report, policy)
     if not checked.passed:
         raise ValueError("release profile does not match this build: "
                          + ", ".join(checked.failures))
@@ -112,8 +114,20 @@ def write_release_bundle(path, *, profile, manifest, measured_run):
                "admission_report": asdict(report),
                "capability_manifest": manifest.to_dict()}
     target = pathlib.Path(path)
-    target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n",
-                      encoding="utf-8")
+    serialized = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=target.parent,
+                prefix=f".{target.name}.", delete=False) as stream:
+            temporary = pathlib.Path(stream.name)
+            stream.write(serialized)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return target
 
 

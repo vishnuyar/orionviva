@@ -17,8 +17,8 @@ complete AnswerProgram. The already-built runtime then validates the whole
 program before any financial read and executes, binds, and renders it through
 the same one grounded path.
 
-The active compact artifacts are `semantic-request-v7`,
-`semantic-request-retry-v7`, and `semantic-request-schema-v7`; exact-model
+The active compact artifacts are `semantic-request-v9`,
+`semantic-request-retry-v8`, and `semantic-request-schema-v7`; exact-model
 publication uses `semantic-request-admission-v8`. The profile version changed
 because the admission policy changed; the semantic contract itself did not.
 
@@ -223,3 +223,40 @@ answerable completion, zero financial-integrity errors, and the
 exact build digests. The later private-vault Witness also waits
 for the separately governed account-identity, question-intelligence, and
 desktop-progress workstreams.
+
+
+## Evaluating a replacement model
+
+Run `python -m viva.answer_program.candidate` in the installed product environment
+for the offline deterministic preflight. It derives all frozen-case oracles without
+constructing a provider or reading a personal vault. This is an engine readiness
+check, not evidence that a model understands the questions.
+
+Set the existing `VIVA_SPEAK_*` (or fallback `VIVA_MODEL_*`) process environment
+configuration and `VIVA_LOCALE`, then run:
+
+```sh
+python -m viva.answer_program.candidate --live --output /absolute/path/candidate.json
+```
+
+The command reads process environment only; it does not load `.env` files.
+Live evaluation sends the canonical synthetic questions and catalog to the
+configured provider and may incur provider charges. It runs the complete existing
+end-to-end suite with the canonical fixture date and unchanged minimum thresholds.
+The measured diagnostic report is written beside the bundle as
+`candidate.json.report.json`, or to `--report`. A passing run automatically produces
+the runtime bundle through the existing sealed-evidence publication gates. A failed
+run does not replace an existing approved bundle. Bundle replacement is atomic.
+Output directories must already exist.
+
+Select a passing bundle explicitly with `VIVA_ADMISSION_PROFILE`; evaluation does
+not change the active configuration. Runtime still checks the configured provider,
+requested model, returned model, locale, and build contracts. The command does not
+claim private-vault or installed-host acceptance.
+
+New profiles serialize `resolved_model` as the single returned-model identity.
+The current reader also accepts legacy profiles containing `model_version`, but
+only when it agrees with `resolved_model`. The admission policy remains v8 because
+its criteria have not changed. Older application readers require the legacy field
+and cannot read newly serialized bundles; keep their original bundle when rolling
+back the application. Prompt, schema, and engine versions remain separate contracts.

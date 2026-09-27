@@ -918,7 +918,7 @@ belongs in compilation; financial meaning belongs in the intent.
 An answer compiler model is admitted for one exact combination of:
 
 - provider and resolved model id;
-- model version or pinned identifier;
+- the provider-resolved model identifier (also the canonical version identity);
 - modality;
 - compiler prompt version;
 - `AnswerProgram` schema version;
