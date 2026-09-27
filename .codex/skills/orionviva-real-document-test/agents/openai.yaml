@@ -1,0 +1,4 @@
+interface:
+  display_name: "OrionViva Real Document Test"
+  short_description: "Test 19 real statements through the browser"
+  default_prompt: "Use $orionviva-real-document-test to run the full 19-document browser testing and repair workflow, with brokerage statements last and a fresh vault after each fix."
