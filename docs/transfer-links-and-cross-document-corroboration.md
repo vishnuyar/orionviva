@@ -137,9 +137,28 @@ The candidate index was never built, and that is a measured decision rather than
 
 The result on the real vault, after the stricter hint: sixty-seven of sixty-eight existing links survived, and the one that did not was the coincidence above, correctly revoked. Of the twenty-nine questions the deletion produced, twenty-four resolved on the printed date, and the five that remain are the five that should — the coincidence again, a payment that collided by amount, a duplicated statement line, and two whose true counterpart is not in the vault because that month's statement was never ingested.
 
+## Waiting for counterpart evidence
+
+An unresolved expense-shaped payment whose directional metadata explicitly says
+non-compound liability and names a supporting document receives one document
+expectation per movement. Both question readers apply the same rule, without
+changing the matcher, balances, ownership or spending classification. A captured
+or held statement, an unrelated transaction or an account of the right kind does
+not close that request. Live transfer ambiguity takes precedence only while the
+source and candidate records remain unlinked and pass the existing candidate
+gate. A real link or an explicit ruling removes the wait.
+
+When another statement arrives, ordinary ingestion and sweep matching still
+require the existing conservative evidence. Each payment links independently;
+source and counterpart retain their original movement keys, amounts and dates.
+Equal amounts alone do not qualify, and ties remain review questions. Saying
+that a document is available only acknowledges waiting; declining sets the
+request aside. Neither answer opens an account. The synthetic parity and
+both-import-order checks live in `product/tests/test_counterpart_review.py`.
+
 ## Open
 
-- The one-sided own-account ask is unbuilt: a transfer naming an unseen destination is not turned into an "is …9876 yours?" question, and a confirmed transfer is not learned as a pattern so future look-alikes auto-link. Until then a one-sided transfer counts as spending until the other account is ingested, then auto-nets.
+- The one-sided own-account ask is unbuilt: a transfer naming an unseen destination is not turned into an "is …9876 yours?" question, and a confirmed transfer is not learned as a pattern so future look-alikes auto-link. A one-sided movement can remain spending, but existing structured liability implications can already classify it provisionally outside settled spending, and an own-account heuristic can already mark it as a transfer. None of these is a completed counterpart link.
 - A candidate index bucketed by amount and date is headroom nobody has needed to buy.
 - A re-read that reorders or merges lines can move a movement fingerprint; revisit if reingest stability bites.
 - Making a linked pair **self-net to zero** needs the kind-aware economic sign, which belongs to [net-worth.md](net-worth.md); the equal-magnitude assertion recorded here is its precondition.

@@ -340,15 +340,20 @@ def test_current_period_no_eligible_liquid_balance_matches_canonical_exactly(
 
 
 def test_open_question_production_window_has_exact_deterministic_tail(tmp_path: Path):
-    events = [account_opened("broker", "investment", "Broker", "USD", "2026-01-01")]
-    transactions = [simple_transaction(
-        "broker", str(index), f"TRANSFER SOURCE {index:03d}", "2026-01-02",
-        kind="investment") for index in range(1, 206)]
-    events.extend(transactions)
+    events = [account_opened("broker", "investment", "Broker", "USD", "2026-01-01"),
+              account_opened("card", "liability", "Card", "USD", "2026-01-01")]
+    for index in range(1, 206):
+        events.extend((simple_transaction(
+            "broker", str(-index), f"TRANSFER SOURCE {index:03d}", "2026-01-02",
+            kind="investment"), simple_transaction(
+            "card", str(-index), f"PAYMENT RECEIVED {index:03d}", "2026-01-03",
+            kind="liability")))
     movements = LedgerProjection(events).movements()
+    candidates = {movement.amount: movement.key for movement in movements
+                  if movement.account == "card"}
     events.extend(transfer_suggested(
-        movement.key, [f"unmatched-{index:03d}"], {}, "2026-01-03")
-        for index, movement in enumerate(movements, start=1))
+        movement.key, [candidates[movement.amount]], {}, "2026-01-03")
+        for movement in movements if movement.account == "broker")
     expected = open_questions(
         LedgerProjection(events), as_of="2026-05-01", jurisdiction="US",
         locale="en-US", limit=None)

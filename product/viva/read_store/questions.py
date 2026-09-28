@@ -4,9 +4,11 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 from merchantcore import is_shareable, normalize_merchant
 from ..question_evidence import decide, group_decision
+from ..counterpart_review import live_candidates, route as counterpart_route
 from merchantcore.descriptor import linted_example
 
 from .. import render
@@ -122,6 +124,11 @@ def candidates(connection, *, as_of: str, locale: str = "",
         (MAX_TRANSFER_CANDIDATE_BYTES, MAX_QUESTION_CANDIDATES + 1)).fetchall()
     if len(suggestions) > MAX_QUESTION_CANDIDATES:
         raise RhythmReadError("transfer questions exceed their candidate bound")
+    transfer_movements = {key: SimpleNamespace(
+        key=key, account=row["account_id"], kind=row["account_kind"],
+        amount=row["amount"], currency=row["currency"], date=row["occurred_at"])
+        for key, row in by_key.items()}
+    transfer_sources = set()
     for source_key, encoded in suggestions:
         if not isinstance(encoded, str) or len(encoded.encode("utf-8")) > MAX_TRANSFER_CANDIDATE_BYTES:
             raise RhythmReadError("transfer candidate payload exceeds its byte bound")
@@ -139,9 +146,11 @@ def candidates(connection, *, as_of: str, locale: str = "",
                or len(key.encode("utf-8")) > MAX_TRANSFER_CANDIDATE_KEY_BYTES
                for key in decoded):
             raise RhythmReadError("transfer candidate key exceeds its field bound")
-        possible = [key for key in decoded if key not in linked]
+        possible = live_candidates(transfer_movements.get(source_key), decoded,
+                                   transfer_movements, linked)
         source = by_key.get(source_key)
-        if source is None or not possible: continue
+        if source is None or source_key in linked or not possible: continue
+        transfer_sources.add(source_key)
         amount = abs(source["amount"])
         out.append(_question(f"transfer:{source_key}", "transfer",
             say("transfer", date=render.date(source["occurred_at"]),
@@ -182,7 +191,6 @@ def candidates(connection, *, as_of: str, locale: str = "",
              "movements": [] if generalizes else [row["movement_key"] for row in group["rows"]]}))
     singles, structural = [], {}
     for row in expenses:
-        if row["nature_reason"] not in ("category_hint", "default"): continue
         record = evidence_records.get(row["movement_key"]) or {}
         attrs = record.get("attributes") or {}
         kind = attrs.get("counterparty_kind", "")
@@ -191,6 +199,24 @@ def candidates(connection, *, as_of: str, locale: str = "",
         implications = attrs.get("implies") or []
         direction = "inflow" if money_effect(row["account_kind"], row["amount"]) > 0 else "outflow"
         implied = next((x for x in implications if x.get("on") in (direction, "both")), None)
+        routing = counterpart_route(implied,
+            linked=row["movement_key"] in linked,
+            nature_reason=row["nature_reason"],
+            transfer_review=row["movement_key"] in transfer_sources)
+        if routing in ("settled", "transfer"):
+            continue
+        if routing == "waiting":
+            amount = abs(row["amount"])
+            out.append(_question(f"expectation:counterpart:{row['movement_key']}",
+                "expectation", say("counterpart_wait",
+                    date=render.date(row["occurred_at"]),
+                    money=render.money(amount, row["currency"], locale=locale),
+                    document=render.document(implied["documents"])),
+                say("counterpart_wait_why"), amount, row["currency"],
+                slots=DOCUMENT_SLOTS,
+                refs={"movement": row["movement_key"], "document": implied["documents"]}))
+            continue
+        if row["nature_reason"] not in ("category_hint", "default"): continue
         if unknown: singles.append(row)
         elif unenriched or not implied: continue
         else:

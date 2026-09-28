@@ -17,6 +17,7 @@ Two disciplines, both enforced here rather than remembered:
 
 import ast
 import hashlib
+import json
 import pathlib
 
 import pytest
@@ -385,3 +386,16 @@ def test_a_packs_own_comment_counts_nothing_it_would_have_to_keep_true():
     assert not spelled, (
         f"the pack's comment says {spelled}; describe the family and do not "
         "number it")
+
+
+def test_counterpart_pack_activates_only_the_reviewed_document_requests():
+    root = pathlib.Path(persona.__file__).resolve().parent
+    prior = json.loads((root / "pack-v48" / "phrasings.json").read_text())
+    current = json.loads((root / "pack-v49" / "phrasings.json").read_text())
+    assert persona.ACTIVE_PACK == "pack-v49"
+    assert set(current) - set(prior) == {"counterpart_wait", "counterpart_wait_why"}
+    for key, value in prior.items():
+        if not key.startswith("_"):
+            assert current[key] == value
+    for name in ("moments.json", "tone.md"):
+        assert (root / "pack-v49" / name).read_bytes() == (root / "pack-v48" / name).read_bytes()

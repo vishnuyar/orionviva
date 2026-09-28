@@ -751,3 +751,208 @@ describe("vault", () => {
     expect(view.getByText("Loading Overview and Accounts from this vault…")).toBeInTheDocument();
   });
 });
+
+describe("automatic publication recovery", () => {
+  it("recovers the selected Review screen without moving navigation focus", async () => {
+    vi.useFakeTimers();
+    let priorityCalls = 0;
+    let reviewCalls = 0;
+    const surfaces: unknown[] = [];
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "2.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+        surfaces.push(payload.surface);
+        let data: unknown = { turns: [], questions: [], total: 0 };
+        if (payload.surface === "overview_accounts") {
+          priorityCalls += 1;
+          data = { ...priorityEnvelope({ accounts: [] }), ...(priorityCalls === 1 ? { state: "stale", freshness: "stale", lifecycle: "stale" } : {}) };
+        } else if (payload.surface === "review") {
+          reviewCalls += 1;
+          data = reviewCalls === 1 ? { state: "failed", reason: "read_store_unavailable" } : reviewEmptyPayload;
+        }
+        return { protocol: "2.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "synthetic", data } as T };
+      },
+    };
+    const view = render(<App />);
+    try {
+      fireEvent.change(view.getByLabelText("Vault directory"), { target: { value: "/synthetic" } });
+      fireEvent.change(view.getByLabelText("Passphrase"), { target: { value: "synthetic" } });
+      await act(async () => { fireEvent.click(view.getByRole("button", { name: "Open local vault" })); });
+      const navigation = view.getByRole("button", { name: /Review, count unavailable/ });
+      navigation.focus();
+      await act(async () => { fireEvent.click(navigation); });
+      expect(view.getByRole("button", { name: "Retry this screen" })).toBeInTheDocument();
+      await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+      expect(view.queryByRole("button", { name: "Retry this screen" })).toBeNull();
+      expect(view.getByRole("heading", { name: "Review", level: 1 })).toBeInTheDocument();
+      expect(navigation).toHaveFocus();
+      expect(reviewCalls).toBe(2);
+      expect(surfaces).not.toContain("trust");
+      expect(surfaces).not.toContain("documents");
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("focused automatic publication recovery", () => {
+  it("restores the Review heading when automatic recovery removes focused Retry", async () => {
+    vi.useFakeTimers();
+    let priorityCalls = 0;
+    let reviewCalls = 0;
+    const surfaces: unknown[] = [];
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "2.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+        surfaces.push(payload.surface);
+        let data: unknown = { turns: [], questions: [], total: 0 };
+        if (payload.surface === "overview_accounts") {
+          priorityCalls += 1;
+          data = { ...priorityEnvelope({ accounts: [] }), ...(priorityCalls === 1 ? { state: "stale", freshness: "stale", lifecycle: "stale" } : {}) };
+        } else if (payload.surface === "review") {
+          reviewCalls += 1;
+          data = reviewCalls === 1 ? { state: "failed", reason: "read_store_unavailable" } : reviewEmptyPayload;
+        }
+        return { protocol: "2.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "synthetic", data } as T };
+      },
+    };
+    const view = render(<App />);
+    try {
+      fireEvent.change(view.getByLabelText("Vault directory"), { target: { value: "/synthetic" } });
+      fireEvent.change(view.getByLabelText("Passphrase"), { target: { value: "synthetic" } });
+      await act(async () => { fireEvent.click(view.getByRole("button", { name: "Open local vault" })); });
+      const navigation = view.getByRole("button", { name: /Review, count unavailable/ });
+      navigation.focus();
+      await act(async () => { fireEvent.click(navigation); });
+      expect(view.getByRole("button", { name: "Retry this screen" })).toBeInTheDocument();
+      view.getByRole("button", { name: "Retry this screen" }).focus();
+      await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+      expect(view.queryByRole("button", { name: "Retry this screen" })).toBeNull();
+      expect(view.getByRole("heading", { name: "Review", level: 1 })).toBeInTheDocument();
+      expect(view.getByRole("heading", { name: "Review", level: 1 })).toHaveFocus();
+      expect(reviewCalls).toBe(2);
+      expect(surfaces).not.toContain("trust");
+      expect(surfaces).not.toContain("documents");
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("guarded destination recovery focus", () => {
+  it.each([
+    [1440, "success"], [600, "success"],
+    [1440, "moved"], [600, "moved"],
+    [1440, "failed"], [600, "failed"],
+    [1440, "navigation"], [600, "navigation"],
+    [1440, "close"], [600, "close"],
+    [1440, "replace"], [600, "replace"],
+    [1440, "dialog"], [600, "dialog"],
+    [1440, "explicit"], [600, "explicit"],
+    [1440, "explicit-moved"], [600, "explicit-moved"],
+    [1440, "explicit-navigation"], [600, "explicit-navigation"],
+    [1440, "blurred"], [600, "blurred"],
+    [1440, "dialog-return"], [600, "dialog-return"],
+  ] as const)("preserves focus at width %i through %s", async (width, scenario) => {
+    vi.useFakeTimers();
+    installResponsiveMatchMedia(width);
+    let priorityCalls = 0;
+    let reviewCalls = 0;
+    let finish!: (value: unknown) => void;
+    const pending = new Promise<unknown>((resolve) => { finish = resolve; });
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "2.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+        let data: unknown = { turns: [], questions: [], total: 0 };
+        if (payload.surface === "overview_accounts") {
+          priorityCalls += 1;
+          data = { ...priorityEnvelope({ accounts: [] }), ...(priorityCalls === 1 ? { state: "stale", freshness: "stale", lifecycle: "stale" } : {}) };
+        } else if (payload.surface === "review") {
+          reviewCalls += 1;
+          data = reviewCalls === 1 ? { state: "failed", reason: "read_store_unavailable" } : reviewCalls === 2 ? await pending : reviewEmptyPayload;
+        } else if (payload.surface === "documents") data = { documents: [] };
+        return { protocol: "2.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "synthetic", data } as T };
+      },
+    };
+    const view = render(<App />);
+    const openNavigation = async () => {
+      if (width === 600) await act(async () => { fireEvent.click(view.getByRole("button", { name: "Open navigation" })); });
+    };
+    try {
+      await openNavigation();
+      fireEvent.change(view.getByLabelText("Vault directory"), { target: { value: "/synthetic" } });
+      fireEvent.change(view.getByLabelText("Passphrase"), { target: { value: "synthetic" } });
+      await act(async () => { fireEvent.click(view.getByRole("button", { name: "Open local vault" })); });
+      await openNavigation();
+      await act(async () => { fireEvent.click(view.getByRole("button", { name: /Review, count unavailable/ })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+      const retry = view.getByRole("button", { name: "Retry this screen" });
+      retry.focus();
+      if (scenario === "explicit" || scenario === "explicit-moved" || scenario === "explicit-navigation") await act(async () => { fireEvent.click(retry); });
+      else await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+      expect(retry).toHaveFocus();
+      expect(retry).toHaveAttribute("aria-disabled", "true");
+      let preserved: Element | null = null;
+      if (scenario === "moved" || scenario === "explicit-moved") {
+        const target = width === 600 ? view.getByRole("button", { name: "Open navigation" }) : view.getByRole("button", { name: "Statements" });
+        target.focus();
+        preserved = target;
+      } else if (scenario === "blurred") {
+        retry.blur();
+        preserved = document.activeElement;
+      } else if (scenario === "navigation" || scenario === "explicit-navigation") {
+        await openNavigation();
+        await act(async () => { fireEvent.click(view.getByRole("button", { name: "Statements" })); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+        const heading = view.getByRole("heading", { name: "Statements & documents", level: 1 });
+        expect(heading).toHaveFocus();
+        const target = width === 600 ? view.getByRole("button", { name: "Open navigation" }) : view.getByRole("button", { name: "Statements" });
+        target.focus();
+        preserved = target;
+      } else if (scenario === "close" || scenario === "replace") {
+        await openNavigation();
+        if (scenario === "close") {
+          await act(async () => { fireEvent.click(view.getByRole("button", { name: "Close this vault" })); });
+        } else {
+          fireEvent.change(view.getByLabelText("Vault directory"), { target: { value: "/replacement" } });
+          fireEvent.change(view.getByLabelText("Passphrase"), { target: { value: "synthetic" } });
+          await act(async () => { fireEvent.click(view.getByRole("button", { name: "Open local vault" })); });
+        }
+        await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+        const heading = view.getByRole("heading", { level: 1 });
+        heading.focus();
+        preserved = heading;
+      } else if (scenario === "dialog" || scenario === "dialog-return") {
+        await act(async () => { fireEvent.click(view.getByRole("button", { name: "Ask Viva" })); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+        preserved = document.activeElement;
+        expect(view.getByRole("dialog")).toContainElement(preserved as HTMLElement);
+        if (scenario === "dialog-return") {
+          await act(async () => { fireEvent.click(view.getByRole("button", { name: "Close Ask Viva" })); });
+          await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+          const target = width === 600 ? view.getByRole("button", { name: "Open navigation" }) : view.getByRole("button", { name: "Statements" });
+          target.focus();
+          preserved = target;
+        }
+      }
+      await act(async () => { finish(scenario === "failed" ? { state: "failed", reason: "read_store_unavailable" } : reviewEmptyPayload); });
+      if (scenario === "success" || scenario === "explicit") {
+        const heading = view.getByRole("heading", { name: "Review", level: 1 });
+        expect(heading).toHaveFocus();
+        expect(view.queryByRole("button", { name: "Retry this screen" })).toBeNull();
+        const target = width === 600 ? view.getByRole("button", { name: "Open navigation" }) : view.getByRole("button", { name: "Statements" });
+        target.focus();
+        await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+        expect(target).toHaveFocus();
+      } else if (scenario === "failed") {
+        expect(retry).toHaveFocus();
+        expect(retry).toHaveAttribute("aria-disabled", "false");
+      } else expect(document.activeElement).toBe(preserved);
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
+  });
+});

@@ -495,13 +495,19 @@ def test_a_transfer_suggestion_becomes_a_one_off_question(tmp_path):
 
 
 def test_a_transfer_question_carries_its_source_and_candidate_identities(tmp_path):
-    from viva.ledger import transfer_suggested
+    from viva.ledger import (Posting, account_opened, transaction_recorded,
+                             transfer_suggested)
 
     ledger = _checking(tmp_path, [
         ("2026-03-05", "POSSIBLE TRANSFER", "-200.00"),
     ])
     source = ledger.projection().movements()[0]
-    candidates = ["movement:candidate-one", "movement:candidate-two"]
+    for account in ("synthetic-card-one", "synthetic-card-two"):
+        ledger.append(account_opened(account, "liability", account, "USD", "2026-03-01"))
+        ledger.append(transaction_recorded(
+            [Posting(account, "-200.00"), Posting("Equity:Counterpart", "200.00")],
+            "Payment received", "2026-03-06"))
+    candidates = [m.key for m in ledger.projection().movements() if m.key != source.key]
     ledger.append(transfer_suggested(
         source.key, candidates, {}, "2026-04-01"))
 

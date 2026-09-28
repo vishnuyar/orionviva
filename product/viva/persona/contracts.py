@@ -30,6 +30,8 @@ INTENT_FIELDS: dict[str, dict[str, str]] = {
                                     "account_ref": ACCOUNT},
     "transfer":                    {"date": DATE, "money": MONEY,
                                     "description": MERCHANT},
+    "counterpart_wait":            {"date": DATE, "money": MONEY, "document": DOCUMENT},
+    "counterpart_wait_why":        {},
     "transfer_why":                {"candidates": COUNT},
     "merchant":                    {"example": MERCHANT, "count": COUNT,
                                     "money": MONEY},

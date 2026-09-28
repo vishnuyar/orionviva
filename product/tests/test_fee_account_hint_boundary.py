@@ -320,4 +320,4 @@ def test_recovery_pack_adds_only_the_reviewed_refusal():
         "I can't apply this proposal as shown. This attempt made no changes to your financial records. "
         "Please answer the original question again so I can prepare a fresh proposal.")
     assert current == prior
-    assert persona.ACTIVE_PACK == "pack-v48"
+    assert versions.fingerprint(new) == "e77e781b89b0c766"

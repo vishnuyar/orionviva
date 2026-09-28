@@ -2142,3 +2142,158 @@ describe("file gestures retain the vault they were started for", () => {
     expect(onDropped).not.toHaveBeenCalled();
   });
 });
+
+describe("bounded publication recovery", () => {
+  afterEach(() => { vi.useRealTimers(); delete window.orionVivaBridge; });
+  it.each([ ["equal"], ["rebuilding", "equal"], ["stale", "equal"], ["rebuilding", "stale", "equal"] ])("observes eventual current publication after %j", async (...states) => {
+    vi.useFakeTimers();
+    let calls = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      const surface = frame.payload.surface as SurfaceName;
+      let data = completeSurfacePayload(surface);
+      if (surface === "overview_accounts") {
+        const lifecycle = states[Math.min(calls++, states.length - 1)];
+        data = lifecycle === "rebuilding"
+          ? { state: "degraded", freshness: "unavailable", lifecycle, revision: "", overview: null, accounts: null, error: "read_store_unavailable" }
+          : { ...(data as object), state: lifecycle === "stale" ? "stale" : "ready", freshness: lifecycle === "stale" ? "stale" : "current", lifecycle, revision: lifecycle === "equal" ? "g-current" : "g-prior" };
+      }
+      return ok(frame.requestId, { surface, job_id: "synthetic", data } as T);
+    } };
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    const observed = { calls, freshness: result.current.session.priorityFreshness, lifecycle: result.current.session.priorityLifecycle };
+    unmount();
+    expect(observed).toEqual({ calls: states.length, freshness: "current", lifecycle: "equal" });
+  });
+});
+
+describe("publication recovery safeguards", () => {
+  afterEach(() => { vi.useRealTimers(); delete window.orionVivaBridge; });
+  function install(states: string[], read?: (surface: SurfaceName, count: number) => Promise<unknown>) {
+    const calls: SurfaceName[] = [];
+    let priorityCalls = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      const surface = frame.payload.surface as SurfaceName;
+      calls.push(surface);
+      let data = completeSurfacePayload(surface);
+      if (surface === "overview_accounts") {
+        const lifecycle = states[Math.min(priorityCalls++, states.length - 1)];
+        if (lifecycle === "error") throw new Error("synthetic unavailable read");
+        data = lifecycle === "rebuilding" || lifecycle === "degraded"
+          ? { state: "degraded", freshness: "unavailable", lifecycle, revision: "", overview: null, accounts: null, error: "read_store_unavailable" }
+          : { ...(data as object), state: lifecycle === "stale" ? "stale" : "ready", freshness: lifecycle === "stale" ? "stale" : "current", lifecycle, revision: lifecycle === "equal" ? "g-current" : "g-prior" };
+      }
+      const override = await read?.(surface, calls.filter((entry) => entry === surface).length);
+      return ok(frame.requestId, { surface, job_id: "synthetic", data: override ?? data } as T);
+    } };
+    return calls;
+  }
+  it.each(["stale", "rebuilding"])("stops permanent %s at 240 waits", async (state) => {
+    vi.useFakeTimers();
+    const calls = install([state]);
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(59_999); });
+    expect(calls.filter((surface) => surface === "overview_accounts")).toHaveLength(240);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_001); });
+    expect(calls.filter((surface) => surface === "overview_accounts")).toHaveLength(241);
+    expect(result.current.session.priorityRetryable).toBe(true);
+    expect(result.current.session.priorityFreshness).not.toBe("current");
+    unmount();
+  });
+  it.each(["degraded", "error"])("stops on %s with honest retryable state", async (state) => {
+    vi.useFakeTimers();
+    const calls = install(["stale", state, "equal"]);
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(calls.filter((surface) => surface === "overview_accounts")).toHaveLength(2);
+    expect(result.current.session.priorityFreshness).toBe("stale");
+    expect(result.current.session.priorityRetryable).toBe(true);
+    expect(result.current.session.readRevision).toBe("g-prior");
+    unmount();
+  });
+  it.each(["before", "after"])("recovers only selected Review when its failure arrives %s publication", async (order) => {
+    vi.useFakeTimers();
+    const review = deferred<unknown>();
+    const calls = install(["stale", "equal"], async (surface, count) => {
+      if (surface === "review" && count === 1) return review.promise;
+    });
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    await act(async () => { result.current.navigate("review"); });
+    if (order === "after") await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    await act(async () => { review.resolve({ state: "failed", reason: "read_store_unavailable" }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(result.current.session.priorityFreshness).toBe("current");
+    expect(result.current.session.destinationReads.review).toBe("ready");
+    expect(calls.filter((surface) => surface === "review")).toHaveLength(2);
+    expect(calls).not.toContain("trust");
+    expect(calls).not.toContain("documents");
+    unmount();
+  });
+  it.each(["close", "replace", "retry"])("ignores an obsolete observation after %s", async (action) => {
+    vi.useFakeTimers();
+    const observation = deferred<unknown>();
+    const calls = install(["stale", "equal"], async (surface, count) => {
+      if (surface === "overview_accounts" && count === 2) return observation.promise;
+    });
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    if (action === "retry") await act(async () => { await result.current.retryPriorityRead(); });
+    else {
+      await act(async () => { result.current.resetDemo(); });
+      if (action === "replace") await act(async () => { await result.current.openVault("/replacement", "synthetic", false); });
+    }
+    const revision = result.current.session.readRevision;
+    await act(async () => { observation.resolve({ ...(completeSurfacePayload("overview_accounts") as object), revision: "obsolete" }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(result.current.session.readRevision).toBe(revision);
+    expect(calls.filter((surface) => surface === "overview_accounts")).toHaveLength(action === "close" ? 2 : 3);
+    unmount();
+  });
+  it.each(["close", "replace", "navigate"])("discards a recovered destination read after %s", async (action) => {
+    vi.useFakeTimers();
+    const recovery = deferred<unknown>();
+    const calls = install(["stale", "equal"], async (surface, count) => {
+      if (surface === "review" && count === 1) return { state: "failed", reason: "read_store_unavailable" };
+      if (surface === "review" && count === 2) return recovery.promise;
+    });
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    await act(async () => { result.current.navigate("review"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(result.current.session.destinationReads.review).toBe("retrying");
+    if (action === "navigate") await act(async () => { result.current.navigate("documents"); });
+    else {
+      await act(async () => { result.current.resetDemo(); });
+      if (action === "replace") await act(async () => { await result.current.openVault("/replacement", "synthetic", false); });
+    }
+    const snapshot = result.current.session.snapshot;
+    await act(async () => { recovery.resolve(completeSurfacePayload("review")); });
+    expect(result.current.session.snapshot).toBe(snapshot);
+    expect(calls.filter((surface) => surface === "review")).toHaveLength(2);
+    unmount();
+  });
+
+  it("leaves a failed automatic destination retry available for manual recovery without looping", async () => {
+    vi.useFakeTimers();
+    const calls = install(["stale", "equal"], async (surface) => {
+      if (surface === "review") return { state: "failed", reason: "read_store_unavailable" };
+    });
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    await act(async () => { result.current.navigate("review"); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(result.current.session.destinationReads.review).toBe("failed");
+    expect(result.current.session.priorityFreshness).toBe("current");
+    expect(calls.filter((surface) => surface === "review")).toHaveLength(2);
+    expect(calls).not.toContain("trust");
+    unmount();
+  });
+
+});

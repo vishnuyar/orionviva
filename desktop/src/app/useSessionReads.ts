@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { AccountLedgerData, FeatureResult, SpendingBreakdownData, SpendingRequest } from "../surface/types";
 import type { LazyDestination } from "./session";
 import { liveReadingSnapshot } from "./session";
@@ -39,6 +39,7 @@ export function useSessionReads(context: Coordination) {
     source,
     sourceIdentity,
   } = context;
+  const publicationRecovery = useRef<{ source: NonNullable<typeof source>; request: number; priority: number; destination: number } | null>(null);
   const accountLedgerReader = session.source?.accountLedgerReader ?? null;
   const spendingBreakdownReader = session.source?.spendingBreakdownReader ?? null;
 
@@ -57,7 +58,7 @@ export function useSessionReads(context: Coordination) {
       const priority = await priorityWork;
       if (!priorityAttemptCanPublish(activePriority, priorityGeneration.current, activeRequest, requestId.current, sourceIdentity.current === activeSource)) return false;
       dispatch({ type: "priority-loaded", requestId: activeRequest, source: activeSource, overview: priority.snapshot.overview, disclosure: priority.snapshot.disclosure, revision: priority.revision, freshness: priority.freshness, lifecycle: priority.lifecycle, retryable: priority.retryable });
-      if (priority.lifecycle === "rebuilding") {
+      if (priority.lifecycle === "rebuilding" || priority.lifecycle === "stale") {
         const watchGeneration = activePriority;
         void (async () => {
           for (let attempt = 0; attempt < 240; attempt += 1) {
@@ -65,8 +66,11 @@ export function useSessionReads(context: Coordination) {
             if (!priorityAttemptCanPublish(watchGeneration, priorityGeneration.current, activeRequest, requestId.current, sourceIdentity.current === activeSource)) return;
             const refreshed = await activeSource.loadPriority!();
             if (!priorityAttemptCanPublish(watchGeneration, priorityGeneration.current, activeRequest, requestId.current, sourceIdentity.current === activeSource)) return;
+            if (refreshed.freshness === "current") {
+              publicationRecovery.current = { source: activeSource, request: activeRequest, priority: watchGeneration, destination: destinationGeneration.current };
+            }
             dispatch({ type: "priority-loaded", requestId: activeRequest, source: activeSource, overview: refreshed.snapshot.overview, disclosure: refreshed.snapshot.disclosure, revision: refreshed.revision, freshness: refreshed.freshness, lifecycle: refreshed.lifecycle, retryable: refreshed.retryable });
-            if (refreshed.lifecycle !== "rebuilding") return;
+            if (refreshed.freshness === "current" || (refreshed.lifecycle !== "rebuilding" && refreshed.lifecycle !== "stale")) return;
           }
         })().catch(() => undefined);
       }
@@ -151,6 +155,51 @@ export function useSessionReads(context: Coordination) {
     return () => { gone = true; };
   }, [session.destination, source]);
 
+  async function retryDestinationRead(destination: LazyDestination) {
+    const activeSource = source;
+    const activeRequest = requestId.current;
+    const held = retryingDestination.current;
+    if (!activeSource?.loadDestination || session.destination !== destination || session.destinationReads[destination] !== "failed"
+        || (held?.destination === destination && held.source === activeSource && held.request === activeRequest && held.generation === destinationGeneration.current)) return "ignored" as const;
+    const activeGeneration = ++destinationGeneration.current;
+    const retryToken = { destination, source: activeSource, request: activeRequest, generation: activeGeneration };
+    retryingDestination.current = retryToken;
+    dispatch({ type: "destination-retrying", requestId: activeRequest, destination });
+    try {
+      const snapshot = await activeSource.loadDestination(destination, activityLimit.current);
+      if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration) return "ignored" as const;
+      if (destinationReadFailed(destination, snapshot)) {
+        dispatch({ type: "destination-failed", requestId: activeRequest, destination, snapshot });
+        return "failed" as const;
+      }
+      dispatch({ type: "destination-loaded", requestId: activeRequest, destination, snapshot });
+      return "succeeded" as const;
+    } catch {
+      if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration) return "ignored" as const;
+      dispatch({ type: "destination-failed", requestId: activeRequest, destination });
+      return "failed" as const;
+    } finally {
+      if (retryingDestination.current === retryToken) retryingDestination.current = null;
+    }
+  }
+
+  // A completed publication may release the selected read that failed while it prepared.
+  useEffect(() => {
+    const recovery = publicationRecovery.current;
+    if (!recovery) return;
+    if (!priorityAttemptCanPublish(recovery.priority, priorityGeneration.current, recovery.request, requestId.current, sourceIdentity.current === recovery.source)
+        || recovery.destination !== destinationGeneration.current) {
+      publicationRecovery.current = null;
+      return;
+    }
+    if (session.priorityFreshness !== "current") return;
+    const destination = session.destination as LazyDestination;
+    const state = session.destinationReads[destination];
+    if (state === "loading") return;
+    publicationRecovery.current = null;
+    if (state === "failed") void retryDestinationRead(destination);
+  }, [session.priorityFreshness, session.destination, session.destinationReads, source]);
+
   const readSpendingBreakdown = useCallback(async (request: SpendingRequest): Promise<FeatureResult<SpendingBreakdownData>> => {
     if (!spendingBreakdownReader) return { state: "absent", reason: "not_available" };
     const activeRequest = requestId.current;
@@ -166,33 +215,7 @@ export function useSessionReads(context: Coordination) {
   }, [source, spendingBreakdownReader]);
 
   return {
-    async retryDestinationRead(destination: LazyDestination) {
-      const activeSource = source;
-      const activeRequest = requestId.current;
-      const held = retryingDestination.current;
-      if (!activeSource?.loadDestination || session.destination !== destination || session.destinationReads[destination] !== "failed"
-          || (held?.destination === destination && held.source === activeSource && held.request === activeRequest && held.generation === destinationGeneration.current)) return "ignored" as const;
-      const activeGeneration = ++destinationGeneration.current;
-      const retryToken = { destination, source: activeSource, request: activeRequest, generation: activeGeneration };
-      retryingDestination.current = retryToken;
-      dispatch({ type: "destination-retrying", requestId: activeRequest, destination });
-      try {
-        const snapshot = await activeSource.loadDestination(destination, activityLimit.current);
-        if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration) return "ignored" as const;
-        if (destinationReadFailed(destination, snapshot)) {
-          dispatch({ type: "destination-failed", requestId: activeRequest, destination, snapshot });
-          return "failed" as const;
-        }
-        dispatch({ type: "destination-loaded", requestId: activeRequest, destination, snapshot });
-        return "succeeded" as const;
-      } catch {
-        if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration) return "ignored" as const;
-        dispatch({ type: "destination-failed", requestId: activeRequest, destination });
-        return "failed" as const;
-      } finally {
-        if (retryingDestination.current === retryToken) retryingDestination.current = null;
-      }
-    },
+    retryDestinationRead,
     async retryPriorityRead() {
       const activeSource = source;
       if (!activeSource?.loadPriority || !session.priorityRetryable || retryingPriority.current?.request === requestId.current) return "ignored" as const;

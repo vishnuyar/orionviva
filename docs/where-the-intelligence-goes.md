@@ -21,10 +21,10 @@
 **Test:** product/tests/test_tiers.py::test_an_ordinary_counterparty_is_settled_and_silent
 
 1. A known counterparty implying nothing is `settled`: the category and the major are assigned and no question is raised.
-2. A counterparty implying structure is `structural`: an informed proposal carrying its grounds and specific options, never a naive open question.
+2. A counterparty implying structure is `structural`: an informed proposal carrying its grounds and specific options, except that an unresolved expense-shaped payment with a directional non-compound liability implication and supporting-document metadata receives a per-payment document expectation. This read-side route leaves the tier unchanged; live transfer review takes precedence and a link or explicit ruling settles the wait. See [the question queue](the-question-queue.md).
 3. An instrument or a peer is `unknown`: one real question per transaction, free text first-class.
 4. A counterparty enrichment has not reached is `unenriched` and raises no nature question at all — the order is ingest, enrich, then ask.
-5. A descriptor that may never be shared is `unknown` rather than `unenriched`, because an identification that cannot arrive must not be promised. This attention rule remains ahead of local category and implication knowledge. Moving that knowledge ahead of privacy is reserved to the owner.
+5. A descriptor that may never be shared is `unknown` rather than `unenriched`, because an identification that cannot arrive must not be promised. This tier rule remains ahead of local category and implication knowledge. The bounded counterpart-document route uses existing typed implication metadata before tier-based question routing; it does not authorize descriptor sharing or identify a person or channel. Other changes to privacy precedence remain reserved to the owner.
 6. Sharing refusal supplies no evidence of a person or payment channel. Questions use existing typed counterparty records; absent or unsupported kinds abstain. Privacy-only uncertainty receives neutral wording, while peer wording requires uniformly supported peer evidence. Canonical and indexed reads select the highest-graded record across the same ordered identity candidates; ties keep the leading candidate. Direct proposals use that same movement evidence and conservative group scope.
 
 ### PROJ-36 — direction is part of the implication, never a branch in the caller

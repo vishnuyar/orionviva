@@ -56,6 +56,7 @@ from merchantcore.enrich import BILLING_PERIODS, BILLING_STANDING
 
 from .ingest import held_items, other_holds
 from .question_evidence import decide, group_decision
+from .counterpart_review import live_candidates, route as counterpart_route
 from .ledger.identity import masked
 from .ledger.events import (ASSERTED, PERIOD_ANNUAL, PERIOD_IRREGULAR,
                             PERIOD_MONTHLY, PERIOD_ONE_TIME, PERIODICITIES)
@@ -300,11 +301,9 @@ def _transfer_questions(proj, locale: str = "") -> list[Question]:
     linked = proj.linked_keys()
     out: list[Question] = []
     for s in proj.transfer_suggestions():
-        cands = [k for k in s.get("candidates", []) if k not in linked]
-        if not cands:
-            continue
         src = by_key.get(s["a"])
-        if src is None:
+        cands = live_candidates(src, s.get("candidates", []), by_key, linked)
+        if not cands:
             continue
         ev = s.get("evidence", {})
         amount = abs(src.amount)
@@ -380,9 +379,11 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
 
 
 def _nature_questions(proj, locale: str = "") -> list[Question]:
-    """What this money is — asked only where the counterparty cannot say.
+    """Request counterpart evidence or ask what unresolved money became.
 
-    The tier decides:
+    Simple debt payments await their supporting document per movement unless
+    current transfer review takes precedence. Links and rulings settle the wait.
+    For other movements, the tier decides:
 
       settled     an ordinary counterparty implying nothing  → no question
       structural  the counterparty implies a relationship    → one grouped
@@ -398,8 +399,26 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
     # what may cross (T9).
     categories = category_vocabulary(proj)
 
+    linked = proj.linked_keys()
+    transfer_sources = {q.refs["movement"] for q in _transfer_questions(proj, locale)}
     for m in proj.movements():
         if not proj._is_expense(m):
+            continue
+        implied = proj.implication_of(m)
+        routing = counterpart_route(implied, linked=m.key in linked,
+                                    nature_reason=m.nature_reason,
+                                    transfer_review=m.key in transfer_sources)
+        if routing in ("settled", "transfer"):
+            continue
+        if routing == "waiting":
+            out.append(Question(
+                id=f"{EXPECTATION}:counterpart:{m.key}", kind=EXPECTATION,
+                text=say("counterpart_wait", date=render_date(m.date),
+                         money=render_money(abs(m.amount), m.currency, locale=locale),
+                         document=render_document(implied["documents"])),
+                why=say("counterpart_wait_why"), amount=abs(m.amount),
+                currency=m.currency, slots=DOCUMENT_SLOTS,
+                refs={"movement": m.key, "document": implied["documents"]}))
             continue
         tier = proj.tier_of(m)
         if tier == TIER_SETTLED:

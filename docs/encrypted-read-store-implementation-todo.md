@@ -1289,8 +1289,12 @@ screen or navigation, and timeout cleanup leaves no runaway process.
   nor rebuild keys.
 - A prior authenticated generation remains readable as `stale`; a missing or
   unusable generation reports `rebuilding`. The desktop polls only the bounded
-  priority bundle while rebuilding and publishes the new immutable generation
-  when an attempt succeeds. Failure retains stale data when one exists and
+  priority bundle while rebuilding or stale and publishes the new immutable
+  generation when an attempt succeeds. A selected destination that failed during
+  preparation is retried once after current publication; other destinations
+  remain lazy. When successful recovery removes the focused Retry control, the
+  same screen’s heading receives focus unless focus or context has moved.
+  Failure retains stale data when one exists and
   otherwise becomes degraded; the same resident worker can retry without a
   reopen or canonical write replay.
 - A correctly correlated completion from the current worker ends its attempt's

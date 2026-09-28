@@ -86,11 +86,29 @@
 **Code:** product/viva/questions.py (`_nature_questions`, the import-default and nature-reason guards); product/viva/ledger/projection/tiers.py (`tier_of`)
 **Test:** product/tests/test_questions.py::test_an_ordinary_known_merchant_is_never_asked_about, product/tests/test_categorize.py::test_import_defaults_peer_payments_before_asking_questions
 
-1. A movement is asked about only where its nature rests on a category hint or the plain default and no statement-import default already supplies a usable first answer. Anything a link, an own account or a ruling settled is not asked about again, at any tier.
-2. A settled counterparty raises nothing; a counterparty implying a relationship raises one grouped proposal; an instrument or a peer raises one question per movement; an unidentified merchant raises the merchant question instead, so the two never collide.
+1. A movement is asked about only where its nature rests on a category hint or the plain default and no statement-import default already supplies a usable first answer. A link or explicit ruling suppresses further nature review. An own-account heuristic suppresses nature proposals but does not prove that a counterpart record has arrived.
+2. A settled counterparty raises nothing; a counterparty implying a relationship raises one grouped proposal, except for the per-payment document route below; an instrument or a peer raises one question per movement; an unidentified merchant raises the merchant question instead, so the two never collide.
 3. There is no list of capital-looking categories anywhere — leverage ranking is the filter (I5).
 
-**Existing implementation drift:** privacy-refused unresolved spending can produce both merchant and nature questions. The no-collision policy in assertion 2 remains the intended policy; the evidence-and-scope repair neither ratifies nor resolves that collision. The active persona pack is `pack-v48`, which preserves `pack-v47` coverage wording about accounts recorded in the vault and adds only a scoped invalid-proposal refusal. All earlier packs remain immutable for recorded questions. A refused sharing check does not identify a person or channel. Canonical and indexed wording uses typed evidence or neutral uncertainty, and a grouped claim must be supported by every member.
+**Existing implementation drift:** privacy-refused unresolved spending can produce both merchant and nature questions. The no-collision policy in assertion 2 remains the intended policy; the evidence-and-scope repair neither ratifies nor resolves that collision. The active persona pack is `pack-v49`, which preserves `pack-v48` and adds typed per-payment counterpart-document wording. All earlier packs remain immutable for recorded questions. A refused sharing check does not identify a person or channel. Canonical and indexed wording uses typed evidence or neutral uncertainty, and a grouped claim must be supported by every member.
+
+For an expense-shaped movement with a directional implication explicitly naming
+`major: liability`, `compound: false` and a supporting document, both canonical
+and indexed readers ask for that document instead of offering account-creation
+hints. Each payment has its own `expectation:counterpart:<movement-key>` question,
+source date, currency, amount and count one. The document label is evidence data,
+not a classification rule. Compound debt, asset implications and missing metadata
+retain their existing routes.
+
+A live transfer question takes precedence for an eligible payment. Its source and
+candidates must still exist, be unlinked, and satisfy the existing matcher's
+account, direction, currency, amount and date-window gate. Otherwise the payment
+continues waiting, even if an own-account heuristic recognizes its destination.
+A real link or explicit ruling removes the wait, including declined and stale
+question identities. The presence of a statement type or account alone does not
+settle an individual payment. A yes acknowledges that the document is awaited;
+not now sets the request aside. Neither answer creates an account or changes
+financial classification. Tests: `product/tests/test_counterpart_review.py`.
 
 ### MON-53 — a rhythm question is one proposal per counterparty and direction, licensed by the catalog
 **State:** enforced

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpRight, Check, ChevronRight, FilePlus2, FolderOpen, Info, Menu, Sparkles, X } from "lucide-react";
 import { FeatureBoundary } from "../components/FeatureBoundary";
@@ -110,7 +110,25 @@ export function App() {
   const navigationCloseRef = useRef<HTMLButtonElement>(null);
   const pageTitleRef = useRef<HTMLHeadingElement>(null);
   const priorityRetryRef = useRef<HTMLButtonElement>(null);
-  const destinationRetryRef = useRef<HTMLButtonElement>(null);
+  // Focus ownership is recorded while Retry exists and ends when focus or context moves.
+  const destinationRetryFocus = useRef<{ source: typeof session.source; requestId: number; destination: Destination; button: HTMLButtonElement; navigationDestination?: Destination } | null>(null);
+  useLayoutEffect(() => {
+    const held = destinationRetryFocus.current;
+    if (!held) return;
+    if (held.source !== session.source || held.requestId !== session.requestId || overlay) {
+      destinationRetryFocus.current = null;
+      return;
+    }
+    if (held.destination !== session.destination) {
+      destinationRetryFocus.current = null;
+      if (held.navigationDestination === session.destination && !held.button.isConnected) pageTitleRef.current?.focus();
+      return;
+    }
+    if (session.destinationReads[held.destination as LazyDestination] === "ready" && !held.button.isConnected) {
+      destinationRetryFocus.current = null;
+      pageTitleRef.current?.focus();
+    }
+  }, [session.source, session.requestId, session.destination, session.destinationReads, overlay]);
   const destinationRef = useRef(session.destination);
   destinationRef.current = session.destination;
   const evidenceDrawerRef = useRef<HTMLElement>(null);
@@ -251,17 +269,12 @@ export function App() {
 
   function closeNavigation(restoreFocus = true) { setOverlay(null); if (restoreFocus) requestAnimationFrame(() => navigationTriggerRef.current?.focus()); }
   function openNavigation() { if (openingVault || !isNarrow) return; setOverlay({ kind: "navigation" }); }
-  function navigate(destination: Destination) { if (openingVault) return; const focusHeading = isNarrow && mobileNav; if (destination === "accounts") { setOpenedAccount(""); setAccountOrigin(null); setReviewTransaction(null); } control.navigate(destination); if (mobileNav) setOverlay(null); if (focusHeading) requestAnimationFrame(() => pageTitleRef.current?.focus()); }
+  function navigate(destination: Destination) { if (openingVault) return; const retryFocus = destinationRetryFocus.current; if (retryFocus && document.activeElement === retryFocus.button) retryFocus.navigationDestination = destination; const focusHeading = isNarrow && mobileNav; if (destination === "accounts") { setOpenedAccount(""); setAccountOrigin(null); setReviewTransaction(null); } control.navigate(destination); if (mobileNav) setOverlay(null); if (focusHeading) requestAnimationFrame(() => pageTitleRef.current?.focus()); }
   async function retryPriorityRead() {
     const retryDestination = session.destination;
     const moveFocusOnSuccess = document.activeElement === priorityRetryRef.current;
     const outcome = await control.retryPriorityRead();
     if (outcome === "succeeded" && moveFocusOnSuccess && destinationRef.current === retryDestination) requestAnimationFrame(() => pageTitleRef.current?.focus());
-  }
-  async function retryDestinationRead(destination: LazyDestination) {
-    const moveFocusOnSuccess = document.activeElement === destinationRetryRef.current;
-    const outcome = await control.retryDestinationRead(destination);
-    if (moveFocusOnSuccess && (outcome === "succeeded" || (outcome === "ignored" && destinationRef.current !== destination))) requestAnimationFrame(() => pageTitleRef.current?.focus());
   }
   function openDocuments() {
     if (openingVault) return;
@@ -516,7 +529,7 @@ export function App() {
         <SourceDisclosure disclosure={surface.disclosure} />
         {session.destination === "overview" && session.source && !session.source.frame && !priorityLoading && !session.priorityRetryable && surface.overview.state === "ready" && surface.overview.data.accounts.length === 0 ? <section className="feature-panel first-statement-guide" aria-labelledby="first-statement-title"><h2 id="first-statement-title">Start with a statement</h2><p>No accounts are visible in this read yet. A statement gives the vault records to work from.</p><ol><li>Check the document-reading settings. A configured model may send document content to its service and incur charges.</li><li>Add one statement. Its original is encrypted and saved in your vault.</li><li>Check the result in Statements &amp; documents. Saving a file does not by itself mean its figures were verified.</li></ol><div className="first-statement-actions">{control.settingsAvailable ? <button className="secondary-button" type="button" onClick={() => { navigate("trust"); requestAnimationFrame(() => pageTitleRef.current?.focus()); }}>Check document-reading settings</button> : null}<button className="primary-button" type="button" onClick={openDocuments}>Go to statements</button></div></section> : null}
         {session.source && lazyDestination && (destinationRead === "loading" || destinationRead === "retrying" || destinationRead === "failed") ? <div className="feature-panel priority-read-callout">
-          <div className="empty-state"><div role="status" aria-live="polite" aria-atomic="true"><strong>{destinationRead === "retrying" ? `Retrying ${pageCopy[lazyDestination].title}` : destinationRead === "loading" ? `Reading ${pageCopy[lazyDestination].title}` : destinationHasPreviousData ? `${pageCopy[lazyDestination].title} could not be refreshed` : `${pageCopy[lazyDestination].title} could not be read`}</strong><span>{destinationRead === "loading" ? "This screen is loading. Other screens remain available." : destinationRead === "retrying" ? "Trying this screen again." : destinationHasPreviousData ? "The last complete view remains below and may be stale." : "No previous view is available. You can try this screen again."}</span></div>{destinationRead !== "loading" ? <button ref={destinationRetryRef} className="secondary-button" type="button" aria-disabled={destinationRead === "retrying"} onClick={() => { if (destinationRead === "failed") void retryDestinationRead(lazyDestination); }}>Retry this screen</button> : null}</div>
+          <div className="empty-state"><div role="status" aria-live="polite" aria-atomic="true"><strong>{destinationRead === "retrying" ? `Retrying ${pageCopy[lazyDestination].title}` : destinationRead === "loading" ? `Reading ${pageCopy[lazyDestination].title}` : destinationHasPreviousData ? `${pageCopy[lazyDestination].title} could not be refreshed` : `${pageCopy[lazyDestination].title} could not be read`}</strong><span>{destinationRead === "loading" ? "This screen is loading. Other screens remain available." : destinationRead === "retrying" ? "Trying this screen again." : destinationHasPreviousData ? "The last complete view remains below and may be stale." : "No previous view is available. You can try this screen again."}</span></div>{destinationRead !== "loading" ? <button onFocus={(event) => { if (!overlay) destinationRetryFocus.current = { source: session.source, requestId: session.requestId, destination: session.destination, button: event.currentTarget }; }} onBlur={() => { destinationRetryFocus.current = null; }} className="secondary-button" type="button" aria-disabled={destinationRead === "retrying"} onClick={() => { if (destinationRead === "failed") void control.retryDestinationRead(lazyDestination); }}>Retry this screen</button> : null}</div>
         </div> : null}
         <section className="priority-destination" aria-busy={(session.destination === "overview" || session.destination === "accounts") && (priorityLoading || session.priorityRetrying) ? true : undefined}>
         {session.source && (session.destination === "overview" || session.destination === "accounts") ? <div className="priority-read-status">
