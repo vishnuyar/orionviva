@@ -304,7 +304,7 @@ def _spending_over_income(shape):
                                  "spent": _fig(context["results"],
                                                "total spending"),
                                  "earned": _fig(context["results"],
-                                                "attributed income")}}}
+                                                "working income")}}}
         return {"bindings": {"share": {"figure": _fig(context["results"],
                                                       "result of")}}}
     return run("how does my spending compare to my income?", planner, registry)

@@ -17,9 +17,9 @@ a month is a derivation from incomplete data.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
-from .events import ASSERTED, CORROBORATED, ISSUED, VERIFIED
+from .events import ASSERTED, CORROBORATED, ISSUED, VERIFIED, UNVERIFIED
 from .projection import MIXED
 from .projection.movements import money_effect
 
@@ -127,6 +127,27 @@ def _side(kind: str, balance: Decimal) -> Decimal:
 
 # --- the pieces of one point -------------------------------------------------
 
+def _inactive_accounts(proj):
+    """Correction-only relationships can become inactive without deleting history."""
+    return proj.inactive_accounting_accounts() if hasattr(proj, "inactive_accounting_accounts") else set()
+
+
+def recorded_shares(ruling):
+    """Only explicit, attested allocations can divide a recorded total."""
+    legs = ruling.get("legs") or []
+    if len(legs) < 2 or ruling.get("by") not in ("human", "human_rule", "document"):
+        return None
+    if ruling.get("grade") not in ("verified", "corroborated"):
+        return None
+    try:
+        shares = [Decimal(str(leg.get("share", ""))) for leg in legs]
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if any(not share.is_finite() or share < 0 for share in shares) or sum(shares, Decimal("0")) != 1:
+        return None
+    return list(zip(legs, shares))
+
+
 def _asserted_lines(proj, as_of: str):
     """Accounts a person's rulings brought into being. Returns
     ``(lines, missing)``.
@@ -143,22 +164,42 @@ def _asserted_lines(proj, as_of: str):
       with the ask and the document that would answer it.
     """
     groups: dict[tuple, dict] = {}
+    inactive = _inactive_accounts(proj)
+    rulings = {(row["scope"], row["subject"]): row for row in proj.rulings()}
+
     issued = {info.account for info in proj.account_infos()
               if info.origin == ISSUED}
     for m in proj.movements():
-        if not m.ruling_account or m.date > as_of:
+        if not m.ruling_account or m.date > as_of or m.ruling_account in inactive:
             continue
-        if m.ruling_account in issued:
-            continue
-        g = groups.setdefault((m.ruling_account, m.currency), {
-            "paid": Decimal("0"), "as_of": "", "reliable": True})
-        # Loan receivables sum signed principal; other asserted assets sum cost.
-        g["paid"] += (-money_effect(m)
-                      if m.ruling_account.startswith("Assets:Loans:")
-                      else abs(m.amount))
-        g["as_of"] = max(g["as_of"], m.date)
-        if m.nature == MIXED:
-            g["reliable"] = False
+        ruling = rulings.get(("movement", m.key))
+        if ruling is None:
+            ruling = next((rulings[("merchant", key)]
+                           for key in proj.merchant_keys_of(m)
+                           if ("merchant", key) in rulings), {})
+        shares = recorded_shares(ruling)
+        aliases = proj.account_aliases()
+        if shares is not None:
+            contributions = [(aliases.get(leg.get("account", ""), leg.get("account", "")), share)
+                             for leg, share in shares if leg.get("major") in ("asset", "liability")]
+        elif len(ruling.get("legs") or []) > 1:
+            contributions = [(aliases.get(leg.get("account", ""), leg.get("account", "")), Decimal("1"))
+                             for leg in ruling["legs"] if leg.get("major") in ("asset", "liability")]
+        else:
+            contributions = [(m.ruling_account, Decimal("1"))]
+        for account, share in contributions:
+            if not account or account in issued or account in inactive:
+                continue
+            g = groups.setdefault((account, m.currency), {
+                "paid": Decimal("0"), "as_of": "", "reliable": True, "inferred": False})
+            # Signed cost counts only the attested asset component and allows
+            # its refund to reduce the same cost, without inventing a value.
+            g["paid"] += -money_effect(m) * share
+            if ruling.get("by") not in ("human", "human_rule", "document"):
+                g["inferred"] = True
+            g["as_of"] = max(g["as_of"], m.date)
+            if (m.nature == MIXED or len(ruling.get("legs") or []) > 1) and shares is None:
+                g["reliable"] = False
 
     lines, missing = [], []
     for (account, currency), g in groups.items():
@@ -171,14 +212,14 @@ def _asserted_lines(proj, as_of: str):
         if not g["reliable"]:
             missing.append({
                 "account": account,
-                "why": "part of this payment was interest, not equity",
-                "ask": "Roughly what is this worth to you now?",
-                "would_fix": "the mortgage statement or 1098"})
+                "why": "the amount allocated to this asset is not recorded",
+                "ask": "",
+                "would_fix": "recorded component amounts or an explicit allocation"})
             continue
-        if account.startswith("Assets:Loans:") and g["paid"] < 0:
+        if account.startswith(ASSET_ROOT) and g["paid"] < 0:
             missing.append({
                 "account": account,
-                "why": "recorded repayments exceed the known principal",
+                "why": "recorded returns or repayments exceed the known acquisition cost",
                 "ask": "Check the loan amount and the movements marked as repayments.",
                 "would_fix": "a corrected loan or repayment treatment"})
             continue
@@ -187,10 +228,10 @@ def _asserted_lines(proj, as_of: str):
             continue
         lines.append(NetWorthLine(
             account=account, amount=g["paid"], currency=currency,
-            # VERIFIED, not CORROBORATED: a person attested this figure and no
-            # document has checked it, which keeps it out of the provable
-            # subtotal until one does.
-            as_of=g["as_of"], grade=VERIFIED,
+            # Inferred meaning stays unverified even when the source payment
+            # reconciles. A person's account treatment remains verified, but
+            # neither becomes a document-corroborated asset valuation.
+            as_of=g["as_of"], grade=UNVERIFIED if g["inferred"] else VERIFIED,
             origin=ASSERTED, kind="asserted"))
     return lines, missing
 
@@ -215,8 +256,11 @@ def _asserted_asset_lines(proj, as_of: str, valued: set):
     # to record it at the other.
     here = jurisdiction_from_env()
     lines, gaps, superseded = [], [], set()
+    inactive = _inactive_accounts(proj)
     for info in proj.account_infos():
         account = info.account
+        if account in inactive:
+            continue
         # Only what the PERSON says they hold. An issued account is valued from
         # its statements, and announcing a gap on one would be a second, louder
         # answer to a question its documents already settle.
@@ -345,23 +389,30 @@ def change_dates(proj) -> list[str]:
     holding was measured, or a ruling was made. Evaluating between them repeats
     a point, so the curve is exactly as long as its evidence."""
     dates: set[str] = set()
+    inactive = _inactive_accounts(proj)
     for account in proj.accounts():
+        if account in inactive:
+            continue
         st = proj._state(account)
         dates.update(d for d, *_ in st.closings)
         for observations in st.position_history.values():
             dates.update(ob["as_of"] for ob in observations)
-    dates.update(m.date for m in proj.movements() if m.ruling_account)
+    dates.update(m.date for m in proj.movements() if m.ruling_account and m.ruling_account not in inactive)
     # An asset a person told us about is a change even before any money moves
     # through it: from that date the curve is either carrying it or saying it
     # cannot, and both are answers. Without this the point does not exist and
     # the gap could not be disclosed at all.
     for account in proj.accounts():
+        if account in inactive:
+            continue
         info = proj.account_info(account)
         if info.origin == ASSERTED and info.opened_at:
             dates.add(info.opened_at[:10])
     # And on the day the person states what one of them cost.
     from .events import SCOPE_ATTRIBUTE
     for ruling in proj.rulings(SCOPE_ATTRIBUTE):
+        if str(ruling.get("subject", "")).rpartition(":")[0] in inactive:
+            continue
         at = str(ruling.get("occurred_at", ""))[:10]
         if at:
             dates.add(at)
@@ -374,10 +425,17 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
     if as_of is None:
         as_of = dates[-1] if dates else ""
     point = NetWorthPoint(as_of=as_of)
+    for hold in proj.open_holds():
+        point.held.append({"doc_id": hold.get("doc_id", ""),
+                           "reason": hold.get("reason", ""),
+                           "why": "read but not posted, so nothing it attests is in this figure"})
     if not as_of:
         return point
 
+    inactive = _inactive_accounts(proj)
     for account in proj.accounts():
+        if account in inactive:
+            continue
         info = proj.account_info(account)
         st = proj._state(account)
         if info.kind not in ("depository", "liability", "investment"):
@@ -418,10 +476,6 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
     point.lines = [ln for ln in point.lines if ln.account not in superseded]
     point.lines.extend(stated)
     point.missing.extend(gaps)
-    for hold in proj.open_holds():
-        point.held.append({"doc_id": hold.get("doc_id", ""),
-                           "reason": hold.get("reason", ""),
-                           "why": "read but not posted, so nothing it attests is in this figure"})
     return point
 
 

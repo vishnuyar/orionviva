@@ -55,6 +55,10 @@
     "shape_committed": {
       "in": "prompts",
       "active": "shape-committed-v1"
+    },
+    "accounting_interpret": {
+      "in": "prompts",
+      "active": "accounting-interpret-v2"
     }
   },
   "released": {
@@ -245,6 +249,8 @@
     "pack-v47": "78b2937f9fc156f1",
     "interpret-v4": "e91e7d9afd9e132c",
     "pack-v48": "e77e781b89b0c766",
-    "pack-v49": "1b657beb5b4dc5da"
+    "pack-v49": "1b657beb5b4dc5da",
+    "accounting-interpret-v1": "be71b679922cd870",
+    "accounting-interpret-v2": "2f92a6bad038d8cb"
   }
 }

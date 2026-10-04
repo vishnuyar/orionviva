@@ -11,7 +11,7 @@ import { adaptRescan } from "./adapters/rescan";
 import { adaptLifecycle } from "./adapters/lifecycle";
 import { adaptProposal, adaptSettings } from "./adapters/settings";
 import { adaptTrust } from "./adapters/trust";
-import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
+import { adaptAccounting, adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptPlanDraftReply, adaptPlans } from "./adapters/plans";
 import { adaptActionOutcome } from "./adapters/questions";
 import { adaptReview } from "./adapters/review";
@@ -180,8 +180,8 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
 // turn itself, read only from a reply the vault settled.
 export function privateConversationActions(client: BridgeClient): ConversationActions {
   return {
-    ask: async (question, mirrored, planRequest = false, contextMode) => {
-      const [replied] = await Promise.allSettled([client.askViva(question, mirrored, planRequest, contextMode)]);
+    ask: async (question, mirrored, planRequest = false, contextMode, movementIds) => {
+      const [replied] = await Promise.allSettled([client.askViva(question, mirrored, planRequest, contextMode, movementIds)]);
       const result = await acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
       const turn = replied.status === "fulfilled" && isRecord(replied.value) ? adaptTurn(replied.value.state) : null;
       return { result, turn };
@@ -191,11 +191,22 @@ export function privateConversationActions(client: BridgeClient): ConversationAc
       ? acted(client.confirmProposal(proposalId, said, asked))
       : Promise.resolve({ state: "unserved" }),
     decline: (questionId, reason) => acted(client.declineQuestion(questionId, reason)),
+    undoCorrection: (correctionId) => client.undoAccountingCorrection
+      ? acted(client.undoAccountingCorrection(correctionId))
+      : Promise.resolve({ state: "unserved" }),
     reread: () => readConversationFeature(client),
     // A completed turn durably appends one outbound event per model exchange.
     // Read Trust after the turn so the snapshot cannot remain the one taken
     // when the vault first opened.
     rereadTrust: () => readTrustFeature(client),
+  };
+}
+
+export function privateAccountingReader(client: BridgeClient): import("./types").AccountingReader | null {
+  if (!client.readAccounting) return null;
+  return async (start, end) => {
+    const [result] = await Promise.allSettled([client.readAccounting!(start, end)]);
+    return settled(result, (value) => adaptAccounting(value.data) ?? null);
   };
 }
 

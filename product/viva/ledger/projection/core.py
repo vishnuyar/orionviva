@@ -16,7 +16,7 @@ from typing import Iterable
 from merchantcore.taxonomy import subcategory_identity
 
 from ..events import (SCOPE_ACCOUNT, SCOPE_ATTRIBUTE, SCOPE_CATEGORY,
-                      SCOPE_MERCHANT, SCOPE_TAG, CORROBORATED, ISSUED,
+                      SCOPE_MERCHANT, SCOPE_MOVEMENT, SCOPE_TAG, CORROBORATED, ISSUED,
                       UNVERIFIED, VERIFIED, Event, Provenance, postings_of)
 from ..identity import usable_full_number
 from ..postings import EQUITY_OPENING
@@ -40,6 +40,9 @@ class TxnLine:
     # every line. Empty means the transaction could not be attributed to one
     # currency and must never be relabelled by a read.
     currency: str = ""
+    transaction_id: str = ""
+    matched_movement_key: str = ""
+    matched_currency: str = ""
 
     def to_dict(self) -> dict:
         return {"date": self.date, "description": self.description,
@@ -149,6 +152,10 @@ class ProjectionCore:
         # Pay decompositions already on the ledger, as (description, pay date,
         # gross). A stub has no balance and no closing figure, so it is
         # recognised by the decomposition it would write.
+        self._account_open_counts: dict[str, int] = {}
+        self._accounting_rules: dict[str, dict] = {}
+        self._accounting_corrections: dict[str, dict] = {}
+        self._accounting_rule_applications: list[dict] = []
         self._decomposed: set[tuple[str, str, str]] = set()
         self._held: dict[str, dict] = {}         # doc_id -> latest StatementHeld body
         # Brokerage holdings and activity have independent reconciliation
@@ -231,7 +238,9 @@ class ProjectionCore:
         did = event.provenance.doc_id
 
         if et == "AccountOpened":
-            st = self._state(event.body["account_id"])
+            account = event.body["account_id"]
+            self._account_open_counts[account] = self._account_open_counts.get(account, 0) + 1
+            st = self._state(account)
             st.seen = True
             st.kind = event.body.get("kind", "")
             st.currency = event.body.get("currency", "")
@@ -402,6 +411,35 @@ class ProjectionCore:
                 applied["by"] = (component_by.pop()
                                  if len(component_by) == 1 else "mixed")
                 self._categories[key] = applied
+
+        elif et == "AccountingRuleRecorded":
+            self._accounting_rules[event.body["rule_id"]] = dict(event.body)
+
+        elif et == "AccountingRuleApplied":
+            self._accounting_rule_applications.append(dict(event.body))
+
+        elif et == "AccountingCorrectionRecorded":
+            self._accounting_corrections[event.body["correction_id"]] = dict(event.body,
+                _created_open_counts={account: self._account_open_counts.get(account, 0)
+                                      for account in event.body.get("created_accounts", [])})
+
+        elif et == "AccountingCorrectionUndone":
+            self._accounting_rules.pop(event.body.get("rule_id", ""), None)
+            correction = self._accounting_corrections.get(event.body["correction_id"])
+            if correction is not None:
+                correction["undone"] = True
+
+        elif et == "AccountingTreatmentRestored":
+            movement = event.body["movement"]
+            key = (SCOPE_MOVEMENT, movement)
+            if event.body["previous"]:
+                self._rulings[key] = event.body["previous"]
+            else:
+                self._rulings.pop(key, None)
+            if event.body.get("previous_category"):
+                self._categories[movement] = event.body["previous_category"]
+            else:
+                self._categories.pop(movement, None)
 
         elif et == "RulingRecorded":
             key = (event.body["scope"], event.body["subject"])
@@ -704,7 +742,10 @@ class ProjectionCore:
                     description=event.body.get("description", ""),
                     amount=p.amount, grade=p.grade,
                     provenance=event.provenance,
-                    currency=st.currency or transaction_currency))
+                    currency=st.currency or transaction_currency,
+                    transaction_id=event.event_id,
+                    matched_movement_key=event.body.get("matched_movement_key", ""),
+                    matched_currency=event.body.get("matched_currency", "")))
                 # Period deltas exclude the opening seed (that's tracked apart),
                 # so reconciliation is opening + period == closing.
                 if p.account != EQUITY_OPENING:

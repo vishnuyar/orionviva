@@ -25,7 +25,7 @@
 ### VOICE-27 — one question at a time, with the tail summarized
 **State:** enforced
 **Code:** product/viva/ask.py:175 (`run`), product/viva/questions.py:41
-**Test:** product/tests/test_interview.py::test_an_account_with_a_schema_is_asked_one_thing_at_a_time, product/tests/test_questions.py::test_the_tail_is_summarized_never_dropped, product/tests/test_questions.py::test_the_queue_carries_no_instructions_for_a_surface, product/tests/test_ask.py::test_a_blank_line_ends_the_sitting
+**Test:** product/tests/test_interview.py::test_requested_an_account_with_a_schema_is_asked_one_thing_at_a_time, product/tests/test_questions.py::test_requested_the_tail_is_summarized_never_dropped, product/tests/test_questions.py::test_requested_the_queue_carries_no_instructions_for_a_surface, product/tests/test_ask.py::test_requested_a_blank_line_ends_the_sitting
 
 1. The question surface shows the top-ranked question.
 2. The remaining questions are summarized, never hidden.
@@ -39,7 +39,7 @@ never *what*, so the rules below are the ones about wording and surface.
 ### VOICE-23 — the queue carries no instructions for a surface
 **State:** enforced
 **Code:** product/viva/questions.py
-**Test:** product/tests/test_questions.py::test_the_queue_carries_no_instructions_for_a_surface
+**Test:** product/tests/test_questions.py::test_requested_the_queue_carries_no_instructions_for_a_surface
 
 1. A question carries its intent, refs, amounts and the finding behind it.
 2. It carries no layout, no widget name and no rendering directive.

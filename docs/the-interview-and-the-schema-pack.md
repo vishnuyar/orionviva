@@ -10,7 +10,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-122 — the interview is a primitive with a next step, and it is read-side
 **State:** enforced
 **Code:** product/viva/interview.py:46 (`Interview`)
-**Test:** product/tests/test_interview.py::test_a_vault_built_before_this_replays_identically
+**Test:** product/tests/test_interview.py::test_requested_a_vault_built_before_this_replays_identically
 
 1. There is no interview object stored and no interview event; an interview is a projection over the attribute rulings and declines already recorded for a subject.
 2. Answered, set aside and settled are all derived states.
@@ -19,7 +19,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-123 — the schema is a closed vocabulary
 **State:** enforced
 **Code:** product/viva/schemas/__init__.py (`ANSWER_TYPES`), product/viva/schemas/schemas-v1.json
-**Test:** product/tests/test_interview.py::test_an_answer_outside_the_offered_vocabulary_is_refused_not_guessed
+**Test:** product/tests/test_interview.py::test_requested_an_answer_outside_the_offered_vocabulary_is_refused_not_guessed
 
 1. An answer outside the vocabulary a question offered is refused rather than guessed at.
 2. A key outside the schema is dropped, not acted on.
@@ -44,7 +44,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-126 — the interview interleaves and never holds the queue
 **State:** enforced
 **Code:** product/viva/questions.py, product/viva/interview.py:78 (`next_question`)
-**Test:** product/tests/test_interview.py::test_an_interview_ranks_with_the_other_questions_not_ahead_of_them
+**Test:** product/tests/test_interview.py::test_requested_an_interview_ranks_with_the_other_questions_not_ahead_of_them
 
 1. The next question ranks with every other question, never ahead of them.
 2. "Not now" defers the question into pending state; it leaves the ranked queue and can still be found.
@@ -53,7 +53,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-127 — essentials terminate the interview and gate net worth
 **State:** enforced
 **Code:** product/viva/interview.py:72 (`terminated`), :86 (`unfilled_essentials`)
-**Test:** product/tests/test_interview.py::test_an_asset_with_no_stated_cost_is_a_gap_never_a_zero
+**Test:** product/tests/test_interview.py::test_requested_an_asset_with_no_stated_cost_is_a_gap_never_a_zero
 
 1. An interview is over when every essential is answered or declined.
 2. An asserted asset whose essential cost is unfilled is reported as a disclosed gap — never a zero, never a guess, never silently omitted.
@@ -71,7 +71,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-129 — cycle 1 is deterministic, and a model selector must beat it on measured grounds
 **State:** enforced
 **Code:** product/viva/interview.py:78 (`next_question`)
-**Test:** product/tests/test_interview.py::test_an_account_with_a_schema_is_asked_one_thing_at_a_time
+**Test:** product/tests/test_interview.py::test_requested_an_account_with_a_schema_is_asked_one_thing_at_a_time
 
 1. Pack order is the deterministic selector: the next essential owed, in pack order.
 2. The deterministic walk never goes away; it is the model selector's permanent fallback.
@@ -80,7 +80,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-130 — jurisdiction is an attribute of the account, and the country tag is derived
 **State:** unmet
 **Code:** product/viva/schemas/schemas-v1.json (jurisdiction tags on kinds)
-**Test:** product/tests/test_interview.py::test_a_jurisdiction_scoped_question_does_not_travel (a jurisdiction-scoped question staying home only; nothing tests that the country tag is derived)
+**Test:** product/tests/test_interview.py::test_requested_a_jurisdiction_scoped_question_does_not_travel (a jurisdiction-scoped question staying home only; nothing tests that the country tag is derived)
 
 1. Every schema is jurisdiction-tagged, and a jurisdiction-scoped question does not travel to another jurisdiction.
 2. An account created from a schema records its jurisdiction as a graded, upgradeable attribute, and the country tag is a read over that attribute rather than a second stored label. *This half is not implemented: the field is stored on the account and defaults to empty, meaning nobody has said.*
@@ -88,7 +88,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-40 — a schema question may never ask for an identifier
 **State:** enforced
 **Code:** product/viva/schemas/__init__.py (`ANSWER_TYPES`)
-**Test:** product/tests/test_interview.py::test_no_answer_type_means_an_identifier
+**Test:** product/tests/test_interview.py::test_requested_no_answer_type_means_an_identifier
 
 1. The answer vocabulary is `money`, `date`, `rate`, `yes_no`, `choice`, `label`, `institution`, `link` — and no member of it means an identifier.
 2. No account number, policy number, address, UAN, PAN, SSN, VIN, registration number or plate is ever asked for.
@@ -97,26 +97,25 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-41 — a schema names only documents the pipeline actually classifies
 **State:** enforced
 **Code:** product/viva/schemas/__init__.py
-**Test:** product/tests/test_interview.py::test_a_schema_may_only_name_a_document_the_pipeline_classifies
+**Test:** product/tests/test_interview.py::test_requested_a_schema_may_only_name_a_document_the_pipeline_classifies
 
 1. A corroborating document type must exist in the ingestion pipeline's own registry.
 2. An alias is refused, because a document resolves to its canonical type and an alias would match nothing.
 3. A schema may only claim an account kind the ledger uses.
 
-### VOICE-42 — an account comes into being only through a confirmed Proposal
+### VOICE-42 — a named account correction applies reversibly without a second yes
 **State:** enforced
-**Code:** product/viva/engine.py:165 (`confirm_proposal`), :474 (`open_kind`)
-**Test:** product/tests/test_interview.py::test_an_answer_that_would_open_an_account_comes_back_to_be_confirmed
+**Code:** product/viva/engine.py (`record_ruling`), product/viva/accounting_intelligence.py
+**Test:** product/tests/test_interview.py::test_requested_named_account_correction_applies_immediately
 
-1. A yes that would open an account returns a Proposal; nothing is created until the Proposal is confirmed.
-2. Existing accounts are offered first, by name, and a near-match returns `ambiguous` rather than minting a second account.
-3. The Proposal carries no suggested name and the code refuses to invent one: an answer that names nothing returns `unnamed`, which is a question, not a path.
-4. A name cannot inject a level into the account hierarchy.
+1. An understood explanation may create the named reporting account and apply its interpretation immediately.
+2. Existing accounts are matched locally first. Genuine target ambiguity is clarified before anything changes.
+3. The correction retains its created accounts and previous treatment so undo restores the effective report while preserving source history.
 
 ### VOICE-43 — a figure in an attribute answer must appear in the person's own words
 **State:** enforced
 **Code:** product/viva/ledger/events.py:573
-**Test:** product/tests/test_interview.py::test_a_figure_absent_from_their_words_is_refused
+**Test:** product/tests/test_interview.py::test_requested_a_figure_absent_from_their_words_is_refused
 
 1. A value the sentence does not carry is refused, however well the model read it.
 2. A sign nobody wrote is refused; a non-finite value is refused; a negative one is refused.
@@ -126,7 +125,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-44 — a value on a ruling is confined to the scopes that declare one
 **State:** enforced
 **Code:** product/viva/ledger/events.py:558
-**Test:** product/tests/test_interview.py::test_a_value_outside_attribute_scope_is_refused
+**Test:** product/tests/test_interview.py::test_requested_a_value_outside_attribute_scope_is_refused
 
 1. Only attribute and rhythm scopes may carry a value; every other scope refuses one outright.
 2. An attribute value is open, so it is guarded against a figure the words do not carry.
@@ -135,7 +134,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-45 — attribute rulings are a history, and a correction does not reach backwards
 **State:** enforced
 **Code:** product/viva/interview.py:111 (`attributes`)
-**Test:** product/tests/test_interview.py::test_an_answer_today_does_not_rewrite_an_earlier_point
+**Test:** product/tests/test_interview.py::test_requested_an_answer_today_does_not_rewrite_an_earlier_point
 
 1. Reading attributes as of a date keeps the last answer dated at or before that date.
 2. A correction recorded later is the answer today and was not the answer then.
@@ -143,7 +142,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-46 — a released schema pack is frozen
 **State:** enforced
 **Code:** product/viva/versions.json (`schema_pack`)
-**Test:** product/tests/test_interview.py::test_released_schema_packs_are_frozen
+**Test:** product/tests/test_interview.py::test_requested_released_schema_packs_are_frozen
 
 1. A person answered the words that were there, so those words keep resolving.
 2. Changing a schema is a new pack file with a new version id, never an edit.
@@ -151,7 +150,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-47 — a kind with no schema asks nothing and records the gap
 **State:** enforced
 **Code:** product/viva/interview.py:98 (`_why_no_schema`)
-**Test:** product/tests/test_interview.py::test_a_kind_with_no_schema_asks_nothing_and_records_the_gap
+**Test:** product/tests/test_interview.py::test_requested_a_kind_with_no_schema_asks_nothing_and_records_the_gap
 
 1. A kind the pack does not cover raises no question.
 2. The absence is recorded as a coverage gap rather than silently passed over.
@@ -160,7 +159,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-48 — every question says what it unlocks, and a choice enumerates its alternatives
 **State:** enforced
 **Code:** product/viva/schemas/__init__.py
-**Test:** product/tests/test_interview.py::test_a_question_must_say_what_it_unlocks
+**Test:** product/tests/test_interview.py::test_requested_a_question_must_say_what_it_unlocks
 
 1. A pack entry with no `unlocks` sentence fails the build.
 2. A `choice` answer with no enumerated alternatives fails the build.
@@ -169,7 +168,7 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 ### VOICE-49 — what a document already said is not asked again
 **State:** enforced
 **Code:** product/viva/schemas/schemas-v1.json (`answered_by_document`)
-**Test:** product/tests/test_interview.py::test_what_a_statement_already_said_is_not_asked_again
+**Test:** product/tests/test_interview.py::test_requested_what_a_statement_already_said_is_not_asked_again
 
 1. A classified document answers the question its own type settles, from pack data mapping document type to answer.
 2. A schema finds an account by three sources of evidence, strongest first: the path's `account_shape`, the document types the issuer produced for it, then the ledger's account kind — the last only when one kind claims it.

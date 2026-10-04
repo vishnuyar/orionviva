@@ -155,7 +155,7 @@
 ### I5 — No US-shaped taxonomy
 **State:** enforced
 **Code:** product/viva/schemas/__init__.py:1 · product/viva/interview.py:164
-**Test:** product/tests/test_interview.py::test_the_pack_loads_and_every_kind_is_jurisdiction_tagged
+**Test:** product/tests/test_interview.py::test_requested_the_pack_loads_and_every_kind_is_jurisdiction_tagged
 
 1. Account types, tax concepts and document categories are extensible to non-US instruments without migration.
 2. Every schema-pack entry is jurisdiction-tagged, and a jurisdiction-scoped question does not travel to another jurisdiction.
@@ -179,7 +179,7 @@
 2. Such figures are derived as-of-date presentation views, always carrying their date and valuation class (X2).
 3. Where a modeling choice is ambiguous, the cash-flow reading wins.
 4. Cash leaving an account is a realized cash event and counts as spending until something stronger says otherwise; a card purchase is the spend and repaying the card is a loan repaid.
-5. Re-reading a past cash withdrawal as the acquisition of an otherwise unexplained asset is proposed to the person and never applied on the machine's own word (T9).
+5. Re-reading a movement as an asset or liability may apply automatically as an attributed, reversible interpretation. It never certifies a balance or invents an allocation; inferred meaning stays separate from measurement evidence ([ADR-017](decisions/ADR-017-automatic-accounting.md)).
 6. A ruling on a movement outranks the heuristic rung that defaulted it, so an answer sticks and does not reopen.
 
 ### M2 — Which way the money went is decided by the account's kind, in one place
@@ -215,28 +215,17 @@ The desktop takes a vault passphrase and model details without requiring a termi
 **Exception:** assertion 1 holds for the grade line the machine places and not for the prose a model writes around a hole; nothing stops a model typing a strength word into its own clause text ([ADR-013](decisions/ADR-013-the-shape-before-the-data.md), *Exception*).
 
 ### X3 — Irreversible actions wait for an explicit yes
-**State:** enforced for held financial proposals; audit/direct-answer exceptions documented
-**Code:** product/viva/engine.py:165 · product/viva/engine.py:162
-**Test:** product/tests/test_ask.py::test_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched
+**State:** enforced
+**Code:** product/viva/engine.py; product/viva/accounting_intelligence.py
+**Test:** product/tests/test_automatic_accounting_intelligence.py::test_correction_immediate_scoped_future_and_one_off_undo
 
-1. An answer that would do something irreversible comes back as a proposal stating in plain words what it would do.
-2. The yes that applies it is a question like any other: a declared `yes_no` slot, a model reading the person's words into it, deterministic code deciding.
-3. A confirmation that never arrives leaves the ledger exactly as it was.
-4. What the design excludes is a channel that writes with nobody saying anything, not a second function with this gate between its halves.
-5. A loop that cannot confirm cannot satisfy this invariant at all.
+1. An understood accounting explanation applies reversibly without a second yes.
+2. Original source measurements remain immutable; corrections and undo append evidence-bearing events.
+3. Unresolved target identity requires clarification, never a silently selected account.
+4. Irreversible operations retain their explicit authorization gates.
+5. Interpretation audit events are captured before applying the interpretation.
 
-**Scoped implementation qualification (normative assertions above unchanged):**
-The engine appends interpretation and conversation/proposal audit events before a
-held financial proposal is confirmed, so assertion 3 is not literally enforced
-for every ledger event. Financial rulings, category assignments and account
-registrations remain unapplied for held proposals. The existing direct-answer
-path also applies ordinary expense/income answers with empty hints immediately
-when no structural confirmation trigger exists; this is an implementation
-exception to the unqualified confirmation promise, not a weakening of X3.
-Original nonempty expense/income hints now require review even when normalized
-to a default, and that hold survives durable reload. Evidence:
-`product/tests/test_fee_account_hint_boundary.py::test_hint_review_survives_durable_reload_and_confirm_or_decline`
-and `test_empty_hint_ordinary_answer_still_applies_immediately`.
+The owner approved this scoped change in [ADR-017](decisions/ADR-017-automatic-accounting.md). Legacy held-proposal parsers remain available for requested edits; their existence does not create classification homework.
 
 ### SPINE-12 — An invariant joins the checklist by deliberate decision
 **State:** unmet

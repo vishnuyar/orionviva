@@ -13,7 +13,8 @@ from viva.ledger import (EventStore, LedgerProjection, Posting, Provenance,
 from viva.ledger.events import (SCOPE_ATTRIBUTE, SCOPE_MOVEMENT,
                                 position_observed, question_declined,
                                 ruling_recorded)
-from viva.questions import open_questions
+from product.tests._requested_question_support import _requested_questions as open_questions
+from product.tests._requested_question_support import _requested_sql_questions
 from viva.read_store import ReadStore
 from viva.read_store import questions as sql_questions
 from viva.read_store.rhythm import RhythmReadError
@@ -89,9 +90,9 @@ def test_corroboration_ruling_legs_prefetch_exact_utf8_boundary_and_refusal(
                 if extra:
                     with pytest.raises(RhythmReadError,
                                        match="ruling legs exceed their byte bound"):
-                        revision.open_questions(as_of="2026-03-01", limit=None)
+                        _requested_sql_questions(revision, as_of="2026-03-01", limit=None)
                 else:
-                    revision.open_questions(as_of="2026-03-01", limit=None)
+                    _requested_sql_questions(revision, as_of="2026-03-01", limit=None)
                 revision.connection.set_trace_callback(None)
                 selected = [sql for sql in traced
                             if "FROM ruling_history ORDER BY source_sequence" in sql
@@ -111,7 +112,7 @@ def test_corroboration_and_expectations_match_canonical_by_jurisdiction(tmp_path
     with ReadStore.create(tmp_path / "read-model", PASSWORD) as reads:
         reads.synchronize(source)
         with reads.open_reader() as revision:
-            actual = revision.open_questions(as_of="2026-03-01",
+            actual = _requested_sql_questions(revision, as_of="2026-03-01",
                 jurisdiction=jurisdiction, locale="en-US", limit=None)
     assert _families(actual) == _families(expected)
 
@@ -132,7 +133,7 @@ def test_document_satisfaction_and_exact_decline_snapshot_match_canonical(tmp_pa
     with ReadStore.create(tmp_path / "read-model", PASSWORD) as reads:
         reads.synchronize(source)
         with reads.open_reader() as revision:
-            actual = revision.open_questions(as_of="2026-03-04",
+            actual = _requested_sql_questions(revision, as_of="2026-03-04",
                 jurisdiction="US", locale="en-US", limit=None)
     expected = open_questions(LedgerProjection(events), as_of="2026-03-04",
                               jurisdiction="US", locale="en-US", limit=None)
@@ -357,7 +358,7 @@ def test_duplicate_and_contradictory_rulings_keep_canonical_first_document(tmp_p
     with ReadStore.create(tmp_path / "read-model", PASSWORD) as reads:
         reads.synchronize(source)
         with reads.open_reader() as revision:
-            actual = revision.open_questions(as_of="2026-03-01",
+            actual = _requested_sql_questions(revision, as_of="2026-03-01",
                 jurisdiction="US", locale="en-US", limit=None)
             ruling_rows = revision.connection.execute(
                 "SELECT grade,corroborates,provenance_doc_id,provenance_page,"
@@ -401,22 +402,22 @@ def test_question_families_survive_suffix_partitions_restart_and_held_reader(tmp
         reads.synchronize(source)
         if held is None:
             held = reads.open_reader()
-            held_payload = held.open_questions(
+            held_payload = _requested_sql_questions(held,
                 as_of="2026-03-01", jurisdiction="US", locale="en-US", limit=None)
         cursor = end
     with reads.open_reader() as revision:
-        actual = revision.open_questions(
+        actual = _requested_sql_questions(revision,
             as_of="2026-03-01", jurisdiction="US", locale="en-US", limit=None)
     expected = open_questions(LedgerProjection(events), as_of="2026-03-01",
                               jurisdiction="US", locale="en-US", limit=None)
     assert _families(actual) == _families(expected)
-    assert held.open_questions(as_of="2026-03-01", jurisdiction="US",
+    assert _requested_sql_questions(held, as_of="2026-03-01", jurisdiction="US",
                                locale="en-US", limit=None) == held_payload
     held.close(); reads.close()
     with ReadStore.open(tmp_path / "read-model", PASSWORD) as reopened:
         assert reopened.synchronize(EventStore.open(source.path, PASSWORD)).state == "equal"
         with reopened.open_reader() as revision:
-            assert _families(revision.open_questions(
+            assert _families(_requested_sql_questions(revision,
                 as_of="2026-03-01", jurisdiction="US", locale="en-US",
                 limit=None)) == _families(expected)
 
@@ -429,7 +430,7 @@ def test_new_histories_refuse_overflow_and_plans_are_indexed_without_offset(tmp_
         with reads.open_reader() as revision:
             monkeypatch.setattr(sql_questions, "MAX_RULING_HISTORY_ROWS", 0)
             with pytest.raises(RhythmReadError, match="bound"):
-                revision.open_questions(as_of="2026-03-01", jurisdiction="US")
+                _requested_sql_questions(revision, as_of="2026-03-01", jurisdiction="US")
             plans = " ".join(row[3] for row in revision.connection.execute(
                 "EXPLAIN QUERY PLAN SELECT account_id,attribute_key,value_text FROM "
                 "attribute_history WHERE occurred_at<=? ORDER BY account_id,attribute_key,"

@@ -60,7 +60,8 @@ def test_no_projected_movement_convenience_fee_is_safe(tmp_path):
                       "synthetic-movement", source="Harbor Checking",
                       extract_fn=lambda prompt: raw)
     assert proposal.legs[0]["account"] == "Expenses:Uncategorized"
-    assert proposal.legs[0]["share"] == "1"
+    # The categorical fee meaning is usable; an unstated model percentage is not.
+    assert proposal.legs[0]["share"] == ""
     assert proposal.new_accounts == []
 
 
@@ -204,8 +205,7 @@ def test_empty_hint_ordinary_answer_still_applies_immediately(tmp_path):
 
 
 @pytest.mark.parametrize("hints", [("Harbor Checking",), ("premium", "repair")])
-@pytest.mark.parametrize("decision", ["yes", "no"])
-def test_hint_review_survives_durable_reload_and_confirm_or_decline(tmp_path, monkeypatch, hints, decision):
+def test_named_fee_correction_applies_immediately_and_survives_reload(tmp_path, monkeypatch, hints):
     from types import SimpleNamespace
     from viva.desktop_bridge.conversation_actions import ConversationActions
     from viva.listen import category_vocabulary, ruling_slots
@@ -213,7 +213,7 @@ def test_hint_review_survives_durable_reload_and_confirm_or_decline(tmp_path, mo
     from viva.reply import INTERPRET_VERSION
 
     vault, movement = _vault(tmp_path)
-    question = Question(id="synthetic-nature", kind="nature", text="What did this become?", why="A synthetic unresolved movement",
+    question = Question(id="synthetic-nature", kind="nature", text="Explain this movement", why="Explicitly requested editor",
         amount=Decimal("12"), currency="USD", count=1, scope="one",
         slots=ruling_slots(category_vocabulary(vault.ledger.projection())),
         refs={"movement": movement.key, "descriptor": movement.description})
@@ -226,33 +226,22 @@ def test_hint_review_survives_durable_reload_and_confirm_or_decline(tmp_path, mo
         return raw
     extractor.exchanges = []
     monkeypatch.setattr(engine, "_interpreter", lambda: extractor)
-    financial_before = [e for e in vault.events()]
+    before_accounts = vault.ledger.projection().account_infos()
     outcome = ConversationActions(vault).answer({"question_id": question.id, "said": "That was a fee"})
-    assert outcome["kind"] == "proposal"
-    held = outcome["state"]
-    assert held["new_accounts"] == []
-    assert "creates" not in held["summary"]
+    assert outcome["kind"] == "completed"
     after = list(vault.events())
-    assert all(e.event_type in {"ReadRecorded", "ConversationTurnOpened", "ConversationTurnSettled",
-                               "ConversationProposalRecorded"} for e in after[len(financial_before):])
     captured = next(e for e in after if e.event_type == "ReadRecorded")
     assert json.loads(captured.body["response_text"])["text"] == raw
     assert captured.body["prompt_version"] == INTERPRET_VERSION
+    assert not [e for e in after if e.event_type == "ConversationProposalRecorded"]
+    assert [e for e in after if e.event_type == "RulingRecorded"]
+    assert [e for e in after if e.event_type == "CategoryAssigned"]
     reopened = Vault.open(tmp_path / "vault", "pw")
-    persisted = reopened.ledger.projection().conversation_proposal(held["proposal_id"])
-    assert persisted["status"] == "open"
-    assert persisted["proposal"]["legs"] == held["legs"]
-    before_accounts = reopened.ledger.projection().account_infos()
-    monkeypatch.setattr(engine, "_interpreter", lambda: None)
-    settled = ConversationActions(reopened).confirm({"proposal_id": held["proposal_id"], "said": decision})
-    assert settled["kind"] == ("completed" if decision == "yes" else "set_aside")
-    written = [e.event_type for e in reopened.events()][len(after):]
-    assert ("RulingRecorded" in written) == (decision == "yes")
-    assert ("CategoryAssigned" in written) == (decision == "yes")
-    assert "AccountOpened" not in written
     assert reopened.ledger.projection().account_infos() == before_accounts
     assert reopened.ledger.projection().movements()[0].account == movement.account
-    assert reopened.ledger.projection().conversation_proposal(held["proposal_id"])["status"] == "resolved"
+    ruling = reopened.ledger.projection().rulings()[0]
+    expected = ["Expenses:Other:premium", "Expenses:Other:repair"] if len(hints) == 2 else ["Expenses:Uncategorized"]
+    assert [leg["account"] for leg in ruling["legs"]] == expected
 
 
 def test_invalid_old_proposal_is_a_recoverable_refusal(tmp_path):

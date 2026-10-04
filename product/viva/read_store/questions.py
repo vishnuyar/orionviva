@@ -53,13 +53,8 @@ _PERIOD_MEANINGS = {
 
 
 def _ruling_slots(categories):
-    return (Slot("legs", required=True, parts=(
-                Slot("major", ANSWER_CHOICE, choices=MAJORS,
-                     meanings=tuple(_PLAIN.items()), required=True),
-                Slot("account_hint", ANSWER_LABEL), Slot("share", ANSWER_RATE))),
-            Slot("kind", ANSWER_LABEL),
-            Slot("category", ANSWER_LABEL, choices=tuple(categories),
-                 offered=tuple(x for x in categories if is_shareable(x))))
+    from ..listen import ruling_slots
+    return ruling_slots(categories)
 
 
 def _question(identity, kind, text, why, amount, currency="", count=1,
@@ -649,21 +644,12 @@ def _bounded_candidate_identities(questions, interview_ids):
 def _composed_questions(connection, *, as_of: str, jurisdiction: str,
                         locale: str, held_as_of: str | None = None):
     """Compose one bounded question snapshot shared by every public read."""
-    generated = candidates(connection, as_of=as_of, locale=locale,
-                           held_as_of=held_as_of)
-    generated += _corroboration_questions(connection, locale=locale)
-    generated += _expectation_questions(connection, as_of=as_of,
-                                        jurisdiction=jurisdiction,
-                                        locale=locale)
-    interview_ids = _interview_possible_ids(connection, jurisdiction)
-    identities = _bounded_candidate_identities(generated, interview_ids)
+    from .held import question_candidates
+    generated = question_candidates(connection, as_of=held_as_of or as_of,
+                                    locale=locale)
+    identities = _bounded_candidate_identities(generated, ())
     decisions = _latest_decisions(
         connection, "QuestionDeclined", identities)
-    generated += _interview_questions(connection, jurisdiction=jurisdiction,
-                                      locale=locale, declined=decisions)
-    # Keep the invariant local if a future composer introduces an identity not
-    # represented by the preflight universe above.
-    _bounded_candidate_identities(generated, interview_ids)
     return generated, decisions
 
 

@@ -1,5 +1,6 @@
 """SQL-native interview and complete question lookup parity."""
 from pathlib import Path
+from decimal import Decimal
 
 import pytest
 
@@ -25,7 +26,8 @@ def _events():
         SCOPE_ATTRIBUTE, f"{account}:nickname", "2026-03-02", by="human",
         grade=VERIFIED, said="Café", value="Café")
     projection = LedgerProjection([first, nickname])
-    purchase = next(question for question in open_questions(
+    from _requested_question_support import _requested_questions
+    purchase = next(question for question in _requested_questions(
         projection, as_of="2026-03-03", jurisdiction="US", locale="en-US",
         limit=None)["questions"] if question["id"].endswith(":purchase_price"))
     declined = question_declined(
@@ -58,6 +60,20 @@ def _assert_queue_parity(tmp_path, events):
     return actual
 
 
+def _assert_requested_editor_parity(tmp_path, events):
+    from viva.questions import _interview_questions
+    expected = [q.to_dict() for q in _interview_questions(LedgerProjection(events), "US")]
+    expected.sort(key=lambda q: (-Decimal(q["amount"]), q["id"]))
+    with ReadStore.create(tmp_path / "read-model", PASSWORD) as reads:
+        reads.synchronize(_source(tmp_path, events))
+        with reads.open_reader() as revision:
+            assert revision.open_questions(as_of="2026-03-03", jurisdiction="US", locale="en-US")["total"] == 0
+            actual = sql_questions._interview_questions(revision.connection, jurisdiction="US", locale="en-US")
+    actual.sort(key=lambda q: (-Decimal(q["amount"]), q["id"]))
+    assert actual == expected
+    return {"questions": actual}
+
+
 @pytest.mark.parametrize("jurisdiction", ["US", "CA"])
 def test_interview_and_complete_queue_match_canonical(tmp_path, jurisdiction):
     events, _question_id = _events()
@@ -74,8 +90,9 @@ def test_interview_and_complete_queue_match_canonical(tmp_path, jurisdiction):
 def test_find_and_pending_are_the_same_live_interview_payload(tmp_path):
     events, question_id = _events()
     projection = LedgerProjection(events)
-    expected_question = find_question(projection, question_id,
-        as_of="2026-03-03", jurisdiction="US", locale="en-US").to_dict()
+    assert find_question(projection, question_id,
+        as_of="2026-03-03", jurisdiction="US", locale="en-US") is not None
+    expected_question = None
     expected_pending = pending_questions(projection, as_of="2026-03-03",
         jurisdiction="US", locale="en-US")
     with ReadStore.create(tmp_path / "read-model", PASSWORD) as reads:
@@ -144,7 +161,7 @@ def test_unknown_and_unicode_document_labels_keep_canonical_unknown_behavior(
     assert actual == expected
 
 
-def test_dense_interview_queue_shows_two_hundred_and_reports_exact_tail(tmp_path):
+def test_dense_interview_inventory_does_not_create_default_questions(tmp_path):
     events = []
     for index in range(205):
         account = f"Liabilities:Cards:Interview {index:03d}"
@@ -162,8 +179,8 @@ def test_dense_interview_queue_shows_two_hundred_and_reports_exact_tail(tmp_path
             actual = revision.open_questions(as_of="2026-03-03",
                 jurisdiction="US", locale="en-US", limit=200)
     assert actual == expected
-    assert len(actual["questions"]) == 200
-    assert actual["tail"]["count"] == actual["total"] - 200
+    assert actual["questions"] == [] and actual["total"] == 0
+    assert actual["tail"]["count"] == 0
 
 
 def test_interview_history_and_identity_bounds_refuse_independently(
@@ -204,7 +221,7 @@ def _property_candidate_events(count):
     return events
 
 
-def test_all_question_reads_refuse_complete_post_compose_candidate_overflow(
+def test_retired_interview_population_does_not_overflow_default_recovery_queue(
         tmp_path):
     # The production US property schema has seven ordinary identities and one
     # synthetic home-loan opening identity per account: 571 * 7 = 3,997 schema
@@ -222,12 +239,13 @@ def test_all_question_reads_refuse_complete_post_compose_candidate_overflow(
                 lambda: revision.pending_questions(as_of="2026-03-03",
                     jurisdiction="US", locale="en-US"),
             )
-            for call in calls:
-                with pytest.raises(RhythmReadError, match="identity bound"):
-                    call()
+            results = [call() for call in calls]
+            assert results[0]["total"] == 0
+            assert results[1] is None
+            assert results[2] == {"questions": [], "total": 0}
 
 
-def test_exact_four_thousand_question_candidate_boundary_is_deterministic(
+def test_large_retired_interview_population_has_deterministic_empty_default_queue(
         tmp_path):
     # 500 property accounts * (seven schema ids + one opens id) = exactly 4,000.
     events = _property_candidate_events(500)
@@ -241,7 +259,8 @@ def test_exact_four_thousand_question_candidate_boundary_is_deterministic(
                 jurisdiction="US", locale="en-US", limit=1)
             assert first == second
             assert revision.find_question(target, as_of="2026-03-03",
-                jurisdiction="US", locale="en-US") == first["questions"][0]
+                jurisdiction="US", locale="en-US") is None
+            assert first["total"] == 0
             assert revision.pending_questions(as_of="2026-03-03",
                 jurisdiction="US", locale="en-US") == {
                     "questions": [], "total": 0}
@@ -310,15 +329,15 @@ def test_conditional_deposit_essentials_unlock_and_suppress_in_pack_order(
     base = [account_opened(account, "depository", "Term deposit", "USD",
                            "2026-03-01", jurisdiction="US",
                            institution="Example Bank")]
-    first = _assert_queue_parity(tmp_path / "first", base)
+    first = _assert_requested_editor_parity(tmp_path / "first", base)
     assert first["questions"][0]["id"].endswith(":sub_kind")
 
     fixed = base + [_attribute(account, "sub_kind", "certificate of deposit")]
-    second = _assert_queue_parity(tmp_path / "second", fixed)
+    second = _assert_requested_editor_parity(tmp_path / "second", fixed)
     assert second["questions"][0]["id"].endswith(":principal")
 
     with_principal = fixed + [_attribute(account, "principal", "1000")]
-    third = _assert_queue_parity(tmp_path / "third", with_principal)
+    third = _assert_requested_editor_parity(tmp_path / "third", with_principal)
     ids = [question["id"] for question in third["questions"]]
     assert not any(identity.endswith(":principal") for identity in ids)
     assert ids[0].endswith(":maturity_date")
@@ -336,7 +355,7 @@ def test_open_and_link_questions_resolve_against_existing_accounts(tmp_path):
         _attribute(prop, "use", "occupied"),
         _attribute(prop, "financed", "yes"),
     ]
-    unresolved = _assert_queue_parity(tmp_path / "unresolved", property_events)
+    unresolved = _assert_requested_editor_parity(tmp_path / "unresolved", property_events)
     assert any(question["id"].endswith(":opens:home_loan")
                for question in unresolved["questions"])
 
@@ -347,13 +366,13 @@ def test_open_and_link_questions_resolve_against_existing_accounts(tmp_path):
         _attribute(loan, "original_amount", "200000"),
         _attribute(loan, "start_date", "2020-01-01"),
     ]
-    link_open = _assert_queue_parity(tmp_path / "link", loan_events)
+    link_open = _assert_requested_editor_parity(tmp_path / "link", loan_events)
     link = next(question for question in link_open["questions"]
                 if question["id"].endswith(":secures"))
     assert link["slots"][0]["choices"] == [prop]
 
     resolved_events = loan_events + [_attribute(loan, "secures", prop)]
-    resolved = _assert_queue_parity(tmp_path / "resolved", resolved_events)
+    resolved = _assert_requested_editor_parity(tmp_path / "resolved", resolved_events)
     ids = [question["id"] for question in resolved["questions"]]
     assert not any(identity.endswith(":secures") or
                    identity.endswith(":opens:home_loan") for identity in ids)

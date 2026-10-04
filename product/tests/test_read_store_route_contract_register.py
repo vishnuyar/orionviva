@@ -18,6 +18,8 @@ from product.tests.test_read_store_coverage_register import BODY_FIELDS, FAMILIE
 # rendered by the named destination. Evidence tests exercise the composed wire
 # payload, refusal, and named query separately.
 ROUTES = {
+    "accounting": ("_accounting", ("overview_projection",), "Overview",
+        "test_automatic_accounting_bridge:test_selected_correction_report_reload_and_undo_are_sql_canonical_identical"),
     "overview": ("_overview", ("overview_projection", "historical_overview_projection"),
                  "Overview", "test_read_store_temporal_overview:test_composition_corpus_historical_overview_full_payload_parity"),
     "overview_accounts": ("_overview_accounts", ("overview_projection",),
@@ -41,6 +43,7 @@ ROUTES = {
 }
 
 OPTIONAL_SOURCE_FIELDS = {
+    "accounting": {"RulingRecorded": "grounds", "TransactionRecorded": "matched_movement_key"},
     "overview": {"RulingRecorded": "legs", "GoalCreated": "monthly_contribution"},
     "overview_accounts": {"AccountOpened": "account_number",
                           "AccountIdentityObserved": "account_names"},
@@ -59,6 +62,10 @@ OPTIONAL_SOURCE_FIELDS = {
 
 
 READ_TIME_EVIDENCE = {
+    "accounting": (
+        "test_read_store_overview:test_overview_refuses_every_input_family_whole",
+        "test_read_store_overview_byte_bounds:test_overview_refuses_oversized_ruling_legs_before_decoding",
+        "test_read_store_overview:test_overview_queries_are_bounded_indexed_and_offset_free"),
     "overview": (
         "test_read_store_overview:test_overview_refuses_every_input_family_whole",
         "test_read_store_overview_byte_bounds:test_overview_refuses_oversized_ruling_legs_before_decoding",
@@ -160,7 +167,7 @@ def test_public_resolver_loader_is_not_a_desktop_route_dependency():
         assert ".resolver(" not in inspect.getsource(module), module_name
 
 
-def test_all_ten_desktop_routes_trace_only_capped_or_identity_scoped_sql_reads(
+def test_all_desktop_routes_trace_only_capped_or_identity_scoped_sql_reads(
         tmp_path, monkeypatch):
     vault = build_demo_vault(tmp_path / "sample")
     with vault.read_store.open_reader() as revision:
@@ -178,6 +185,7 @@ def test_all_ten_desktop_routes_trace_only_capped_or_identity_scoped_sql_reads(
     monkeypatch.setattr(vault.read_store, "open_reader", traced_reader)
     provider = OpenedVaultSurfaceProvider(vault)
     routes = [
+        ("accounting", {"start": "2026-01-01", "end": "2026-08-29"}),
         ("overview", {"read_on": "2026-08-29"}),
         ("overview", {"as_of": "2026-01-31", "read_on": "2026-08-29"}),
         ("overview_accounts", {"read_on": "2026-08-29"}),

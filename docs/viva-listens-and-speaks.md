@@ -1,5 +1,7 @@
 # Viva Listens, and Viva Speaks — the agent and the learning loop
 
+**Current behavior:** [Automatic accounting](automatic-accounting.md) and [ADR-017](decisions/ADR-017-automatic-accounting.md) supersede the classification-review and confirmation-first interaction described below. The active public queue is document recovery only; retained low-level question builders serve explicitly requested edits. Automatic interpretations and understood corrections apply reversibly with evidence and scoped learning. The mechanisms below remain historical context where they imply a proactive classification question.
+
 **State:** built
 **Rules:** VOICE-50, VOICE-51, VOICE-52, VOICE-53, VOICE-54, VOICE-57, VOICE-58, VOICE-59, VOICE-131
 

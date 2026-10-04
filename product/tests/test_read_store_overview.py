@@ -409,7 +409,7 @@ def test_overview_queries_are_bounded_indexed_and_offset_free(tmp_path):
                        if sql.lstrip().upper().startswith(("SELECT", "WITH"))]
             plans = [" ".join(str(row[3]) for row in revision.connection.execute(
                 "EXPLAIN QUERY PLAN " + sql).fetchall()) for sql in selects]
-    assert len(selects) == 15
+    assert len(selects) == 16
     assert all("SCAN" in plan or "SEARCH" in plan for plan in plans)
     assert all("USE TEMP B-TREE" not in plan for plan in plans)
     assert all("AUTOMATIC" not in plan.upper() for plan in plans)
@@ -433,7 +433,7 @@ def test_overview_query_count_is_fixed_for_current_corpus(tmp_path):
     selects = [sql for sql in statements
                if sql.lstrip().upper().startswith(("SELECT", "WITH"))]
     # The complete Overview query budget is independent of account count.
-    assert len(selects) <= 70, "\n".join(selects)
+    assert len(selects) <= 78, "\n".join(selects)
 
 
 def test_overview_prerequisite_query_count_does_not_grow_per_account(tmp_path):
@@ -450,4 +450,23 @@ def test_overview_prerequisite_query_count_does_not_grow_per_account(tmp_path):
             revision.connection.set_trace_callback(None)
     selects = [sql for sql in statements
                if sql.lstrip().upper().startswith(("SELECT", "WITH"))]
-    assert len(selects) == 15
+    assert len(selects) == 16
+
+
+@pytest.mark.parametrize("field", ["matched_movement_key", "matched_currency"])
+@pytest.mark.parametrize("oversized", ["x" * 4097, "é" * 2049])
+def test_accounting_association_text_refuses_oversized_utf8_inputs(tmp_path, field, oversized):
+    from dataclasses import replace
+    from viva.read_store.store import ReadStoreError
+
+    transaction = simple_transaction("cash", "-12", "Synthetic payment", "2026-04-01",
+                                     kind="depository")
+    transaction = replace(transaction, body={**transaction.body, field: oversized})
+    source = _source(tmp_path, [account_opened("cash", "depository", "Cash", "USD", "2026-01-01"),
+                                transaction])
+    with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
+        reads.synchronize(source)
+        with reads.open_reader() as revision:
+            projection = revision.overview_projection(today="2026-05-01")
+            with pytest.raises(ReadStoreError, match="Accounting posting input exceeds its scalar byte bound"):
+                projection.accounting_postings()

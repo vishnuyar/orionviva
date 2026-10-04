@@ -1,5 +1,7 @@
 # The Question Queue
 
+**Current behavior:** [Automatic accounting](automatic-accounting.md) and [ADR-017](decisions/ADR-017-automatic-accounting.md) supersede the classification-review and confirmation-first interaction described below. The active public queue is document recovery only; retained low-level question builders serve explicitly requested edits. Automatic interpretations and understood corrections apply reversibly with evidence and scoped learning. The mechanisms below remain historical context where they imply a proactive classification question.
+
 **State:** built
 **Rules:** MON-44, MON-45, MON-46, MON-47, MON-48, MON-49, MON-50, MON-51, MON-52, MON-53, MON-54, MON-55
 
@@ -10,7 +12,7 @@
 ### MON-44 — a question is a read-side projection, and answering uses the writers that exist
 **State:** enforced
 **Code:** product/viva/questions.py:670 (`open_questions`)
-**Test:** product/tests/test_questions.py::test_the_queue_introduces_no_new_event_type
+**Test:** product/tests/test_questions.py::test_requested_the_queue_introduces_no_new_event_type
 
 1. `open_questions()` gathers every source of ambiguity the vault already records; it adds no event type and no ingest change: questions, pending state and declines are projections over events the ledger already has.
 2. Answering routes to the existing writers, through the one door in `product/viva/engine.py`.
@@ -19,25 +21,25 @@
 ### MON-45 — ranked by consequence, with stable ids
 **State:** enforced
 **Code:** product/viva/questions.py:705 (`open_qs.sort(key=lambda q: (-q.amount, q.id))`)
-**Test:** product/tests/test_questions.py::test_questions_are_ranked_by_what_answering_moves
+**Test:** product/tests/test_questions.py::test_requested_questions_are_ranked_by_what_answering_moves
 
 1. The list is ordered by how much money answering moves, highest first, with ties broken by id so the order is stable between reads.
-2. A question's id is derived from what it is about, so the same question does not churn between projections (product/tests/test_questions.py::test_question_ids_are_stable_across_reads).
+2. A question's id is derived from what it is about, so the same question does not churn between projections (product/tests/test_questions.py::test_requested_question_ids_are_stable_across_reads).
 3. No model chooses a subject or an order; the persona changes the words of a question and never promotes a movement between the three tiers.
 
 ### MON-46 — a question is raised at the most general unit that is still honest
 **State:** enforced
 **Code:** product/viva/questions.py:276 (`_nature_questions`, grouped by merchant key); product/viva/listen.py:566 (what may generalize)
-**Test:** product/tests/test_questions.py::test_answering_a_nature_question_settles_the_merchant_and_stops_asking
+**Test:** product/tests/test_questions.py::test_requested_answering_a_nature_question_settles_the_merchant_and_stops_asking
 
 1. A commercial counterparty's question is scoped to the merchant, so one answer settles every transaction from it, past and future.
-2. A peer or instrument descriptor, and a genuinely one-off ambiguity such as a transfer pair, is scoped to itself (product/tests/test_questions.py::test_a_peer_payment_is_scoped_to_itself_not_a_rule).
-3. Answering is idempotent: the ruling changes state, so the question does not return (product/tests/test_questions.py::test_a_ruled_one_off_question_is_never_asked_again).
+2. A peer or instrument descriptor, and a genuinely one-off ambiguity such as a transfer pair, is scoped to itself (product/tests/test_questions.py::test_requested_a_peer_payment_is_scoped_to_itself_not_a_rule).
+3. Answering is idempotent: the ruling changes state, so the question does not return (product/tests/test_questions.py::test_requested_a_ruled_one_off_question_is_never_asked_again).
 
 ### MON-47 — silence by ranking, never by hiding
 **State:** enforced
 **Code:** product/viva/questions.py:707 (`shown, rest`), :778 (`pending_questions`), :759 (`_split_declined`)
-**Test:** product/tests/test_questions.py::test_the_tail_is_summarized_never_dropped
+**Test:** product/tests/test_questions.py::test_requested_the_tail_is_summarized_never_dropped
 
 1. The top N surface and the rest are reported as a tail with its count and its total; nothing is dropped, because hiding them would be a lie of omission.
 2. There is no materiality threshold, which would be a currency- and jurisdiction-shaped guess (I1, I5).
@@ -59,12 +61,12 @@
 
 1. Each question carries typed slots, and one inbound router reads any reply into them, whatever the question's kind.
 2. The model turns language into structure and never into a value; deterministic code validates each value against its type and writes.
-3. A reply that does not hold up goes back to the model once, with what it sent and what was wrong with it, before anyone troubles the person (product/tests/test_ask.py::test_a_reply_that_does_not_hold_up_comes_back_in_vivas_words).
+3. A reply that does not hold up goes back to the model once, with what it sent and what was wrong with it, before anyone troubles the person (product/tests/test_ask.py::test_requested_a_reply_that_does_not_hold_up_comes_back_in_vivas_words).
 
 ### MON-50 — a substantive answer has no button payload
 **State:** enforced
 **Code:** product/viva/reply.py:536 (a closed vocabulary is validation, not a payload); desktop/src/features/conversation/Questions.tsx (`AnswerControls`)
-**Test:** product/tests/test_ask.py::test_a_reply_she_could_not_read_leaves_the_question_where_it_was
+**Test:** product/tests/test_ask.py::test_requested_a_reply_she_could_not_read_leaves_the_question_where_it_was
 
 1. A question's substantive answer offers no clickable payload; it enters as the person's sentence and is read through the slots the question declared.
 2. A closed vocabulary survives as validation of what a person said.
@@ -74,17 +76,17 @@
 ### MON-51 — confirmation is an explicit typed decision (X3)
 **State:** enforced
 **Code:** product/viva/listen.py:538 (`propose`), :658 (`apply_proposal`); product/viva/desktop_bridge/conversation_actions.py (`ConversationActions.confirm`)
-**Test:** product/tests/test_ask.py::test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written, product/tests/test_conversation_actions.py::test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account
+**Test:** product/tests/test_ask.py::test_requested_an_answer_that_would_open_an_account_is_proposed_before_it_is_written, product/tests/test_conversation_actions.py::test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account
 
 1. An answer that would do something irreversible comes back as a proposal stating in plain words what it would do.
-2. The decision is a declared `yes_no` slot, filled either from the person's words or by an explicit confirm-or-decline control and decided by code (product/tests/test_ask.py::test_a_confirmation_is_read_as_language_not_as_a_word; desktop/src/features/conversation/Questions.test.tsx).
-3. A proposal never confirmed leaves the ledger untouched (product/tests/test_ask.py::test_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched).
+2. The decision is a declared `yes_no` slot, filled either from the person's words or by an explicit confirm-or-decline control and decided by code (product/tests/test_ask.py::test_requested_a_confirmation_is_read_as_language_not_as_a_word; desktop/src/features/conversation/Questions.test.tsx).
+3. A proposal never confirmed leaves the ledger untouched (product/tests/test_ask.py::test_requested_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched).
 4. The opened-vault bridge retains the proposed structure and gives the interface only an opaque identity, summary and decision sentence; a client cannot submit replacement legs.
 
 ### MON-52 — a nature question is raised only where the evidence is weak
 **State:** enforced-with-exception
 **Code:** product/viva/questions.py (`_nature_questions`, the import-default and nature-reason guards); product/viva/ledger/projection/tiers.py (`tier_of`)
-**Test:** product/tests/test_questions.py::test_an_ordinary_known_merchant_is_never_asked_about, product/tests/test_categorize.py::test_import_defaults_peer_payments_before_asking_questions
+**Test:** product/tests/test_questions.py::test_requested_an_ordinary_known_merchant_is_never_asked_about, product/tests/test_categorize.py::test_import_defaults_peer_payments_without_assuming_transfer
 
 1. A movement is asked about only where its nature rests on a category hint or the plain default and no statement-import default already supplies a usable first answer. A link or explicit ruling suppresses further nature review. An own-account heuristic suppresses nature proposals but does not prove that a counterpart record has arrived.
 2. A settled counterparty raises nothing; a counterparty implying a relationship raises one grouped proposal, except for the per-payment document route below; an instrument or a peer raises one question per movement; an unidentified merchant raises the merchant question instead, so the two never collide.
@@ -113,17 +115,17 @@ financial classification. Tests: `product/tests/test_counterpart_review.py`.
 ### MON-53 — a rhythm question is one proposal per counterparty and direction, licensed by the catalog
 **State:** enforced
 **Code:** product/viva/questions.py:417 (`_rhythm_questions`)
-**Test:** product/tests/test_rhythm.py::test_a_standing_prior_raises_one_grouped_proposal_per_pair
+**Test:** product/tests/test_rhythm.py::test_requested_a_standing_prior_raises_one_grouped_proposal_per_pair
 
-1. The catalog must say two things before a question is raised: that the counterparty is a business, and that an arrangement with them is possible. A record naming a rail or a person, or naming no kind at all, raises nothing (product/tests/test_rhythm.py::test_a_merchant_with_no_billing_prior_is_never_asked_about).
+1. The catalog must say two things before a question is raised: that the counterparty is a business, and that an arrangement with them is possible. A record naming a rail or a person, or naming no kind at all, raises nothing (product/tests/test_rhythm.py::test_requested_a_merchant_with_no_billing_prior_is_never_asked_about).
 2. A pair whose other side a grammar slot declared a person raises nothing, and no measurement is dropped either way.
-3. The answer is a ruling at the rhythm scope carrying a set-valued value; it settles the pair in the open list and the set-aside list alike, and more of the same money does not reopen it (product/tests/test_rhythm.py::test_more_of_the_same_money_does_not_reopen_a_confirmed_rhythm).
+3. The answer is a ruling at the rhythm scope carrying a set-valued value; it settles the pair in the open list and the set-aside list alike, and more of the same money does not reopen it (product/tests/test_rhythm.py::test_requested_more_of_the_same_money_does_not_reopen_a_confirmed_rhythm).
 4. "No rhythm" is an answer rather than a decline.
 
 ### MON-54 — a stake is money already measured
 **State:** enforced
 **Code:** product/viva/questions.py:670 (every builder's `amount` comes from posted movements)
-**Test:** product/tests/test_rhythm.py::test_a_question_is_ranked_on_money_already_measured
+**Test:** product/tests/test_rhythm.py::test_requested_a_question_is_ranked_on_money_already_measured
 
 1. The figure a question is ranked on is money the ledger has measured, never a projection of what a relationship will move next.
 2. An interview question about an account whose money its statements already explain carries a stake of zero rather than borrowing its balance.

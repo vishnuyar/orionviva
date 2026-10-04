@@ -58,7 +58,7 @@ function snapshotOf(result: FeatureResult<OverviewData>): SurfaceSnapshot {
 }
 
 describe("the picture on the overview", () => {
-  it("places spending directly after net worth and keeps compact Review within the later account section", () => {
+  it("keeps the picture and spending accessible without a classification review funnel", () => {
     const rendered = view(overview({ coverage: "An authored picture boundary." }));
     const hero = rendered.container.querySelector(".hero-grid");
     const spending = rendered.container.querySelector(".spending-card");
@@ -67,38 +67,21 @@ describe("the picture on the overview", () => {
     const recent = rendered.getByRole("heading", { name: "Recent transactions" }).closest("section");
     expect(hero?.nextElementSibling).toBe(spending);
     expect(spending?.nextElementSibling).toBe(accounts);
-    expect(accounts?.contains(review)).toBe(true);
+    expect(review).toBeNull();
     expect(accounts?.compareDocumentPosition(recent!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(rendered.queryByRole("heading", { name: "Questions for you" })).not.toBeInTheDocument();
   });
 
-  it("keeps ready zero and nonzero Review reads compact and links to Review", async () => {
+  it("keeps classification review counts out of Overview and document recovery reachable", async () => {
     const user = userEvent.setup();
-    for (const [count, summary] of [[0, "Nothing is waiting for your answer."], [125, "125 items are waiting for your answer."]] as const) {
-      const rendered = viewReview({ state: "ready", data: { ...emptyReview, summary, actionableCount: count, remainingCount: count } });
-      expect(rendered.getByRole("heading", { name: summary })).toBeInTheDocument();
-      expect(rendered.getByText(`${count} actionable`)).toBeInTheDocument();
-      expect(rendered.queryByRole("heading", { name: "Questions for you" })).not.toBeInTheDocument();
-      expect(rendered.container.querySelector(".review-center-row")).toBeNull();
-      await user.click(rendered.getByRole("button", { name: "Open Review" }));
-      expect(actions.onNavigate).toHaveBeenLastCalledWith("review");
+    for (const count of [0, 125]) {
+      const rendered = viewReview({ state: "ready", data: { ...emptyReview, summary: `${count} items waiting`, actionableCount: count } });
+      expect(rendered.queryByText(/actionable|items waiting/)).not.toBeInTheDocument();
+      expect(rendered.queryByRole("button", { name: "Open Review" })).not.toBeInTheDocument();
+      await user.click(rendered.getByRole("button", { name: "See statement status" }));
+      expect(actions.onNavigate).toHaveBeenLastCalledWith("documents");
       rendered.unmount();
     }
-  });
-
-  it.each([
-    ["loading", { state: "absent", reason: "reading" }, "Review is being read"],
-    ["locked", { state: "absent", reason: "locked" }, "Review is locked"],
-    ["unopened", { state: "absent", reason: "no_vault" }, "Review has not been read"],
-    ["unavailable", { state: "unavailable", reason: "not_served" }, "Review is unavailable"],
-    ["failed", { state: "failed", reason: "read_failed" }, "Review could not be read"],
-  ] as const)("shows an honest compact %s Review state with a route", async (_label, reviewResult, title) => {
-    const user = userEvent.setup();
-    const rendered = viewReview(reviewResult as FeatureResult<ReviewData>);
-    expect(rendered.getByRole("heading", { name: title })).toBeInTheDocument();
-    expect(rendered.queryByText(/\d+ actionable/)).not.toBeInTheDocument();
-    await user.click(rendered.getByRole("button", { name: "Open Review" }));
-    expect(actions.onNavigate).toHaveBeenLastCalledWith("review");
   });
 
   it("shows the sentence the read supplied, byte for byte", () => {

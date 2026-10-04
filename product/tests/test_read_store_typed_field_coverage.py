@@ -103,6 +103,8 @@ def _assert_fields(revision, corpus):
         else:
             expected += fields[:1] + (event.occurred_at,) + fields[1:]
         expected += provenance
+        if table == "transactions":
+            expected += (body.get("matched_movement_key", ""), body.get("matched_currency", ""))
         assert db.execute(f"SELECT * FROM {table} WHERE source_sequence=?",
                           (sequence,)).fetchone() == expected
     account = db.execute(

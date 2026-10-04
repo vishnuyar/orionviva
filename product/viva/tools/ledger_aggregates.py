@@ -336,7 +336,7 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
         text=f"Spending by {group_by}: total {extras['total']}.")
 
 
-def _aggregate_income(proj, filters: dict) -> ToolResult:
+def _aggregate_income(proj, filters: dict, *, attributed_only: bool = False) -> ToolResult:
     window = filters.get("window") or {}
     requested_currency = str(filters.get("currency") or "")
     sources = sorted(a for a in proj.accounts()
@@ -359,9 +359,29 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
                      if line_currency(line) == requested_currency]
         return lines
 
-    source_lines = {source: selected(source) for source in sources}
-    source_lines = {source: lines for source, lines in source_lines.items()
-                    if lines}
+    provisional_lines = []
+    if attributed_only:
+        source_lines = {source: selected(source) for source in sources}
+        source_lines = {source: lines for source, lines in source_lines.items() if lines}
+    else:
+        from types import SimpleNamespace
+        from ..ledger.accounting import financial_statements
+        from ..ledger.events import Provenance, UNVERIFIED
+
+        report = financial_statements(proj, start=window.get("from", ""),
+                                      end=window.get("to") or "9999-12-31")["profit_loss"]
+        source_lines = {}
+        for row in report["lines"]:
+            if row["root"] != "income" or (requested_currency and row["currency"] != requested_currency):
+                continue
+            line = SimpleNamespace(date=row["date"], amount=-Decimal(row["amount"]),
+                                   currency=row["currency"],
+                                   grade=UNVERIFIED if row["provisional"] else row["amount_evidence"]["grade"],
+                                   provenance=Provenance.from_dict(row["amount_evidence"]["provenance"]))
+            source = row["account"] if row["account"].startswith("Income:") else "Income:Uncategorized"
+            source_lines.setdefault(source, []).append(line)
+            if row["provisional"]:
+                provisional_lines.append(line)
     line_grades = [line.grade for lines in source_lines.values()
                    for line in lines]
     source_currency: dict[tuple[str, str], Decimal] = {}
@@ -388,8 +408,9 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
         currency: -sum((line.amount for line in lines), Decimal("0"))
         for currency, lines in currency_lines.items()
     }
-    unexplained_lines = (selected(unexplained_source)
-                         if unexplained_source in proj.accounts() else [])
+    unexplained_lines = ((selected(unexplained_source)
+                          if unexplained_source in proj.accounts() else [])
+                         if attributed_only else provisional_lines)
     unexplained_currency_lines: dict[str, list] = {}
     for line in unexplained_lines:
         unexplained_currency_lines.setdefault(line_currency(line), []).append(line)
@@ -414,10 +435,10 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
                       else "unsupported_empty_scope")
             explanation = (
                 "Posted statements cover only part of the requested period, "
-                "so the absence of attributed income cannot be reported as zero."
+                "so the absence of income cannot be reported as zero."
                 if evidence["status"] == "partial" else
                 "Posted statements do not attest the requested period, so an "
-                "empty attributed-income result cannot be reported as zero.")
+                "empty income result cannot be reported as zero.")
             return refusal(
                 TOOL, reason, explanation,
                 requested_window=dict(window),
@@ -430,7 +451,7 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
             return refusal(
                 TOOL, "unsupported_empty_scope",
                 "No eligible account currency establishes what an empty "
-                "attributed-income result would be zero of.",
+                "income result would be zero of.",
                 requested_window=dict(window),
                 eligible_accounts=sorted(eligible_accounts))
         by_currency = {currency: Decimal("0")
@@ -452,9 +473,10 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
     # against. Income can be attributed under a key no account declares; such a
     # figure carries no slice, and a block of rows over the read then refuses
     # rather than listing a currency nobody holds.
+    income_label = "attributed income" if attributed_only else "working income"
     income_span = (f"from {window.get('from')} to {window.get('to')}"
                    if window else "over everything ingested")
-    figures = [figure(v, f"attributed income in {k}, {income_span}",
+    figures = [figure(v, f"{income_label} in {k}, {income_span}",
                       quantity=quantity.INCOME,
                       grade=(weakest(line.grade for line in
                                      currency_lines.get(k, [])) or empty_grade),
@@ -491,19 +513,21 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
               "unexplained_inflows": str(unexplained),
               "unexplained_inflows_by_currency": {
                   k: str(v) for k, v in sorted(unexplained_by_currency.items())},
+              "provisional_income_by_currency": {k: str(v) for k, v in sorted(unexplained_by_currency.items())} if not attributed_only else {},
+              "basis": "attributed" if attributed_only else "working_profit_loss",
               "window": dict(window)},
         identifiers=_identifiers(proj, source_lines),
         grade=weakest(line_grades) or empty_grade,
         record_ids=record_ids,
         covers=covers,
-        caveats=(["Attributed income only; inflows nothing has attributed are "
-                  "reported separately."]
+        caveats=((["Attributed income only; inflows nothing has attributed are reported separately."]
+                  if attributed_only else ["Working income includes provisional classifications; amount evidence does not verify their accounting meaning."])
                  + (["This is lifetime income over everything ingested."]
                     if not window else [])
                  + span_caveats),
         coverage=("Summed from: " + "; ".join(source_lines))
-        if source_lines else "No attributed income source matched.",
-        text=f"Attributed income per currency{period}.")
+        if source_lines else "No income source matched.",
+        text=f"{income_label.capitalize()} per currency{period}.")
 
 
 def _aggregate_recurring_spending(proj, filters: dict) -> ToolResult:
@@ -599,7 +623,7 @@ def _aggregate_recurring_spending(proj, filters: dict) -> ToolResult:
 
 def _aggregate_surplus(proj, filters: dict) -> ToolResult:
     """Attributed income less counted spending over the same period."""
-    income = _aggregate_income(proj, filters)
+    income = _aggregate_income(proj, filters, attributed_only=True)
     if not income.ok:
         return refusal(
             TOOL, income.refusal,

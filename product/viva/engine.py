@@ -525,20 +525,17 @@ def record_ruling(vault: Vault, interp, descriptor: str = "",
     and the payments this answer is about; absent, the descriptor names the
     counterparty and the population is derived.
 
-    **An answer never opens an account by itself.** Where it would bring one
-    into being, the proposal comes back for confirmation with the name the
-    person would see, and existing accounts are offered first. Where it names
-    nothing at all, the reply is the question rather than a placeholder path.
-    Original expense/income naming hints also require review, including hints
-    cleared by source-role checks. Empty-hint ordinary answers still apply here."""
+    Unambiguous selected corrections apply immediately. Only missing target
+    identity or an ambiguous existing account requires further identification.
+    Private learning follows the selected purpose context, never a merchant-wide
+    ruling."""
     from .listen import MovementSelectionRequired, propose
     proj = vault.ledger.projection()
-    # A `movement_key` scopes the answer to one transaction rather than to every
-    # movement sharing the descriptor. The unknown tier — a cheque, an ATM
-    # withdrawal, a peer — is asked one at a time for that reason.
+    # An explicit movement key scopes the correction to one transaction.
     try:
+        explicit_key = movement_key or (next(iter(movements), "") if movements else "")
         proposal = propose(proj, interp, descriptor, amount, currency,
-                           movement_key, locale=locale_from_env(),
+                           explicit_key, locale=locale_from_env(),
                            merchant_key=merchant, movements=movements)
     except MovementSelectionRequired:
         return {"ok": False, "why": "movement_required",
@@ -547,13 +544,52 @@ def record_ruling(vault: Vault, interp, descriptor: str = "",
         return {"ok": False, "why": "needs_name",
                 "message": proposal.summary(),
                 "proposal": proposal.to_dict()}
-    named_component = any(
-        leg["major"] in ("expense", "income") and leg.get("account_hint", "").strip()
-        for leg in interp.legs)
-    if proposal.new_accounts or proposal.confirm_accounts or named_component:
-        return {"ok": True, "confirm": True, "proposal": proposal.to_dict()}
-    applied = apply_ruling(vault, proposal.to_dict())
-    return {"confirm": False, **applied}
+    if proposal.confirm_accounts:
+        return {"ok": False, "why": "account_required",
+                "message": "Several accounts could match that explanation. Identify the account to change.",
+                "proposal": proposal.to_dict()}
+    from .accounting_intelligence import correction_targets, save_correction
+    selected = correction_targets(proj, descriptor, movement_key, movements)
+    if not selected:
+        return {"ok": False, "why": "movement_required",
+                "message": moment("reply_select_transaction")}
+    previous = {key: {"ruling": next((r for r in proj.rulings("movement")
+                         if r["subject"] == key), {}),
+                      "category": dict(proj._core._categories.get(key, {}))} for key in selected}
+    from .accounting_intelligence import context_key
+    anchor = next(m for m in proj.movements() if m.key == selected[0])
+    original_context = context_key(proj, anchor)
+    if interp.ends and (interp.starts or anchor.date) > interp.ends:
+        return {"ok": False, "why": "invalid_scope", "message": "The ending date precedes the starting date."}
+    from .ledger.events import accounting_rule_recorded, accounting_correction_recorded
+    try:
+        if interp.future_scope != "one" and interp.said.strip() and original_context["party"]:
+            accounting_rule_recorded("validation", anchor.key, anchor.date, original_context,
+                proposal.legs, _today(), category=proposal.category,
+                starts=interp.starts or anchor.date, ends=interp.ends,
+                recurrence=interp.recurrence, said=interp.said, prompt_version=interp.version)
+        accounting_correction_recorded("validation", "", selected, previous,
+            proposal.legs, interp.said, _today(), context=original_context)
+    except ValueError:
+        return {"ok": False, "why": "invalid_scope", "message": "That correction has an invalid future scope. Your transactions are unchanged."}
+    scoped_proposals = [propose(proj, interp, descriptor, amount, currency, key,
+                        locale=locale_from_env(), merchant_key=merchant) for key in selected]
+    if any(not scoped.applicable or scoped.confirm_accounts for scoped in scoped_proposals):
+        return {"ok": False, "why": "account_required", "message": "Identify the destination account for each selected transaction."}
+    accounts_before = set(proj.accounts())
+    applied = {}
+    for scoped in scoped_proposals:
+        applied = apply_ruling(vault, scoped.to_dict())
+        if not applied.get("ok"):
+            return applied
+    correction_id, rule_id = save_correction(vault.ledger, interp, scoped,
+                                             selected, previous, original_context,
+                                             sorted(set(vault.ledger.projection().accounts()) - accounts_before))
+    from .accounting_intelligence import apply_learned_rules
+    learned = apply_learned_rules(vault.ledger)
+    return {"confirm": False, **applied, "correction_id": correction_id,
+            "rule_id": rule_id, "changed": len(selected), "learned": learned}
+
 
 
 def open_kind(vault: Vault, kind: str, name: str = "", secures: str = "",
@@ -665,9 +701,9 @@ def decline_question(vault: Vault, question_id: str,
     returns `{"ok": False, "why": "not_open", "message": ...}`."""
     from .ledger.events import question_declined
     from .persona import ACTIVE_PACK
-    from .questions import open_questions
-    qs = open_questions(vault.ledger, limit=100000)
-    q = next((x for x in qs["questions"] if x["id"] == question_id), None)
+    from .questions import find_question
+    requested = find_question(vault.ledger, question_id)
+    q = requested.to_dict() if requested else None
     if q is None:
         return {"ok": False, "why": "not_open",
                 "message": "That question is no longer open — nothing to set aside."}
@@ -750,12 +786,10 @@ def _finalize_new_documents(vault: Vault, posted_before: set[str]) -> None:
         try:
             enrich_live_merchants(vault)
         except Exception:  # noqa: BLE001
-            # Do not expose a review queue that was built before the model had
-            # a chance to classify its new merchants. The posted document and
-            # raw read remain durable, so the same upload can be retried after
-            # the configured route recovers.
+            # Semantic enrichment cannot hold a reconciled statement.
             log.exception("merchant enrichment did not complete")
-            raise
+    from .accounting_intelligence import interpret_activity
+    interpret_activity(vault)
 
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn, *,

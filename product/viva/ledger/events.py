@@ -601,7 +601,9 @@ def ruling_recorded(scope: str, subject: str, occurred_at: str,
                     grade: str = VERIFIED, said: str = "",
                     corroborates: str = "", prompt_version: str = "",
                     same_as: str = "", value: str = "", currency: str = "",
-                    provenance: Provenance | None = None) -> Event:
+                    provenance: Provenance | None = None, grounds: str = "",
+                    source_refs: list[str] | None = None,
+                    evidence_signature: str = "") -> Event:
     """A ruling about what something *is* — one generic, scoped event.
 
     ``legs`` are the counter-legs this movement's money goes to, each
@@ -699,7 +701,10 @@ def ruling_recorded(scope: str, subject: str, occurred_at: str,
         body={"scope": scope, "subject": subject, "legs": clean, "by": by,
               "grade": grade, "said": said, "corroborates": corroborates, "same_as": same_as,
               "value": value, "currency": currency,
-              "prompt_version": prompt_version},
+              "prompt_version": prompt_version,
+              **({"grounds": grounds} if grounds else {}),
+              **({"source_refs": list(source_refs)} if source_refs else {}),
+              **({"evidence_signature": evidence_signature} if evidence_signature else {})},
         provenance=provenance or Provenance(),
     )
 
@@ -1227,3 +1232,81 @@ def agent_acted(rule: str, kind: str, target: str, outcome: str,
               "detail": detail, "by": by},
         provenance=provenance or Provenance(),
     )
+
+
+def accounting_rule_recorded(rule_id: str, anchor: str, anchor_date: str,
+                             context: dict, legs: list[dict], occurred_at: str,
+                             category: str = "", starts: str = "", ends: str = "",
+                             recurrence: str = "", excluded: list[str] | None = None,
+                             said: str = "", prompt_version: str = "") -> Event:
+    """Private rule keyed on purpose, party, direction and source role."""
+    required = {"party", "private", "direction", "source_role", "source_account", "category", "subcategory"}
+    if not rule_id or not anchor or set(context) != required or not context["party"]:
+        raise ValueError("a rule needs an anchor and complete private matching context")
+    if context["direction"] not in ("in", "out") or not isinstance(context["private"], bool):
+        raise ValueError("invalid rule direction or privacy")
+    if context["private"] and not context["source_account"]:
+        raise ValueError("private counterpart matching requires a source account")
+    for value in (anchor_date, starts, ends):
+        if value:
+            date.fromisoformat(value)
+    if starts and ends and ends < starts:
+        raise ValueError("rule ends before it starts")
+    if recurrence not in ("", "monthly", "weekly", "yearly"):
+        raise ValueError("unsupported recurrence")
+    checked = ruling_recorded(SCOPE_MOVEMENT, anchor, occurred_at, legs=legs, said=said)
+    if not checked.body["legs"] or not said.strip():
+        raise ValueError("a learned rule requires a human explanation and treatment")
+    return Event("AccountingRuleRecorded", occurred_at, body={
+        "rule_id": rule_id, "anchor": anchor, "anchor_date": anchor_date,
+        "context": dict(context), "legs": checked.body["legs"], "category": category,
+        "starts": starts, "ends": ends, "recurrence": recurrence,
+        "excluded": list(excluded or []), "said": said, "prompt_version": prompt_version})
+
+
+def accounting_rule_applied(rule_id: str, movement: str, previous: dict,
+                            previous_category: dict, occurred_at: str) -> Event:
+    if not rule_id or not movement:
+        raise ValueError("applied learning needs rule and movement identities")
+    return Event("AccountingRuleApplied", occurred_at, body={"rule_id": rule_id,
+        "movement": movement, "previous": dict(previous), "previous_category": dict(previous_category)})
+
+
+def accounting_correction_recorded(correction_id: str, rule_id: str,
+                                   movements: list[str], previous: dict,
+                                   legs: list[dict], said: str, occurred_at: str,
+                                   context: dict | None = None,
+                                   created_accounts: list[str] | None = None) -> Event:
+    if not correction_id or not movements or set(previous) != set(movements):
+        raise ValueError("correction must retain the prior view of each selected movement")
+    if context is not None:
+        fields = {"party", "private", "direction", "source_role", "source_account", "category", "subcategory"}
+        if (set(context) != fields or context["direction"] not in ("in", "out")
+                or not isinstance(context["private"], bool)):
+            raise ValueError("a correction example requires complete categorical matching context")
+    if created_accounts is not None and (not isinstance(created_accounts, list)
+            or any(not isinstance(account, str) or not account.strip() for account in created_accounts)):
+        raise ValueError("created accounts must be explicit account paths")
+    checked = ruling_recorded(SCOPE_MOVEMENT, movements[0], occurred_at, legs=legs, said=said)
+    if set(created_accounts or []) - {leg["account"] for leg in checked.body["legs"]}:
+        raise ValueError("created accounts must belong to the correction treatment")
+    return Event("AccountingCorrectionRecorded", occurred_at, body={
+        "correction_id": correction_id, "rule_id": rule_id, "movements": list(movements),
+        "previous": previous, "legs": checked.body["legs"], "said": said,
+        **({"context": dict(context)} if context else {}),
+        **({"created_accounts": list(created_accounts)} if created_accounts else {})})
+
+
+def accounting_correction_undone(correction_id: str, rule_id: str, occurred_at: str) -> Event:
+    if not correction_id:
+        raise ValueError("undo must identify its correction")
+    return Event("AccountingCorrectionUndone", occurred_at,
+                 body={"correction_id": correction_id, "rule_id": rule_id})
+
+
+def accounting_treatment_restored(movement: str, previous: dict,
+                                  previous_category: dict, occurred_at: str) -> Event:
+    if not movement:
+        raise ValueError("restoration must identify its movement")
+    return Event("AccountingTreatmentRestored", occurred_at, body={"movement": movement,
+        "previous": dict(previous), "previous_category": dict(previous_category)})

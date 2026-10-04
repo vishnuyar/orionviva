@@ -137,7 +137,7 @@ def _attention_summary(proj) -> ToolResult:
         coverage=(f"{shown} of {total} open questions, in queue order; "
                   f"{total - shown} omitted from this bounded preview."),
         text=(f"{shown} open question row(s) are shown."
-              if shown else ""))
+              if shown else "No document recovery questions are open."))
 
 
 # ------------------------------------------------------------- get_provenance

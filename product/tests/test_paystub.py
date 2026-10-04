@@ -187,3 +187,26 @@ def test_a_second_copy_of_a_stub_is_named_a_duplicate_not_a_missing_deposit(tmp_
     assert second.action != AWAITING
     # The income is still counted exactly once.
     assert v.ledger.projection().income_by_currency() == {"USD": Decimal("5000")}
+
+
+def test_paystub_retains_exact_matching_deposit_reference(tmp_path):
+    _raw, ledger = _stores(tmp_path)
+    _checking_with_deposit(ledger, '3800')
+    deposit = ledger.projection().movements()[0]
+    result = post_paystub(ledger, _paystub('5000', '3800', [('Tax', '1200', 'tax')]))
+    assert result.action == POSTED
+    event = next(e for e in reversed(ledger.store.snapshot_events())
+                 if e.event_type == 'TransactionRecorded' and e.body.get('matched_movement_key'))
+    assert event.body['matched_movement_key'] == deposit.key
+    assert event.body['matched_currency'] == deposit.currency
+
+
+def test_equal_net_deposits_do_not_choose_arbitrary_paystub_target(tmp_path):
+    from viva.ledger import simple_transaction
+    _raw, ledger = _stores(tmp_path)
+    _checking_with_deposit(ledger, '3800')
+    ledger.append(simple_transaction('chk','3800','SECOND SYNTHETIC DEPOSIT','2026-01-16',
+                                    provenance=Provenance('second-document',1)))
+    result = post_paystub(ledger, _paystub('5000','3800',[('Tax','1200','tax')]))
+    assert result.action == AWAITING
+    assert not any(e.body.get('matched_movement_key') for e in ledger.store.snapshot_events())

@@ -873,13 +873,7 @@ def _question_groups(proj, as_of: str, jurisdiction: str,
                      locale: str):
     """Yield each independently authored queue family for bounded consumers."""
     yield _held_questions(proj, locale)
-    yield _transfer_questions(proj, locale)
-    yield _merchant_questions(proj, locale)
-    yield _nature_questions(proj, locale)
-    yield _rhythm_questions(proj, locale)
-    yield _corroboration_questions(proj, locale)
-    yield _expectation_questions(proj, as_of, jurisdiction, locale)
-    yield _interview_questions(proj, jurisdiction)
+
 
 
 def find_question(source, question_id: str, as_of: str = "",
@@ -945,14 +939,6 @@ def pending_questions(source, as_of: str = "", jurisdiction: str = "",
     proj = getattr(source, "projection", lambda: source)()
     qs: list[Question] = []
     qs += _held_questions(proj, locale)
-    qs += _transfer_questions(proj, locale)
-    qs += _merchant_questions(proj, locale)
-    qs += _nature_questions(proj, locale)
-    qs += _rhythm_questions(proj, locale)
-    qs += _corroboration_questions(proj, locale)
-    qs += _interview_questions(proj, jurisdiction)
-    if as_of:
-        qs += _expectation_questions(proj, as_of, jurisdiction, locale)
     _, pending = _split_declined(proj, qs)
     pending.sort(key=lambda q: (-q.amount, q.id))
     return {"questions": [q.to_dict() for q in pending], "total": len(pending)}

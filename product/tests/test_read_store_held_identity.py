@@ -470,9 +470,8 @@ def test_duplicate_identity_labels_batch_account_values_with_fixed_query_count(t
                               as_of="2026-03-01", locale="en-US", limit=None)
     assert [q for q in actual["questions"] if q["kind"] == "identity"] == [
         q for q in expected["questions"] if q["kind"] == "identity"]
-    # Four fixed identity-value statements plus the two bounded expectation
-    # balance inputs now composed by the complete queue.
-    assert len(value_queries) == 6
+    # Held identity recovery uses four fixed identity-value statements.
+    assert len(value_queries) == 4
     assert "closing_observations_by_account_date" in plans[0]
     assert "opening_observations_by_account_date" in plans[1]
     assert "postings_by_account" in plans[2]

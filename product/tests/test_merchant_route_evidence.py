@@ -7,6 +7,7 @@ from merchantcore import is_shareable, normalize_merchant
 from viva.ledger import EventStore, Ledger, LedgerProjection, account_opened, simple_transaction
 from viva.ledger.events import merchant_enriched
 from viva.questions import _merchant_questions, _nature_questions
+from product.tests._requested_question_support import _requested_sql_questions
 from viva.read_store import ReadStore
 
 
@@ -58,7 +59,7 @@ def test_question_evidence_survives_index_rebuild_and_reopen(tmp_path, descripto
         reads.synchronize(source)
     with ReadStore.open(root, "synthetic-passphrase") as reads:
         with reads.open_reader() as revision:
-            actual = {q["id"]: q for q in revision.open_questions(as_of="2026-02-01", limit=None)["questions"] if q["kind"] in ("merchant", "nature")}
+            actual = {q["id"]: q for q in _requested_sql_questions(revision, as_of="2026-02-01", limit=None)["questions"] if q["kind"] in ("merchant", "nature")}
     assert actual == expected
     assert all("names how the money moved" not in q["why"] for q in actual.values())
 
@@ -162,7 +163,7 @@ def test_mixed_privacy_group_checks_every_member_on_both_reads(tmp_path):
     with ReadStore.create(tmp_path / "read", "synthetic-passphrase") as reads:
         reads.synchronize(source)
         with reads.open_reader() as revision:
-            indexed, = [q for q in revision.open_questions(as_of="2026-02-01", limit=None)["questions"] if q["kind"] == "merchant"]
+            indexed, = [q for q in _requested_sql_questions(revision, as_of="2026-02-01", limit=None)["questions"] if q["kind"] == "merchant"]
     assert indexed == question.to_dict()
 
 
@@ -192,7 +193,7 @@ def test_alias_legacy_grade_evidence_matches_after_rebuild_and_reopen(
         reads.synchronize(source)
     with ReadStore.open(root, "synthetic-passphrase") as reads:
         with reads.open_reader() as revision:
-            actual = {q["id"]: q for q in revision.open_questions(as_of="2026-02-01", limit=None)["questions"] if q["kind"] in ("merchant", "nature")}
+            actual = {q["id"]: q for q in _requested_sql_questions(revision, as_of="2026-02-01", limit=None)["questions"] if q["kind"] in ("merchant", "nature")}
     assert actual == expected
 
 
@@ -253,7 +254,7 @@ def test_mixed_alias_evidence_scopes_indexed_answer_to_displayed_members(tmp_pat
         reads.synchronize(source)
     with ReadStore.open(tmp_path / "read", "synthetic-passphrase") as reads:
         with reads.open_reader() as revision:
-            indexed, = [q for q in revision.open_questions(as_of="2026-02-01", limit=None)["questions"] if q["kind"] == "merchant"]
+            indexed, = [q for q in _requested_sql_questions(revision, as_of="2026-02-01", limit=None)["questions"] if q["kind"] == "merchant"]
     assert indexed == question.to_dict()
     displayed = set(indexed["refs"]["movements"])
     ledger.append(simple_transaction("synthetic-cash", "-10", "VELVET ORBIT",

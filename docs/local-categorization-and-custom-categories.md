@@ -10,7 +10,7 @@
 ### MON-90 — a peer descriptor is ruled per transaction, never everywhere
 **State:** enforced
 **Code:** product/viva/question_evidence.py (`decide`, `group_decision`); product/viva/listen.py (`propose`); product/viva/engine.py (`_write_answer`)
-**Test:** product/tests/test_questions.py::test_a_peer_payment_is_scoped_to_itself_not_a_rule
+**Test:** product/tests/test_questions.py::test_requested_a_peer_payment_is_scoped_to_itself_not_a_rule
 
 1. A commercial merchant's ruling is scoped to the merchant and settles every payment to it.
 2. A peer or instrument descriptor is scoped to the single movement.

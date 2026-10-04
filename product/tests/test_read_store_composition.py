@@ -18,7 +18,8 @@ from viva.read_store import composition
 from viva.read_store import questions as sql_questions
 from viva.read_store import store as read_store_module
 from viva.read_store.rhythm import RhythmReadError
-from viva.questions import open_questions
+from product.tests._requested_question_support import (_requested_questions as open_questions,
+                                                       _requested_sql_questions)
 
 
 PASSPHRASE = "correct horse battery staple"
@@ -115,7 +116,7 @@ def _complete_payload(revision):
     return {
         "findings": _normal(revision.findings(today="2026-05-01")),
         "current_period": _normal(revision.current_period(today="2026-05-01")),
-        "questions": revision.open_questions(
+        "questions": _requested_sql_questions(revision,
             as_of="2026-05-01", locale="en-US", limit=None),
     }
 
@@ -180,13 +181,23 @@ def test_complete_composition_payload_survives_suffix_partitions_restart_and_rea
             assert _complete_payload(revision) == expected
 
 
+def test_requested_composition_uses_the_same_configured_jurisdiction(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("VIVA_LOCALE", "en-IN")
+    events = _composition_events()
+    source = _store(tmp_path, events)
+    with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
+        reads.synchronize(source)
+        with reads.open_reader() as revision:
+            assert _complete_payload(revision) == _canonical_payload(events)
+
+
 def test_actionable_sql_question_families_match_canonical(tmp_path: Path):
     events = _events()
     source = _store(tmp_path, events)
     with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
         reads.synchronize(source)
         with reads.open_reader() as revision:
-            actual = revision.open_questions(
+            actual = _requested_sql_questions(revision,
                 as_of="2026-05-01", locale="en-US", limit=None)
     expected = open_questions(
         LedgerProjection(events), as_of="2026-05-01", jurisdiction="US",
@@ -223,9 +234,9 @@ def test_question_family_temporal_scope_matches_canonical_projection(tmp_path: P
     with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
         reads.synchronize(source)
         with reads.open_reader() as revision:
-            actual = revision.open_questions(
+            actual = _requested_sql_questions(revision,
                 as_of="2026-05-01", locale="en-US", limit=None)
-            later = revision.open_questions(
+            later = _requested_sql_questions(revision,
                 as_of="2027-05-01", locale="en-US", limit=None)
     expected = open_questions(
         LedgerProjection(events), as_of="2026-05-01", jurisdiction="US",
@@ -371,9 +382,9 @@ def test_open_question_production_window_has_exact_deterministic_tail(tmp_path: 
     with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
         reads.synchronize(source)
         with reads.open_reader() as revision:
-            first = revision.open_questions(
+            first = _requested_sql_questions(revision,
                 as_of="2026-05-01", jurisdiction="US", locale="en-US", limit=200)
-            second = revision.open_questions(
+            second = _requested_sql_questions(revision,
                 as_of="2026-05-01", jurisdiction="US", locale="en-US", limit=200)
 
     assert first == second == expected
@@ -439,7 +450,7 @@ def test_transfer_production_envelopes_refuse_without_partial_results(
         with reads.open_reader() as revision:
             before = revision.connection.execute("SELECT COUNT(*) FROM applied_events").fetchone()
             with pytest.raises(RhythmReadError, match=message):
-                revision.open_questions(as_of="2026-05-01")
+                _requested_sql_questions(revision, as_of="2026-05-01")
             # Refusal returns no partial payload and cannot mutate the revision.
             assert revision.connection.execute("SELECT COUNT(*) FROM applied_events").fetchone() == before
 
@@ -522,7 +533,7 @@ def test_review_decisions_are_batched_and_latest_source_wins(tmp_path: Path):
         with reads.open_reader() as revision:
             traced = []
             revision.connection.set_trace_callback(traced.append)
-            actual = revision.open_questions(
+            actual = _requested_sql_questions(revision,
                 as_of="2026-05-01", locale="en-US", limit=None)
             revision.connection.set_trace_callback(None)
     assert question["id"] in {row["id"] for row in actual["questions"]}
@@ -558,3 +569,19 @@ def test_composition_runtime_has_no_canonical_replay_imports():
     assert "LedgerProjection" not in source.replace("``LedgerProjection``", "")
     assert "EventStore" not in source
     assert "RawStore" not in source
+
+
+def test_public_queue_omits_classification_even_when_requested_editors_have_candidates(tmp_path):
+    from viva.questions import open_questions as public_questions
+    events = _composition_events()
+    projection = LedgerProjection(events)
+    assert open_questions(projection, as_of="2026-05-01", limit=None)["total"] > 0
+    expected = public_questions(projection, as_of="2026-05-01", locale="en-US", limit=None)
+    assert expected["questions"] == []
+    assert expected["total"] == expected["pending"]["count"] == 0
+    source = _store(tmp_path, events)
+    with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
+        reads.synchronize(source)
+        with reads.open_reader() as revision:
+            assert revision.open_questions(as_of="2026-05-01", locale="en-US", limit=None) == expected
+            assert _normal(revision.current_period(today="2026-05-01")) == _normal(projection.current_period("2026-05-01"))

@@ -39,8 +39,8 @@ RETAIN_SUPERSEDED_GENERATIONS = 2
 RETAIN_QUARANTINED_GENERATIONS = 2
 _MANIFEST_DOMAIN = b"viva-read-store-manifest-key-v1"
 _DATABASE_DOMAIN = b"viva-read-store-database-key-v1"
-CONTROL_SCHEMA_VERSION = 30
-PROJECTOR_VERSION = "materialized-v20"
+CONTROL_SCHEMA_VERSION = 31
+PROJECTOR_VERSION = "materialized-v21"
 RESOLVER_VERSION = "resolver-v2"
 AS_OF_VERSION = "as-of-v1"
 _APPLIED_EVENTS_GENESIS_DOMAIN = b"viva-read-store-applied-events-genesis-v1\0"
@@ -2017,11 +2017,19 @@ class ReadStore:
 
         rank = {"verified": 3, "corroborated": 2, "unverified": 1, "": 0}
         categories = {}
-        for row in connection.execute(
-                "SELECT movement_key,descriptor,category,subcategory,nature,grade,by_actor,"
+        category_events = list(connection.execute(
+                "SELECT source_sequence,movement_key,descriptor,category,subcategory,nature,grade,by_actor,"
                 "category_grade,subcategory_grade,category_by,subcategory_by "
-                "FROM category_history ORDER BY source_sequence"):
-            key, descriptor, category, subcategory, nature, grade, by_actor, cg, sg, cb, sb = row
+                "FROM category_history ORDER BY source_sequence"))
+        restoration_events = list(connection.execute(
+            "SELECT source_sequence,movement_key,previous_category_json FROM accounting_restorations ORDER BY source_sequence"))
+        for row in sorted(category_events + restoration_events, key=lambda row: row[0]):
+            if len(row) == 3:
+                previous = json.loads(row[2])
+                if previous: categories[row[1]] = previous
+                else: categories.pop(row[1], None)
+                continue
+            _sequence, key, descriptor, category, subcategory, nature, grade, by_actor, cg, sg, cb, sb = row
             incoming = {"descriptor": descriptor, "category": category,
                         "subcategory": subcategory, "nature": nature, "grade": grade,
                         "by": by_actor, "category_grade": cg, "subcategory_grade": sg,
@@ -2067,9 +2075,18 @@ class ReadStore:
 
         rulings = {}
         category_aliases, tag_aliases = {}, {}
-        for scope, subject, legs, grade, same_as in connection.execute(
-                "SELECT scope,subject,legs_json,grade,same_as FROM ruling_history "
-                "ORDER BY source_sequence"):
+        ruling_events = list(connection.execute(
+                "SELECT source_sequence,scope,subject,legs_json,grade,same_as FROM ruling_history "
+                "ORDER BY source_sequence"))
+        restored_rulings = list(connection.execute(
+            "SELECT source_sequence,movement_key,previous_ruling_json FROM accounting_restorations ORDER BY source_sequence"))
+        for row in sorted(ruling_events + restored_rulings, key=lambda row: row[0]):
+            if len(row) == 3:
+                previous = json.loads(row[2])
+                if previous: rulings[("movement", row[1])] = previous
+                else: rulings.pop(("movement", row[1]), None)
+                continue
+            _sequence, scope, subject, legs, grade, same_as = row
             incoming = {"scope": scope, "subject": subject, "legs": json.loads(legs),
                         "grade": grade, "same_as": same_as}
             prior = rulings.get((scope, subject))
@@ -2183,29 +2200,29 @@ class ReadStore:
                         rank.get(found["grade"], 0) > rank.get(merchant_ruling["grade"], 0)):
                     merchant_ruling = found
             ruling = movement_ruling or merchant_ruling
-            nature, reason, provisional, ruling_account = "spending", "default", 0, ""
+            nature, reason, provisional, ruling_account = "spending", "default", 1, ""
             if is_linked:
-                nature, reason = "transfer", "linked"
+                nature, reason, provisional = "transfer", "linked", 0
             elif ruling and ruling["legs"]:
                 natures = {"expense": "spending", "income": "spending",
                            "asset": "transfer", "liability": "settlement"}
                 found = {natures.get(leg.get("major"), "spending") for leg in ruling["legs"]}
                 nature = next(iter(found)) if len(found) == 1 else "mixed"
-                reason, provisional = "ruling", int(nature == "mixed")
+                reason, provisional = "ruling", int(nature == "mixed" or ruling["grade"] == "unverified")
                 for major in ("liability", "asset"):
                     path = next((leg.get("account", "") for leg in ruling["legs"]
                                  if leg.get("major") == major and leg.get("account")), "")
                     if path:
                         ruling_account = account_aliases.get(path, path); break
             elif overlay.get("nature") in ("transfer", "settlement", "spending"):
-                nature, reason = overlay["nature"], "ruling"
+                nature, reason, provisional = overlay["nature"], "ruling", 0
             elif ((merchant_record or {}).get("attributes") or {}).get("nature") in (
                     "transfer", "settlement", "spending"):
-                nature, reason = merchant_record["attributes"]["nature"], "ruling"
+                nature, reason, provisional = merchant_record["attributes"]["nature"], "ruling", 0
             elif any(other != account and any(text_has_token(description.lower(), token)
                                               for token in tokens)
                      for other, tokens in own_tokens.items()):
-                nature, reason = "transfer", "own_account"
+                nature, reason, provisional = "transfer", "own_account", 0
             else:
                 effect = Decimal(amount) * (Decimal("-1") if kind == "liability" else Decimal("1"))
                 want = "inflow" if effect > 0 else "outflow"
@@ -2515,6 +2532,7 @@ class ReadStore:
             occurred_at TEXT NOT NULL, description TEXT NOT NULL,
             provenance_doc_id TEXT NOT NULL, provenance_page INTEGER,
             provenance_region TEXT NOT NULL, provenance_note TEXT NOT NULL,
+            matched_movement_key TEXT NOT NULL, matched_currency TEXT NOT NULL,
             FOREIGN KEY(source_sequence, event_type)
                 REFERENCES applied_events(sequence, event_type)
                 DEFERRABLE INITIALLY DEFERRED,
@@ -2761,11 +2779,34 @@ class ReadStore:
             value_text TEXT NOT NULL, currency TEXT NOT NULL, prompt_version TEXT NOT NULL,
             provenance_doc_id TEXT NOT NULL, provenance_page INTEGER,
             provenance_region TEXT NOT NULL, provenance_note TEXT NOT NULL,
+            grounds TEXT NOT NULL, source_refs_json TEXT NOT NULL,
+            evidence_signature TEXT NOT NULL,
             FOREIGN KEY(source_sequence, event_type)
                 REFERENCES applied_events(sequence, event_type)
                 DEFERRABLE INITIALLY DEFERRED,
             CHECK(provenance_page IS NULL OR provenance_page >= 0),
             CHECK(json_valid(legs_json) AND typeof(value_text)='text'))""")
+        connection.execute("""CREATE TABLE accounting_restorations (
+            source_sequence INTEGER PRIMARY KEY REFERENCES applied_events(sequence)
+                DEFERRABLE INITIALLY DEFERRED,
+            event_type TEXT NOT NULL CHECK(event_type='AccountingTreatmentRestored'),
+            occurred_at TEXT NOT NULL, movement_key TEXT NOT NULL,
+            previous_ruling_json TEXT NOT NULL,
+            previous_category_json TEXT NOT NULL,
+            FOREIGN KEY(source_sequence,event_type)
+                REFERENCES applied_events(sequence,event_type)
+                DEFERRABLE INITIALLY DEFERRED,
+            CHECK(json_valid(previous_ruling_json) AND json_valid(previous_category_json)))""")
+        connection.execute("""CREATE TABLE accounting_controls (
+            source_sequence INTEGER PRIMARY KEY REFERENCES applied_events(sequence)
+                DEFERRABLE INITIALLY DEFERRED,
+            event_type TEXT NOT NULL CHECK(event_type IN ('AccountingRuleRecorded',
+                'AccountingRuleApplied','AccountingCorrectionRecorded','AccountingCorrectionUndone')),
+            occurred_at TEXT NOT NULL, identity TEXT NOT NULL, body_json TEXT NOT NULL,
+            FOREIGN KEY(source_sequence,event_type)
+                REFERENCES applied_events(sequence,event_type)
+                DEFERRABLE INITIALLY DEFERRED,
+            CHECK(json_valid(body_json)))""")
         connection.execute("""CREATE TABLE attribute_history (
             source_sequence INTEGER PRIMARY KEY REFERENCES applied_events(sequence)
                 DEFERRABLE INITIALLY DEFERRED,
@@ -3049,8 +3090,9 @@ class ReadStore:
                      else "closing", *prov))
         if kind == "TransactionRecorded":
             connection.execute(
-                "INSERT INTO transactions VALUES(?,?,?,?,?,?,?,?)",
-                (entry.sequence, kind, event.occurred_at, body.get("description", ""), *prov))
+                "INSERT INTO transactions VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (entry.sequence, kind, event.occurred_at, body.get("description", ""), *prov,
+                 body.get("matched_movement_key", ""), body.get("matched_currency", "")))
             for index, tag in enumerate(body.get("tags", ())):
                 connection.execute("INSERT INTO transaction_tags VALUES(?,?,?)",
                                    (entry.sequence, index, tag))
@@ -3157,13 +3199,15 @@ class ReadStore:
                  body.get("by", ""), *prov))
         if kind == "RulingRecorded":
             connection.execute(
-                "INSERT INTO ruling_history VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO ruling_history VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (entry.sequence, kind, event.occurred_at, body.get("scope", ""),
                  body.get("subject", ""), _canonical(body.get("legs") or []).decode(),
                  body.get("by", ""), body.get("grade", ""), body.get("said", ""),
                  body.get("corroborates", ""), body.get("same_as", ""),
                  str(body.get("value", "")), body.get("currency", ""),
-                 body.get("prompt_version", ""), *prov))
+                 body.get("prompt_version", ""), *prov,
+                 body.get("grounds", ""), _canonical(body.get("source_refs") or []).decode(),
+                 body.get("evidence_signature", "")))
             if body.get("scope") == "attribute":
                 attribute_account, separator, attribute_key = body.get(
                     "subject", "").rpartition(":")
@@ -3175,6 +3219,19 @@ class ReadStore:
                          str(body.get("value", "")), body.get("currency", ""),
                          body.get("grade", ""), body.get("said", ""),
                          body.get("by", ""), *prov))
+        if kind == "AccountingTreatmentRestored":
+            connection.execute(
+                "INSERT INTO accounting_restorations VALUES(?,?,?,?,?,?)",
+                (entry.sequence, kind, event.occurred_at, body["movement"],
+                 _canonical(body.get("previous") or {}).decode(),
+                 _canonical(body.get("previous_category") or {}).decode()))
+        if kind in ("AccountingRuleRecorded", "AccountingRuleApplied",
+                    "AccountingCorrectionRecorded", "AccountingCorrectionUndone"):
+            connection.execute(
+                "INSERT INTO accounting_controls VALUES(?,?,?,?,?)",
+                (entry.sequence, kind, event.occurred_at,
+                 body.get("correction_id") or body.get("rule_id", ""),
+                 _canonical(body).decode()))
         if kind == "AccountAliasConfirmed":
             connection.execute(
                 "INSERT INTO account_alias_history VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

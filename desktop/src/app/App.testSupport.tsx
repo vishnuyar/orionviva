@@ -1,3 +1,4 @@
+import isolatedReviewReads from "./fixtures/requested-editors-synthetic.json";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import userEvent from "@testing-library/user-event";
@@ -124,6 +125,7 @@ function installSampleBridge(overrides: Record<string, unknown> = {}) {
   return () => { window.orionVivaBridge = previous; };
 }
 
+// Isolated synthetic questions exercise compatibility and focus; the default sample has no classification queue.
 // Render the shell and open the sample through its visible entry point.
 async function openSample(overrides: Record<string, unknown> = {}) {
   const restore = installSampleBridge(overrides);
@@ -134,10 +136,14 @@ async function openSample(overrides: Record<string, unknown> = {}) {
   return { ...view, restore };
 }
 
+async function openReviewSample(overrides: Record<string, unknown> = {}) {
+  return openSample({ ...isolatedReviewReads, ...overrides });
+}
+
 // Begin each test with the wide-window media-query contract.
 
 export { act, fireEvent, render, waitFor, createRef, userEvent, afterEach,
   beforeEach, describe, expect, it, vi, App, ConversationDialogShell, moments,
   sampleVault, SAVED_NO_READER, queryByRoleIn, ThrowingConversationBody,
   installResponsiveMatchMedia, installCapturedAnimationFrames, activityPayload,
-  reviewEmptyPayload, reviewBoundQuestion, reviewQuestionPayload, trustPayload, sampleReads, sampleFrame, installSampleBridge, openSample };
+  reviewEmptyPayload, reviewBoundQuestion, reviewQuestionPayload, trustPayload, sampleReads, sampleFrame, installSampleBridge, openSample, openReviewSample, isolatedReviewReads };

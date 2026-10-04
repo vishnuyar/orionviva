@@ -93,7 +93,7 @@ No figure, schema or surface may assume one country.
 | **I2** | Normalization is locale-aware and versioned | enforced *(exception)* | [design-invariants.md](design-invariants.md) | `test_german_comma_decimal` |
 | **I3** | Trust is earned per locale | enforced *(exception)* | [design-invariants.md](design-invariants.md) | `test_scorecards_group_and_calibrate` |
 | **I4** | Ground truth carries locale metadata from day one | enforced | [design-invariants.md](design-invariants.md) | `test_german_amount_cross_format` |
-| **I5** | No US-shaped taxonomy | enforced | [design-invariants.md](design-invariants.md) | `test_the_pack_loads_and_every_kind_is_jurisdiction_tagged` |
+| **I5** | No US-shaped taxonomy | enforced | [design-invariants.md](design-invariants.md) | `test_requested_the_pack_loads_and_every_kind_is_jurisdiction_tagged` |
 | **I6** | The admission exam is pack-extensible | by-review | [design-invariants.md](design-invariants.md) | — |
 
 ## Accounting model
@@ -113,7 +113,7 @@ What a person may be asked to know, see and confirm.
 | --- | --- | --- | --- | --- |
 | **X1** | Target user skill: "can install an app" | **unmet** | [design-invariants.md](design-invariants.md) | — |
 | **X2** | Uncertainty is visible, never decorative | enforced *(exception)* | [design-invariants.md](design-invariants.md) | `test_every_grade_a_figure_can_carry_has_a_reviewed_sentence` |
-| **X3** | Irreversible actions wait for an explicit yes | enforced for held financial proposals; audit/direct-answer exceptions documented | [design-invariants.md](design-invariants.md) | `test_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched` |
+| **X3** | Irreversible actions wait for an explicit yes | enforced | [design-invariants.md](design-invariants.md) | `test_correction_immediate_scoped_future_and_one_off_undo` |
 
 ## SPINE — how the documents themselves work
 
@@ -153,7 +153,7 @@ One rule per decision record. An ADR states what was decided; the rule states wh
 | **ADR-009** | Contributions come in under the Developer Certificate of Origin | by-review | [decisions/ADR-009-dco-contributions.md](decisions/ADR-009-dco-contributions.md) | — |
 | **ADR-010** | Models extract and converse; they never certify | enforced | [decisions/ADR-010-verification-never-in-weights.md](decisions/ADR-010-verification-never-in-weights.md) | `test_float_poison_rejected` |
 | **ADR-011** | A hosted tier may store ciphertext and never compute on it | **unmet** | [decisions/ADR-011-blind-host-tier.md](decisions/ADR-011-blind-host-tier.md) | — |
-| **ADR-012** | Two enumerated outbound flows, a whitelisted envelope, and a model that selects and words but never decides | **unmet** | [decisions/ADR-012-the-interview-model-boundary.md](decisions/ADR-012-the-interview-model-boundary.md) | `test_a_jurisdiction_scoped_question_does_not_travel` |
+| **ADR-012** | Two enumerated outbound flows, a whitelisted envelope, and a model that selects and words but never decides | **unmet** | [decisions/ADR-012-the-interview-model-boundary.md](decisions/ADR-012-the-interview-model-boundary.md) | `test_requested_a_jurisdiction_scoped_question_does_not_travel` |
 | **ADR-013** | A run holds a ledger of what it established, and an answer may say only what is in it | enforced *(exception)* | [decisions/ADR-013-the-shape-before-the-data.md](decisions/ADR-013-the-shape-before-the-data.md) | `test_a_figure_that_states_no_set_fills_no_hole_asking_for_one` |
 | **ADR-014** | The model names financial meaning and typed parameters; deterministic code authors the executable AnswerProgram | enforced *(exception)* | [decisions/ADR-014-financial-meaning-before-executable-programs.md](decisions/ADR-014-financial-meaning-before-executable-programs.md) | `test_model_contract_cannot_author_executable_program_fields` +1 |
 
@@ -204,19 +204,19 @@ What counts as spending, what a category is, how two accounts are recognized as 
 | **MON-39** | the decomposition explains a deposit and counts income once | enforced | [pay-stubs-and-income.md](pay-stubs-and-income.md) | `test_paystub_decomposes_the_deposit_income_counted_once` |
 | **MON-40** | either arrival order works | enforced | [pay-stubs-and-income.md](pay-stubs-and-income.md) | `test_paystub_without_deposit_waits_then_heals` |
 | **MON-41** | deductions go into universal buckets | enforced | [pay-stubs-and-income.md](pay-stubs-and-income.md) | `test_paystub_decomposes_the_deposit_income_counted_once` |
-| **MON-42** | income means attributed income | enforced | [pay-stubs-and-income.md](pay-stubs-and-income.md) | `test_income_is_counted_once_and_a_stub_awaiting_its_deposit_is_held` |
-| **MON-43** | the net leg cites the specific deposit | **unmet** | [pay-stubs-and-income.md](pay-stubs-and-income.md) | — |
-| **MON-44** | a question is a read-side projection, and answering uses the writers that exist | enforced | [the-question-queue.md](the-question-queue.md) | `test_the_queue_introduces_no_new_event_type` |
-| **MON-45** | ranked by consequence, with stable ids | enforced | [the-question-queue.md](the-question-queue.md) | `test_questions_are_ranked_by_what_answering_moves` |
-| **MON-46** | a question is raised at the most general unit that is still honest | enforced | [the-question-queue.md](the-question-queue.md) | `test_answering_a_nature_question_settles_the_merchant_and_stops_asking` |
-| **MON-47** | silence by ranking, never by hiding | enforced | [the-question-queue.md](the-question-queue.md) | `test_the_tail_is_summarized_never_dropped` |
+| **MON-42** | the attributed-income reader excludes placeholders | enforced | [pay-stubs-and-income.md](pay-stubs-and-income.md) | `test_income_is_counted_once_and_a_stub_awaiting_its_deposit_is_held` |
+| **MON-43** | the net leg cites the specific deposit | enforced | [pay-stubs-and-income.md](pay-stubs-and-income.md) | `test_paystub_retains_exact_matching_deposit_reference` |
+| **MON-44** | a question is a read-side projection, and answering uses the writers that exist | enforced | [the-question-queue.md](the-question-queue.md) | `test_requested_the_queue_introduces_no_new_event_type` |
+| **MON-45** | ranked by consequence, with stable ids | enforced | [the-question-queue.md](the-question-queue.md) | `test_requested_questions_are_ranked_by_what_answering_moves` |
+| **MON-46** | a question is raised at the most general unit that is still honest | enforced | [the-question-queue.md](the-question-queue.md) | `test_requested_answering_a_nature_question_settles_the_merchant_and_stops_asking` |
+| **MON-47** | silence by ranking, never by hiding | enforced | [the-question-queue.md](the-question-queue.md) | `test_requested_the_tail_is_summarized_never_dropped` |
 | **MON-48** | question text is a deterministic template from the persona pack | enforced | [the-question-queue.md](the-question-queue.md) | `test_question_text_no_longer_lives_in_code` |
 | **MON-49** | every question declares what structure an answer has | enforced | [the-question-queue.md](the-question-queue.md) | `test_the_model_never_supplies_a_figure` |
-| **MON-50** | a substantive answer has no button payload | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_reply_she_could_not_read_leaves_the_question_where_it_was` |
-| **MON-51** | confirmation is an explicit typed decision (X3) | enforced | [the-question-queue.md](the-question-queue.md) | `test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
-| **MON-52** | a nature question is raised only where the evidence is weak | enforced-with-exception | [the-question-queue.md](the-question-queue.md) | `test_an_ordinary_known_merchant_is_never_asked_about`, `test_import_defaults_peer_payments_before_asking_questions` |
-| **MON-53** | a rhythm question is one proposal per counterparty and direction, licensed by the catalog | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_standing_prior_raises_one_grouped_proposal_per_pair` |
-| **MON-54** | a stake is money already measured | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_question_is_ranked_on_money_already_measured` |
+| **MON-50** | a substantive answer has no button payload | enforced | [the-question-queue.md](the-question-queue.md) | `test_requested_a_reply_she_could_not_read_leaves_the_question_where_it_was` |
+| **MON-51** | confirmation is an explicit typed decision (X3) | enforced | [the-question-queue.md](the-question-queue.md) | `test_requested_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
+| **MON-52** | a nature question is raised only where the evidence is weak | enforced-with-exception | [the-question-queue.md](the-question-queue.md) | `test_requested_an_ordinary_known_merchant_is_never_asked_about`, `test_import_defaults_peer_payments_without_assuming_transfer` |
+| **MON-53** | a rhythm question is one proposal per counterparty and direction, licensed by the catalog | enforced | [the-question-queue.md](the-question-queue.md) | `test_requested_a_standing_prior_raises_one_grouped_proposal_per_pair` |
+| **MON-54** | a stake is money already measured | enforced | [the-question-queue.md](the-question-queue.md) | `test_requested_a_question_is_ranked_on_money_already_measured` |
 | **MON-55** | a cash withdrawal is a spend until an unexplained asset says otherwise | **unmet** | [the-question-queue.md](the-question-queue.md) | — |
 | **MON-56** | a link is an overlay, and exclusion is derived on the read side | enforced | [transfer-links-and-cross-document-corroboration.md](transfer-links-and-cross-document-corroboration.md) | `test_internal_transfer_auto_links_and_excludes_from_spending` |
 | **MON-57** | a link references a stable movement key, not an event id | enforced | [transfer-links-and-cross-document-corroboration.md](transfer-links-and-cross-document-corroboration.md) | `test_auto_link_is_corroborated_and_survives_a_replay` |
@@ -252,7 +252,7 @@ What counts as spending, what a category is, how two accounts are recognized as 
 | **MON-87** | two different unknowns, and only one is a trust problem | enforced | [net-worth.md](net-worth.md) | `test_a_liability_from_cash_flow_alone_is_refused_and_named` |
 | **MON-88** | reuse the grade ladder; do not invent an issued/asserted badge | enforced | [net-worth.md](net-worth.md) | `test_provable_is_the_existing_grade_not_a_new_badge` |
 | **MON-89** | subtotal per currency; never convert | enforced | [net-worth.md](net-worth.md) | `test_two_currencies_give_two_subtotals_and_no_grand_total` +2 |
-| **MON-90** | a peer descriptor is ruled per transaction, never everywhere | enforced | [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md) | `test_a_peer_payment_is_scoped_to_itself_not_a_rule`, `test_merchant_answer_writes_only_displayed_population` |
+| **MON-90** | a peer descriptor is ruled per transaction, never everywhere | enforced | [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md) | `test_requested_a_peer_payment_is_scoped_to_itself_not_a_rule`, `test_merchant_answer_writes_only_displayed_population` |
 | **MON-91** | a custom category is personal, and what crosses to a model is the shareable part of the vocabulary | enforced | [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md) | `test_the_known_vocabulary_is_what_every_minting_path_is_offered` |
 | **MON-92** | a per-transaction assignment can say what a movement *is* | enforced | [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md) | `test_a_human_ruling_beats_the_implication` |
 | **MON-93** | the spending answer says what its total is made of | enforced *(exception)* | [categorization-and-spending.md](categorization-and-spending.md) | `test_answer_spending_reports_categories` |
@@ -294,28 +294,28 @@ How a read is bounded, what a figure declares, and how a sentence is built from 
 | **PROJ-29** | an unknown split is its own nature | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_a_compound_payment_is_neither_counted_nor_dropped` |
 | **PROJ-30** | only a major that brings a thing into being opens an account | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_registration_preflight_checks_all_entries_before_writing` + `test_named_components_are_preserved_without_registration` |
 | **PROJ-31** | resolution asks only when ambiguous | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_resolution_asks_only_when_ambiguous` |
-| **PROJ-32** | confirmation covers account changes and expense/income naming hints | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
+| **PROJ-32** | confirmation covers account changes and expense/income naming hints | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_requested_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
 | **PROJ-33** | every asserted account invites the document that would prove it | enforced | [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) | `test_the_corroboration_ask_is_the_path_from_asserted_to_issued` |
-| **PROJ-34** | what a counterparty implies is impersonal knowledge, learned once | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_a_counterparty_that_implies_structure_is_proposed_not_asked` |
-| **PROJ-35** | three tiers, and the rule is ask only where the counterparty cannot tell us | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_an_ordinary_counterparty_is_settled_and_silent`, `test_abstention_and_private_business_preserve_tiers` |
-| **PROJ-36** | direction is part of the implication, never a branch in the caller | enforced *(exception)* | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_the_same_counterparty_means_opposite_things_by_direction` |
-| **PROJ-37** | the confidence ladder decides how decisively an implication is applied | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_forced_is_decisive_and_suggested_says_it_is_not` |
+| **PROJ-34** | what a counterparty implies is impersonal knowledge, learned once | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_requested_a_counterparty_that_implies_structure_is_proposed_not_asked` |
+| **PROJ-35** | three tiers, and the rule is ask only where the counterparty cannot tell us | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_requested_an_ordinary_counterparty_is_settled_and_silent`, `test_abstention_and_private_business_preserve_tiers` |
+| **PROJ-36** | direction is part of the implication, never a branch in the caller | enforced *(exception)* | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_requested_the_same_counterparty_means_opposite_things_by_direction` |
+| **PROJ-37** | the confidence ladder decides how decisively an implication is applied | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_requested_forced_is_decisive_and_suggested_says_it_is_not` |
 | **PROJ-38** | a model writes the rules and deterministic code applies them | by-review *(exception)* | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | — |
-| **PROJ-39** | a rhythm question is licensed by two facts of one record | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_a_merchant_with_no_billing_prior_is_never_asked_about` |
-| **PROJ-40** | a person is not a counterparty on the rhythm axis | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_a_merchant_with_no_billing_prior_is_never_asked_about` |
+| **PROJ-39** | a rhythm question is licensed by two facts of one record | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_requested_a_merchant_with_no_billing_prior_is_never_asked_about` |
+| **PROJ-40** | a person is not a counterparty on the rhythm axis | enforced | [where-the-intelligence-goes.md](where-the-intelligence-goes.md) | `test_requested_a_merchant_with_no_billing_prior_is_never_asked_about` |
 | **PROJ-41** | knowledge is exactly one of three types, and their storage never mixes | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_peer_payment_is_not_shareable` |
 | **PROJ-42** | the ACH line shape is specification, parsed deterministically | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_the_ach_entry_description_is_recovered_from_the_statement` |
 | **PROJ-43** | permanent merchant identity preserves every legacy key | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_reviewed_aliases_group_two_location_forms_under_one_merchant` +2 |
 | **PROJ-44** | billing is a fact about the merchant, from a closed set | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_a_billing_model_outside_the_closed_set_is_dropped` |
-| **PROJ-45** | the measurement beats the prior, and a measured absence is something the ledger said | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_a_measured_absence_of_rhythm_beats_what_the_world_says` |
+| **PROJ-45** | the measurement beats the prior, and a measured absence is something the ledger said | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_requested_a_measured_absence_of_rhythm_beats_what_the_world_says` |
 | **PROJ-46** | a stream key is a counterparty and a channel, and never drops the party | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_a_stream_key_never_drops_the_party` |
 | **PROJ-47** | direction splits the statistics and never the key | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_no_rhythm_is_offered_across_two_directions` |
 | **PROJ-48** | a direction is decided by the account's kind, never by the posted sign | enforced *(exception)* | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_a_card_purchase_reads_as_money_out` |
 | **PROJ-49** | cadence and stability are measured, never asked for | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_cadence_and_stability_are_measured_not_asked_for` |
 | **PROJ-50** | the stream projection is a pure function of the set of movements | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_ingest_order_never_changes_a_belief` |
-| **PROJ-51** | a split is visible in the sentence, never silent | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_a_mixture_states_what_it_saw_of_each_part_and_asks_which_is_which` |
-| **PROJ-52** | a rhythm confirmation is a scoped ruling carrying a set | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_which_is_which_is_recorded_as_one_set_valued_ruling` |
-| **PROJ-53** | the question is a stream scope on the queue that already exists | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_a_question_is_ranked_on_money_already_measured` |
+| **PROJ-51** | a split is visible in the sentence, never silent | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_requested_a_mixture_states_what_it_saw_of_each_part_and_asks_which_is_which` |
+| **PROJ-52** | a rhythm confirmation is a scoped ruling carrying a set | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_requested_which_is_which_is_recorded_as_one_set_valued_ruling` |
+| **PROJ-53** | the question is a stream scope on the queue that already exists | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_requested_a_question_is_ranked_on_money_already_measured` |
 | **PROJ-54** | a grammar is not automatically safe to publish | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_a_template_is_judged_by_what_it_MATCHES_not_by_its_words` |
 | **PROJ-55** | induced grammars are held outside any working tree until a person promotes them | by-review | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | — |
 | **PROJ-56** | cold start is answered with silence, not a guess | enforced | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) | `test_below_the_floor_it_says_unknown_rather_than_guessing` |
@@ -449,7 +449,7 @@ How a bank descriptor becomes a counterparty, what may be shared, and what the a
 | **MER-46** | The unencrypted catalog carries no money | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_export_catalog_is_linted_and_carries_no_amounts` |
 | **MER-47** | The taxonomy is a versioned data pack | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_the_manifest_and_the_files_agree` +1 |
 | **MER-48** | Merchant recognition is deterministic and versioned, never fuzzy | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_reviewed_aliases_resolve_exactly_and_near_names_do_not` +3 |
-| **MER-49** | An unknown merchant stays unknown while its movement gets a replaceable default | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_import_defaults_peer_payments_before_asking_questions` +1 |
+| **MER-49** | An unknown merchant stays unknown while its movement gets a replaceable default | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_import_defaults_peer_payments_without_assuming_transfer` +1 |
 | **MER-50** | Deciding is pure; only performing spends | enforced | [the-maintenance-agent.md](the-maintenance-agent.md) | `test_assess_is_pure_and_repeatable` +2 |
 | **MER-51** | The agent records what it did, never what it saw | enforced | [the-maintenance-agent.md](the-maintenance-agent.md) | `test_the_journal_carries_no_descriptor_and_no_amount` +2 |
 | **MER-52** | A refusal cools until the stake moves, and a code change moves it | enforced | [the-maintenance-agent.md](the-maintenance-agent.md) | `test_a_refusal_against_unchanged_evidence_is_not_retried` +4 |
@@ -484,29 +484,29 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-11** | a phrasing may not introduce a fact its intent did not supply | enforced | [viva-persona.md](viva-persona.md) | `test_phrasings_use_only_their_intent_fields` |
 | **VOICE-12** | every question kind has a phrasing, and no phrasing is orphaned | enforced | [viva-persona.md](viva-persona.md) | `test_every_intent_has_a_phrasing_and_no_orphans` |
 | **VOICE-13** | a slot is typed, and a figure reaches a person only through the one renderer | enforced | [viva-persona.md](viva-persona.md) | `test_a_money_slot_cannot_be_handed_a_figure_that_formatted_itself` |
-| **VOICE-14** | a decline is an event, and a declined question stays quiet until evidence moves | enforced | [viva-persona.md](viva-persona.md) | `test_a_deferred_question_returns_when_evidence_touches_its_subject` |
+| **VOICE-14** | a decline is an event, and a declined question stays quiet until evidence moves | enforced | [viva-persona.md](viva-persona.md) | `test_requested_a_deferred_question_returns_when_evidence_touches_its_subject` |
 | **VOICE-15** | she works in the background, and the work is quiet | **unmet** | [viva-persona.md](viva-persona.md) | — |
 | **VOICE-16** | a released persona pack is frozen | enforced | [viva-persona.md](viva-persona.md) | `test_released_packs_are_frozen` |
-| **VOICE-23** | the queue carries no instructions for a surface | enforced | [viva-persona-and-interview.md](viva-persona-and-interview.md) | `test_the_queue_carries_no_instructions_for_a_surface` |
+| **VOICE-23** | the queue carries no instructions for a surface | enforced | [viva-persona-and-interview.md](viva-persona-and-interview.md) | `test_requested_the_queue_carries_no_instructions_for_a_surface` |
 | **VOICE-24** | this is never a chat agent | enforced | [viva-persona-and-interview.md](viva-persona-and-interview.md) | `test_a_question_no_longer_being_asked_records_nothing` |
 | **VOICE-25** | the butler is Viva, and the persona guide is seed content for data packs | enforced | [viva-persona-and-interview.md](viva-persona-and-interview.md) | `test_every_intent_has_a_phrasing_and_no_orphans` |
 | **VOICE-26** | the model is a copywriter at design time, not at run time | enforced | [viva-persona-and-interview.md](viva-persona-and-interview.md) | `test_a_refusal_is_the_packs_reviewed_sentence_for_its_tag` |
-| **VOICE-27** | one question at a time, with the tail summarized | enforced | [viva-persona-and-interview.md](viva-persona-and-interview.md) | `test_an_account_with_a_schema_is_asked_one_thing_at_a_time` +3 |
+| **VOICE-27** | one question at a time, with the tail summarized | enforced | [viva-persona-and-interview.md](viva-persona-and-interview.md) | `test_requested_an_account_with_a_schema_is_asked_one_thing_at_a_time` +3 |
 | **VOICE-30** | Viva is summoned, never ambient | untestable | [experience-vision.md](experience-vision.md) | — |
 | **VOICE-31** | the product opens as a picture, not a chat | by-review | [experience-vision.md](experience-vision.md) | — |
 | **VOICE-33** | a capture surface creates no hosted data | **unmet** | [experience-vision.md](experience-vision.md) | — |
 | **VOICE-34** | a spoken answer is mirrored in text | **unmet** | [experience-vision.md](experience-vision.md) | — |
 | **VOICE-36** | a correction is an event, permanently remembered | enforced *(exception)* | [experience-vision.md](experience-vision.md) | `test_reset_drops_model_categorization_but_keeps_my_rulings` +1 |
-| **VOICE-40** | a schema question may never ask for an identifier | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_no_answer_type_means_an_identifier` |
-| **VOICE-41** | a schema names only documents the pipeline actually classifies | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_schema_may_only_name_a_document_the_pipeline_classifies` |
-| **VOICE-42** | an account comes into being only through a confirmed Proposal | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_an_answer_that_would_open_an_account_comes_back_to_be_confirmed` |
-| **VOICE-43** | a figure in an attribute answer must appear in the person's own words | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_figure_absent_from_their_words_is_refused` |
-| **VOICE-44** | a value on a ruling is confined to the scopes that declare one | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_value_outside_attribute_scope_is_refused` |
-| **VOICE-45** | attribute rulings are a history, and a correction does not reach backwards | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_an_answer_today_does_not_rewrite_an_earlier_point` |
-| **VOICE-46** | a released schema pack is frozen | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_released_schema_packs_are_frozen` |
-| **VOICE-47** | a kind with no schema asks nothing and records the gap | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_kind_with_no_schema_asks_nothing_and_records_the_gap` |
-| **VOICE-48** | every question says what it unlocks, and a choice enumerates its alternatives | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_question_must_say_what_it_unlocks` |
-| **VOICE-49** | what a document already said is not asked again | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_what_a_statement_already_said_is_not_asked_again` |
+| **VOICE-40** | a schema question may never ask for an identifier | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_no_answer_type_means_an_identifier` |
+| **VOICE-41** | a schema names only documents the pipeline actually classifies | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_a_schema_may_only_name_a_document_the_pipeline_classifies` |
+| **VOICE-42** | an named account correction applies reversibly without a second yes | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_named_account_correction_applies_immediately` |
+| **VOICE-43** | a figure in an attribute answer must appear in the person's own words | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_a_figure_absent_from_their_words_is_refused` |
+| **VOICE-44** | a value on a ruling is confined to the scopes that declare one | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_a_value_outside_attribute_scope_is_refused` |
+| **VOICE-45** | attribute rulings are a history, and a correction does not reach backwards | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_an_answer_today_does_not_rewrite_an_earlier_point` |
+| **VOICE-46** | a released schema pack is frozen | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_released_schema_packs_are_frozen` |
+| **VOICE-47** | a kind with no schema asks nothing and records the gap | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_a_kind_with_no_schema_asks_nothing_and_records_the_gap` |
+| **VOICE-48** | every question says what it unlocks, and a choice enumerates its alternatives | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_a_question_must_say_what_it_unlocks` |
+| **VOICE-49** | what a document already said is not asked again | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_what_a_statement_already_said_is_not_asked_again` |
 | **VOICE-50** | a Proposal is the only path to a change, and it is never applied unconfirmed | enforced for held financial proposals; audit/direct-answer exceptions documented | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_applying_is_a_separate_explicit_act` |
 | **VOICE-51** | the interpreter never supplies a figure | enforced | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_the_model_never_supplies_a_figure` |
 | **VOICE-52** | the interpreter is an edge, quarantined like the reader | enforced | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_the_interpreter_is_configured_separately_and_can_be_local` |
@@ -553,15 +553,15 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-114** | with no reader configured, a document is saved privately and reading waits | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_reader_factory_gates_on_env` +6 |
 | **VOICE-120** | a slice is complete only against the live boundary it claims | untestable | [user-interface-implementation-status.md](user-interface-implementation-status.md) | — |
 | **VOICE-121** | a synthetic fixture proves rendering, never parity | untestable | [user-interface-implementation-status.md](user-interface-implementation-status.md) | — |
-| **VOICE-122** | the interview is a primitive with a next step, and it is read-side | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_vault_built_before_this_replays_identically` |
-| **VOICE-123** | the schema is a closed vocabulary | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_an_answer_outside_the_offered_vocabulary_is_refused_not_guessed` |
+| **VOICE-122** | the interview is a primitive with a next step, and it is read-side | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_a_vault_built_before_this_replays_identically` |
+| **VOICE-123** | the schema is a closed vocabulary | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_an_answer_outside_the_offered_vocabulary_is_refused_not_guessed` |
 | **VOICE-124** | seed small, generate on first encounter, promote on review | **unmet** | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | — |
 | **VOICE-125** | no amounts and no currency in the interview envelope | **unmet** | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | — |
-| **VOICE-126** | the interview interleaves and never holds the queue | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_an_interview_ranks_with_the_other_questions_not_ahead_of_them` |
-| **VOICE-127** | essentials terminate the interview and gate net worth | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_an_asset_with_no_stated_cost_is_a_gap_never_a_zero` |
+| **VOICE-126** | the interview interleaves and never holds the queue | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_an_interview_ranks_with_the_other_questions_not_ahead_of_them` |
+| **VOICE-127** | essentials terminate the interview and gate net worth | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_an_asset_with_no_stated_cost_is_a_gap_never_a_zero` |
 | **VOICE-128** | tags gain account scope, and the model copies the person's word | **unmet** | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | — |
-| **VOICE-129** | cycle 1 is deterministic, and a model selector must beat it on measured grounds | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_an_account_with_a_schema_is_asked_one_thing_at_a_time` |
-| **VOICE-130** | jurisdiction is an attribute of the account, and the country tag is derived | **unmet** | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_jurisdiction_scoped_question_does_not_travel` |
+| **VOICE-129** | cycle 1 is deterministic, and a model selector must beat it on measured grounds | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_an_account_with_a_schema_is_asked_one_thing_at_a_time` |
+| **VOICE-130** | jurisdiction is an attribute of the account, and the country tag is derived | **unmet** | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_requested_a_jurisdiction_scoped_question_does_not_travel` |
 | **VOICE-131** | the sentence and the parse are captured verbatim | enforced | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_interpretation_exchanges_are_captured_as_outbound_evidence` |
 | **VOICE-132** | a gap carries the address its measurement is re-taken at | enforced | [user-interface-implementation-status.md](user-interface-implementation-status.md) | `test_an_anchored_gap_resolves_at_the_address_it_names` +3 |
 | **VOICE-133** | five words, five layers, and none of them is a synonym | untestable | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) | — |
@@ -731,7 +731,6 @@ not been. Grouped by why the gap exists.
 | **MER-32** | The enrichment prompt says a brand string may be truncated | unmet | [merchantcore-package.md](merchantcore-package.md) |
 | **MER-70** | A slot empty across a whole statement means the grammar is wrong | unmet | [the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md) |
 | **MER-72** | No token from an occurrence attribute reaches the commons, and a test says so | unmet | [the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md) |
-| **MON-43** | the net leg cites the specific deposit | unmet | [pay-stubs-and-income.md](pay-stubs-and-income.md) |
 | **MON-55** | a cash withdrawal is a spend until an unexplained asset says otherwise | unmet | [the-question-queue.md](the-question-queue.md) |
 | **MON-73** | a person and their accounts | unmet | [account-identity-and-entity-resolution.md](account-identity-and-entity-resolution.md) |
 | **PROG-14** | Source-region validity is graded | unmet | [benchmark-harness-design.md](benchmark-harness-design.md) |

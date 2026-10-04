@@ -29,7 +29,7 @@ class OpenedVaultSurfaceProvider:
 
     _SURFACES = frozenset(("overview", "spending", "documents", "conversation", "review", "jobs", "trust",
                            "activity", "account_ledger", "plans"))
-    _READS = _SURFACES | {"overview_accounts"}
+    _READS = _SURFACES | {"overview_accounts", "accounting"}
 
     def __init__(self, vault: Vault, jobs: Any = None, *,
                  cursor_secret: bytes | None = None) -> None:
@@ -52,6 +52,8 @@ class OpenedVaultSurfaceProvider:
         params = _parameters(surface, parameters)
         if surface == "overview":
             return self._overview(params)
+        if surface == "accounting":
+            return self._accounting(params)
         if surface == "overview_accounts":
             return self._overview_accounts(params)
         if surface == "spending":
@@ -105,6 +107,24 @@ class OpenedVaultSurfaceProvider:
                              parameters.get("read_on") or _now())
         except Exception:
             raise BridgeRequestError("current read store could not answer plans") from None
+
+    def _accounting(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
+        """Read a selected accounting period from the current encrypted revision."""
+        from ..surface.accounting import accounting
+
+        self._vault.poll_read_store_worker()
+        store = self._vault.read_store
+        if store is None or self._vault.read_store_lifecycle not in {"equal", "rebuilt", "caught_up"}:
+            raise BridgeRequestError("current read store could not answer accounting")
+        read_on = parameters.get("read_on") or _now()
+        try:
+            with store.open_reader() as revision:
+                return accounting(revision.overview_projection(today=read_on),
+                                  locale_from_env(), read_on,
+                                  start=parameters.get("start", ""),
+                                  end=parameters.get("end", ""))
+        except Exception:
+            raise BridgeRequestError("current read store could not answer accounting") from None
 
     def _overview(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         """Compose current or value-time Overview from one held SQL revision."""
@@ -340,6 +360,7 @@ def _parameters(surface: str, parameters: Mapping[str, Any]) -> dict[str, Any]:
     # a later change gets one of them wrong, so they are not spelled alike.
     allowed_by_surface = {
         "overview": {"as_of", "read_on"},
+        "accounting": {"start", "end", "read_on"},
         "overview_accounts": {"read_on", "refresh"},
         "spending": {"period", "granularity", "currency", "account_id",
                      "start_date", "end_date", "read_on"},
@@ -362,10 +383,21 @@ def _parameters(surface: str, parameters: Mapping[str, Any]) -> dict[str, Any]:
     result = dict(parameters)
     for name in ("as_of", "jurisdiction", "locale", "read_on", "cursor",
                  "period", "granularity", "currency", "account_id",
-                 "start_date", "end_date"):
+                 "start_date", "end_date", "start", "end"):
         value = result.get(name, "")
         if not isinstance(value, str):
             raise BridgeRequestError(f"{name} must be a string")
+    if surface == "accounting":
+        for name in ("start", "end", "read_on"):
+            value = result.get(name, "")
+            if value:
+                try:
+                    if datetime.date.fromisoformat(value).isoformat() != value:
+                        raise ValueError("noncanonical date")
+                except ValueError:
+                    raise BridgeRequestError(f"{name} must be an ISO calendar date") from None
+        if result.get("start") and result.get("end") and result["start"] > result["end"]:
+            raise BridgeRequestError("accounting start must not follow end")
     if "limit" in result:
         limit = result["limit"]
         if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:

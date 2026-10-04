@@ -41,7 +41,7 @@
 ### MON-71 — an ambiguous statement is held, and the ruling teaches the map
 **State:** enforced
 **Code:** product/viva/ingest/statement_projector.py:287 (the `identity` hold); product/viva/ingest/review.py:111 (`apply_identity_ruling`)
-**Test:** product/tests/test_pipeline.py::test_ambiguous_identity_merge_learns_the_alias; ::test_masked_multi_candidate_can_be_assigned_to_a_specific_account; product/tests/test_questions.py::test_zero_candidate_identity_hold_can_be_confirmed_as_new
+**Test:** product/tests/test_pipeline.py::test_ambiguous_identity_merge_learns_the_alias; ::test_masked_multi_candidate_can_be_assigned_to_a_specific_account; product/tests/test_questions.py::test_requested_zero_candidate_identity_hold_can_be_confirmed_as_new
 
 1. The statement is held under an `identity` reason carrying every compatible candidate and the reason — never posted on a guess.
 2. The person's ruling is an append-only correction event that settles that exact document. A single-candidate ruling may also teach the signal map together with the ruled holder, product and account-kind signature; it generalizes only when those facts remain compatible. A multi-candidate last-four ruling may not teach the signal map, because the same lossy signal can name several accounts.

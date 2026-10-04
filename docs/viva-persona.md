@@ -44,7 +44,7 @@
 ### VOICE-14 — a decline is an event, and a declined question stays quiet until evidence moves
 **State:** enforced
 **Code:** product/viva/engine.py:568 (`decline_question`), product/viva/interview.py
-**Test:** product/tests/test_interview.py::test_a_deferred_question_returns_when_evidence_touches_its_subject
+**Test:** product/tests/test_interview.py::test_requested_a_deferred_question_returns_when_evidence_touches_its_subject
 
 1. "Not now" and "I don't know" are recorded, not discarded.
 2. A declined question leaves the ranked queue and returns only when a new event touches its subject, or when the person opens the pending list.

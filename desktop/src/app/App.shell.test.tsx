@@ -171,7 +171,7 @@ describe("shell", () => {
     await waitFor(() => expect(retry).not.toBeInTheDocument());
     await waitFor(() => expect(view.getByRole("heading", { name: "Transactions", level: 1 })).toHaveFocus());
     fireEvent.click(view.getByRole("button", { name: "Overview" }));
-    expect(view.getByText("USD 17,486.45")).toBeInTheDocument();
+    expect(view.getByText("USD 17,486.45", { selector: ".hero-amount" })).toBeInTheDocument();
     restore();
   });
   it("keeps retry focus and a concise announcement across a failed Space-key retry", async () => {
@@ -296,7 +296,7 @@ describe("shell", () => {
     const heading = getByRole("heading", { name: "Your financial picture" });
     expect(heading).toBeInTheDocument();
     await waitFor(() => expect(heading).toHaveFocus());
-    expect(getByText("USD 17,486.45")).toBeInTheDocument();
+    expect(getByText("USD 17,486.45", { selector: ".hero-amount" })).toBeInTheDocument();
     expect(getAllByText("Sample vault")[0]).toBeInTheDocument();
     expect(getByText(moments.sample_frame)).toBeInTheDocument();
     const disclosure = getByRole("complementary", { name: "Vault source" });
@@ -593,6 +593,6 @@ describe("shell", () => {
     expect(queryByRole("heading", { name: "Questions for you" })).not.toBeInTheDocument();
     await user.click(getByRole("button", { name: "Close Ask Viva" }));
     const reviewTotal = (sampleReads.review.result.data as { actionable_count: number }).actionable_count;
-    expect(getByRole("button", { name: new RegExp(`Review, ${reviewTotal} actionable items`, "i") })).toBeInTheDocument();
+    expect(getByRole("button", { name: new RegExp(`Review, ${reviewTotal} actionable ${reviewTotal === 1 ? "item" : "items"}`, "i") })).toBeInTheDocument();
   });
 });

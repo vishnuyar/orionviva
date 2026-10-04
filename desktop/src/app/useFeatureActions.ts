@@ -350,14 +350,14 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
     // One question at a time. `mirrored` says the drawer showing the answer is
     // open, which is a fact about this screen rather than a preference: it is
     // what decides whether anything may be spoken.
-    async askViva(question: string, mirrored: boolean, planRequest = false, contextMode: import("../surface/types").AskContextMode = "new_question") {
+    async askViva(question: string, mirrored: boolean, planRequest = false, contextMode: import("../surface/types").AskContextMode = "new_question", movementIds?: readonly string[]) {
       const activeSource = source;
       if (!conversationActions || !activeSource || !question.trim() || asking.current) return;
       asking.current = true;
       const nextRequestId = requestId.current;
       dispatch({ type: "asking", requestId: nextRequestId, question: question.trim() });
       try {
-        const { result, turn } = await conversationActions.ask(question.trim(), mirrored, planRequest, contextMode);
+        const { result, turn } = await conversationActions.ask(question.trim(), mirrored, planRequest, contextMode, movementIds);
         const snapshot = await refreshAfterAction(activeSource, nextRequestId);
         if (requestId.current === nextRequestId) {
           dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn, authoritative: hasAuthoritativeReviewConversationPair(snapshot) });
@@ -369,6 +369,21 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
             : "Asking Viva stopped answering and may already have recorded a conversation turn. Inspect the conversation before trying again. OrionViva did not retry it.";
           dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result: failure instanceof BridgeTimeout && failure.mayHaveWritten ? interrupted(message) : { state: "unanswered" }, turn: null, authoritative: false });
         }
+      } finally {
+        asking.current = false;
+      }
+    },
+    async undoAccountingCorrection(correctionId: string): Promise<import("../surface/types").ActionResult> {
+      const activeSource = source;
+      if (!conversationActions?.undoCorrection || !activeSource || asking.current) return { state: "unserved" };
+      asking.current = true;
+      const nextRequestId = requestId.current;
+      try {
+        const result = await conversationActions.undoCorrection(correctionId);
+        await refreshAfterAction(activeSource, nextRequestId);
+        return result;
+      } catch {
+        return interrupted("Undo stopped answering and may already have changed the accounting. Reread the reports before trying again.");
       } finally {
         asking.current = false;
       }

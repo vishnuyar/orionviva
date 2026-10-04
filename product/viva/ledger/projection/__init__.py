@@ -111,6 +111,21 @@ class LedgerProjection:
 
     # --------------------------------------------------------------- accounts
 
+    def inactive_accounting_accounts(self) -> set[str]:
+        """Orphan paths created by a correction whose effective meaning was undone."""
+        from .accounting_controls import inactive_accounting_accounts
+        metadata = {}
+        for account, state in self._core._acct.items():
+            creation_counts = [body.get("_created_open_counts", {}).get(account, 0)
+                               for body in self._core._accounting_corrections.values()
+                               if account in body.get("created_accounts", [])]
+            metadata[account] = {"origin": state.origin,
+                "independently_observed": bool(state.lines or state.doc_ids or state.opening is not None
+                                               or state.closings or state.positions or state.position_cash),
+                "reopened": bool(creation_counts and self._core._account_open_counts.get(account, 0) > min(creation_counts))}
+        rulings = self.rulings() + list(self._core._accounting_rules.values())
+        return inactive_accounting_accounts(self._core._accounting_corrections, rulings, metadata)
+
     def accounts(self) -> list[str]:
         return _accounts.accounts(self._core)
 

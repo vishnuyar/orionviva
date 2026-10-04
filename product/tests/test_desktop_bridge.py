@@ -1,3 +1,4 @@
+from viva.surface.accounting import accounting
 import json
 
 import pytest
@@ -371,6 +372,7 @@ def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
     review = provider.read_surface("conversation", {"limit": 5})
 
     assert overview == {
+        "accounting": accounting(vault.ledger.projection(), "en-US", "2026-09-30"),
         "state": "ready",
         "issues": [],
         "caveats": [],

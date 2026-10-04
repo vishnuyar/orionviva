@@ -52,10 +52,40 @@ class ConversationActions:
                                         conversation_turn_settled)
 
         question, mirrored, plan_request, context_mode = _ask_request(payload)
+        movement_ids, undo_id = _accounting_request(payload)
         turn_id = secrets.token_urlsafe(18)
         self._vault.ledger.append(conversation_turn_opened(
             turn_id, "ask", question, _today(), mirrored=mirrored,
             context_mode=context_mode))
+        if movement_ids or undo_id:
+            from viva.accounting_intelligence import correct_accounting, undo_accounting
+            from viva.surface.conversation import _spoken
+
+            result = (undo_accounting(self._vault, undo_id) if undo_id
+                      else correct_accounting(self._vault, question, movement_ids))
+            completed = result.get("ok") is True and result.get("confirm") is not True
+            message = str(result.get("message") or "The transaction could not be changed.")
+            said = {
+                "state": "ready", "question": question,
+                "text": message if completed else "", "answered": completed,
+                "refusal": "" if completed else message,
+                "status": "answered" if completed else "needs_clarification",
+                "outcome_tag": "accounting_correction" if completed else "accounting_target",
+                "grade": "", "grade_sentence": "", "figures": [], "gaps": [],
+                "spoken": _spoken(message if completed else "", "", [], mirrored),
+            }
+            if completed and result.get("correction_id") and not undo_id:
+                said["accounting_correction"] = {
+                    "id": result["correction_id"], "movement_ids": movement_ids,
+                    "rule_id": result.get("rule_id", ""),
+                }
+            outcome = ActionOutcome("completed" if completed else "refused", message,
+                                    reason=None if completed else str(result.get("why") or "accounting_target"),
+                                    state=said)
+            self._vault.ledger.append(conversation_turn_settled(
+                turn_id, outcome.kind, outcome.message, _today(),
+                reason=outcome.reason or "", answer=said))
+            return outcome.as_dict()
         if plan_request:
             from viva import speak
             spec = speak.speak_spec()
@@ -358,7 +388,8 @@ def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool, bool, str | Non
     from viva.reply import MAX_REPLY_TOKENS
 
     from viva.ledger.events import CONVERSATION_CONTEXT_MODES
-    allowed = {"question", "mirrored", "plan_request", "context_mode"}
+    allowed = {"question", "mirrored", "plan_request", "context_mode",
+               "movement_ids", "undo_correction_id"}
     unexpected = set(payload) - allowed
     if unexpected:
         raise BridgeRequestError(
@@ -379,6 +410,23 @@ def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool, bool, str | Non
     if "context_mode" in payload and context_mode not in CONVERSATION_CONTEXT_MODES:
         raise BridgeRequestError("unknown conversation context mode")
     return question, mirrored, plan_request, context_mode
+
+
+def _accounting_request(payload: Mapping[str, Any]) -> tuple[list[str], str]:
+    """Explicit local selection and undo references are separate from model text."""
+    selection = payload.get("movement_ids", [])
+    undo_id = payload.get("undo_correction_id", "")
+    if not isinstance(selection, list) or len(selection) > 100 or any(
+            not isinstance(key, str) or not key.strip() or len(key) > 1024
+            for key in selection):
+        raise BridgeRequestError("movement_ids must be a bounded list of transaction identities")
+    if not isinstance(undo_id, str) or len(undo_id) > 128:
+        raise BridgeRequestError("undo_correction_id must be a correction identity")
+    if (selection or undo_id) and payload.get("plan_request"):
+        raise BridgeRequestError("an accounting correction cannot draft a plan")
+    if selection and undo_id:
+        raise BridgeRequestError("select transactions or undo a correction, not both")
+    return list(dict.fromkeys(selection)), undo_id
 
 
 def _answer_request(payload: Mapping[str, Any]) -> tuple[str, str]:

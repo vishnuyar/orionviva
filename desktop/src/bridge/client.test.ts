@@ -208,3 +208,18 @@ describe("bridge transport framing", () => {
     expect(createDetectedBridgeClient()).not.toBeNull();
   });
 });
+
+it("frames selected accounting correction, undo and period reads without widening context", async () => {
+  const frames: BridgeRequest[] = [];
+  const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
+    frames.push(frame);
+    return { protocol: "2.0", request_id: frame.requestId, ok: true, result: { surface: frame.payload.surface, data: {}, kind: "completed", message: "Updated" } as T };
+  } });
+  await client.askViva("This was a refundable deposit", true, false, "new_question", ["movement-1"]);
+  await client.undoAccountingCorrection?.("correction-1");
+  await client.readAccounting?.("2026-09-01", "2026-09-30");
+  expect(frames[0].operation).toBe("viva.conversation.ask");
+  expect(frames[0].payload).toEqual({ question: "This was a refundable deposit", mirrored: true, plan_request: false, context_mode: "new_question", movement_ids: ["movement-1"] });
+  expect(frames[1].payload).toEqual({ question: "Undo accounting correction", mirrored: true, undo_correction_id: "correction-1" });
+  expect(frames[2].payload).toMatchObject({ surface: "accounting", parameters: { start: "2026-09-01", end: "2026-09-30" } });
+});

@@ -1,5 +1,7 @@
 # Where the Intelligence Goes
 
+**Current behavior:** [Automatic accounting](automatic-accounting.md) and [ADR-017](decisions/ADR-017-automatic-accounting.md) supersede the classification-review and confirmation-first interaction described below. The active public queue is document recovery only; retained low-level question builders serve explicitly requested edits. Automatic interpretations and understood corrections apply reversibly with evidence and scoped learning. The mechanisms below remain historical context where they imply a proactive classification question.
+
 **State:** built
 **Rules:** PROJ-34, PROJ-35, PROJ-36, PROJ-37, PROJ-38, PROJ-39, PROJ-40
 
@@ -8,7 +10,7 @@
 ### PROJ-34 — what a counterparty implies is impersonal knowledge, learned once
 **State:** enforced
 **Code:** merchant/merchantcore/enrich.py:149
-**Test:** product/tests/test_tiers.py::test_a_counterparty_that_implies_structure_is_proposed_not_asked
+**Test:** product/tests/test_tiers.py::test_requested_a_counterparty_that_implies_structure_is_proposed_not_asked
 
 1. `counterparty_kind` and `implies` are produced during merchant enrichment and stored on the merchant record's attributes, beside category and subcategory.
 2. Enrichment is batched, sees nothing about the person, is cached per merchant and is versioned by its prompt.
@@ -18,7 +20,7 @@
 ### PROJ-35 — three tiers, and the rule is ask only where the counterparty cannot tell us
 **State:** enforced
 **Code:** product/viva/ledger/projection/tiers.py:26
-**Test:** product/tests/test_tiers.py::test_an_ordinary_counterparty_is_settled_and_silent
+**Test:** product/tests/test_tiers.py::test_requested_an_ordinary_counterparty_is_settled_and_silent
 
 1. A known counterparty implying nothing is `settled`: the category and the major are assigned and no question is raised.
 2. A counterparty implying structure is `structural`: an informed proposal carrying its grounds and specific options, except that an unresolved expense-shaped payment with a directional non-compound liability implication and supporting-document metadata receives a per-payment document expectation. This read-side route leaves the tier unchanged; live transfer review takes precedence and a link or explicit ruling settles the wait. See [the question queue](the-question-queue.md).
@@ -30,7 +32,7 @@
 ### PROJ-36 — direction is part of the implication, never a branch in the caller
 **State:** enforced-with-exception
 **Code:** product/viva/ledger/projection/merchants.py:146
-**Test:** product/tests/test_tiers.py::test_the_same_counterparty_means_opposite_things_by_direction
+**Test:** product/tests/test_tiers.py::test_requested_the_same_counterparty_means_opposite_things_by_direction
 
 1. An implication carries `on` — inflow, outflow or both — and the caller selects on that data rather than on an `if`.
 2. An implication that does not apply in this direction is ignored, and money in from a lender and money out to one reach different conclusions.
@@ -40,7 +42,7 @@
 ### PROJ-37 — the confidence ladder decides how decisively an implication is applied
 **State:** enforced
 **Code:** product/viva/ledger/projection/movements.py:279 (assertion 1); merchant/merchantcore/enrich.py:205 (`clean_implications` — assertions 2 and 3: `.strip().lower()`, an unknown `major` dropped and logged at :224, `on` defaulting to `both` at :228, `confidence` to `suggested` at :231)
-**Test:** product/tests/test_tiers.py::test_forced_is_decisive_and_suggested_says_it_is_not
+**Test:** product/tests/test_tiers.py::test_requested_forced_is_decisive_and_suggested_says_it_is_not
 
 1. A `forced` implication is applied and is decisive; a `suggested` one is applied and marks the movement provisional; an absent implication leaves the default.
 2. An unrecognised confidence degrades to `suggested` and an unrecognised direction to `both` — always toward the rung that asks rather than the rung that acts.
@@ -60,7 +62,7 @@
 ### PROJ-39 — a rhythm question is licensed by two facts of one record
 **State:** enforced
 **Code:** product/viva/ledger/projection/rhythm.py:64
-**Test:** product/tests/test_rhythm.py::test_a_merchant_with_no_billing_prior_is_never_asked_about
+**Test:** product/tests/test_rhythm.py::test_requested_a_merchant_with_no_billing_prior_is_never_asked_about
 
 1. A rhythm proposal is raised only where the catalog record says the counterparty is a business **and** says a standing arrangement with them is possible.
 2. A record naming a rail, naming a person, or naming no kind at all raises nothing, however it bills.
@@ -69,7 +71,7 @@
 ### PROJ-40 — a person is not a counterparty on the rhythm axis
 **State:** enforced
 **Code:** product/viva/ledger/projection/rhythm.py:224
-**Test:** product/tests/test_rhythm.py::test_a_merchant_with_no_billing_prior_is_never_asked_about
+**Test:** product/tests/test_rhythm.py::test_requested_a_merchant_with_no_billing_prior_is_never_asked_about
 
 1. A movement whose other side a grammar slot declared a party is dropped before any flow is formed: no measurement, no hypothesis, no question, no subject a ruling could be written under.
 2. The limit is the declaration's: a person's name in a `{brand}` slot is declared a person by nothing and is sorted like any merchant.

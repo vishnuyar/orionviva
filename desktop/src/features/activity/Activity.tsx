@@ -13,7 +13,7 @@ export type ActivityCorrectionControls = {
   onRejectTransfer: (movementId: string) => void;
   onUnlinkTransfer: (movementId: string, counterpartId: string) => void;
 };
-type ActivityProps = { result: FeatureResult<ActivityData>; correction?: ActivityCorrectionControls | null; onOpenEvidence: (link: EvidenceLink) => void; onLoadMore?: (() => void) | null; selectedMovement?: string };
+type ActivityProps = { result: FeatureResult<ActivityData>; correction?: ActivityCorrectionControls | null; onOpenEvidence: (link: EvidenceLink) => void; onLoadMore?: (() => void) | null; selectedMovement?: string; onExplainMovement?: ((movementId: string) => void) | null };
 
 function transferVerbTitle(verb: ActivityCorrectionVerb, state: "completed" | "refused" | "stale"): string | null {
   const titles = {
@@ -162,7 +162,7 @@ function MovementCorrection({ movement, data, controls }: { movement: MovementVi
 // Every financial word here is the backend's. Corrections appear only where
 // the same row advertises one, and their choices come only from the complete
 // read-level vocabularies.
-function Movements({ data, correction, onLoadMore, selectedMovement, onOpenEvidence }: { data: ActivityData; correction: ActivityCorrectionControls | null; onLoadMore: (() => void) | null; selectedMovement: string; onOpenEvidence: (link: EvidenceLink) => void }) {
+function Movements({ data, correction, onLoadMore, selectedMovement, onOpenEvidence, onExplainMovement }: { data: ActivityData; correction: ActivityCorrectionControls | null; onLoadMore: (() => void) | null; selectedMovement: string; onOpenEvidence: (link: EvidenceLink) => void; onExplainMovement?: ((movementId: string) => void) | null }) {
   const movements = data.movements ?? [];
   const [query, setQuery] = useState("");
   const [account, setAccount] = useState("");
@@ -208,6 +208,7 @@ function Movements({ data, correction, onLoadMore, selectedMovement, onOpenEvide
         <span className="activity-movement-amount"><strong>{movement.display}</strong><small>{movement.direction === "in" ? "in" : "out"}</small></span>
         {movement.sentence ? <p className="activity-movement-note">{movement.sentence}</p> : null}
         <dl className="activity-movement-classification"><div><dt>Category</dt><dd>{movement.category.valid ? movement.category.label : "Category unavailable from this read"}</dd></div><div><dt>Treatment</dt><dd>{movement.treatment.kind === "spending" ? "Counted as spending" : movement.treatment.kind === "loan" ? `Loan lent · ${movement.treatment.name}` : movement.treatment.kind === "loan_repayment" ? `Loan repayment received · ${movement.treatment.name}` : movement.treatment.kind === "settlement" ? "Debt settlement" : movement.treatment.kind === "mixed" ? "Split is unresolved" : "Not counted as spending"}</dd></div><div><dt>Tags</dt><dd>{movement.tagsValid ? (movement.tags.length ? movement.tags.map((tag) => tag.label).join(", ") : "No tags recorded") : "Tags unavailable from this read"}</dd></div></dl>
+        {onExplainMovement ? <button type="button" className="text-button" onClick={() => onExplainMovement(movement.id)}>Explain this transaction to Viva</button> : null}
         {correction ? <MovementCorrection movement={movement} data={data} controls={correction} /> : null}
         <details className="activity-source"><summary>Source details</summary>{movement.evidenceLinksValid && movement.evidenceLinks.length ? <ProofLinks label="Source statements" links={movement.evidenceLinks} onOpen={onOpenEvidence} /> : <p>{movement.evidenceLinksValid ? "No source statement link was supplied for this transaction." : "Source details are unavailable from this read."}</p>}</details>
       </li>)}</ul>}
@@ -216,6 +217,6 @@ function Movements({ data, correction, onLoadMore, selectedMovement, onOpenEvide
   </section>;
 }
 
-export function Activity({ result, correction, onOpenEvidence, onLoadMore = null, selectedMovement = "" }: ActivityProps) {
-  return <PanelStateView result={result} copy={{ partial: "Some transaction details are unavailable. Available transactions are shown below.", needsInput: "Some transactions need more information. Available transactions are shown below.", unavailable: { title: "Transactions unavailable", detail: "Transactions are not connected to this vault read." }, failed: { title: "Transactions could not be read", detail: "Transactions could not be read. The vault is still open." } }}>{(data) => <Movements data={data} correction={correction ?? null} onLoadMore={onLoadMore} selectedMovement={selectedMovement} onOpenEvidence={onOpenEvidence} />}</PanelStateView>;
+export function Activity({ result, correction, onOpenEvidence, onLoadMore = null, selectedMovement = "", onExplainMovement = null }: ActivityProps) {
+  return <PanelStateView result={result} copy={{ partial: "Some transaction details are unavailable. Available transactions are shown below.", needsInput: "Some transactions need more information. Available transactions are shown below.", unavailable: { title: "Transactions unavailable", detail: "Transactions are not connected to this vault read." }, failed: { title: "Transactions could not be read", detail: "Transactions could not be read. The vault is still open." } }}>{(data) => <Movements data={data} correction={correction ?? null} onLoadMore={onLoadMore} selectedMovement={selectedMovement} onExplainMovement={onExplainMovement} onOpenEvidence={onOpenEvidence} />}</PanelStateView>;
 }

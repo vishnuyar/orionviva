@@ -51,20 +51,20 @@
 2. Jurisdiction is an attribute, so a US 401k, an Indian EPF and a UK ISA land in the same retirement bucket with no per-country table.
 3. Retirement posts as an asset, so it is never counted as spending.
 
-### MON-42 — income means attributed income
+### MON-42 — the attributed-income reader excludes placeholders
 **State:** enforced
 **Code:** product/viva/ledger/projection/balances.py:134 (`income_by_currency`)
 **Test:** product/tests/test_paystub.py::test_income_is_counted_once_and_a_stub_awaiting_its_deposit_is_held
 
 1. The income figure sums the `Income:*` accounts and excludes the `Income:Uncategorized` placeholder.
-2. An inflow nothing has attributed is not reported as income.
+2. This historical attributed-income reader does not report unattributed inflows. The working profit-and-loss report instead includes ordinary unexplained inflows as provisional income, interpreted through account kind; see [automatic accounting](automatic-accounting.md).
 
 ### MON-43 — the net leg cites the specific deposit
-**State:** unmet
-**Code:** none found
-**Test:** none
+**State:** enforced
+**Code:** product/viva/ingest/paystub_projector.py (`post_paystub`); product/viva/ledger/postings.py (`paystub_decomposition`)
+**Test:** product/tests/test_paystub.py::test_paystub_retains_exact_matching_deposit_reference
 
-1. The pay stub's net leg carries a provenance edge to the checking deposit it explains.
+1. The decomposition records the exact matched deposit movement key and currency. Equal eligible deposits leave the stub awaiting a unique target rather than choosing one arbitrarily.
 
 ## Why
 
@@ -80,7 +80,7 @@ The finding that came out of running this on a real vault belongs to the whole s
 
 ## Open
 
-- The net↔deposit link is by amount and date rather than an explicit provenance edge (MON-43). Correct for totals today, less precise for tap-through; reclassifying an already-categorized deposit is the same increment.
+- Legacy decompositions without a matched movement key use only a unique amount/date match in the working reports. New decompositions retain the exact deposit reference (MON-43).
 - No correction action exists for a mis-balanced stub — it is shown with its finding and is read-only. The human-in-the-loop correction path for the pay-stub shape is a later increment.
 - 1099 and other annual tax documents are a **sibling** profile, unbuilt. Their identity is a completeness check across many deposits, not a decomposition of one; do not force them through this shape.
 - Recurring-salary detection seeding an inbound obligation is unbuilt; the employer identity and pay dates captured here are its inputs.

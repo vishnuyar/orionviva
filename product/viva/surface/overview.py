@@ -27,6 +27,7 @@ from .models import Citation, CitationRelation, FigureGrade, FigureView, PanelSt
 from .proof import freshness_confirmed_on, proof_presentation_from_evidence
 from .obligations import utility
 from .current_period import control as current_period_control
+from .accounting import accounting
 
 # The family of wordings a figure standing on its own is said in. The lines a
 # run places after a clause open with a word pointing back at what was just
@@ -186,6 +187,7 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
                     for item in (read.caveats or [])],
         "as_of": projection.as_of,
         "accounts": accounts,
+        "accounting": accounting(projection, locale, today),
         "account_count": len(accounts),
         "spending_by_currency": {currency: str(amount) for currency, amount
                                  in projection.spending_by_currency().items()},

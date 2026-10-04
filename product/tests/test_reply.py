@@ -35,6 +35,21 @@ from viva.vault import Vault
 from viva import engine
 
 
+def _requested_questions(source, limit=None, as_of="", jurisdiction="", **kwargs):
+    """Explicitly requested structured editors retain checked slot semantics.
+
+    These parser tests request a specific edit; automatic ingestion no longer
+    delivers these classification/interview builders in the proactive queue.
+    """
+    from viva import questions
+    proj = source.projection()
+    groups = (questions._held_questions(proj), questions._transfer_questions(proj),
+              questions._merchant_questions(proj), questions._nature_questions(proj),
+              questions._interview_questions(proj, jurisdiction or "US"))
+    qs = [q.to_dict() for group in groups for q in group]
+    return {"questions": qs, "total": len(qs)}
+
+
 def _fills(payload):
     """A model that returns exactly this. What it returns is untrusted: every
     test here is about what happens to it next."""
@@ -92,7 +107,7 @@ def transfer_question(tmp_path):
         "500.00", [("2026-01-12", "PAYMENT", "-500.00")], "0.00",
         ref="Card B 3333", doc_type="credit_card_statement",
         number="10003333"))
-    qs = open_questions(ledger, as_of="2026-02-01")["questions"]
+    qs = _requested_questions(ledger, as_of="2026-02-01")["questions"]
     question = next(q for q in qs if q["kind"] == TRANSFER)
     return _Vault(ledger), question
 
@@ -117,7 +132,7 @@ def identity_question(tmp_path):
     unnumbered.account_names = ["Sample Holder"]
     unnumbered.opening_date, unnumbered.closing_date = "2026-02-01", "2026-02-28"
     _up(raw, ledger, b"unnumbered", unnumbered)
-    qs = open_questions(ledger, as_of="2026-03-01")["questions"]
+    qs = _requested_questions(ledger, as_of="2026-03-01")["questions"]
     return _Vault(ledger), next(q for q in qs if q["kind"] == IDENTITY)
 
 
@@ -425,7 +440,7 @@ def test_a_category_the_model_may_not_be_told_is_still_one_you_can_answer_with(
         ref="Everyday Checking 1111", doc_type="checking_statement",
         number="10001111"))
     vault = _Vault(ledger)
-    q = next(x for x in open_questions(ledger, as_of="2026-02-01")["questions"]
+    q = next(x for x in _requested_questions(ledger, as_of="2026-02-01")["questions"]
              if x["kind"] == MERCHANT)
 
     coined = "Money to family"
@@ -474,7 +489,7 @@ def test_a_category_the_vault_does_not_know_is_refused_rather_than_minted(
         ref="Everyday Checking 1111", doc_type="checking_statement",
         number="10001111"))
     vault = _Vault(ledger)
-    q = next(x for x in open_questions(ledger, as_of="2026-02-01")["questions"]
+    q = next(x for x in _requested_questions(ledger, as_of="2026-02-01")["questions"]
              if x["kind"] == MERCHANT)
     allowed = q["slots"][0]["choices"]
     assert allowed, "an enumerated slot with no vocabulary can only be refused"
@@ -520,7 +535,7 @@ def test_every_question_declares_the_structure_of_its_answer(transfer_question):
     """Not a type to route on, and not a payload to click: the slots an answer
     is made of. A question with none says nothing spoken settles it."""
     vault, _question = transfer_question
-    questions = open_questions(vault.ledger, as_of="2026-02-01")["questions"]
+    questions = _requested_questions(vault.ledger, as_of="2026-02-01")["questions"]
     assert {q["kind"] for q in questions} >= {TRANSFER}, "the fixture went quiet"
     for q in questions:
         for key in ("options", "free_text", "reply", "choices"):
@@ -635,7 +650,7 @@ def interview(tmp_path):
 
 
 def _next_interview(vault) -> dict:
-    qs = open_questions(vault.ledger, as_of="2026-03-02",
+    qs = _requested_questions(vault.ledger, as_of="2026-03-02",
                         jurisdiction="US")["questions"]
     return next(q for q in qs if q["kind"] == INTERVIEW)
 

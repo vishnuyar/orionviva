@@ -106,11 +106,12 @@ def test_the_states_the_other_screens_can_be_in_are_reachable(home: Path):
     activity = provider.read_surface("activity", {})
     trust = provider.read_surface("trust", {})
 
-    # The sample queue contains multiple question kinds.
-    assert len({question["kind"] for question in review["questions"]}) > 1
-    # At least one question uses a closed vocabulary.
-    assert any(slot.get("choices") for question in review["questions"]
-               for slot in question["slots"])
+    # The sample exposes document recovery without classification homework.
+    assert {question["kind"] for question in review["questions"]} == {"reconciliation"}
+    # Financial reports remain useful while the document recovery stays visible.
+    accounting = provider.read_surface("accounting", {"end": "2026-08-29"})
+    assert accounting["profit_loss"]["lines"]
+    assert accounting["profit_loss"]["hierarchy_tree"]
     # Activity includes a linked transfer and both directions.
     assert any(item["linked"] for item in activity["items"])
     assert {item["direction"] for item in activity["items"]} == {"in", "out"}

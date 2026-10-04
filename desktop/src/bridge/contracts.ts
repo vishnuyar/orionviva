@@ -3,7 +3,7 @@
 // and moves only when the sidecar's does.
 export const BRIDGE_PROTOCOL = "2.1";
 
-export type SurfaceName = "overview" | "overview_accounts" | "spending" | "documents" | "conversation" | "review" | "jobs" | "trust" | "activity" | "account_ledger" | "plans";
+export type SurfaceName = "accounting" | "overview" | "overview_accounts" | "spending" | "documents" | "conversation" | "review" | "jobs" | "trust" | "activity" | "account_ledger" | "plans";
 export type SurfaceParameters = Record<string, string | number>;
 export type BridgeResponse<T> = { protocol: string; request_id: string; ok: boolean; result?: T; error?: { code: string; message: string } };
 export type SurfaceReadResult = { surface: SurfaceName; job_id: string; data: unknown };
@@ -188,7 +188,9 @@ export type BridgeClient = {
   // One question, and whether its text will be in front of the person. The
   // second is a fact about this screen rather than a preference: it is the
   // input to the rule that a figure is never spoken with nowhere to check it.
-  askViva: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: import("../surface/types").AskContextMode) => Promise<unknown>;
+  askViva: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: import("../surface/types").AskContextMode, movementIds?: readonly string[]) => Promise<unknown>;
+  undoAccountingCorrection?: (correctionId: string) => Promise<unknown>;
+  readAccounting?: (start: string, end: string) => Promise<SurfaceReadResult>;
   answerQuestion: (questionId: string, said: string) => Promise<unknown>;
   confirmProposal?: (proposalId: string, said: string, asked: string) => Promise<unknown>;
   declineQuestion: (questionId: string, reason: DeclineReason) => Promise<unknown>;

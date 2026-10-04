@@ -170,8 +170,8 @@ def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
 def assign_default_categories(ledger: Ledger, doc_id: str) -> int:
     """Assign replaceable first categories to one posted statement.
 
-    Person grammar slots receive ``transfers`` and transfer treatment; other
-    unidentified movements receive ``other``. Existing categories and
+    Unidentified movements receive ``other``; naming a person does not
+    establish an internal transfer. Existing categories and
     movements from other documents are unchanged.
     """
     if not (doc_id or "").strip():
@@ -184,12 +184,11 @@ def assign_default_categories(ledger: Ledger, doc_id: str) -> int:
         current = projection.derived_category(movement) or {}
         if current.get("category") and current.get("subcategory"):
             continue
-        person = projection.is_person(movement)
-        category = current.get("category") or ("transfers" if person else "other")
+        category = current.get("category") or "other"
         ledger.append(category_assigned(
             movement.key, movement.description, category, UNVERIFIED,
             movement.date, by="default",
-            nature="transfer" if person else "",
+            nature="",
             subcategory=FALLBACK_SUBCATEGORY))
         assigned += 1
     if assigned:

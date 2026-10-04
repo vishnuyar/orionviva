@@ -521,7 +521,7 @@ def test_latest_complete_calendar_month_resolves_to_explicit_dates(registry):
     assert rows.data["total"] == 4
 
 
-def test_windowed_income_separates_sources_from_unexplained_inflows():
+def test_windowed_income_includes_and_discloses_provisional_inflows():
     projection = LedgerProjection([
         *_events(),
         transaction_recorded([
@@ -545,8 +545,10 @@ def test_windowed_income_separates_sources_from_unexplained_inflows():
     assert result.ok
     assert result.data["window"] == {
         "from": "2026-01-01", "to": "2026-01-31"}
-    assert result.data["by_source"] == {"Income:Salary": "1000.00"}
-    assert result.data["by_currency"] == {"USD": "1000.00"}
+    assert result.data["by_source"] == {"Income:Salary": "1000.00", "Income:Uncategorized": "40.00"}
+    assert result.data["by_currency"] == {"USD": "1040.00"}
+    assert result.data["provisional_income_by_currency"] == {"USD": "40.00"}
+    assert result.grade == UNVERIFIED
     assert result.data["unexplained_inflows"] == "40.00"
     assert any(fig["quantity"] == quantity.GROSS_FLOW
                and fig["value"] == "40.00" for fig in result.figures)

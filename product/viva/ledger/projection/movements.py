@@ -248,7 +248,7 @@ def decide_nature(core: ProjectionCore, m: MovementInfo) -> None:
         path = leading_account(ruling["legs"])
         m.ruling_account = core._aliases.get(path, path)
         # Components known, proportions not — reported as provisional.
-        m.provisional = (m.nature == MIXED)
+        m.provisional = (m.nature == MIXED or ruling.get("grade") == "unverified")
         return
     nature = (core._categories.get(m.key) or {}).get("nature")
     if nature not in (TRANSFER, SETTLEMENT, SPENDING):
@@ -276,7 +276,7 @@ def decide_nature(core: ProjectionCore, m: MovementInfo) -> None:
             m.nature, m.nature_reason = nature, BY_CATEGORY
             m.provisional = implied.get("confidence") != "forced"
             return
-    m.nature, m.nature_reason, m.provisional = SPENDING, BY_DEFAULT, False
+    m.nature, m.nature_reason, m.provisional = SPENDING, BY_DEFAULT, True
 
 
 # ---------------------------------------------------------- spending predicates

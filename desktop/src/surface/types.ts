@@ -236,7 +236,11 @@ export type CurrentPeriodExclusionView = { kind: string; identity: string; reaso
 export type CurrentPeriodStepView = { date: string; kind: "balance" | "income" | "obligation" | "goal"; subject: string; amountDisplay: string; amountMin: string; amountMax: string; balanceDisplay: string; balanceMin: string; balanceMax: string; tooltip: string; evidenceDates: readonly string[]; recordIds: readonly string[]; evidenceIds: readonly string[]; accountIds: readonly string[] };
 export type CurrentPeriodSliceView = { id: string; currency: string; horizonStart: string; horizonEnd: string; headline: string; explanation: string; amountDisplay: string; liquidBalance: string; expectedIncomeMin: string; expectedIncomeMax: string; obligationsMin: string; obligationsMax: string; reservedForGoals?: string; goalContributions?: string; remainderMin: string; remainderMax: string; coverage: string; grade: FigureGrade; gradeLabel: string; gradeDescription: string; proofPresentation: ProofPresentation; evidenceLabel: string; evidenceHeading: string; assumptions: readonly string[]; caveats: readonly string[]; missingInputs: readonly string[]; completeness: CurrentPeriodCompletenessView; exclusions: readonly CurrentPeriodExclusionView[]; evidenceDates: readonly string[]; recordIds: readonly string[]; evidenceLinks: readonly EvidenceLink[]; evidenceIds: readonly string[]; accountIds: readonly string[]; series: readonly CurrentPeriodStepView[]; requiredVisibility: boolean };
 export type CurrentPeriodView = { state: "absent" | "ready" | "limited" | "refused"; title: string; kicker: string; horizonStart: string; horizonEnd: string; slices: readonly CurrentPeriodSliceView[]; exclusions: readonly CurrentPeriodExclusionView[]; refusal: string };
-export type OverviewData = { picture: PictureView; accounts: AccountView[]; utility?: UtilityView; currentPeriod?: CurrentPeriodView };
+export type AccountingLine = { existingExplanation?: string; supportingComponents?: readonly { label: string; display: string }[]; documentIds?: readonly string[]; id: string; label: string; account: string; date: string; currency: string; display: string; provisional: boolean; amountEvidence: string; classificationEvidence: string; classifiedBy: string; origin: string };
+export type AccountingNode = { label: string; display: string; children: AccountingNode[] };
+export type AccountingView = { asOf: string; start: string; end: string; balanceComplete: boolean; profitComplete: boolean; balanceTotals: { currency: string; values: Record<string, string> }[]; profitTotals: { currency: string; values: Record<string, string> }[]; balances: AccountingLine[]; lines: AccountingLine[]; unresolved: AccountingLine[]; missing: { label: string; reason: string }[]; heldCount: number; hierarchy: { currency: string; roots: AccountingNode[] }[] };
+export type OverviewData = { accounting?: AccountingView; picture: PictureView; accounts: AccountView[]; utility?: UtilityView; currentPeriod?: CurrentPeriodView };
+export type AccountingReader = (start: string, end: string) => Promise<FeatureResult<AccountingView>>;
 export type SpendingPeriodId = "latest_complete_month" | "current_month" | "last_3_months" | "year_to_date" | "custom";
 export type SpendingGranularity = "category" | "subcategory";
 export type SpendingRequest = { period: SpendingPeriodId; granularity: SpendingGranularity; currency?: string; accountId?: string; startDate?: string; endDate?: string };
@@ -382,9 +386,10 @@ export type SupportedAnswerKind = { id: string; label: string; example: string }
 export type MissingAnswerInput = { tag: string; label: string; question: string; requestedFamily?: string; requestedLabel?: string; supportedFamilies?: readonly SupportedAnswerKind[] };
 // One whole turn. The grade sentence is a whole reviewed sentence rather than a
 // word in a frame, and it is the read's.
-export type TurnView = { question: string; text: string; answered: boolean; status: AnswerStatus; outcomeTag: string; refusal: string; grade: string; gradeSentence: string; figures: readonly TurnFigure[]; options: readonly AnswerOption[]; missing: readonly MissingAnswerInput[]; spoken: SpokenTurn; goalDraft?: ConversationGoalDraft | null };
+export type TurnView = { question: string; text: string; answered: boolean; status: AnswerStatus; outcomeTag: string; refusal: string; grade: string; gradeSentence: string; figures: readonly TurnFigure[]; options: readonly AnswerOption[]; missing: readonly MissingAnswerInput[]; spoken: SpokenTurn; goalDraft?: ConversationGoalDraft | null; accountingCorrection?: { id: string; movementIds: readonly string[]; ruleId: string } | null };
 export type ConversationActions = {
-  ask: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: AskContextMode) => Promise<{ result: ActionResult; turn: TurnView | null }>;
+  undoCorrection?: (correctionId: string) => Promise<ActionResult>;
+  ask: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: AskContextMode, movementIds?: readonly string[]) => Promise<{ result: ActionResult; turn: TurnView | null }>;
   answer: (questionId: string, said: string) => Promise<ActionResult>;
   confirm: (proposalId: string, said: string, asked: string) => Promise<ActionResult>;
   decline: (questionId: string, reason: DeclineReason) => Promise<ActionResult>;
@@ -459,3 +464,5 @@ export type DocumentActions = {
   reread: () => Promise<FeatureResult<DocumentsData>>;
 };
 export type SurfaceSnapshot = { disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; review?: FeatureResult<ReviewData>; plans?: FeatureResult<PlansData>; trust: FeatureResult<TrustData> };
+
+export type AccountingReportsView = AccountingView;

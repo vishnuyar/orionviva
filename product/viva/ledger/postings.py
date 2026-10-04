@@ -166,7 +166,8 @@ def brokerage_activity_transaction(account: str, kind: str, amount: Decimal | st
 
 def paystub_decomposition(gross: Decimal | str, net: Decimal | str,
                           deductions: list, description: str, occurred_at: str,
-                          provenance=None) -> Event:
+                          provenance=None, matched_movement_key: str = "",
+                          matched_currency: str = "") -> Event:
     """Decompose a net-pay deposit into what the bank could not see.
 
     The pay stub explains a checking deposit already booked as uncategorized
@@ -187,8 +188,14 @@ def paystub_decomposition(gross: Decimal | str, net: Decimal | str,
         acct = DEDUCTION_ACCOUNTS.get(getattr(d, "category", "other"),
                                       DEDUCTION_ACCOUNTS["other"])
         postings.append(Posting(acct, abs(Decimal(d.amount)), UNVERIFIED))
-    return transaction_recorded(_require_balanced(postings), description,
-                                occurred_at, None, provenance)
+    event = transaction_recorded(_require_balanced(postings), description,
+                                 occurred_at, None, provenance)
+    if matched_movement_key:
+        if not matched_currency:
+            raise ValueError("matched paystub deposit must retain its currency")
+        event.body["matched_movement_key"] = matched_movement_key
+        event.body["matched_currency"] = matched_currency
+    return event
 
 
 def transaction_balances(postings: list[Posting],

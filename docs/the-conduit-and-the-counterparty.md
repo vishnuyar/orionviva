@@ -130,7 +130,7 @@
 ### MER-12 — The declaration travels with the keys
 **State:** enforced
 **Code:** product/viva/ledger/merchant_keys.py:32 (`MerchantKeys`), :48 (`resolve_keys`), product/viva/ledger/projection/merchants.py:28 (`merchant_key_map`), :84 (`is_person`), product/viva/ledger/projection/rhythm.py:242
-**Test:** product/tests/test_merchant_keys.py::test_a_resolver_declaring_nothing_is_told_apart_from_one_of_the_wrong_shape, product/tests/test_rhythm.py::test_a_person_shaped_stream_reaches_no_prompt_no_catalog_and_no_question
+**Test:** product/tests/test_merchant_keys.py::test_a_resolver_declaring_nothing_is_told_apart_from_one_of_the_wrong_shape, product/tests/test_rhythm.py::test_requested_a_person_shaped_stream_reaches_no_prompt_no_catalog_and_no_question
 
 1. A resolver returns the line-to-key mapping and the lines a grammar slot declared a party on; it is the same declaration the enrichment gate reads, never a second way of asking.
 2. A resolver returning any other mapping raises `TypeError` rather than defaulting to silence.

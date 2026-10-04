@@ -129,7 +129,7 @@ def _expected(event, sequence):
                   body["by"], int(body["learn_signal"]),
                   _json(body.get("match_names") or []), body.get("match_label", ""),
                   body.get("kind", ""), int(scoped))
-    return prefix + fields + provenance
+    return prefix + fields + provenance + ((body.get("grounds", ""), _json(body.get("source_refs") or []), body.get("evidence_signature", "")) if kind == "RulingRecorded" else ())
 
 
 def _snapshot(revision):

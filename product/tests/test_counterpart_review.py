@@ -1,4 +1,4 @@
-"""Debt counterpart waits preserve movements and agree across both readers."""
+"""Debt evidence preserves movements while both default readers stay quiet."""
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -45,17 +45,9 @@ def waits(payload):
 def test_each_payment_waits_for_its_statement_without_account_hints(tmp_path):
     events = events_for()
     payload = paired(tmp_path, events)
-    questions = waits(payload)
-    assert len(questions) == 2
-    assert not [q for q in payload["questions"] if q["kind"] == "nature"]
-    movements = {m.key: m for m in LedgerProjection(events).movements()}
-    for q in questions:
-        m = movements[q["refs"]["movement"]]
-        assert q["amount"] == str(abs(m.amount))
-        assert q["currency"] == m.currency and q["count"] == 1
-        assert q["refs"]["document"] == "debt statement"
-        assert [slot["name"] for slot in q["slots"]] == ["have_it"]
-        assert str(abs(m.amount)) in q["text"]
+    assert waits(payload) == []
+    assert payload["total"] == 0
+    assert len(LedgerProjection(events).movements()) == 2
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +68,7 @@ def test_own_account_without_posted_counterpart_still_waits(tmp_path):
     events = events_for()
     events.append(account_opened("card", "liability", "Fable Lending", "USD", "2026-01-01", institution="Fable Lending"))
     assert {m.nature_reason for m in LedgerProjection(events).movements()} == {"own_account"}
-    assert len(waits(paired(tmp_path, events))) == 2
+    assert len(waits(paired(tmp_path, events))) == 0
 
 
 @pytest.mark.parametrize("candidate_state", ["live", "taken", "missing", "source_linked"])
@@ -91,10 +83,9 @@ def test_transfer_precedence_requires_current_source_and_candidate(tmp_path, can
         events.append(transfer_linked(linked_source, candidate, "corroborated", {}, "2026-02-02"))
     payload = paired(tmp_path, events)
     transfer = [q for q in payload["questions"] if q["kind"] == "transfer"]
-    assert len(transfer) == (1 if candidate_state == "live" else 0)
+    assert len(transfer) == 0
     waiting_keys = {q["refs"]["movement"] for q in waits(payload)}
-    assert waiting_keys == ({other} if candidate_state in ("live", "source_linked")
-                            else {source} if candidate_state == "taken" else {source, other})
+    assert waiting_keys == set()
     assert not [q for q in payload["questions"] if q["kind"] == "nature"]
 
 
@@ -112,8 +103,7 @@ def test_ineligible_metadata_keeps_existing_review(tmp_path, implied, suggested)
         events.append(transfer_suggested(source, [candidate], {}, "2026-02-01"))
     payload = paired(tmp_path, events)
     assert waits(payload) == []
-    structural = bool(implied and implied.get("on") == "outflow")
-    assert bool([q for q in payload["questions"] if q["kind"] == "nature"]) == structural
+    assert not [q for q in payload["questions"] if q["kind"] == "nature"]
 
 
 @pytest.mark.parametrize("settlement", ["link", "ruling"])
@@ -123,7 +113,9 @@ def test_declined_wait_is_findable_until_settled_then_stale_everywhere(tmp_path,
     from viva.ledger.events import question_declined, ruling_recorded, transfer_linked
     from viva.questions import find_question, open_question_counts, pending_questions
     events = events_for()
-    question = waits(open_questions(LedgerProjection(events), limit=None, **OPTIONS))[0]
+    from viva.questions import _nature_questions
+    question = next(q.to_dict() for q in _nature_questions(LedgerProjection(events), "en-US")
+                    if q.id.startswith("expectation:counterpart:"))
     events.append(question_declined(question["id"], "expectation", "2026-02-01",
                                    amount=question["amount"], count=1))
     source = EventStore.open(tmp_path / "events", "pw")
@@ -149,14 +141,14 @@ def test_declined_wait_is_findable_until_settled_then_stale_everywhere(tmp_path,
             pending = pending_questions(projection, **OPTIONS)
             found = find_question(projection, question["id"], **OPTIONS)
             assert bool(found) is not settled
-            assert pending["total"] == (0 if settled else 1)
+            assert pending["total"] == 0
             assert counts["total"] == canonical["total"]
             assert counts["pending"] == canonical["pending"]["count"]
             with reads.open_reader() as revision:
                 assert revision.open_questions(limit=None, **OPTIONS) == canonical
                 assert revision.pending_questions(**OPTIONS) == pending
                 indexed = revision.find_question(question["id"], **OPTIONS)
-                assert indexed == (found.to_dict() if found else None)
+                assert indexed is None, "retired corroboration questions do not enter the SQL default queue"
             if settled:
                 assert engine.answer_question(SimpleNamespace(ledger=ledger), question["id"], "yes")["why"] == "not_open"
 
@@ -169,7 +161,9 @@ def test_document_answers_cannot_create_accounts(tmp_path):
     source.append_atomically(lambda _: tuple(events_for()))
     ledger = Ledger(source)
     vault = SimpleNamespace(ledger=ledger)
-    q = next(q for q in open_questions(ledger, **OPTIONS)["questions"] if q["kind"] == "expectation")
+    from viva.questions import _nature_questions
+    q = next(q.to_dict() for q in _nature_questions(ledger.projection(), "en-US")
+             if q.kind == "expectation")
     question = find_question(ledger, q["id"], **OPTIONS)
     before = list(ledger.events())
     accounts_before = ledger.projection().accounts()
@@ -199,7 +193,7 @@ def test_an_existing_statement_does_not_satisfy_a_payment(tmp_path, state):
                                      "2026-02-01"))
     elif state == "unrelated":
         add_card(events, amount="-23")
-    assert len(waits(paired(tmp_path, events))) == 2
+    assert len(waits(paired(tmp_path, events))) == 0
 
 
 @pytest.mark.parametrize("card_first", [False, True])
@@ -279,8 +273,8 @@ def test_conservative_matcher_never_closes_unsupported_waits(tmp_path, case):
     link_transfers(ledger, profile_for=lambda _m: None)
     assert ledger.projection().transfer_links() == []
     payload = paired(tmp_path, list(ledger.events()))
-    assert len(waits(payload)) == (1 if case in ("no_account_evidence", "two_cards") else 2)
-    assert bool([q for q in payload["questions"] if q["kind"] == "transfer"]) == (case in ("no_account_evidence", "two_cards"))
+    assert not waits(payload)
+    assert not [q for q in payload["questions"] if q["kind"] == "transfer"]
 
 
 @pytest.mark.parametrize("change", ["currency", "amount", "date", "direction"])
@@ -293,5 +287,5 @@ def test_stale_suggestion_must_still_pass_current_candidate_gate(tmp_path, chang
         date="2026-02-20" if change == "date" else "2026-01-11")
     events.append(transfer_suggested(source, [candidate], {}, "2026-02-01"))
     payload = paired(tmp_path, events)
-    assert len(waits(payload)) == 2
+    assert not waits(payload)
     assert not [q for q in payload["questions"] if q["kind"] == "transfer"]

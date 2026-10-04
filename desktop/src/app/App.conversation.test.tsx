@@ -170,3 +170,34 @@ describe("conversation questions and corrections", () => {
     }
   });
 });
+
+it("opens a selected transaction correction and preserves a reachable undo after refresh", async () => {
+  const user = userEvent.setup();
+  const view = await openSample();
+  const original = window.orionVivaBridge!.request;
+  const actions: Record<string, unknown>[] = [];
+  let corrected = false;
+  const answer = { question: "This was a refundable deposit", text: "Recorded as a refundable deposit for this transaction.", answered: true, status: "answered", accounting_correction: { id: "correction-1", movement_ids: ["movement-1"], rule_id: "" }, figures: [] };
+  window.orionVivaBridge!.request = async <T,>(frame: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+    if (frame.operation === "viva.conversation.ask") {
+      actions.push(frame.payload);
+      corrected = true;
+      return { protocol: "1.0", request_id: frame.requestId, ok: true, result: { kind: "completed", message: frame.payload.undo_correction_id ? "Correction undone." : answer.text, state: frame.payload.undo_correction_id ? null : answer } as T };
+    }
+    if (corrected && frame.payload.surface === "review") return { protocol: "1.0", request_id: frame.requestId, ok: true, result: { surface: "review", data: { contract: "ReviewSummary.v1", state: "ready", title: "Review", summary: "Nothing needs your answer.", actionable_count: 0, shown_count: 0, remaining_count: 0, types: [], groups: [] } } as T };
+    if (corrected && frame.payload.surface === "conversation") {
+      return { protocol: "1.0", request_id: frame.requestId, ok: true, result: { surface: "conversation", data: { turns: [{ id: "turn-correction", kind: "ask", outcome: "completed", prompt: answer.question, answer }], questions: [], total: 0 } } as T };
+    }
+    return original<T>(frame);
+  };
+  await user.click(view.getByRole("button", { name: "Transactions" }));
+  const explain = await view.findAllByRole("button", { name: "Explain this transaction to Viva" });
+  await user.click(explain[0]);
+  expect(view.getByText(/Selected transaction:/)).toBeInTheDocument();
+  await user.type(view.getByLabelText("Your explanation"), "This was a refundable deposit");
+  await user.click(view.getByRole("button", { name: "Apply explanation" }));
+  await waitFor(() => expect(actions[0].movement_ids).toEqual(expect.arrayContaining([expect.any(String)])));
+  const undo = await view.findByRole("button", { name: "Undo accounting correction" });
+  await user.click(undo);
+  await waitFor(() => expect(actions[1].undo_correction_id).toBe("correction-1"));
+});

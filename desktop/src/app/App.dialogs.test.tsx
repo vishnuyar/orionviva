@@ -3,7 +3,7 @@ import { act, fireEvent, render, waitFor, createRef, userEvent,
   ConversationDialogShell, moments, sampleVault, SAVED_NO_READER,
   queryByRoleIn, ThrowingConversationBody, installResponsiveMatchMedia,
   installCapturedAnimationFrames, activityPayload, trustPayload, sampleReads,
-  sampleFrame, installSampleBridge, openSample, reviewEmptyPayload } from "./App.testSupport";
+  sampleFrame, installSampleBridge, openSample, openReviewSample, reviewEmptyPayload } from "./App.testSupport";
 
 beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
@@ -315,7 +315,7 @@ describe("dialogs", () => {
 
   it("shows the selected queue item inside Viva", async () => {
     const user = userEvent.setup();
-    const { getAllByRole, getAllByText, getByRole, getByText } = await openSample();
+    const { getAllByRole, getAllByText, getByRole, getByText } = await openReviewSample();
     await user.click(getByRole("button", { name: "Review, count unavailable" }));
     const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
     expect(action).toBeDefined(); await user.click(action!);
@@ -326,7 +326,7 @@ describe("dialogs", () => {
 
   it("opens and focuses an exact question from Review", async () => {
     const user = userEvent.setup();
-    const { getAllByRole, getByRole, queryByRole } = await openSample();
+    const { getAllByRole, getByRole, queryByRole } = await openReviewSample();
     await user.click(getByRole("button", { name: "Review, count unavailable" }));
     const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
     expect(action).toBeDefined(); await user.click(action!);
@@ -338,7 +338,7 @@ describe("dialogs", () => {
   it("restores the exact Review item after closing Viva even if another element briefly receives focus", async () => {
     const frames = installCapturedAnimationFrames();
     try {
-      const { getAllByRole, getByRole } = await openSample();
+      const { getAllByRole, getByRole } = await openReviewSample();
       fireEvent.click(getByRole("button", { name: "Review, count unavailable" }));
       await waitFor(() => expect(getAllByRole("button", { name: "Answer question" }).length).toBeGreaterThan(0));
       const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
@@ -355,7 +355,7 @@ describe("dialogs", () => {
   it("does not carry a selected Review question into Ask Viva", async () => {
     const frames = installCapturedAnimationFrames();
     try {
-      const { getAllByRole, getByRole } = await openSample();
+      const { getAllByRole, getByRole } = await openReviewSample();
       fireEvent.click(getByRole("button", { name: "Review, count unavailable" }));
       await waitFor(() => expect(getAllByRole("button", { name: "Answer question" }).length).toBeGreaterThan(0));
       const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));
@@ -427,7 +427,7 @@ describe("dialogs", () => {
 
   it("keeps the selected question when Review closes and reopens", async () => {
     const user = userEvent.setup();
-    const { getAllByRole, getAllByText, getByRole, getByText } = await openSample();
+    const { getAllByRole, getAllByText, getByRole, getByText } = await openReviewSample();
 
     await user.click(getByRole("button", { name: "Review, count unavailable" }));
     const action = getAllByRole("button", { name: "Answer question" }).find((button) => button.closest("li")?.textContent?.includes("annual fee"));

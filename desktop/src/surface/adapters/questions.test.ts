@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import fixture from "../../../../product/viva/surface/fixtures/overview-parity-v1.json";
 import { adaptActionOutcome, adaptQuestions } from "./questions";
 
 const reviewBinding = () => ({
@@ -183,14 +182,10 @@ describe("review adapter", () => {
   });
 });
 
-describe("Question parity artifact", () => {
-  it("preserves the generated transfer references byte-for-byte", () => {
-    const artifact = fixture as { reads: { conversation: { result: { data: unknown } } } };
-    const raw = artifact.reads.conversation.result.data as { questions: Array<{ id: string; kind: string; refs?: { movement?: string; movements?: string[]; candidates?: string[] } }>; total: number };
-    const read = adaptQuestions(raw)!;
-    const source = raw.questions.find((question) => question.kind === "transfer" && question.refs?.movement && question.refs.candidates?.length)!;
-    expect(source, "the generated vault must carry a coherent transfer question").toBeDefined();
-    const adapted = read.queue.find((question) => question.id === source.id)!;
-    expect(adapted.refs).toEqual({ movement: source.refs!.movement, candidates: source.refs!.candidates });
+describe("Legacy transfer question compatibility", () => {
+  it("preserves explicit synthetic transfer references byte-for-byte", () => {
+    const source = { id: "transfer-question", kind: "transfer", refs: { movement: "movement-one", candidates: ["movement-two"] } };
+    const read = adaptQuestions({ questions: [source], total: 1 })!;
+    expect(read.queue[0].refs).toEqual(source.refs);
   });
 });

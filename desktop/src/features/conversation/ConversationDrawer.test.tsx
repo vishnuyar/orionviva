@@ -194,3 +194,31 @@ describe("durable Viva conversation", () => {
     expect(view.container).not.toHaveTextContent("named_account_balance");
   });
 });
+
+it("sends an explicitly selected transaction with the first correction without confirmation", () => {
+  const onAsk = vi.fn();
+  const view = render(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={{ state: { state: "idle" }, onAsk }} controls={controls} accountingContext={{ movementIds: ["movement-1"], label: "Example Shop · September 10" }} />);
+  expect(view.getByText(/Selected transaction: Example Shop/)).toBeInTheDocument();
+  fireEvent.change(view.getByLabelText("Your explanation"), { target: { value: "This was a refundable deposit" } });
+  fireEvent.click(view.getByRole("button", { name: "Apply explanation" }));
+  expect(onAsk).toHaveBeenCalledWith("This was a refundable deposit", true, false, "new_question", ["movement-1"]);
+});
+
+it("keeps correction context out of planning and allows a deliberate return to ordinary Ask", () => {
+  const onAsk = vi.fn();
+  const onClear = vi.fn();
+  const props = { result: ready({ turns: [], questions }), selectedQueue: "", onSelectQueue: vi.fn(), onOpenFigure: openFigure, ask: { state: { state: "idle" } as const, onAsk }, controls, onClearAccountingContext: onClear };
+  const view = render(<ConversationDrawer {...props} accountingContext={{ movementIds: ["movement-1"], label: "Selected purchase" }} />);
+  expect(view.getByLabelText("Your explanation")).toHaveFocus();
+  expect(view.queryByRole("button", { name: "Draft a save-up plan" })).not.toBeInTheDocument();
+  expect(view.queryByRole("radio", { name: "Follow-up" })).not.toBeInTheDocument();
+  fireEvent.change(view.getByLabelText("Your explanation"), { target: { value: "A private correction" } });
+  fireEvent.click(view.getByRole("button", { name: "Ask another question" }));
+  expect(onClear).toHaveBeenCalledOnce();
+  view.rerender(<ConversationDrawer {...props} accountingContext={null} />);
+  expect(view.getByLabelText("Your question")).toHaveValue("");
+  expect(view.getByRole("button", { name: "Draft a save-up plan" })).toBeInTheDocument();
+  fireEvent.change(view.getByLabelText("Your question"), { target: { value: "What is my net worth?" } });
+  fireEvent.click(view.getByRole("button", { name: "Ask" }));
+  expect(onAsk).toHaveBeenCalledWith("What is my net worth?", true, false, "new_question");
+});

@@ -37,6 +37,7 @@ _FAMILIES = {
     "ruling_history": "source_sequence,occurred_at,scope,subject,legs_json,by_actor,grade,same_as",
     "account_alias_history": "source_sequence,occurred_at,alias_key,account_id,learn_signal",
     "documents": "source_sequence,occurred_at,doc_id,filename,doc_type",
+    "accounting_restorations": "source_sequence,occurred_at,movement_key,previous_ruling_json,previous_category_json",
 }
 
 
@@ -264,15 +265,18 @@ class SQLHistoricalActivityProjection:
         self._revision, self.as_of = revision, as_of
         identity = _identity_core(revision.connection, as_of)
         movements, self._grades = movement_base(revision, as_of)
-        categories = category_overlays(eligible_family(
-            revision, "category_history", as_of))
+        restorations = eligible_family(revision, "accounting_restorations", as_of)
+        categories = category_overlays(sorted(eligible_family(
+            revision, "category_history", as_of) + restorations,
+            key=lambda row: row["source_sequence"]))
         merchants = merchant_state(eligible_family(
             revision, "merchant_history", as_of))
         tags = tag_state(eligible_family(revision, "tag_history", as_of))
         links, suggestions, linked = transfer_state(eligible_family(
             revision, "transfer_history", as_of))
         rulings, category_aliases, subcategory_aliases, tag_aliases = \
-            _ruling_state(eligible_family(revision, "ruling_history", as_of))
+            _ruling_state(sorted(eligible_family(revision, "ruling_history", as_of)
+                                + restorations, key=lambda row: row["source_sequence"]))
         profiles = _resolver_profiles(revision)
         resolver_inputs = list(dict.fromkeys((
             movement.account,
@@ -380,6 +384,12 @@ def _resolver_profiles(revision):
 def _ruling_state(rows):
     rulings, category_aliases, subcategory_aliases, tag_aliases = {}, {}, {}, {}
     for row in rows:
+        if "previous_ruling_json" in row:
+            key = ("movement", row["movement_key"])
+            previous = _overlay_json(row["previous_ruling_json"], dict)
+            if previous: rulings[key] = previous
+            else: rulings.pop(key, None)
+            continue
         scope, subject, grade, same_as = (row["scope"], row["subject"],
                                           row["grade"], row["same_as"])
         incoming = {"scope": scope, "subject": subject,
@@ -404,6 +414,11 @@ def category_overlays(rows):
     categories = {}
     for row in rows:
         key = row["movement_key"]
+        if "previous_category_json" in row:
+            previous = _overlay_json(row["previous_category_json"], dict)
+            if previous: categories[key] = previous
+            else: categories.pop(key, None)
+            continue
         incoming = {
             "descriptor": row["descriptor"], "category": row["category"],
             "subcategory": row["subcategory"], "nature": row["nature"],

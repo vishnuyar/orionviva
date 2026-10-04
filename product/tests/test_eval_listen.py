@@ -90,6 +90,16 @@ def test_an_invented_split_is_ruin_even_when_the_majors_are_right():
     assert "do not use this model" in report(r)
 
 
+def test_unreadable_optional_share_marker_is_not_an_invented_measurement():
+    cases = load_cases()
+    case = next(c for c in cases['cases'] if c['id'] == 'mortgage-spelled')
+    result = run(_model(lambda said: {'legs':[
+        {'major':major, 'account_hint':'x', 'share':'unknown'}
+        for major in case['accept'][0]]}), {'cases':[case]})
+    assert result['counts'][RUIN] == 0
+    assert result['counts'][OK] == 1
+
+
 def test_an_amount_in_the_reply_is_ruin():
     cases = load_cases()
     only = {"cases": [c for c in cases["cases"] if c["id"] == "car-bought"]}

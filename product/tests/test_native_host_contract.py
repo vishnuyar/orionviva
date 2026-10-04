@@ -98,7 +98,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # marks an explicit request for a plan draft. `context_mode` names the
     # durable boundary used for prior Ask text.
     CONVERSATION_OPERATIONS["ask"]: {
-        "question", "mirrored", "plan_request", "context_mode"},
+        "question", "mirrored", "plan_request", "context_mode", "movement_ids", "undo_correction_id"},
     # Spending is a word rather than a default, and a budget is a number of
     # model calls. There is no field naming what to work on: a wake goes over
     # the whole vault, and a caller pointing it somewhere would be asserting a

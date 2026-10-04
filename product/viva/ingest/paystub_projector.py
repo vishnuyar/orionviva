@@ -67,12 +67,11 @@ def _net_pay_deposit(proj, net: Decimal, currency: str, pay_date: str):
     """The checking deposit a pay stub's net explains: a depository inflow equal
     to the net, within a couple of weeks of the pay date."""
     from .transfers import _days_apart
-    for m in proj.movements():
-        if (m.kind == "depository" and m.currency == currency
-                and m.amount == net and not m.linked
-                and (not pay_date or _days_apart(m.date, pay_date) <= 10)):
-            return m
-    return None
+    matches = [m for m in proj.movements()
+               if m.kind == "depository" and m.currency == currency
+               and m.amount == net and not m.linked
+               and (not pay_date or _days_apart(m.date, pay_date) <= 10)]
+    return matches[0] if len(matches) == 1 else None
 
 
 def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
@@ -132,7 +131,8 @@ def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
     ledger.append(paystub_decomposition(
         facts.gross, facts.net, facts.deductions,
         f"Pay from {facts.employer or 'employer'}", when,
-        provenance=facts.provenance("net-pay decomposition")))
+        provenance=facts.provenance("net-pay decomposition"),
+        matched_movement_key=deposit.key, matched_currency=deposit.currency))
     log.info("post_paystub: decomposed pay from %r gross=%s net=%s deductions=%d "
              "against deposit on %s", facts.employer, facts.gross, facts.net,
              len(facts.deductions), deposit.account)

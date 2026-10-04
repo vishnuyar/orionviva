@@ -1,13 +1,12 @@
-""""Not now" is an answer.
+"""Explicitly requested structured editors retain checked reading and evidence.
 
-The decline event extends settled → silence to the questions themselves: a
-question the person set aside stays quiet — not for some arbitrary number of
-days, but until NEW EVIDENCE changes what the question would say. The stake
-snapshot (amount, count) is the whole policy: same stake → silence; changed
-stake → the question has genuinely changed, so it may return.
+Classification and interview builders here are invoked deliberately; the public
+default queue stays quiet and is covered by separate automatic-accounting tests.
 """
 
 from decimal import Decimal
+from _requested_question_support import _requested_questions, _requested_pending_questions
+
 
 from viva.ingest import RawStore, ReadResult, StatementFacts, TxnFact, capture_and_ingest
 from viva.ledger import EventStore, Ledger
@@ -42,27 +41,27 @@ def _checking(vault, txns, opening, dates, tag):
 
 
 def _merchant_question(vault, needle):
-    qs = open_questions(vault.ledger, limit=1000)
+    qs = _requested_questions(vault.ledger, limit=1000)
     return next((q for q in qs["questions"] if needle in q["text"]), None)
 
 
-def test_declined_question_goes_quiet(tmp_path):
+def test_requested_declined_question_goes_quiet(tmp_path):
     vault = _vault(tmp_path)
     _checking(vault, [("2026-03-05", "ACME SUB SHOP", "-120.00")],
               "10000.00", ("2026-03-01", "2026-03-31"), b"chk1")
     q = _merchant_question(vault, "ACME SUB SHOP")
     assert q is not None
-    before = open_questions(vault.ledger, limit=1000)["total"]
+    before = _requested_questions(vault.ledger, limit=1000)["total"]
 
     r = engine.decline_question(vault, q["id"], "not_now")
     assert r["ok"] and r["message"], "the ack speaks — silence was the old bug"
 
-    after = open_questions(vault.ledger, limit=1000)
+    after = _requested_questions(vault.ledger, limit=1000)
     assert _merchant_question(vault, "ACME SUB SHOP") is None
     assert after["total"] == before - 1, "declined means gone, not re-ranked"
 
 
-def test_declined_question_returns_on_new_evidence(tmp_path):
+def test_requested_declined_question_returns_on_new_evidence(tmp_path):
     """The snapshot rule: silence while the stake is unchanged, return the
     moment a new statement moves it. No timers anywhere."""
     vault = _vault(tmp_path)
@@ -81,7 +80,7 @@ def test_declined_question_returns_on_new_evidence(tmp_path):
     assert back["count"] == 2
 
 
-def test_dont_know_is_recorded_with_its_reason(tmp_path):
+def test_requested_dont_know_is_recorded_with_its_reason(tmp_path):
     """"I don't know" and "not now" are different moments in the relationship —
     the ledger keeps which one it was."""
     vault = _vault(tmp_path)
@@ -95,7 +94,7 @@ def test_dont_know_is_recorded_with_its_reason(tmp_path):
     assert declined[q["id"]]["pack_version"], "the voice that asked is recorded"
 
 
-def test_declining_a_question_that_is_not_open_is_a_said_no_op(tmp_path):
+def test_requested_declining_a_question_that_is_not_open_is_a_said_no_op(tmp_path):
     vault = _vault(tmp_path)
     r = engine.decline_question(vault, "merchant:nothing-here", "not_now")
     assert r["ok"] is False and "no longer open" in r["message"]

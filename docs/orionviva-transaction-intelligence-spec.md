@@ -52,7 +52,7 @@
 ### PROJ-45 — the measurement beats the prior, and a measured absence is something the ledger said
 **State:** enforced
 **Code:** product/viva/ledger/projection/rhythm.py:183
-**Test:** product/tests/test_rhythm.py::test_a_measured_absence_of_rhythm_beats_what_the_world_says
+**Test:** product/tests/test_rhythm.py::test_requested_a_measured_absence_of_rhythm_beats_what_the_world_says
 
 1. Above the cadence floor the prior is not consulted at all; the measurement decides.
 2. Movements whose spacing never settled propose `irregular`, rather than being told there is too little here to see a pattern.
@@ -108,7 +108,7 @@
 ### PROJ-51 — a split is visible in the sentence, never silent
 **State:** enforced
 **Code:** product/viva/ledger/projection/rhythm.py:284
-**Test:** product/tests/test_rhythm.py::test_a_mixture_states_what_it_saw_of_each_part_and_asks_which_is_which
+**Test:** product/tests/test_rhythm.py::test_requested_a_mixture_states_what_it_saw_of_each_part_and_asks_which_is_which
 
 1. The decomposition is read-side, per counterparty and direction, into at most two parts: the longest run of amounts the flow already calls one amount, and the remainder.
 2. Every cadence, interval and stability belongs to one part, and nothing is stored.
@@ -118,7 +118,7 @@
 ### PROJ-52 — a rhythm confirmation is a scoped ruling carrying a set
 **State:** enforced
 **Code:** product/viva/ledger/events.py:560
-**Test:** product/tests/test_rhythm.py::test_which_is_which_is_recorded_as_one_set_valued_ruling
+**Test:** product/tests/test_rhythm.py::test_requested_which_is_which_is_recorded_as_one_set_valued_ruling
 
 1. A confirmation is a `rhythm`-scoped ruling keyed by merchant key and direction — never a rail and never a stream key, because both are derived and change unattended.
 2. Its value carries a *set* of periodicities, so one relationship holding a monthly arrangement and an annual one is one subject with both, and a correction is an ordinary re-answer.
@@ -127,7 +127,7 @@
 ### PROJ-53 — the question is a stream scope on the queue that already exists
 **State:** enforced
 **Code:** product/viva/questions.py:1
-**Test:** product/tests/test_rhythm.py::test_a_question_is_ranked_on_money_already_measured
+**Test:** product/tests/test_rhythm.py::test_requested_a_question_is_ranked_on_money_already_measured
 
 1. A question is generated from a stream-level ambiguity, never per transaction; one answer labels the relationship retroactively and prospectively.
 2. Every question is a confirmation with a proposed default carrying its evidence, never an open-ended *what is this?*.

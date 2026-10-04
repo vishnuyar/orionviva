@@ -25,9 +25,9 @@ Two rules this path keeps:
 * **A missing document never blocks a ruling.** The account is created, the cash
   is posted, only the *decomposition* is marked provisional, and the 1098 or the
   invoice is asked for as corroboration.
-* **Confirmation covers account changes and named expense/income hints.**
-  An original nonempty component hint is reviewed even if source-role checks
-  clear it. Ordinary empty-hint answers retain their immediate path.
+* **Selected corrections apply immediately.** The conversation engine resolves
+  the target and retains a narrow future matching context; an ambiguous account
+  match still needs identification before anything changes.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from .ledger.projection.movements import money_effect
 from .render import (accounts as render_accounts,
                      money as render_money)
 from .reply import TRUNCATED_MARK, Slot, answer as read_answer
-from .schemas import ANSWER_CHOICE, ANSWER_LABEL, ANSWER_RATE
+from .schemas import ANSWER_CHOICE, ANSWER_DATE, ANSWER_LABEL, ANSWER_RATE
 
 log = logging.getLogger("viva.listen")
 
@@ -171,6 +171,11 @@ RULING_SLOTS = (
         Slot(name="account_hint", type=ANSWER_LABEL),
         Slot(name="share", type=ANSWER_RATE))),
     Slot(name="kind", type=ANSWER_LABEL),
+    Slot(name="future_scope", type=ANSWER_CHOICE, choices=("one", "context", "recurring"),
+         asks="Whether this is one exception, a narrow matching context, or a recurring relationship"),
+    Slot(name="starts", type=ANSWER_DATE),
+    Slot(name="ends", type=ANSWER_DATE),
+    Slot(name="recurrence", type=ANSWER_CHOICE, choices=("monthly", "weekly", "yearly")),
 )
 
 
@@ -246,6 +251,10 @@ def ruling_slots(categories=()) -> tuple:
 class Interpretation:
     """A ruling's slots, filled and checked — meaning only, never money."""
     legs: list[dict] = field(default_factory=list)   # {major, account_hint, share}
+    future_scope: str = "context"
+    starts: str = ""
+    ends: str = ""
+    recurrence: str = ""
     kind: str = ""                 # vehicle | property | mortgage | loan | ...
     # A label the person named, not a guess about them. One sentence can carry
     # both a major and a label, and both halves reach the ledger.
@@ -290,16 +299,54 @@ def ruling_from(reply, said: str = "") -> Interpretation:
     dropped before it got here. This only renames what survived."""
     legs = [{"major": leg["major"],
              "account_hint": leg.get("account_hint", ""),
-             # Carried verbatim. A share is honoured only where the person
-             # stated it, which `propose` decides.
              "share": leg.get("share", "")}
             for leg in reply.values.get("legs", [])]
+    _ground_stated_shares(legs, said)
     return Interpretation(
         legs=legs, kind=reply.value("kind").lower(),
+        future_scope=reply.value("future_scope") or "context",
+        starts=reply.value("starts"), ends=reply.value("ends"),
+        recurrence=reply.value("recurrence"),
         category=reply.value("category").lower()[:40], said=said,
         failure="" if legs else "empty",
         detail="" if legs else "no usable legs",
         version=reply.version)
+
+
+def _ground_stated_shares(legs: list[dict], said: str) -> None:
+    """A categorical model reading cannot supply an unstated measurement.
+
+    Require each allocation to occur explicitly as a percentage in the user's
+    words, including repeated equal allocations. Never infer a missing balance
+    or derive proportions from unrelated money, account numbers, or dates.
+    """
+    import re
+    from collections import Counter
+    from decimal import InvalidOperation
+
+    # Consume complete numeric expressions, including unsupported punctuation
+    # and spaced signs, so a rejected token cannot leave a valid-looking tail.
+    tokens = re.findall(
+        r"(?<![\w.,/*+\-−\d])((?:[+\-−]\s*)*\d[\d.,/*]*(?:\s*[/,*]\s*\d[\d.,/*]*)?)\s*(?:%|percent\b)",
+        said, flags=re.IGNORECASE)
+    written = Counter()
+    for token in tokens:
+        token = token.strip()
+        if re.fullmatch(r"\+?\s*\d+(?:\.\d+)?", token):
+            value = Decimal(re.sub(r"\s+", "", token)) / 100
+            if 0 <= value <= 1:
+                written[value] += 1
+    try:
+        proposed = Counter(Decimal(str(leg["share"])) for leg in legs
+                           if leg.get("share") not in (None, ""))
+        grounded = all(value.is_finite() and 0 <= value <= 1
+                       and count <= written[value]
+                       for value, count in proposed.items())
+    except (InvalidOperation, ValueError):
+        grounded = False
+    if not grounded:
+        for leg in legs:
+            leg["share"] = ""
 
 
 # --------------------------------------------------------------------- step 4

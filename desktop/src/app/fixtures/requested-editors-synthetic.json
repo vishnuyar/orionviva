@@ -1,0 +1,2006 @@
+{
+  "conversation": {
+    "answered_by_document": "This one is answered by the document itself \u2014 add it below whenever you have it to hand.",
+    "invite": "Tell me in your own words",
+    "pending": {
+      "count": 0
+    },
+    "questions": [
+      {
+        "amount": "3402.10",
+        "count": 1,
+        "currency": "USD",
+        "id": "reconciliation:954c491baddd",
+        "kind": "reconciliation",
+        "refs": {
+          "doc_id": "954c491baddd113b6e4a8a74de8ec41913eba9ca823eaa6d9b9f0ef1145dc071"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:reconciliation:954c491baddd",
+          "label": "Your acct:everyday-checking statement for 2026-08-01 \u2013 2026-08-31 doesn't continue from the balance I hold. A statement in between looks to be missing \u2014 do you happen to have one?",
+          "primary_action": "open_question",
+          "question_id": "reconciliation:954c491baddd",
+          "question_kind": "reconciliation",
+          "reason": "It opens at USD 3,081.45; my chain ends elsewhere.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "954c491baddd113b6e4a8a74de8ec41913eba9ca823eaa6d9b9f0ef1145dc071",
+            "document": "",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "reconciliation:954c491baddd"
+          }
+        },
+        "scope": "one",
+        "slots": [],
+        "text": "Your acct:everyday-checking statement for 2026-08-01 \u2013 2026-08-31 doesn't continue from the balance I hold. A statement in between looks to be missing \u2014 do you happen to have one?",
+        "why": "It opens at USD 3,081.45; my chain ends elsewhere."
+      },
+      {
+        "amount": "275.00",
+        "count": 1,
+        "currency": "USD",
+        "id": "merchant:possible transfer to savings",
+        "kind": "merchant",
+        "refs": {
+          "categories": [
+            "income",
+            "transfers",
+            "loan_payments",
+            "fees",
+            "groceries",
+            "dining",
+            "shopping",
+            "transport",
+            "travel",
+            "utilities",
+            "housing",
+            "health",
+            "personal_care",
+            "entertainment",
+            "services",
+            "government_nonprofit",
+            "other"
+          ],
+          "example": "possible transfer to savings",
+          "merchant": "possible transfer to savings",
+          "movements": [
+            "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+          ]
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_transaction"
+          ],
+          "item_id": "question:merchant:possible transfer to savings",
+          "label": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. I'll apply your answer only to this transaction, without creating a rule for other transactions.",
+          "primary_action": "open_transaction",
+          "question_id": "merchant:possible transfer to savings",
+          "question_kind": "merchant",
+          "reason": "I don't yet have a category for this merchant.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "",
+            "movement": "",
+            "movements": [
+              "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+            ]
+          },
+          "status": "open",
+          "target": {
+            "account_id": "acct:everyday-checking",
+            "canonical_movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+            "kind": "transaction",
+            "member_movement_ids": [
+              "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+            ],
+            "movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+            "question_id": "merchant:possible transfer to savings"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "choices": [
+              "income",
+              "transfers",
+              "loan_payments",
+              "fees",
+              "groceries",
+              "dining",
+              "shopping",
+              "transport",
+              "travel",
+              "utilities",
+              "housing",
+              "health",
+              "personal_care",
+              "entertainment",
+              "services",
+              "government_nonprofit",
+              "other"
+            ],
+            "name": "category",
+            "required": true,
+            "type": "choice",
+            "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
+          }
+        ],
+        "text": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. I'll apply your answer only to this transaction, without creating a rule for other transactions.",
+        "why": "I don't yet have a category for this merchant."
+      },
+      {
+        "amount": "275.00",
+        "count": 1,
+        "currency": "USD",
+        "id": "nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+        "kind": "nature",
+        "refs": {
+          "category": "",
+          "descriptor": "possible transfer to savings",
+          "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+          "movements": [
+            "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+          ],
+          "subcategory": ""
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_transaction"
+          ],
+          "item_id": "question:nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+          "label": "2026-06-22: possible transfer to savings \u2014 USD 275.00. Could you tell me what this one was for?",
+          "primary_action": "open_transaction",
+          "question_id": "nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+          "question_kind": "nature",
+          "reason": "I don't yet know what this transaction was for, so I'm asking about this transaction separately.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "",
+            "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+            "movements": [
+              "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+            ]
+          },
+          "status": "open",
+          "target": {
+            "account_id": "acct:everyday-checking",
+            "canonical_movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+            "kind": "transaction",
+            "member_movement_ids": [
+              "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+            ],
+            "movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+            "question_id": "nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "legs",
+            "parts": [
+              {
+                "choices": [
+                  "expense",
+                  "asset",
+                  "liability",
+                  "income"
+                ],
+                "name": "major",
+                "required": true,
+                "type": "choice",
+                "wants": "One of these, whichever of them fits: expense, asset, liability, income."
+              },
+              {
+                "name": "account_hint",
+                "required": false,
+                "type": "label",
+                "wants": "Your own word for it is what I need \u2014 a few words is plenty."
+              },
+              {
+                "name": "share",
+                "required": false,
+                "type": "rate",
+                "wants": "A rate is what I need \u2014 the percentage on its own is plenty."
+              }
+            ],
+            "required": true,
+            "type": "",
+            "wants": "Your own words are what I need \u2014 and if it was several things at once, do say so; I can record it that way."
+          },
+          {
+            "name": "kind",
+            "required": false,
+            "type": "label",
+            "wants": "Your own word for it is what I need \u2014 a few words is plenty."
+          },
+          {
+            "choices": [
+              "income",
+              "transfers",
+              "loan_payments",
+              "fees",
+              "groceries",
+              "dining",
+              "shopping",
+              "transport",
+              "travel",
+              "utilities",
+              "housing",
+              "health",
+              "personal_care",
+              "entertainment",
+              "services",
+              "government_nonprofit",
+              "other"
+            ],
+            "name": "category",
+            "required": false,
+            "type": "label",
+            "wants": "Your own word for it is what I need \u2014 a few words is plenty."
+          }
+        ],
+        "text": "2026-06-22: possible transfer to savings \u2014 USD 275.00. Could you tell me what this one was for?",
+        "why": "I don't yet know what this transaction was for, so I'm asking about this transaction separately."
+      },
+      {
+        "amount": "275.00",
+        "count": 1,
+        "currency": "USD",
+        "id": "transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+        "kind": "transfer",
+        "refs": {
+          "candidates": [
+            "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0"
+          ],
+          "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+          "label": "On 2026-06-22 you moved USD 275.00 (possible transfer to savings). Was that money moving between your own accounts, rather than being spent?",
+          "primary_action": "open_question",
+          "question_id": "transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+          "question_kind": "transfer",
+          "reason": "1 movement(s) of the same amount within a few days on another account you hold.",
+          "refs": {
+            "account": "",
+            "candidates": [
+              "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0"
+            ],
+            "doc_id": "",
+            "document": "",
+            "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "same_money",
+            "required": true,
+            "type": "yes_no",
+            "wants": "A yes or a no is all I need."
+          }
+        ],
+        "text": "On 2026-06-22 you moved USD 275.00 (possible transfer to savings). Was that money moving between your own accounts, rather than being spent?",
+        "why": "1 movement(s) of the same amount within a few days on another account you hold."
+      },
+      {
+        "amount": "160.00",
+        "count": 1,
+        "currency": "USD",
+        "id": "merchant:annual fee",
+        "kind": "merchant",
+        "refs": {
+          "categories": [
+            "income",
+            "transfers",
+            "loan_payments",
+            "fees",
+            "groceries",
+            "dining",
+            "shopping",
+            "transport",
+            "travel",
+            "utilities",
+            "housing",
+            "health",
+            "personal_care",
+            "entertainment",
+            "services",
+            "government_nonprofit",
+            "other"
+          ],
+          "example": "annual fee",
+          "merchant": "annual fee",
+          "movements": []
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:merchant:annual fee",
+          "label": "May I ask what annual fee is? You have 1 transaction(s) with it, USD 160.00 in total.",
+          "primary_action": "open_question",
+          "question_id": "merchant:annual fee",
+          "question_kind": "merchant",
+          "reason": "I don't yet have a category for this merchant.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "merchant:annual fee"
+          }
+        },
+        "scope": "pattern",
+        "slots": [
+          {
+            "choices": [
+              "income",
+              "transfers",
+              "loan_payments",
+              "fees",
+              "groceries",
+              "dining",
+              "shopping",
+              "transport",
+              "travel",
+              "utilities",
+              "housing",
+              "health",
+              "personal_care",
+              "entertainment",
+              "services",
+              "government_nonprofit",
+              "other"
+            ],
+            "name": "category",
+            "required": true,
+            "type": "choice",
+            "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
+          }
+        ],
+        "text": "May I ask what annual fee is? You have 1 transaction(s) with it, USD 160.00 in total.",
+        "why": "I don't yet have a category for this merchant."
+      },
+      {
+        "amount": "120.00",
+        "count": 1,
+        "currency": "USD",
+        "id": "merchant:utilities",
+        "kind": "merchant",
+        "refs": {
+          "categories": [
+            "income",
+            "transfers",
+            "loan_payments",
+            "fees",
+            "groceries",
+            "dining",
+            "shopping",
+            "transport",
+            "travel",
+            "utilities",
+            "housing",
+            "health",
+            "personal_care",
+            "entertainment",
+            "services",
+            "government_nonprofit",
+            "other"
+          ],
+          "example": "utilities",
+          "merchant": "utilities",
+          "movements": []
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:merchant:utilities",
+          "label": "May I ask what utilities is? You have 1 transaction(s) with it, USD 120.00 in total.",
+          "primary_action": "open_question",
+          "question_id": "merchant:utilities",
+          "question_kind": "merchant",
+          "reason": "I don't yet have a category for this merchant.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "merchant:utilities"
+          }
+        },
+        "scope": "pattern",
+        "slots": [
+          {
+            "choices": [
+              "income",
+              "transfers",
+              "loan_payments",
+              "fees",
+              "groceries",
+              "dining",
+              "shopping",
+              "transport",
+              "travel",
+              "utilities",
+              "housing",
+              "health",
+              "personal_care",
+              "entertainment",
+              "services",
+              "government_nonprofit",
+              "other"
+            ],
+            "name": "category",
+            "required": true,
+            "type": "choice",
+            "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
+          }
+        ],
+        "text": "May I ask what utilities is? You have 1 transaction(s) with it, USD 120.00 in total.",
+        "why": "I don't yet have a category for this merchant."
+      },
+      {
+        "amount": "0",
+        "count": 1,
+        "currency": "USD",
+        "id": "expectation:investment-1099",
+        "kind": "expectation",
+        "refs": {
+          "document": "1099 (B and DIV) from the broker",
+          "registry_entry": "investment-1099",
+          "subject": "Growth Portfolio"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:expectation:investment-1099",
+          "label": "You hold Growth Portfolio. Its 1099 (B and DIV) from the broker would tell me what was truly gained or lost \u2014 detail I currently have to leave aside. Do you have this year's?",
+          "primary_action": "open_question",
+          "question_id": "expectation:investment-1099",
+          "question_kind": "expectation",
+          "reason": "Realized gains and dividends of USD 0.00 are on your books; the tax form is what attests them.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "1099 (B and DIV) from the broker",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "expectation:investment-1099"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "have_it",
+            "required": true,
+            "type": "yes_no",
+            "wants": "A yes or a no is all I need."
+          }
+        ],
+        "text": "You hold Growth Portfolio. Its 1099 (B and DIV) from the broker would tell me what was truly gained or lost \u2014 detail I currently have to leave aside. Do you have this year's?",
+        "why": "Realized gains and dividends of USD 0.00 are on your books; the tax form is what attests them."
+      },
+      {
+        "amount": "0",
+        "count": 1,
+        "currency": "EUR",
+        "id": "expectation:statement-currency:acct:abroad-current",
+        "kind": "expectation",
+        "refs": {
+          "document": "a newer statement",
+          "registry_entry": "statement-currency",
+          "subject": "acct:abroad-current"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:expectation:statement-currency:acct:abroad-current",
+          "label": "My picture of Abroad Current ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+          "primary_action": "open_question",
+          "question_id": "expectation:statement-currency:acct:abroad-current",
+          "question_kind": "expectation",
+          "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "a newer statement",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "expectation:statement-currency:acct:abroad-current"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "have_it",
+            "required": true,
+            "type": "yes_no",
+            "wants": "A yes or a no is all I need."
+          }
+        ],
+        "text": "My picture of Abroad Current ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+        "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+      },
+      {
+        "amount": "0",
+        "count": 1,
+        "currency": "USD",
+        "id": "expectation:statement-currency:acct:dormant-savings",
+        "kind": "expectation",
+        "refs": {
+          "document": "a newer statement",
+          "registry_entry": "statement-currency",
+          "subject": "acct:dormant-savings"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:expectation:statement-currency:acct:dormant-savings",
+          "label": "My picture of Dormant Savings ends at 2025-11-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+          "primary_action": "open_question",
+          "question_id": "expectation:statement-currency:acct:dormant-savings",
+          "question_kind": "expectation",
+          "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "a newer statement",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "expectation:statement-currency:acct:dormant-savings"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "have_it",
+            "required": true,
+            "type": "yes_no",
+            "wants": "A yes or a no is all I need."
+          }
+        ],
+        "text": "My picture of Dormant Savings ends at 2025-11-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+        "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+      },
+      {
+        "amount": "0",
+        "count": 1,
+        "currency": "USD",
+        "id": "expectation:statement-currency:acct:everyday-checking",
+        "kind": "expectation",
+        "refs": {
+          "document": "a newer statement",
+          "registry_entry": "statement-currency",
+          "subject": "acct:everyday-checking"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:expectation:statement-currency:acct:everyday-checking",
+          "label": "My picture of Everyday Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+          "primary_action": "open_question",
+          "question_id": "expectation:statement-currency:acct:everyday-checking",
+          "question_kind": "expectation",
+          "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "a newer statement",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "expectation:statement-currency:acct:everyday-checking"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "have_it",
+            "required": true,
+            "type": "yes_no",
+            "wants": "A yes or a no is all I need."
+          }
+        ],
+        "text": "My picture of Everyday Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+        "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+      },
+      {
+        "amount": "0",
+        "count": 1,
+        "currency": "USD",
+        "id": "expectation:statement-currency:acct:household-card",
+        "kind": "expectation",
+        "refs": {
+          "document": "a newer statement",
+          "registry_entry": "statement-currency",
+          "subject": "acct:household-card"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:expectation:statement-currency:acct:household-card",
+          "label": "My picture of Household Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+          "primary_action": "open_question",
+          "question_id": "expectation:statement-currency:acct:household-card",
+          "question_kind": "expectation",
+          "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "a newer statement",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "expectation:statement-currency:acct:household-card"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "have_it",
+            "required": true,
+            "type": "yes_no",
+            "wants": "A yes or a no is all I need."
+          }
+        ],
+        "text": "My picture of Household Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+        "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+      },
+      {
+        "amount": "0",
+        "count": 1,
+        "currency": "USD",
+        "id": "expectation:statement-currency:acct:joint-checking",
+        "kind": "expectation",
+        "refs": {
+          "document": "a newer statement",
+          "registry_entry": "statement-currency",
+          "subject": "acct:joint-checking"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:expectation:statement-currency:acct:joint-checking",
+          "label": "My picture of Joint Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+          "primary_action": "open_question",
+          "question_id": "expectation:statement-currency:acct:joint-checking",
+          "question_kind": "expectation",
+          "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "a newer statement",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "expectation:statement-currency:acct:joint-checking"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "have_it",
+            "required": true,
+            "type": "yes_no",
+            "wants": "A yes or a no is all I need."
+          }
+        ],
+        "text": "My picture of Joint Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+        "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+      },
+      {
+        "amount": "0",
+        "count": 1,
+        "currency": "USD",
+        "id": "expectation:statement-currency:acct:rainy-day-savings",
+        "kind": "expectation",
+        "refs": {
+          "document": "a newer statement",
+          "registry_entry": "statement-currency",
+          "subject": "acct:rainy-day-savings"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:expectation:statement-currency:acct:rainy-day-savings",
+          "label": "My picture of Rainy Day Savings ends at 2026-06-01. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+          "primary_action": "open_question",
+          "question_id": "expectation:statement-currency:acct:rainy-day-savings",
+          "question_kind": "expectation",
+          "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "a newer statement",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "expectation:statement-currency:acct:rainy-day-savings"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "have_it",
+            "required": true,
+            "type": "yes_no",
+            "wants": "A yes or a no is all I need."
+          }
+        ],
+        "text": "My picture of Rainy Day Savings ends at 2026-06-01. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+        "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+      },
+      {
+        "amount": "0",
+        "count": 1,
+        "currency": "USD",
+        "id": "expectation:statement-currency:acct:travel-card",
+        "kind": "expectation",
+        "refs": {
+          "document": "a newer statement",
+          "registry_entry": "statement-currency",
+          "subject": "acct:travel-card"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:expectation:statement-currency:acct:travel-card",
+          "label": "My picture of Travel Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+          "primary_action": "open_question",
+          "question_id": "expectation:statement-currency:acct:travel-card",
+          "question_kind": "expectation",
+          "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+          "refs": {
+            "account": "",
+            "candidates": [],
+            "doc_id": "",
+            "document": "a newer statement",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "expectation:statement-currency:acct:travel-card"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "name": "have_it",
+            "required": true,
+            "type": "yes_no",
+            "wants": "A yes or a no is all I need."
+          }
+        ],
+        "text": "My picture of Travel Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+        "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+      },
+      {
+        "amount": "0",
+        "count": 0,
+        "currency": "USD",
+        "id": "interview:acct:growth-portfolio:tax_treatment",
+        "kind": "interview",
+        "refs": {
+          "account": "acct:growth-portfolio",
+          "corroborated_by": [
+            "brokerage statement",
+            "1099-B",
+            "1099-DIV"
+          ],
+          "key": "tax_treatment",
+          "kind": "brokerage_account",
+          "unlocks": "I know whether a gain here is a taxable event"
+        },
+        "review_binding": {
+          "allowed_actions": [
+            "open_question"
+          ],
+          "item_id": "question:interview:acct:growth-portfolio:tax_treatment",
+          "label": "About your Growth Portfolio \u2014 Is it a taxable account, or a tax-advantaged one? If you tell me, I know whether a gain here is a taxable event.",
+          "primary_action": "open_question",
+          "question_id": "interview:acct:growth-portfolio:tax_treatment",
+          "question_kind": "interview",
+          "reason": "You've told me this one exists; there are just a few things I still need to know about it.",
+          "refs": {
+            "account": "acct:growth-portfolio",
+            "candidates": [],
+            "doc_id": "",
+            "document": "",
+            "movement": "",
+            "movements": []
+          },
+          "status": "open",
+          "target": {
+            "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+            "kind": "conversation",
+            "question_id": "interview:acct:growth-portfolio:tax_treatment"
+          }
+        },
+        "scope": "one",
+        "slots": [
+          {
+            "choices": [
+              "taxable",
+              "tax-advantaged"
+            ],
+            "name": "tax_treatment",
+            "required": true,
+            "type": "choice",
+            "wants": "One of these, whichever of them fits: taxable, tax-advantaged."
+          }
+        ],
+        "text": "About your Growth Portfolio \u2014 Is it a taxable account, or a tax-advantaged one? If you tell me, I know whether a gain here is a taxable event.",
+        "why": "You've told me this one exists; there are just a few things I still need to know about it."
+      }
+    ],
+    "state": "ready",
+    "tail": {
+      "amount": "0",
+      "count": 0
+    },
+    "total": 15,
+    "turns": []
+  },
+  "review": {
+    "actionable_count": 15,
+    "contract": "ReviewSummary.v1",
+    "groups": [
+      {
+        "count": 15,
+        "id": "questions",
+        "items": [
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:reconciliation:954c491baddd",
+              "label": "Your acct:everyday-checking statement for 2026-08-01 \u2013 2026-08-31 doesn't continue from the balance I hold. A statement in between looks to be missing \u2014 do you happen to have one?",
+              "primary_action": "open_question",
+              "question_id": "reconciliation:954c491baddd",
+              "question_kind": "reconciliation",
+              "reason": "It opens at USD 3,081.45; my chain ends elsewhere.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "954c491baddd113b6e4a8a74de8ec41913eba9ca823eaa6d9b9f0ef1145dc071",
+                "document": "",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "reconciliation:954c491baddd"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:reconciliation:954c491baddd",
+            "label": "Your acct:everyday-checking statement for 2026-08-01 \u2013 2026-08-31 doesn't continue from the balance I hold. A statement in between looks to be missing \u2014 do you happen to have one?",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "It opens at USD 3,081.45; my chain ends elsewhere.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "reconciliation:954c491baddd"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Review transaction",
+            "allowed_actions": [
+              "open_transaction"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_transaction"
+              ],
+              "item_id": "question:merchant:possible transfer to savings",
+              "label": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. I'll apply your answer only to this transaction, without creating a rule for other transactions.",
+              "primary_action": "open_transaction",
+              "question_id": "merchant:possible transfer to savings",
+              "question_kind": "merchant",
+              "reason": "I don't yet have a category for this merchant.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "",
+                "movement": "",
+                "movements": [
+                  "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+                ]
+              },
+              "status": "open",
+              "target": {
+                "account_id": "acct:everyday-checking",
+                "canonical_movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+                "kind": "transaction",
+                "member_movement_ids": [
+                  "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+                ],
+                "movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+                "question_id": "merchant:possible transfer to savings"
+              }
+            },
+            "context": {
+              "account": "Everyday Checking",
+              "amount": "USD 275.00",
+              "date": "2026-06-22",
+              "merchant": "possible transfer to savings"
+            },
+            "id": "question:merchant:possible transfer to savings",
+            "label": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. I'll apply your answer only to this transaction, without creating a rule for other transactions.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_transaction",
+            "reason": "I don't yet have a category for this merchant.",
+            "status": "open",
+            "target": {
+              "account_id": "acct:everyday-checking",
+              "canonical_movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "kind": "transaction",
+              "member_movement_ids": [
+                "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+              ],
+              "movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "question_id": "merchant:possible transfer to savings"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Review transaction",
+            "allowed_actions": [
+              "open_transaction"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_transaction"
+              ],
+              "item_id": "question:nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "label": "2026-06-22: possible transfer to savings \u2014 USD 275.00. Could you tell me what this one was for?",
+              "primary_action": "open_transaction",
+              "question_id": "nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "question_kind": "nature",
+              "reason": "I don't yet know what this transaction was for, so I'm asking about this transaction separately.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "",
+                "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+                "movements": [
+                  "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+                ]
+              },
+              "status": "open",
+              "target": {
+                "account_id": "acct:everyday-checking",
+                "canonical_movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+                "kind": "transaction",
+                "member_movement_ids": [
+                  "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+                ],
+                "movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+                "question_id": "nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+              }
+            },
+            "context": {
+              "account": "Everyday Checking",
+              "amount": "USD 275.00",
+              "date": "2026-06-22",
+              "merchant": "possible transfer to savings"
+            },
+            "id": "question:nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+            "label": "2026-06-22: possible transfer to savings \u2014 USD 275.00. Could you tell me what this one was for?",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_transaction",
+            "reason": "I don't yet know what this transaction was for, so I'm asking about this transaction separately.",
+            "status": "open",
+            "target": {
+              "account_id": "acct:everyday-checking",
+              "canonical_movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "kind": "transaction",
+              "member_movement_ids": [
+                "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+              ],
+              "movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "question_id": "nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "label": "On 2026-06-22 you moved USD 275.00 (possible transfer to savings). Was that money moving between your own accounts, rather than being spent?",
+              "primary_action": "open_question",
+              "question_id": "transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "question_kind": "transfer",
+              "reason": "1 movement(s) of the same amount within a few days on another account you hold.",
+              "refs": {
+                "account": "",
+                "candidates": [
+                  "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0"
+                ],
+                "doc_id": "",
+                "document": "",
+                "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+            "label": "On 2026-06-22 you moved USD 275.00 (possible transfer to savings). Was that money moving between your own accounts, rather than being spent?",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "1 movement(s) of the same amount within a few days on another account you hold.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:merchant:annual fee",
+              "label": "May I ask what annual fee is? You have 1 transaction(s) with it, USD 160.00 in total.",
+              "primary_action": "open_question",
+              "question_id": "merchant:annual fee",
+              "question_kind": "merchant",
+              "reason": "I don't yet have a category for this merchant.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "merchant:annual fee"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:merchant:annual fee",
+            "label": "May I ask what annual fee is? You have 1 transaction(s) with it, USD 160.00 in total.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "I don't yet have a category for this merchant.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "merchant:annual fee"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:merchant:utilities",
+              "label": "May I ask what utilities is? You have 1 transaction(s) with it, USD 120.00 in total.",
+              "primary_action": "open_question",
+              "question_id": "merchant:utilities",
+              "question_kind": "merchant",
+              "reason": "I don't yet have a category for this merchant.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "merchant:utilities"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:merchant:utilities",
+            "label": "May I ask what utilities is? You have 1 transaction(s) with it, USD 120.00 in total.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "I don't yet have a category for this merchant.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "merchant:utilities"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:expectation:investment-1099",
+              "label": "You hold Growth Portfolio. Its 1099 (B and DIV) from the broker would tell me what was truly gained or lost \u2014 detail I currently have to leave aside. Do you have this year's?",
+              "primary_action": "open_question",
+              "question_id": "expectation:investment-1099",
+              "question_kind": "expectation",
+              "reason": "Realized gains and dividends of USD 0.00 are on your books; the tax form is what attests them.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "1099 (B and DIV) from the broker",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "expectation:investment-1099"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:expectation:investment-1099",
+            "label": "You hold Growth Portfolio. Its 1099 (B and DIV) from the broker would tell me what was truly gained or lost \u2014 detail I currently have to leave aside. Do you have this year's?",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "Realized gains and dividends of USD 0.00 are on your books; the tax form is what attests them.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "expectation:investment-1099"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:expectation:statement-currency:acct:abroad-current",
+              "label": "My picture of Abroad Current ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "primary_action": "open_question",
+              "question_id": "expectation:statement-currency:acct:abroad-current",
+              "question_kind": "expectation",
+              "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "a newer statement",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "expectation:statement-currency:acct:abroad-current"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:expectation:statement-currency:acct:abroad-current",
+            "label": "My picture of Abroad Current ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "expectation:statement-currency:acct:abroad-current"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:expectation:statement-currency:acct:dormant-savings",
+              "label": "My picture of Dormant Savings ends at 2025-11-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "primary_action": "open_question",
+              "question_id": "expectation:statement-currency:acct:dormant-savings",
+              "question_kind": "expectation",
+              "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "a newer statement",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "expectation:statement-currency:acct:dormant-savings"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:expectation:statement-currency:acct:dormant-savings",
+            "label": "My picture of Dormant Savings ends at 2025-11-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "expectation:statement-currency:acct:dormant-savings"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:expectation:statement-currency:acct:everyday-checking",
+              "label": "My picture of Everyday Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "primary_action": "open_question",
+              "question_id": "expectation:statement-currency:acct:everyday-checking",
+              "question_kind": "expectation",
+              "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "a newer statement",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "expectation:statement-currency:acct:everyday-checking"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:expectation:statement-currency:acct:everyday-checking",
+            "label": "My picture of Everyday Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "expectation:statement-currency:acct:everyday-checking"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:expectation:statement-currency:acct:household-card",
+              "label": "My picture of Household Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "primary_action": "open_question",
+              "question_id": "expectation:statement-currency:acct:household-card",
+              "question_kind": "expectation",
+              "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "a newer statement",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "expectation:statement-currency:acct:household-card"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:expectation:statement-currency:acct:household-card",
+            "label": "My picture of Household Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "expectation:statement-currency:acct:household-card"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:expectation:statement-currency:acct:joint-checking",
+              "label": "My picture of Joint Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "primary_action": "open_question",
+              "question_id": "expectation:statement-currency:acct:joint-checking",
+              "question_kind": "expectation",
+              "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "a newer statement",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "expectation:statement-currency:acct:joint-checking"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:expectation:statement-currency:acct:joint-checking",
+            "label": "My picture of Joint Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "expectation:statement-currency:acct:joint-checking"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:expectation:statement-currency:acct:rainy-day-savings",
+              "label": "My picture of Rainy Day Savings ends at 2026-06-01. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "primary_action": "open_question",
+              "question_id": "expectation:statement-currency:acct:rainy-day-savings",
+              "question_kind": "expectation",
+              "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "a newer statement",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "expectation:statement-currency:acct:rainy-day-savings"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:expectation:statement-currency:acct:rainy-day-savings",
+            "label": "My picture of Rainy Day Savings ends at 2026-06-01. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "expectation:statement-currency:acct:rainy-day-savings"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:expectation:statement-currency:acct:travel-card",
+              "label": "My picture of Travel Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "primary_action": "open_question",
+              "question_id": "expectation:statement-currency:acct:travel-card",
+              "question_kind": "expectation",
+              "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+              "refs": {
+                "account": "",
+                "candidates": [],
+                "doc_id": "",
+                "document": "a newer statement",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "expectation:statement-currency:acct:travel-card"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:expectation:statement-currency:acct:travel-card",
+            "label": "My picture of Travel Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "expectation:statement-currency:acct:travel-card"
+            },
+            "type": "question",
+            "type_label": "Question"
+          },
+          {
+            "action_label": "Answer question",
+            "allowed_actions": [
+              "open_question"
+            ],
+            "binding": {
+              "allowed_actions": [
+                "open_question"
+              ],
+              "item_id": "question:interview:acct:growth-portfolio:tax_treatment",
+              "label": "About your Growth Portfolio \u2014 Is it a taxable account, or a tax-advantaged one? If you tell me, I know whether a gain here is a taxable event.",
+              "primary_action": "open_question",
+              "question_id": "interview:acct:growth-portfolio:tax_treatment",
+              "question_kind": "interview",
+              "reason": "You've told me this one exists; there are just a few things I still need to know about it.",
+              "refs": {
+                "account": "acct:growth-portfolio",
+                "candidates": [],
+                "doc_id": "",
+                "document": "",
+                "movement": "",
+                "movements": []
+              },
+              "status": "open",
+              "target": {
+                "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+                "kind": "conversation",
+                "question_id": "interview:acct:growth-portfolio:tax_treatment"
+              }
+            },
+            "context": {
+              "account": "",
+              "amount": "",
+              "date": "",
+              "merchant": ""
+            },
+            "id": "question:interview:acct:growth-portfolio:tax_treatment",
+            "label": "About your Growth Portfolio \u2014 Is it a taxable account, or a tax-advantaged one? If you tell me, I know whether a gain here is a taxable event.",
+            "marker": "?",
+            "marker_label": "Viva needs an answer",
+            "primary_action": "open_question",
+            "reason": "You've told me this one exists; there are just a few things I still need to know about it.",
+            "status": "open",
+            "target": {
+              "disclosure": "No exact account-ledger transaction could be proven from this question\u2019s references. The question will open in its conversation instead.",
+              "kind": "conversation",
+              "question_id": "interview:acct:growth-portfolio:tax_treatment"
+            },
+            "type": "question",
+            "type_label": "Question"
+          }
+        ],
+        "label": "Questions"
+      }
+    ],
+    "remaining_count": 0,
+    "shown_count": 15,
+    "state": "ready",
+    "summary": "15 items are waiting for your answer.",
+    "title": "Review",
+    "types": [
+      {
+        "count": 15,
+        "id": "questions",
+        "label": "Questions"
+      }
+    ]
+  },
+  "account_ledger": {
+    "account": {
+      "balance": {
+        "as_of": "2026-06-30",
+        "display": "USD 3,081.45",
+        "exact_value": "3081.45",
+        "grade": "conflicted",
+        "kind": "current_balance",
+        "state": "available"
+      },
+      "currency": "USD",
+      "id": "acct:everyday-checking",
+      "name": "Everyday Checking",
+      "number_masked": "\u2022\u2022\u2022\u20224417",
+      "type": "depository"
+    },
+    "coverage": {
+      "gaps": [],
+      "runs": [
+        {
+          "from": "2026-06-01",
+          "statement_ids": [
+            "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6"
+          ],
+          "to": "2026-06-30"
+        }
+      ],
+      "state": "continuous"
+    },
+    "groups": [
+      {
+        "label": "June 2026",
+        "month": "2026-06",
+        "movements": [
+          {
+            "account": "acct:everyday-checking",
+            "account_id": "acct:everyday-checking",
+            "account_name": "Everyday Checking",
+            "actions": [],
+            "category": {
+              "id": null,
+              "label": "Uncategorized"
+            },
+            "classification": null,
+            "currency": "USD",
+            "date": "2026-06-22",
+            "decided_by": "default",
+            "deduplication": {
+              "canonical_movement_id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "member_movement_ids": [
+                "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+              ],
+              "state": "single"
+            },
+            "description": "possible transfer to savings",
+            "direction": "out",
+            "direction_display": "Debit",
+            "display": "USD 275.00",
+            "evidence_links": [],
+            "exact_value": "275.00",
+            "id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+            "linked": false,
+            "loan_repayment_choices": [],
+            "nature": "spending",
+            "provisional": false,
+            "sentence": "",
+            "subcategory": {
+              "id": null,
+              "label": ""
+            },
+            "tags": [],
+            "transfer": {
+              "candidates": [
+                {
+                  "account": "Rainy Day Savings",
+                  "account_id": "acct:rainy-day-savings",
+                  "account_name": "Rainy Day Savings",
+                  "currency": "USD",
+                  "date": "2026-06-23",
+                  "description": "possible transfer from checking",
+                  "direction": "in",
+                  "display": "USD 275.00",
+                  "exact_value": "275.00",
+                  "id": "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0",
+                  "relationship": "This would treat 2026-06-22's possible transfer to savings on Everyday Checking (USD 275.00) and 2026-06-23's possible transfer from checking on Rainy Day Savings (USD 275.00) as one transfer between your own accounts, so neither is spending."
+                }
+              ],
+              "complete": true,
+              "explanation": "1 possible counterpart movement(s) remain from the vault's transfer evidence. Nothing is linked until you confirm one, or reject the whole suggestion.",
+              "limit": 20,
+              "state": "suggested"
+            },
+            "treatment": {
+              "kind": "spending",
+              "name": ""
+            }
+          },
+          {
+            "account": "acct:everyday-checking",
+            "account_id": "acct:everyday-checking",
+            "account_name": "Everyday Checking",
+            "actions": [],
+            "category": {
+              "id": null,
+              "label": "Uncategorized"
+            },
+            "classification": null,
+            "currency": "USD",
+            "date": "2026-06-18",
+            "decided_by": "linked",
+            "deduplication": {
+              "canonical_movement_id": "|acct:everyday-checking|2026-06-18|-600.00|transfer to savings|0",
+              "member_movement_ids": [
+                "|acct:everyday-checking|2026-06-18|-600.00|transfer to savings|0"
+              ],
+              "state": "single"
+            },
+            "description": "transfer to savings",
+            "direction": "out",
+            "direction_display": "Debit",
+            "display": "USD 600.00",
+            "evidence_links": [],
+            "exact_value": "600.00",
+            "id": "|acct:everyday-checking|2026-06-18|-600.00|transfer to savings|0",
+            "linked": true,
+            "loan_repayment_choices": [],
+            "nature": "transfer",
+            "provisional": false,
+            "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
+            "subcategory": {
+              "id": null,
+              "label": ""
+            },
+            "tags": [],
+            "transfer": {
+              "counterpart": {
+                "account": "Rainy Day Savings",
+                "account_id": "acct:rainy-day-savings",
+                "account_name": "Rainy Day Savings",
+                "currency": "USD",
+                "date": "2026-06-18",
+                "description": "transfer from checking",
+                "direction": "in",
+                "display": "USD 600.00",
+                "exact_value": "600.00",
+                "id": "|acct:rainy-day-savings|2026-06-18|600.00|transfer from checking|0"
+              },
+              "explanation": "The vault linked these movements from corroborating transfer evidence.",
+              "relationship": "This would treat 2026-06-18's transfer to savings on Everyday Checking (USD 600.00) and 2026-06-18's transfer from checking on Rainy Day Savings (USD 600.00) as one transfer between your own accounts, so neither is spending.",
+              "state": "linked"
+            },
+            "treatment": {
+              "kind": "not_spending",
+              "name": ""
+            }
+          },
+          {
+            "account": "acct:everyday-checking",
+            "account_id": "acct:everyday-checking",
+            "account_name": "Everyday Checking",
+            "actions": [],
+            "category": {
+              "id": "housing",
+              "label": "housing"
+            },
+            "classification": {
+              "grade": "corroborated",
+              "provenance": "model"
+            },
+            "currency": "USD",
+            "date": "2026-06-08",
+            "decided_by": "default",
+            "deduplication": {
+              "canonical_movement_id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6|acct:everyday-checking|2026-06-08|-318.55|rent|0",
+              "member_movement_ids": [
+                "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6|acct:everyday-checking|2026-06-08|-318.55|rent|0"
+              ],
+              "state": "single"
+            },
+            "description": "rent",
+            "direction": "out",
+            "direction_display": "Debit",
+            "display": "USD 318.55",
+            "evidence_links": [
+              {
+                "document_id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+                "label": "everyday-checking-2026-06.pdf",
+                "page": "2",
+                "region": "transactions:rent",
+                "relation": "attests"
+              }
+            ],
+            "exact_value": "318.55",
+            "id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6|acct:everyday-checking|2026-06-08|-318.55|rent|0",
+            "linked": false,
+            "loan_repayment_choices": [],
+            "nature": "spending",
+            "provisional": false,
+            "sentence": "",
+            "subcategory": {
+              "id": "rent",
+              "label": "rent"
+            },
+            "tags": [],
+            "transfer": {
+              "state": "none"
+            },
+            "treatment": {
+              "kind": "spending",
+              "name": ""
+            }
+          }
+        ]
+      }
+    ],
+    "page": {
+      "limit": 3,
+      "next_cursor": "<authenticated-keyset-cursor>",
+      "remaining": 1,
+      "returned": 3
+    },
+    "reconciliation": {
+      "balance": "conflicted",
+      "overlap": {
+        "deduplication": {
+          "collapsed": [],
+          "policy": "exact_economic_posting_in_overlapping_statements_only",
+          "state": "none",
+          "unresolved": []
+        },
+        "groups": [],
+        "state": "none_observed"
+      },
+      "running_balance": {
+        "reason": "not_authoritatively_available",
+        "state": "absent"
+      }
+    },
+    "revision": "<authenticated-source-head>",
+    "scope": {
+      "account_id": "acct:everyday-checking",
+      "kind": "account"
+    },
+    "sources": [
+      {
+        "account_id": "acct:everyday-checking",
+        "document_id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+        "filename": "everyday-checking-2026-06.pdf",
+        "period": {
+          "from": "2026-06-01",
+          "to": "2026-06-30"
+        },
+        "relation": "statement_and_movement_evidence"
+      }
+    ],
+    "state": "ready"
+  }
+}

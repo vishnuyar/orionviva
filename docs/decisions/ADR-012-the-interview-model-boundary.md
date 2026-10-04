@@ -13,7 +13,7 @@ _This records reasoning, not current behaviour._
 ### ADR-012 — Two enumerated outbound flows, a whitelisted envelope, and a model that selects and words but never decides
 **State:** unmet
 **Code:** none found (the deterministic baseline of assertion 14 is product/viva/interview.py:164)
-**Test:** product/tests/test_interview.py::test_a_jurisdiction_scoped_question_does_not_travel (the deterministic baseline of assertion 14 only; no test reaches the enumerated flows or the envelope whitelist)
+**Test:** product/tests/test_interview.py::test_requested_a_jurisdiction_scoped_question_does_not_travel (the deterministic baseline of assertion 14 only; no test reaches the enumerated flows or the envelope whitelist)
 
 1. Two outbound flows exist in the interview path and no third: the schema request, and the interview envelope. Any further model call requires an amendment here.
 2. The envelope is a whitelist enforced in code rather than a convention described in prose. Permitted: the schema id and version and the interview's kind; the merchant category and the implied relationship, never the raw descriptor; recurrence count and cadence; the jurisdiction tag; which attribute keys are filled and which are blank, names only and never values; this interview's own questions and the person's verbatim answers to them.

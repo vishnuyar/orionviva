@@ -1,15 +1,12 @@
-"""Ask only where the counterparty cannot tell us.
+"""Explicitly requested structured editors retain checked reading and evidence.
 
-Asking *"is this money spent, or is it something you now own?"* about a
-counterparty already enriched as `loan_payments / mortgage` asks for something
-we already know.
-
-So these tests are mostly about **silence** — the hardest thing to assert and the
-whole point of the design. A product that asks about a supermarket is not being
-careful, it is being useless.
+Classification and interview builders here are invoked deliberately; the public
+default queue stays quiet and is covered by separate automatic-accounting tests.
 """
 
 from decimal import Decimal
+from _requested_question_support import _requested_questions, _requested_pending_questions
+
 
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          capture_and_ingest)
@@ -66,7 +63,7 @@ def _tiers(ledger):
 # ------------------------------------------------------------------- the tiers
 
 
-def test_an_ordinary_counterparty_is_settled_and_silent(tmp_path):
+def test_requested_an_ordinary_counterparty_is_settled_and_silent(tmp_path):
     """The single largest change: we already knew, so we say nothing."""
     ledger = _vault(tmp_path, [("2026-03-06", "WHOLE FOODS MKT", "-180.00"),
                                ("2026-03-07", "NETFLIX.COM", "-15.00")])
@@ -74,15 +71,15 @@ def test_an_ordinary_counterparty_is_settled_and_silent(tmp_path):
     _enrich(ledger, "netflix com", "entertainment", sub="streaming")
 
     assert set(_tiers(ledger).values()) == {TIER_SETTLED}
-    assert open_questions(ledger, as_of="2026-04-01")["total"] == 0
+    assert _requested_questions(ledger, as_of="2026-04-01")["total"] == 0
 
 
-def test_a_counterparty_that_implies_structure_is_proposed_not_asked(tmp_path):
+def test_requested_a_counterparty_that_implies_structure_is_proposed_not_asked(tmp_path):
     ledger = _vault(tmp_path, [("2026-03-01", "LENDER ACH PMT", "-4400.00")])
     _enrich(ledger, "lender ach pmt", "housing", implies=LOAN_OUT, sub="mortgage")
 
     assert list(_tiers(ledger).values()) == [TIER_STRUCTURAL]
-    (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+    (q,) = [q for q in _requested_questions(ledger)["questions"] if q["kind"] == NATURE]
     # A hypothesis with its grounds — not "what is this?" What it says these
     # payments are is the category this vault holds for them, never the words a
     # model at enrichment coined for the relationship it implies.
@@ -101,28 +98,28 @@ def test_a_counterparty_that_implies_structure_is_proposed_not_asked(tmp_path):
     assert q["refs"]["account_group"] == "Mortgage"
 
 
-def test_an_instrument_is_unknown_and_asked_one_at_a_time(tmp_path):
+def test_requested_an_instrument_is_unknown_and_asked_one_at_a_time(tmp_path):
     ledger = _vault(tmp_path, [("2026-03-04", "Check # 1201", "-20000.00"),
                                ("2026-03-11", "Check # 1202", "-500.00")])
     _enrich(ledger, "check", "other", kind="instrument")
 
     assert set(_tiers(ledger).values()) == {TIER_UNKNOWN}
-    qs = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+    qs = [q for q in _requested_questions(ledger)["questions"] if q["kind"] == NATURE]
     assert len(qs) == 2 and all(q["scope"] == "one" for q in qs)
 
 
-def test_an_unidentified_counterparty_waits_for_enrichment(tmp_path):
+def test_requested_an_unidentified_counterparty_waits_for_enrichment(tmp_path):
     """Not a nature question — we don't know who they are yet, and asking what
     the money BECAME before knowing who got it is the wrong order."""
     ledger = _vault(tmp_path, [("2026-03-04", "MYSTERY CO", "-100.00")])
     assert list(_tiers(ledger).values()) == [TIER_UNENRICHED]
-    assert not [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+    assert not [q for q in _requested_questions(ledger)["questions"] if q["kind"] == NATURE]
 
 
 # --------------------------------------------------------------- direction
 
 
-def test_the_same_counterparty_means_opposite_things_by_direction(tmp_path):
+def test_requested_the_same_counterparty_means_opposite_things_by_direction(tmp_path):
     """Money OUT to a lender repays borrowing; money IN from one IS the
     borrowing. One counterparty, opposite signs, opposite meanings — carried as
     data on the implication rather than a branch in the queue."""
@@ -137,7 +134,7 @@ def test_the_same_counterparty_means_opposite_things_by_direction(tmp_path):
     assert proj.implication_of(inn)["relationship"] == "money you borrowed"
 
 
-def test_an_implication_that_does_not_apply_this_way_is_ignored(tmp_path):
+def test_requested_an_implication_that_does_not_apply_this_way_is_ignored(tmp_path):
     ledger = _vault(tmp_path, [("2026-03-20", "ACME LENDING", "9000.00")])
     _enrich(ledger, "acme lending", "loan_payments", implies=LOAN_OUT)  # outflow only
     proj = ledger.projection()
@@ -147,7 +144,7 @@ def test_an_implication_that_does_not_apply_this_way_is_ignored(tmp_path):
 # ------------------------------------------------------- confidence, and doubt
 
 
-def test_forced_is_decisive_and_suggested_says_it_is_not(tmp_path):
+def test_requested_forced_is_decisive_and_suggested_says_it_is_not(tmp_path):
     """The forced / suggested ladder, reused from the verification findings
     rather than invented: acting confidently and admitting doubt are different
     behaviours and must not share a rung."""
@@ -164,7 +161,7 @@ def test_forced_is_decisive_and_suggested_says_it_is_not(tmp_path):
         assert m.provisional is provisional, confidence
 
 
-def test_no_implication_means_no_claim(tmp_path):
+def test_requested_no_implication_means_no_claim(tmp_path):
     """The safe default, and the one the eval guards hardest: a merchant that
     implies nothing must produce nothing. Inventing structure would create
     accounts nobody has, across a whole vault."""
@@ -179,7 +176,7 @@ def test_no_implication_means_no_claim(tmp_path):
 # ----------------------------------------------------------- the measurement
 
 
-def test_the_tier_summary_is_the_before_and_after_number(tmp_path):
+def test_requested_the_tier_summary_is_the_before_and_after_number(tmp_path):
     from viva.debug.tiers import report
 
     ledger = _vault(tmp_path, [("2026-03-06", "WHOLE FOODS MKT", "-180.00"),
@@ -199,11 +196,11 @@ def test_the_tier_summary_is_the_before_and_after_number(tmp_path):
 
     text = report(proj)
     assert "settled" in text and "50.0%" in text
-    assert "questions the queue would ask: 2" in text     # not 4
+    assert "questions the queue would ask: 0" in text
     assert "handled without asking" in text
 
 
-def test_every_cli_reads_dotenv_the_same_way():
+def test_requested_every_cli_reads_dotenv_the_same_way():
     """A CLI that reads VIVA_PASSPHRASE without loading `.env` tells the user to
     set a variable they have already set. One entry point behaving differently
     from its siblings is a small bug with an outsized cost: it makes the tool
@@ -262,7 +259,7 @@ def _claim_vault(tmp_path):
     return ledger
 
 
-def test_a_rebuild_replays_claims_through_todays_parsers(tmp_path, monkeypatch):
+def test_requested_a_rebuild_replays_claims_through_todays_parsers(tmp_path, monkeypatch):
     """The claims layer's whole promise, cashed: a vault reconstructed from
     stored model replies, with no model call and no money spent."""
     from viva.rebuild import claims_by_doc, rebuild
@@ -296,7 +293,7 @@ def test_a_rebuild_replays_claims_through_todays_parsers(tmp_path, monkeypatch):
         "every document posted directly or by the final sweep gets local knowledge"
 
 
-def test_a_rebuild_never_touches_the_source(tmp_path):
+def test_requested_a_rebuild_never_touches_the_source(tmp_path):
     """Real money, one shot. The old vault stands until the new one is trusted."""
     from viva.rebuild import rebuild
     from viva.vault import Vault
@@ -309,7 +306,7 @@ def test_a_rebuild_never_touches_the_source(tmp_path):
     assert len(list(Vault.open(src, "pw").ledger.store.events())) == before
 
 
-def test_the_export_captures_what_a_rebuild_cannot_replay(tmp_path):
+def test_requested_the_export_captures_what_a_rebuild_cannot_replay(tmp_path):
     """A rebuild replays documents; it cannot replay a person. Anything they
     authored has to be written down first or it is simply gone."""
     from viva.export_rulings import collect
@@ -334,7 +331,7 @@ def _key(subject, major, said="x"):
             "body": {"subject": subject, "legs": [{"major": major}], "said": said}}
 
 
-def test_the_diff_scores_anticipated_missed_and_contradicted(tmp_path):
+def test_requested_the_diff_scores_anticipated_missed_and_contradicted(tmp_path):
     """The measure that matters. A product that now says it first has learned;
     one that stays silent has a gap; one that DISAGREES is dangerous, and the
     report puts that case first."""
@@ -366,7 +363,7 @@ def test_the_diff_scores_anticipated_missed_and_contradicted(tmp_path):
     assert "contradiction" in text
 
 
-def test_the_diff_writes_nothing(tmp_path):
+def test_requested_the_diff_writes_nothing(tmp_path):
     """A comparison, not a restore."""
     from viva.diff_rulings import score
 
@@ -377,7 +374,7 @@ def test_the_diff_writes_nothing(tmp_path):
     assert len(list(ledger.store.events())) == before
 
 
-def test_a_rebuild_that_produces_nothing_says_so(tmp_path):
+def test_requested_a_rebuild_that_produces_nothing_says_so(tmp_path):
     """Per-document output is not a result. A rebuild that prints tidy
     per-document lines and a cheerful summary while producing an EMPTY vault has
     reported nothing: a tool must check its own outcome, and the failure has to
@@ -408,7 +405,7 @@ def test_a_rebuild_that_produces_nothing_says_so(tmp_path):
     assert "debug.claim" in text          # and what to run next
 
 
-def test_a_rebuild_stamps_the_classified_doc_type_onto_the_facts(tmp_path):
+def test_requested_a_rebuild_stamps_the_classified_doc_type_onto_the_facts(tmp_path):
     """The balance family's extract JSON carries no `doc_type` — that comes from
     the CLASSIFY phase, and the reader stamps it onto the facts after parsing.
     A replay that skips that step brings every statement back as `unknown`,
@@ -431,7 +428,7 @@ def test_a_rebuild_stamps_the_classified_doc_type_onto_the_facts(tmp_path):
     assert rebuilt.movements()[0].kind == "depository"
 
 
-def test_a_rebuild_sweeps_at_the_end_so_order_does_not_decide(tmp_path):
+def test_requested_a_rebuild_sweeps_at_the_end_so_order_does_not_decide(tmp_path):
     """Any ingest order yielding the same posted chain is a CASCADE: a statement
     that cannot connect yet waits for its neighbour. In normal use the neighbour
     arrives later and the heal fires. In a batch run the last arrivals have
@@ -447,7 +444,7 @@ def test_a_rebuild_sweeps_at_the_end_so_order_does_not_decide(tmp_path):
     assert source.index("sweep(vault.ledger)") < source.index("movements == 0")
 
 
-def test_a_gap_on_arrival_is_not_a_gap_in_the_vault(tmp_path):
+def test_requested_a_gap_on_arrival_is_not_a_gap_in_the_vault(tmp_path):
     """A gap counted on arrival is TRANSIENT. A statement arriving before its
     neighbour is a gap at that instant and posts the moment the neighbour heals
     it — the cascade working as designed.
@@ -469,7 +466,7 @@ def test_a_gap_on_arrival_is_not_a_gap_in_the_vault(tmp_path):
 
 
 
-def test_an_unshareable_counterparty_is_unknown_not_unenriched(tmp_path):
+def test_requested_an_unshareable_counterparty_is_unknown_not_unenriched(tmp_path):
     """`unenriched` promises "we'll identify this later" — but sending a peer
     name or a cheque number to the commons is forbidden, so enrichment will
     never see those counterparties and they could never become `settled`.

@@ -105,7 +105,7 @@ def test_spending_by_category_and_assignment(tmp_path):
     assert cat["grade"] == "unverified" and "KROGER" in cat["descriptor"]
 
 
-def test_import_defaults_peer_payments_before_asking_questions(tmp_path):
+def test_import_defaults_peer_payments_without_assuming_transfer(tmp_path):
     from viva.ledger.merchant_keys import MerchantKeys
     from viva.questions import MERCHANT, NATURE, open_questions
 
@@ -140,7 +140,7 @@ def test_import_defaults_peer_payments_before_asking_questions(tmp_path):
         movement.description: projection.derived_category(movement)
         for movement in projection.movements()
     }
-    assert categorized["ZELLE PAYMENT TO JOHN"]["category"] == "transfers"
+    assert categorized["ZELLE PAYMENT TO JOHN"]["category"] == "other"
     assert categorized["MYSTERY SHOP"]["category"] == "other"
     assert categorized["PAYMENT TO IRS"]["category"] == "other"
     assert all(row["subcategory"] == "unclassified"
@@ -150,8 +150,8 @@ def test_import_defaults_peer_payments_before_asking_questions(tmp_path):
     assert all(row["by"] == "default" for row in categorized.values())
     peer = next(movement for movement in projection.movements()
                 if movement.description == "ZELLE PAYMENT TO JOHN")
-    assert peer.nature == "transfer"
-    assert projection.spending_by_category() == {"other": Decimal("100.00")}
+    assert peer.nature == "spending"
+    assert projection.spending_by_category() == {"other": Decimal("300.00")}
     routine = [question for question in open_questions(
         ledger, as_of="2026-02-01")["questions"]
                if question["kind"] == NATURE

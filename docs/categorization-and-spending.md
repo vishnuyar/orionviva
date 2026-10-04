@@ -1,5 +1,7 @@
 # Categorization & Spending — where your money went, and the moat that learns it
 
+**Current behavior:** [Automatic accounting](automatic-accounting.md) and [ADR-017](decisions/ADR-017-automatic-accounting.md) supersede the classification-review and confirmation-first interaction described below. The active public queue is document recovery only; retained low-level question builders serve explicitly requested edits. Automatic interpretations and understood corrections apply reversibly with evidence and scoped learning. The mechanisms below remain historical context where they imply a proactive classification question.
+
 **State:** built
 **Rules:** MON-13, MON-14, MON-15, MON-16, MON-17, MON-18, MON-93
 

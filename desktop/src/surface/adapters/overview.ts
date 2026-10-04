@@ -1,3 +1,4 @@
+import { adaptAccounting } from "./accounting";
 import { gradePresentation } from "../evidence";
 import type { AccountView, CurrentPeriodCompletenessView, CurrentPeriodExclusionView, CurrentPeriodSliceView, CurrentPeriodStepView, CurrentPeriodView, EvidenceLink, EvidenceRelation, FeatureIssue, FindingView, FigureMeasure, FigureView, ObligationView, OverviewData, PanelState, PictureView, ProofPresentation, UnmeasuredAccount, UnplacedAccount, UtilityView, WithheldCurrency } from "../types";
 import { isRecord, record, textValue, uniqueRecordsById } from "./primitives";
@@ -269,7 +270,8 @@ export function adaptOverview(raw: unknown): OverviewData | null {
       recordIds: stringList(balance.record_ids),
     };
   });
-  return { picture: picture(raw.picture), accounts, utility: utility(raw.utility), currentPeriod: currentPeriod(raw.current_period) };
+  const accounting = adaptAccounting(raw.accounting);
+  return { picture: picture(raw.picture), accounts, utility: utility(raw.utility), currentPeriod: currentPeriod(raw.current_period), ...(accounting ? { accounting } : {}) };
 }
 
 export type OverviewPanel = { state: PanelState; issues: FeatureIssue[] };
@@ -283,3 +285,5 @@ export function adaptOverviewPanel(raw: unknown): OverviewPanel {
     .filter((issue) => issue.code.trim().length > 0);
   return { state: declared, issues };
 }
+
+export { adaptAccounting } from "./accounting";

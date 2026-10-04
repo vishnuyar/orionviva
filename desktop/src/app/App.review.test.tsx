@@ -1,5 +1,5 @@
 import { within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, userEvent, waitFor, installResponsiveMatchMedia, openSample, sampleReads } from "./App.testSupport";
+import { afterEach, beforeEach, describe, expect, it, userEvent, waitFor, installResponsiveMatchMedia, openSample, openReviewSample, isolatedReviewReads, sampleReads } from "./App.testSupport";
 
 beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
@@ -9,7 +9,8 @@ describe("Review and Ask Viva separation", () => {
     const user = userEvent.setup();
     const view = await openSample();
     expect(view.queryByText("Questions in your conversation")).not.toBeInTheDocument();
-    expect(view.getByRole("button", { name: /open review/i })).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: /open review/i })).not.toBeInTheDocument();
+    expect(view.getByRole("button", { name: /see statement status/i })).toBeInTheDocument();
 
     await user.click(view.getByRole("button", { name: "Ask Viva" }));
     expect(view.getByRole("dialog", { name: "Ask Viva" })).toBeInTheDocument();
@@ -19,7 +20,7 @@ describe("Review and Ask Viva separation", () => {
 
   it("opens Review without calling the model and follows an exact transaction target", async () => {
     const user = userEvent.setup();
-    const view = await openSample();
+    const view = await openReviewSample();
     await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
     await view.findByLabelText("15 actionable review items");
     expect(view.getByRole("heading", { name: "Review", level: 1 })).toBeInTheDocument();
@@ -45,7 +46,7 @@ describe("Review and Ask Viva separation", () => {
   it("leaves no background control outside an inert ancestor while the transaction drawer owns a 320-wide app", async () => {
     const viewport = installResponsiveMatchMedia(1440);
     const user = userEvent.setup();
-    const view = await openSample();
+    const view = await openReviewSample();
     viewport.resize(320);
     await user.click(view.getByRole("button", { name: "Open navigation" }));
     await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
@@ -60,7 +61,7 @@ describe("Review and Ask Viva separation", () => {
 
   it("hands Review transaction focus through the question drawer and back to the canonical ledger row", async () => {
     const user = userEvent.setup();
-    const view = await openSample();
+    const view = await openReviewSample();
     await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
     await view.findByLabelText("15 actionable review items");
     await user.click(view.getAllByRole("button", { name: /review transaction/i })[0]);
@@ -80,7 +81,7 @@ describe("Review and Ask Viva separation", () => {
     const user = userEvent.setup();
     const ledger = structuredClone(sampleReads.account_ledger.result.data) as { account: { number_masked: string } };
     ledger.account.number_masked = "";
-    const view = await openSample({ account_ledger: ledger });
+    const view = await openReviewSample({ account_ledger: ledger });
     await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
     await view.findByLabelText("15 actionable review items");
     await user.click(view.getAllByRole("button", { name: /review transaction/i })[0]);
@@ -102,7 +103,7 @@ describe("Review and Ask Viva separation", () => {
 
   it("returns a direct Review question to its exact item and falls back to the Review heading if that item was removed", async () => {
     const user = userEvent.setup();
-    const view = await openSample();
+    const view = await openReviewSample();
     await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
     await view.findByLabelText("15 actionable review items");
     const answer = view.getAllByRole("button", { name: "Answer question" })[0];
@@ -121,7 +122,7 @@ describe("Review and Ask Viva separation", () => {
 
   it("shows authored transfer comparison and routes exact available controls to Transactions", async () => {
     const user = userEvent.setup();
-    const view = await openSample();
+    const view = await openReviewSample();
     const accountCard = view.getAllByText("Everyday Checking").find((node) => node.closest("button")?.classList.contains("account-card-button"))?.closest("button");
     expect(accountCard).toBeDefined();
     await user.click(accountCard!);
@@ -140,7 +141,7 @@ describe("Review and Ask Viva separation", () => {
 
   it("keeps every authored target actionable beyond the old ten-question conversation window", async () => {
     const user = userEvent.setup();
-    const view = await openSample();
+    const view = await openReviewSample();
     await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
     await view.findByLabelText("15 actionable review items");
     const rows = [...view.container.querySelectorAll<HTMLElement>(".review-center-row")];
@@ -153,14 +154,27 @@ describe("Review and Ask Viva separation", () => {
   });
 
   it("fails a same-ID semantic disagreement closed before an action can open", async () => {
-    const review = structuredClone(sampleReads.review.result.data) as { groups: Array<{ items: Array<{ label: string; binding: { label: string } }> }> };
+    const review = structuredClone(isolatedReviewReads.review) as { groups: Array<{ items: Array<{ label: string; binding: { label: string } }> }> };
     review.groups[0].items[0].label = "Changed label under the same question ID";
     review.groups[0].items[0].binding.label = "Changed label under the same question ID";
 
-    const view = await openSample({ review });
+    const view = await openReviewSample({ review });
 
     await userEvent.setup().click(view.getByRole("button", { name: "Review, count unavailable" }));
     await waitFor(() => expect(view.queryByRole("button", { name: /Changed label/ })).not.toBeInTheDocument());
     expect(view.queryByRole("button", { name: /Changed label/ })).not.toBeInTheDocument();
   });
+});
+
+it("keeps document reconciliation recovery reachable without classification questions in the generated sample", async () => {
+  const conversation = sampleReads.conversation.result.data as { questions: Array<{ kind: string; text: string }> };
+  expect(conversation.questions.map((question) => question.kind)).toEqual(["reconciliation"]);
+  const user = userEvent.setup();
+  const view = await openSample();
+  await user.click(view.getByRole("button", { name: "Review, count unavailable" }));
+  await view.findByLabelText("1 actionable review item");
+  await user.click(view.getByRole("button", { name: "Answer question" }));
+  const drawer = await view.findByRole("dialog", { name: "Review question" });
+  expect(drawer).toHaveTextContent(conversation.questions[0].text);
+  expect(within(drawer).getByRole("button", { name: "Set aside for now" })).toBeInTheDocument();
 });

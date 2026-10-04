@@ -14,6 +14,7 @@ from ..ledger.events import GRADES, Provenance
 from ..ledger.projection.accounts import AccountInfo, account_info
 from ..ledger.projection.balances import BalanceAnswer
 from ..ledger.projection.movements import MovementInfo, is_expense
+from ..ledger.projection.core import TxnLine
 from ..ledger.projection.positions import ComposedValue, snapshot_positions
 from ..ledger.projection.obligations import Obligation
 from ..ledger.statements import AccountStatements, _record, _runs
@@ -29,6 +30,7 @@ MAX_OVERVIEW_DOCUMENT_LINKS = 10_000
 MAX_OVERVIEW_RULINGS = 10_000
 MAX_OVERVIEW_RULING_BYTES = 1_000_000
 MAX_OVERVIEW_MOVEMENTS = 10_000
+MAX_ACCOUNTING_POSTINGS = 50_000
 MAX_ACTIVITY_RELATIONSHIPS = 10_000
 MAX_ACTIVITY_PAGE = 100
 MAX_ACTIVITY_TRANSFER_CANDIDATES = 200
@@ -311,18 +313,40 @@ class SQLOverviewProjection:
             self.connection,
             "SELECT scope,subject,CASE WHEN length(CAST(legs_json AS BLOB))<=? "
             "THEN legs_json ELSE NULL END,by_actor,grade,said,value_text,currency,"
-            "occurred_at,source_sequence FROM ruling_history WHERE occurred_at<=?"
-            " ORDER BY source_sequence", (MAX_OVERVIEW_RULING_BYTES, self._boundary),
+            "occurred_at,source_sequence,CASE WHEN length(CAST(grounds AS BLOB))<=? THEN grounds END,"
+            "CASE WHEN length(CAST(source_refs_json AS BLOB))<=? THEN source_refs_json END,"
+            "CASE WHEN length(CAST(evidence_signature AS BLOB))<=? THEN evidence_signature END "
+            "FROM ruling_history WHERE occurred_at<=? ORDER BY source_sequence",
+            (MAX_OVERVIEW_RULING_BYTES, MAX_OVERVIEW_RULING_BYTES,
+             MAX_OVERVIEW_RULING_BYTES, MAX_OVERVIEW_RULING_BYTES, self._boundary),
             MAX_OVERVIEW_RULINGS,
             "Overview ruling history")
         out = []
-        for scope_, subject, legs, actor, grade, said, value, currency, occurred, sequence in rows:
-            if legs is None:
-                raise ReadStoreError("Overview ruling legs exceed their byte bound")
+        for scope_, subject, legs, actor, grade, said, value, currency, occurred, sequence, grounds, refs, signature in rows:
+            if legs is None or refs is None or grounds is None or signature is None:
+                raise ReadStoreError("Overview ruling evidence exceeds its byte bound")
             out.append({"scope": scope_, "subject": subject, "legs": json.loads(legs),
                         "by": actor, "grade": grade, "said": said, "value": value,
                         "currency": currency, "occurred_at": occurred,
-                        "source_sequence": sequence})
+                        "source_sequence": sequence, "grounds": grounds,
+                        "source_refs": json.loads(refs), "evidence_signature": signature})
+        restored = _bounded(
+            self.connection,
+            "SELECT movement_key,CASE WHEN length(CAST(previous_ruling_json AS BLOB))<=? "
+            "THEN previous_ruling_json END,occurred_at,source_sequence "
+            "FROM accounting_restorations WHERE occurred_at<=? ORDER BY source_sequence",
+            (MAX_OVERVIEW_RULING_BYTES, self._boundary), MAX_OVERVIEW_RULINGS,
+            "Accounting treatment restorations")
+        for movement, encoded, occurred, sequence in restored:
+            if not isinstance(encoded, str):
+                raise ReadStoreError("Restored accounting treatment exceeds its byte bound")
+            previous = json.loads(encoded)
+            if not isinstance(previous, dict):
+                raise ReadStoreError("Restored accounting treatment has the wrong shape")
+            out.append({"scope": "movement", "subject": movement,
+                        "restored_previous": previous,
+                        "occurred_at": occurred, "source_sequence": sequence})
+        out.sort(key=lambda row: row["source_sequence"])
         return out
 
     def _load_documents(self):
@@ -345,6 +369,59 @@ class SQLOverviewProjection:
             if doc_type:
                 types.setdefault(account, set()).add(doc_type)
         return types, captured
+
+    def inactive_accounting_accounts(self):
+        """Fold reversible account creation from bounded normalized controls."""
+        from ..ledger.projection.accounting_controls import inactive_accounting_accounts
+        if hasattr(self, "_inactive_accounting_cache"):
+            return set(self._inactive_accounting_cache)
+        rows = _bounded(self.connection,
+            "SELECT source_sequence,event_type,CASE WHEN length(CAST(body_json AS BLOB))<=? "
+            "THEN body_json END FROM accounting_controls WHERE occurred_at<=? ORDER BY source_sequence",
+            (MAX_OVERVIEW_RULING_BYTES, self._boundary), MAX_OVERVIEW_RULINGS,
+            "Accounting control history")
+        corrections, rules = {}, {}
+        for sequence, kind, encoded in rows:
+            if not isinstance(encoded, str):
+                raise ReadStoreError("Accounting control history exceeds its byte bound")
+            body = json.loads(encoded)
+            if not isinstance(body, dict):
+                raise ReadStoreError("Accounting control history has the wrong shape")
+            if kind == "AccountingCorrectionRecorded":
+                corrections[body["correction_id"]] = {**body, "_source_sequence": sequence}
+            elif kind == "AccountingCorrectionUndone":
+                if body["correction_id"] in corrections:
+                    corrections[body["correction_id"]]["undone"] = True
+                rules.pop(body.get("rule_id", ""), None)
+            elif kind == "AccountingRuleRecorded":
+                rules[body["rule_id"]] = body
+        candidates = sorted({account for body in corrections.values()
+                             for account in body.get("created_accounts", [])})
+        if not candidates:
+            self._inactive_accounting_cache = set()
+            return set()
+        if len(candidates) > MAX_OVERVIEW_ACCOUNTS:
+            raise ReadStoreError("Accounting account creation exceeds its row bound")
+        placeholders = ",".join("?" for _ in candidates)
+        sql = ("SELECT a.account_id,MAX(a.source_sequence),"
+               "EXISTS(SELECT 1 FROM postings p JOIN transactions t USING(source_sequence) "
+               "WHERE p.account_id=a.account_id AND t.occurred_at<=?) OR "
+               "EXISTS(SELECT 1 FROM balance_observations b WHERE b.account_id=a.account_id AND b.occurred_at<=?) OR "
+               "EXISTS(SELECT 1 FROM positions p WHERE p.account_id=a.account_id AND p.occurred_at<=?) OR "
+               "EXISTS(SELECT 1 FROM document_account_history d WHERE d.account_id=a.account_id AND d.occurred_at<=?) "
+               "FROM accounts a WHERE a.event_type='AccountOpened' AND a.occurred_at<=? "
+               f"AND a.account_id IN ({placeholders}) GROUP BY a.account_id")
+        metadata = {}
+        for account, latest_open, observed in self.connection.execute(sql,
+                (self._boundary,) * 5 + tuple(candidates)).fetchall():
+            creation = min(body["_source_sequence"] for body in corrections.values()
+                           if account in body.get("created_accounts", []))
+            metadata[account] = {"origin": self._states[account].origin,
+                                 "independently_observed": bool(observed),
+                                 "reopened": latest_open > creation}
+        self._inactive_accounting_cache = inactive_accounting_accounts(
+            corrections, self.rulings() + list(rules.values()), metadata)
+        return set(self._inactive_accounting_cache)
 
     def accounts(self):
         return sorted(account for account, state in self._states.items()
@@ -401,6 +478,53 @@ class SQLOverviewProjection:
     def movements(self):
         return list(self._movements)
 
+    def accounting_postings(self):
+        """Original financial legs from this revision, with their source identity."""
+        from .scalar_bounds import selected as scalar_selected, refuse as refuse_scalars
+
+        if hasattr(self, "_accounting_postings"):
+            return list(self._accounting_postings)
+        columns = ("account_id", "occurred_at", "description", "amount_text",
+                   "grade", "provenance_doc_id", "provenance_page",
+                   "provenance_region", "provenance_note", "transaction_id",
+                   "source_sequence", "posting_index", "matched_movement_key", "matched_currency")
+        numeric = ("provenance_page", "source_sequence", "posting_index")
+        selected, bounds = scalar_selected(columns, numeric)
+        sql = ("WITH financial_postings AS (SELECT p.account_id,t.occurred_at,"
+               "t.description,p.amount_text,p.grade,t.provenance_doc_id,"
+               "t.provenance_page,t.provenance_region,t.provenance_note,"
+               "e.event_id AS transaction_id,p.source_sequence,p.posting_index,"
+               "t.matched_movement_key,t.matched_currency "
+               "FROM postings p JOIN transactions t USING(source_sequence) "
+               "JOIN applied_events e ON e.sequence=p.source_sequence) "
+               f"SELECT {selected} FROM financial_postings WHERE occurred_at<=? "
+               "ORDER BY source_sequence,posting_index")
+        rows = _bounded(self.connection, sql, (*bounds, self._boundary),
+                        MAX_ACCOUNTING_POSTINGS, "Accounting postings")
+        refuse_scalars(rows, columns, numeric, label="Accounting posting input")
+        currencies = {}
+        for row in rows:
+            state = self._states.get(row[0])
+            if state and state.kind in ("depository", "liability", "investment") and state.currency:
+                currencies.setdefault(row[9], set()).add(state.currency)
+        output = []
+        for row in rows:
+            account, occurred, description, amount, grade, doc, page, region, note, identity, _seq, _index, matched_key, matched_currency = row
+            source_currencies = currencies.get(identity, set())
+            currency = next(iter(source_currencies)) if len(source_currencies) == 1 else ""
+            output.append((account, TxnLine(
+                occurred, description, Decimal(amount), grade,
+                Provenance(doc, page, region, note), currency, identity, matched_key, matched_currency)))
+        self._accounting_postings = output
+        return list(output)
+
+    def merchant_key_of(self, movement):
+        return self._merchant_keys.get(movement.key, "")
+
+    def merchant_keys_of(self, movement):
+        key = self.merchant_key_of(movement)
+        return (key,) if key else ()
+
     def spending_by_currency(self):
         output = {}
         for movement in self._movements:
@@ -409,8 +533,20 @@ class SQLOverviewProjection:
         return output
 
     def rulings(self, scope=None):
-        return [row for row in self._rulings
-                if scope is None or row["scope"] == scope]
+        effective = {}
+        for row in self._rulings:
+            key = (row["scope"], row["subject"])
+            if "restored_previous" in row:
+                if row["restored_previous"]:
+                    effective[key] = row["restored_previous"]
+                else:
+                    effective.pop(key, None)
+                continue
+            prior = effective.get(key)
+            if prior is None or row.get("grade") == "verified" or prior.get("grade") != "verified":
+                effective[key] = row
+        return [row for key, row in sorted(effective.items())
+                if scope is None or key[0] == scope]
 
     def document_types_of(self, account):
         return set(self._document_types.get(account, ()))
@@ -553,9 +689,14 @@ class SQLHistoricalOverviewProjection(SQLOverviewProjection):
 
     def _movement_view(self):
         from .temporal_activity import SQLHistoricalActivityProjection
+        from ..ledger.projection.merchants import merchant_key_of
         self._activity = SQLHistoricalActivityProjection(
             self._revision, self._historical_as_of)
         self._movement_grades = self._activity.movement_grades()
+        self._categories = {movement.key: self._activity.derived_category(movement) or {}
+                            for movement in self._activity.movements()}
+        self._merchant_keys = {movement.key: merchant_key_of(self._activity._core, movement)
+                               for movement in self._activity.movements()}
         return self._activity.movements()
 
     def obligations(self, today):

@@ -1,5 +1,7 @@
 # Reading Guide — where every document sits
 
+Current accounting direction: [Automatic accounting and correction learning](automatic-accounting.md), with [ADR-017](decisions/ADR-017-automatic-accounting.md). Classification review is superseded by reversible interpretation; verification is in progress.
+
 Current approved implementation: [Product reliability and usability plan](product-improvement-plan.md)
 records the scope, milestones, agent ownership, evidence, and resumption steps.
 

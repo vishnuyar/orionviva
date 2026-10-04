@@ -1,3 +1,4 @@
+import { AccountingReports, type AccountingReader } from "../../components/AccountingReports";
 import { ArrowDownLeft, ArrowUpRight, CircleHelp } from "lucide-react";
 import { identifiedRows, resolveStableSelection } from "../../app/selection";
 import { EvidenceBadge } from "../../components/EvidenceBadge";
@@ -26,23 +27,9 @@ function accountKind(account: AccountView) {
   return account.kind.trim() ? account.kind : "Account kind was not supplied by this overview read.";
 }
 
-function compactReviewState(result: FeatureResult<ReviewData>): { title: string; detail: string; count: number | null } {
-  if (result.state === "ready" || result.state === "partial" || result.state === "needs_input") return {
-    title: result.data.summary,
-    detail: result.state === "partial" ? "Some authored Review items are unavailable."
-      : result.state === "needs_input" ? "Review needs more information before every authored item can be shown." : "",
-    count: result.data.actionableCount,
-  };
-  if (result.state === "failed") return { title: "Review could not be read", detail: "No actionable count is available from the failed read.", count: null };
-  if (result.state === "unavailable") return { title: "Review is unavailable", detail: "This vault does not provide an authored Review queue.", count: null };
-  if (result.reason === "reading") return { title: "Review is being read", detail: "No actionable count is available until the vault answers.", count: null };
-  if (["locked", "denied", "refused"].includes(result.reason)) return { title: "Review is locked", detail: "The vault did not allow this Review queue to be read.", count: null };
-  if (result.reason === "no_vault") return { title: "Review has not been read", detail: "Open a vault before expecting an actionable count.", count: null };
-  return { title: "Review has not been read", detail: "No authored Review queue or actionable count is available yet.", count: null };
-}
 
-export function Overview({ result, reviewResult = { state: "absent", reason: "not_read" }, activityResult, readSpendingBreakdown = NO_SPENDING_READER, selectedAccount, showVerificationDetails, onNavigate, onOpenEvidence, onOpenFigure, onInspectDocument = () => undefined, onInspectAccount = () => undefined, onAskViva = null, onSetAsideFinding = null, settingAsideFindingId = "", findingReceipt = null, onExploreSample, openingSample = false }: { result: FeatureResult<OverviewData>; reviewResult?: FeatureResult<ReviewData>; conversationResult?: FeatureResult<ConversationData>; activityResult: FeatureResult<ActivityData>; readSpendingBreakdown?: (request: SpendingRequest) => Promise<FeatureResult<SpendingBreakdownData>>; selectedAccount: string; showVerificationDetails: boolean; onOpenReviewQuestion?: (id: string) => void; onNavigate: (destination: Destination) => void; onOpenEvidence: (link: EvidenceLink) => void; onOpenFigure: (figureId: string) => void; onInspectDocument?: (documentId: string) => void; onInspectAccount?: (accountId: string) => void; onAskViva?: (() => void) | null; onSetAsideFinding?: ((findingId: string) => void) | null; settingAsideFindingId?: string; findingReceipt?: { findingId: string; result: ActionResult } | null; onExploreSample: () => void; openingSample?: boolean }) {
-  const reviewCompact = compactReviewState(reviewResult);
+export function Overview({ result, reviewResult = { state: "absent", reason: "not_read" }, activityResult, readSpendingBreakdown = NO_SPENDING_READER, selectedAccount, showVerificationDetails, onNavigate, onOpenEvidence, onOpenFigure, onInspectDocument = () => undefined, onInspectAccount = () => undefined, onAskViva = null, onSetAsideFinding = null, settingAsideFindingId = "", findingReceipt = null, onExploreSample, openingSample = false, accountingReader }: { result: FeatureResult<OverviewData>; reviewResult?: FeatureResult<ReviewData>; conversationResult?: FeatureResult<ConversationData>; activityResult: FeatureResult<ActivityData>; readSpendingBreakdown?: (request: SpendingRequest) => Promise<FeatureResult<SpendingBreakdownData>>; selectedAccount: string; showVerificationDetails: boolean; onOpenReviewQuestion?: (id: string) => void; onNavigate: (destination: Destination) => void; onOpenEvidence: (link: EvidenceLink) => void; onOpenFigure: (figureId: string) => void; onInspectDocument?: (documentId: string) => void; onInspectAccount?: (accountId: string) => void; onAskViva?: (() => void) | null; onSetAsideFinding?: ((findingId: string) => void) | null; settingAsideFindingId?: string; findingReceipt?: { findingId: string; result: ActionResult } | null; onExploreSample: () => void; openingSample?: boolean; accountingReader?: AccountingReader }) {
+  void reviewResult;
   const activityData = activityResult.state === "ready" || activityResult.state === "partial" || activityResult.state === "needs_input" ? activityResult.data : null;
   // A few, not all. The whole list lives on the screen that is about it, and a
   // second full list here would be a second place a person had to check.
@@ -68,6 +55,7 @@ export function Overview({ result, reviewResult = { state: "absent", reason: "no
     // number to put there.
     const pictureStanding = data.picture.coverage;
     return <>
+      {data.accounting ? <AccountingReports report={data.accounting} accountingReader={accountingReader} onInspectDocument={onInspectDocument} /> : null}
       <section className="hero-grid">
         {pictureBlocks.length || pictureStanding.trim() ? <div className="hero-card">
           <div className="card-topline"><h2>Net worth</h2></div>
@@ -137,10 +125,7 @@ export function Overview({ result, reviewResult = { state: "absent", reason: "no
           const accountObligations = utility.obligations.filter((obligation) => obligation.accountIds.includes(account.id));
           return <div className={pressed ? "account-card active" : "account-card"} key={row.key}><button data-overview-account-id={account.id} type="button" className="account-card-button" aria-pressed={pressed} onClick={() => onInspectAccount(account.id)}><div className="account-icon">{account.name.trim().slice(0, 1) || "?"}</div><div className="account-copy"><div className="account-name">{accountName(account)}</div><div className="account-kind">{accountKind(account)}</div>{showCompactProof(account.proofPresentation, showVerificationDetails) ? <div className="account-note compact-proof"><span className={`mini-dot ${account.grade}`} />{account.gradeLabel}{account.note ? ` · ${account.note}` : ""}</div> : null}</div></button><Figure figure={accountEvidenceFigure(account)} onOpenEvidence={onOpenFigure} className="account-amount" />{accountObligations.map((obligation) => <p className="account-obligation" key={obligation.id}>{obligation.headline}</p>)}<ProofQualifications proof={account.proofPresentation} alreadyRendered={[account.gradeLabel, account.note ?? "", ...(account.caveats ?? [])]} /><ProofCaveats caveats={account.caveats ?? []} /><ProofLinks label="View source" links={account.evidenceLinks} onOpen={onOpenEvidence} /></div>;
         })}</div>
-        {/* Review remains one compact route inside the later account section.
-            It does not interrupt the primary picture sequence or reproduce
-            the question queue already available from the top bar. */}
-        <div className="overview-review-summary" aria-labelledby="overview-review-title"><div><span>Review</span><h2 id="overview-review-title">{reviewCompact.title}</h2>{reviewCompact.detail ? <p>{reviewCompact.detail}</p> : null}{reviewCompact.count !== null ? <small>{reviewCompact.count} actionable</small> : null}</div><button type="button" className="secondary-button" onClick={() => onNavigate("review")}>Open Review <ArrowUpRight className="action-icon" /></button></div>
+
       </section>
       {utility.state === "ready" && utility.findings.length ? <section className="section-block finding-block" aria-labelledby="overview-findings-title"><div className="section-heading utility-subheading"><div><div className="section-kicker">Worth a look</div><h2 id="overview-findings-title">Quiet findings</h2></div>{utility.findingCount > utility.findings.length ? <span>{utility.findingCount - utility.findings.length} more held back</span> : null}</div><div className="utility-grid">{utility.findings.map((finding) => { const working = settingAsideFindingId === finding.id; const receipt = findingReceipt?.findingId === finding.id && findingReceipt.result.state !== "settled" ? channelPresentation(findingReceipt.result) : null; return <article className="utility-card finding-card" key={finding.id}><div className="utility-card-topline"><strong>{finding.headline}</strong><span>{finding.amountDisplay}</span></div><p>{finding.explanation}</p><small>{finding.coverage}</small>{receipt ? <div className="unavailable-callout" role="status"><strong>{receipt.title}</strong><span>{receipt.detail}</span></div> : null}<div className="utility-actions">{finding.actions.includes("inspect") && finding.evidenceIds[0] ? <button type="button" className="secondary-button" onClick={() => onInspectDocument(finding.evidenceIds[0])}>Inspect</button> : null}{finding.actions.includes("ask_viva") && onAskViva ? <button type="button" className="text-button" onClick={onAskViva}>Ask Viva</button> : null}{finding.actions.includes("set_aside") && onSetAsideFinding ? <button type="button" className="text-button" aria-disabled={working} onClick={() => onSetAsideFinding(finding.id)}>{working ? "Setting aside…" : "Set aside"}</button> : null}</div></article>; })}</div></section> : null}
       {/* The tail of what moved, read off the activity surface rather than

@@ -83,8 +83,19 @@ def score_one(case: dict, interp, raw_text: str = "") -> dict:
     accept = [sorted(a) for a in case["accept"]]
     problems = []
 
+    # Grade the captured model claim, before the product's allocation guard
+    # strips unsupported measurements. Safe application is not model accuracy.
+    try:
+        claimed = json.loads(raw_text) if raw_text else {}
+    except (ValueError, TypeError):
+        claimed = {}
+    # Use the product's rate parser: an unreadable optional marker such as
+    # "unknown" is missing evidence, rather than a fabricated measurement.
+    typed_claim = read_reply(EVAL_SLOTS, claimed) if isinstance(claimed, dict) else None
+    raw_legs = typed_claim.values.get("legs", []) if typed_claim else []
+    claimed_share = any(leg.get("share") not in (None, "") for leg in raw_legs)
     # RUIN 1 — a share, where the case records that nobody stated one.
-    if not case.get("shares_stated") and any(leg.get("share") for leg in interp.legs):
+    if not case.get("shares_stated") and (claimed_share or any(leg.get("share") for leg in interp.legs)):
         problems.append((RUIN, "invented a split nobody stated"))
     # RUIN 2 — a figure from the model's own head.
     if '"amount"' in (raw_text or "") or any("amount" in leg for leg in interp.legs):

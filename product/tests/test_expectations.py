@@ -12,7 +12,8 @@ from viva.ingest import (Deduction, PayStubFacts, RawStore, ReadResult,
                          StatementFacts, TxnFact, capture_and_ingest)
 from viva.knowledge import evaluate
 from viva.ledger import EventStore, Ledger, Provenance
-from viva.questions import EXPECTATION, open_questions
+from viva.questions import EXPECTATION
+from product.tests._requested_question_support import _requested_questions as open_questions
 from viva.vault import Vault
 from viva import engine
 

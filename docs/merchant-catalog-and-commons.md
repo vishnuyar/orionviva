@@ -96,7 +96,7 @@
 ### MER-49 — An unknown merchant stays unknown while its movement gets a replaceable default
 **State:** enforced
 **Code:** product/viva/ledger/projection/categories.py (`derived_category` and `_record_for`), product/viva/ingest/categorize.py (`assign_default_categories`), product/viva/engine.py (`upload`)
-**Test:** product/tests/test_categorize.py::test_import_defaults_peer_payments_before_asking_questions, product/tests/test_merchants.py::test_merchant_ruling_fills_all_its_transactions
+**Test:** product/tests/test_categorize.py::test_import_defaults_peer_payments_without_assuming_transfer, product/tests/test_merchants.py::test_merchant_ruling_fills_all_its_transactions
 
 1. A successfully posted bank or card statement gives each otherwise unknown movement an unverified, movement-scoped first category, so import does not become an interview. A grammar slot that declared a person permits the `transfers` default and its transfer treatment, keeping it outside spending unless the person corrects it; every other unidentified movement starts at `other` and ordinary spending treatment.
 2. The default does not identify the merchant and does not generalize to older or future movements. Eligible unknown merchants join the pending enrichment set; structurally insufficient hints are withheld entirely. Historical pending entries remain independently of current eligibility. Later admissibly matched catalog knowledge replaces the default on the read side.

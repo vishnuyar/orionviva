@@ -8,7 +8,7 @@ from viva.demo import build_demo_vault
 from viva.demo import DEMO_PASSPHRASE
 from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
 from viva.ingest.reader import live_reading_configured
-from viva.ledger import Provenance
+from viva.ledger import Event, Provenance
 from viva.ledger.events import (account_alias_confirmed, account_identity_observed,
                                 agent_acted, category_assigned,
                                 conversation_proposal_recorded,
@@ -16,8 +16,9 @@ from viva.ledger.events import (account_alias_confirmed, account_identity_observ
                                 conversation_turn_settled, finding_set_aside,
                                 goal_proposal_recorded,
                                 merchant_categorized, movement_tagged, read_recorded,
-                                transfer_suggested)
+                                transfer_suggested, ruling_recorded)
 from viva.questions import ACTIONABLE_QUESTION_WINDOW, open_questions
+from viva.surface.accounting import accounting
 from viva.surface.account_ledger import account_ledger
 from viva.surface.activity import activity
 from viva.surface.conversation import timeline
@@ -42,6 +43,13 @@ def _add_optional_events(vault):
     cited = Provenance("source-雪", 0, "line ☕", "0.0000")
     movement = vault.ledger.projection().movements()[0].key
     additions = (
+        ruling_recorded("movement", movement, "2026-03-01",
+                        legs=[{"major": "expense", "account": "Expenses:Uncategorized", "share": "1"}],
+                        by="model", grade="unverified", grounds="Synthetic categorical evidence",
+                        source_refs=["optional-reading"], evidence_signature="synthetic-signature"),
+        Event("TransactionRecorded", "2026-03-01",
+              body={"description": "Optional matching evidence", "postings": [],
+                    "tags": [], "matched_movement_key": movement}, provenance=cited),
         category_assigned(movement, "Synthetic", "Food", "verified",
                           "2026-03-01", subcategory="", provenance=cited),
         category_assigned(movement, "Synthetic", "Food", "verified",
@@ -101,6 +109,7 @@ def _oracle(vault, provider, revision):
     trust_events = vault.events()
     return {
         ("overview", "current"): current_overview,
+        ("accounting", "current"): accounting(projection, "en-US", READ_ON),
         ("overview", "historical"): overview(historical, "en-US", READ_ON),
         ("overview_accounts", "current"): {
             "state": "ready", "freshness": "current",
@@ -132,6 +141,8 @@ def _parameters(route, variant):
     if route == "overview":
         return {"read_on": READ_ON, **({"as_of": HISTORY}
                                      if variant == "historical" else {})}
+    if route == "accounting":
+        return {"read_on": READ_ON}
     if route == "overview_accounts":
         return {"read_on": READ_ON}
     if route == "spending":
@@ -203,8 +214,10 @@ def test_movement_only_category_does_not_enter_merchant_choice_vocabulary(
         "2026-03-01"))
     provider = OpenedVaultSurfaceProvider(vault)
     def choices():
-        questions = provider.read_surface(
-            "conversation", {"as_of": QUESTION_AS_OF})["questions"]
+        from product.tests._requested_question_support import _requested_sql_questions
+        with vault.read_store.open_reader() as revision:
+            questions = _requested_sql_questions(
+                revision, as_of=QUESTION_AS_OF, locale="en-US", limit=None)["questions"]
         return next(question["refs"]["categories"] for question in questions
                     if question["kind"] == "merchant")
     assert "Only-Movement-Choice" not in choices()

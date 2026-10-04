@@ -92,7 +92,9 @@ export function adaptTurn(raw: unknown): TurnView | null {
       ? [{ tag, label, question, requestedFamily, requestedLabel, supportedFamilies }]
       : [];
   });
+  const correction = isRecord(raw.accounting_correction) ? raw.accounting_correction : null;
   return {
+    ...(correction && textValue(correction.id) ? { accountingCorrection: { id: textValue(correction.id), movementIds: Array.isArray(correction.movement_ids) ? correction.movement_ids.map(textValue).filter(Boolean) : [], ruleId: textValue(correction.rule_id) } } : {}),
     question: textValue(raw.question),
     text,
     answered: booleanValue(raw.answered) === true,

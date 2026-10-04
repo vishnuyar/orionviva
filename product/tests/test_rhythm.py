@@ -1,17 +1,13 @@
-"""What kind of arrangement is this — the first hypothesis Viva forms.
+"""Explicitly requested structured editors retain checked reading and evidence.
 
-Two things meet, and each does one half of the work. The catalog's billing
-model is impersonal world knowledge, and all it may do is license a question.
-The ledger's own measurement is the only thing that may claim a cadence, and
-where there is not enough of it, nothing claims one.
-
-So these tests assert the difference between what was counted and what is
-merely supposed, and that the queue can be driven to empty on this axis: a
-question answered is a question that does not come back.
+Classification and interview builders here are invoked deliberately; the public
+default queue stays quiet and is covered by separate automatic-accounting tests.
 """
 
 import types
 from decimal import Decimal
+from _requested_question_support import _requested_questions, _requested_pending_questions
+
 
 import pytest
 from merchantcore.enrich import (BILLING_PERIODS, BILLINGS, KIND_BUSINESS,
@@ -113,7 +109,7 @@ def _monthly(n=4, amount="-14.99", description="LUMEN STREAMING"):
 
 
 def _rhythm_questions(source):
-    return [q for q in open_questions(source, as_of="2026-06-01")["questions"]
+    return [q for q in _requested_questions(source, as_of="2026-06-01")["questions"]
             if q["kind"] == RHYTHM]
 
 
@@ -124,7 +120,7 @@ def _vault(ledger):
 
 # --- the prior licenses the question, and nothing else does -----------------
 
-def test_a_merchant_with_no_billing_prior_is_never_asked_about(tmp_path):
+def test_requested_a_merchant_with_no_billing_prior_is_never_asked_about(tmp_path):
     """Silence is the default. Without world knowledge that an arrangement is
     even possible, a run of payments is a run of payments."""
     proj = _proj(_monthly(), extra=[_prior("lumen streaming")])
@@ -132,7 +128,7 @@ def test_a_merchant_with_no_billing_prior_is_never_asked_about(tmp_path):
     assert _rhythm_questions(proj) == []
 
 
-def test_a_merchant_billed_only_per_purchase_is_never_asked_about():
+def test_requested_a_merchant_billed_only_per_purchase_is_never_asked_about():
     """The settled rung on a new axis: a business one only ever buys from
     implies no arrangement, however many times it was bought from."""
     proj = _proj(_monthly(n=6, description="CORNER COFFEE"),
@@ -140,7 +136,7 @@ def test_a_merchant_billed_only_per_purchase_is_never_asked_about():
     assert _rhythm_questions(proj) == []
 
 
-def test_a_standing_prior_raises_one_grouped_proposal_per_pair():
+def test_requested_a_standing_prior_raises_one_grouped_proposal_per_pair():
     proj = _proj(_monthly(), extra=[_prior(BRAND, "standing", "monthly")])
     (q,) = _rhythm_questions(proj)
     assert q["scope"] == "pattern"
@@ -157,7 +153,7 @@ def _measured_says() -> str:
     return persona.load()["phrasings"]["rhythm_measured"].split("{days}")[0]
 
 
-def test_an_unmeasured_proposal_states_no_cadence():
+def test_requested_an_unmeasured_proposal_states_no_cadence():
     """Two sightings cannot make a rhythm. The sentence may say who they are
     and how many there have been, and must not say how often."""
     proj = _proj(_monthly(n=2), extra=[_prior(BRAND, "standing", "monthly")])
@@ -169,7 +165,7 @@ def test_an_unmeasured_proposal_states_no_cadence():
     assert q["why"] == say("rhythm_why_prior")
 
 
-def test_a_measured_rhythm_says_what_the_records_measured():
+def test_requested_a_measured_rhythm_says_what_the_records_measured():
     proj = _proj(_monthly(), extra=[_prior(BRAND, "standing", "annual")])
     (q,) = _rhythm_questions(proj)
     assert q["refs"]["measured"] is True and q["refs"]["cadence"] == "monthly"
@@ -181,7 +177,7 @@ def test_a_measured_rhythm_says_what_the_records_measured():
     assert q["why"] == say("rhythm_why_measured")
 
 
-def test_a_measured_rhythm_is_available_to_financial_reporting():
+def test_requested_a_measured_rhythm_is_available_to_financial_reporting():
     proj = _proj(_monthly(), extra=[_prior(BRAND, "standing", "annual")])
 
     result = ledger_tools.query_ledger(
@@ -199,7 +195,7 @@ def test_a_measured_rhythm_is_available_to_financial_reporting():
     assert "not a forecast" in result.caveats[0]
 
 
-def test_a_steady_rhythm_the_vocabulary_cannot_name_proposes_nothing_from_it():
+def test_requested_a_steady_rhythm_the_vocabulary_cannot_name_proposes_nothing_from_it():
     """A confirmable arrangement is one of four words. A flow measured steady
     at an interval none of them names states what it measured and proposes
     nothing — neither rounded to a neighbouring word, nor handed back to the
@@ -220,7 +216,7 @@ def test_a_steady_rhythm_the_vocabulary_cannot_name_proposes_nothing_from_it():
     assert q["why"] == say("rhythm_why_measured")
 
 
-def test_a_quarterly_arrangement_states_its_interval_and_proposes_nothing():
+def test_requested_a_quarterly_arrangement_states_its_interval_and_proposes_nothing():
     """The same rule at the other end of the vocabulary. A quarter is a real
     arrangement and a steady one, and `quarterly` is not one of the four words
     a person may confirm — so the reading states the interval it measured and
@@ -249,7 +245,7 @@ def _irregular(description="BOREA MARKET"):
     return [(d, description, a) for d, a in zip(when, amounts)]
 
 
-def test_a_flow_with_no_rhythm_in_it_measured_that_and_says_so():
+def test_requested_a_flow_with_no_rhythm_in_it_measured_that_and_says_so():
     """Enough observations means something was measured, and where the spacing
     never settles the thing measured is that these do not come round on a
     pattern. `irregular` is one of the four words a person may confirm, so it
@@ -267,7 +263,7 @@ def test_a_flow_with_no_rhythm_in_it_measured_that_and_says_so():
     assert q["why"] == say("rhythm_why_irregular")
 
 
-def test_a_measured_absence_of_rhythm_beats_what_the_world_says():
+def test_requested_a_measured_absence_of_rhythm_beats_what_the_world_says():
     """The ledger wins where the two disagree, and an absence of rhythm is
     something the ledger said. A prior of monthly against twelve movements that
     settle into nothing proposes irregular, never monthly, and never tells a
@@ -283,7 +279,7 @@ def test_a_measured_absence_of_rhythm_beats_what_the_world_says():
     assert q["why"] != say("rhythm_why_prior")
 
 
-def test_the_prior_speaks_only_where_there_was_nothing_to_measure():
+def test_requested_the_prior_speaks_only_where_there_was_nothing_to_measure():
     """Where the supposing sentence may appear, tested by shape. It rests on
     world knowledge instead of this relationship, so it is honest only below
     the floor at which a relationship can be measured at all — and every vault
@@ -310,7 +306,7 @@ def test_the_prior_speaks_only_where_there_was_nothing_to_measure():
     assert seen == {True, False}, "the battery must contain both shapes"
 
 
-def test_the_same_merchant_seen_once_and_seen_often_asks_the_same_question():
+def test_requested_the_same_merchant_seen_once_and_seen_often_asks_the_same_question():
     """Both arrival paths, one mechanism. A first sighting and a data dump ask
     the same kind of question with the same answer space — and say visibly
     different things, because they know different amounts."""
@@ -324,7 +320,7 @@ def test_the_same_merchant_seen_once_and_seen_often_asks_the_same_question():
     assert first["refs"]["measured"] is False and dump["refs"]["measured"] is True
 
 
-def test_a_question_is_ranked_on_money_already_measured():
+def test_requested_a_question_is_ranked_on_money_already_measured():
     """A stake is a ranking key, never a spoken figure — and never a projection
     about what a relationship will move next."""
     proj = _proj(_monthly(n=3), extra=[_prior(BRAND, "standing")])
@@ -353,7 +349,7 @@ def _mixture(subscription="-14.99", visits=("-38.20", "-71.45", "-19.90",
     return sorted(txns)
 
 
-def test_a_counterparty_that_is_two_things_gets_no_cadence_over_the_mixture():
+def test_requested_a_counterparty_that_is_two_things_gets_no_cadence_over_the_mixture():
     """A merchant that is both a repeating charge on the 1st and a shop visit
     on the 16th has a pooled interval of fifteen days and no arrangement that
     runs every fifteen days. No cadence, interval or sameness of amount is
@@ -366,7 +362,7 @@ def test_a_counterparty_that_is_two_things_gets_no_cadence_over_the_mixture():
     assert q["refs"]["cadence"] == "" and q["refs"]["proposed"] == []
 
 
-def test_a_mixture_states_what_it_saw_of_each_part_and_asks_which_is_which():
+def test_requested_a_mixture_states_what_it_saw_of_each_part_and_asks_which_is_which():
     """It does not go silent either: the reading names the mixture, states the
     count and the money of each part, and asks. Of neither part does it assert
     that the part is an arrangement — that is what is being asked."""
@@ -388,7 +384,7 @@ def test_a_mixture_states_what_it_saw_of_each_part_and_asks_which_is_which():
     assert len(parts) == len(set(parts)) == q["count"]
 
 
-def test_a_mixture_with_plenty_of_records_never_claims_there_is_too_little():
+def test_requested_a_mixture_with_plenty_of_records_never_claims_there_is_too_little():
     """A mixture is a reading of what the records do show, so it never borrows
     the sentence that exists for having seen almost nothing: a person holding
     twelve movements is not told there is too little here to see a pattern."""
@@ -406,7 +402,7 @@ def test_a_mixture_with_plenty_of_records_never_claims_there_is_too_little():
     assert poverty != q["why"] and poverty not in q["text"]
 
 
-def test_every_statistic_belongs_to_the_part_it_was_measured_over():
+def test_requested_every_statistic_belongs_to_the_part_it_was_measured_over():
     """A component is the largest set anything may describe. The repeating part
     is monthly because its own five dates are a month apart, not because the
     ten movements together were called anything."""
@@ -422,7 +418,7 @@ def test_every_statistic_belongs_to_the_part_it_was_measured_over():
     assert varying.amount_stability == "variable"
 
 
-def test_a_relationship_that_is_one_thing_is_still_described_as_one():
+def test_requested_a_relationship_that_is_one_thing_is_still_described_as_one():
     """The decomposition is not a new way of going quiet. Where every amount
     repeats, or where none of them does, there is one thing to describe and it
     is described exactly as it was before."""
@@ -455,7 +451,7 @@ def _flow_over(proj, movement_keys, direction) -> Flow:
                              for k in movement_keys])
 
 
-def test_no_sentence_claims_a_shape_over_movements_not_measured_as_one():
+def test_requested_no_sentence_claims_a_shape_over_movements_not_measured_as_one():
     """The rule, tested by shape rather than by fixture.
 
     A cadence, an interval and a sameness of amount are claims about one thing.
@@ -532,7 +528,7 @@ def test_no_sentence_claims_a_shape_over_movements_not_measured_as_one():
     assert seen == {True, False}, "the battery must contain both shapes"
 
 
-def test_which_is_which_is_recorded_as_one_set_valued_ruling(tmp_path):
+def test_requested_which_is_which_is_recorded_as_one_set_valued_ruling(tmp_path):
     """"The fixed ones are monthly, the rest is just shopping" has a vessel
     already: one subject, one value carrying both words. No new event type, no
     second subject, and nothing claiming which movements are which — the ruling
@@ -555,7 +551,7 @@ def test_which_is_which_is_recorded_as_one_set_valued_ruling(tmp_path):
     assert recorded.body["value"] == "monthly+irregular"
 
 
-def test_the_decomposition_does_not_depend_on_the_order_movements_arrived():
+def test_requested_the_decomposition_does_not_depend_on_the_order_movements_arrived():
     forwards = _proj(_mixture(), extra=[_prior("borea market", "either")])
     backwards = _proj(list(reversed(_mixture())),
                       extra=[_prior("borea market", "either")])
@@ -565,7 +561,7 @@ def test_the_decomposition_does_not_depend_on_the_order_movements_arrived():
 
 # --- direction is part of the subject ---------------------------------------
 
-def test_money_out_and_money_back_are_two_arrangements():
+def test_requested_money_out_and_money_back_are_two_arrangements():
     """One relationship, two rhythms. A brokerage taking contributions and
     paying distributions is the case this exists for."""
     both = _monthly(n=3) + [("2026-02-20", "LUMEN STREAMING", "9.00")]
@@ -584,7 +580,7 @@ def _half_on_a_card(months=12):
                for month in range(half + 1, months + 1)])
 
 
-def test_a_merchant_paid_from_two_account_kinds_is_one_arrangement():
+def test_requested_a_merchant_paid_from_two_account_kinds_is_one_arrangement():
     """One subscription is one relationship, whichever account paid it.
 
     Six months from checking and six on a card form one outflow of twelve,
@@ -602,7 +598,7 @@ def test_a_merchant_paid_from_two_account_kinds_is_one_arrangement():
     assert say("rhythm_direction_out") in q["text"]
 
 
-def test_confirming_one_direction_leaves_the_other_asked(tmp_path):
+def test_requested_confirming_one_direction_leaves_the_other_asked(tmp_path):
     both = _monthly(n=3) + [("2026-02-20", "LUMEN STREAMING", "9.00")]
     ledger = _ledger(tmp_path, both)
     ledger.append(_prior(BRAND, "standing"))
@@ -613,7 +609,7 @@ def test_confirming_one_direction_leaves_the_other_asked(tmp_path):
 
 # --- a question that was answered does not come back ------------------------
 
-def test_an_answered_rhythm_question_is_never_asked_again(tmp_path):
+def test_requested_an_answered_rhythm_question_is_never_asked_again(tmp_path):
     """The queue can be driven to empty on this axis.
 
     A rhythm ruling covers the whole pair the question was asked about, so
@@ -627,12 +623,12 @@ def test_an_answered_rhythm_question_is_never_asked_again(tmp_path):
 
     after = _rhythm_questions(ledger)
     assert before["id"] not in [q["id"] for q in after] and not after
-    assert not [q for q in pending_questions(ledger)["questions"]
+    assert not [q for q in _requested_pending_questions(ledger)["questions"]
                 if q["kind"] == RHYTHM]
     assert find_question(ledger, before["id"], as_of="2026-06-01") is None
 
 
-def test_more_of_the_same_money_does_not_reopen_a_confirmed_rhythm(tmp_path):
+def test_requested_more_of_the_same_money_does_not_reopen_a_confirmed_rhythm(tmp_path):
     """And it stays answered as the relationship goes on. A decline returns
     when its stake moves; a confirmation does not, because it was an answer."""
     ledger = _ledger(tmp_path, _monthly())
@@ -643,7 +639,7 @@ def test_more_of_the_same_money_does_not_reopen_a_confirmed_rhythm(tmp_path):
     assert not _rhythm_questions(ledger)
 
 
-def test_a_confirmed_pair_is_still_carried_by_the_hypothesis(tmp_path):
+def test_requested_a_confirmed_pair_is_still_carried_by_the_hypothesis(tmp_path):
     """Suppressed from the queue, and not hidden from the read: what was
     confirmed and what is measured sit beside each other in one read."""
     ledger = _ledger(tmp_path, _monthly())
@@ -655,7 +651,7 @@ def test_a_confirmed_pair_is_still_carried_by_the_hypothesis(tmp_path):
 
 # --- one subject, several arrangements, and a way to take one back ----------
 
-def test_a_relationship_can_hold_two_periodicities_at_once(tmp_path):
+def test_requested_a_relationship_can_hold_two_periodicities_at_once(tmp_path):
     ledger = _ledger(tmp_path, _monthly())
     ledger.append(_prior(BRAND, "standing"))
     record_rhythm(_vault(ledger), BRAND, "out", ["monthly", "annual"],
@@ -663,7 +659,7 @@ def test_a_relationship_can_hold_two_periodicities_at_once(tmp_path):
     assert ledger.projection().rhythm_of(BRAND, "out") == ("monthly", "annual")
 
 
-def test_re_answering_replaces_rather_than_accumulates(tmp_path):
+def test_requested_re_answering_replaces_rather_than_accumulates(tmp_path):
     """A correction is an ordinary re-answer on one subject: the later value
     is what answers, and nothing accumulates."""
     ledger = _ledger(tmp_path, _monthly())
@@ -674,7 +670,7 @@ def test_re_answering_replaces_rather_than_accumulates(tmp_path):
     assert ledger.projection().rhythm_of(BRAND, "out") == ("annual",)
 
 
-def test_the_written_value_does_not_depend_on_the_order_of_an_answer(tmp_path):
+def test_requested_the_written_value_does_not_depend_on_the_order_of_an_answer(tmp_path):
     ledger = _ledger(tmp_path, _monthly())
     one = record_rhythm(_vault(ledger), BRAND, "out", ["annual", "monthly"])
     two = record_rhythm(_vault(ledger), "borea", "out", ["monthly", "annual"])
@@ -683,7 +679,7 @@ def test_the_written_value_does_not_depend_on_the_order_of_an_answer(tmp_path):
 
 # --- a key change must not orphan a ruling ----------------------------------
 
-def test_a_ruling_under_a_descriptor_key_answers_after_the_brand_is_named():
+def test_requested_a_ruling_under_a_descriptor_key_answers_after_the_brand_is_named():
     """A merchant key can change under a recorded ruling — a grammar induced
     later names the brand — and a brand covers every descriptor its name was
     printed in. The answer survives the rename from either of them, so a ruling
@@ -710,7 +706,7 @@ def test_a_ruling_under_a_descriptor_key_answers_after_the_brand_is_named():
         assert not _rhythm_questions(after)
 
 
-def test_the_latest_thing_a_person_said_is_the_one_that_answers():
+def test_requested_the_latest_thing_a_person_said_is_the_one_that_answers():
     """One relationship, two descriptors, two answers — and the one that
     stands is the one said last.
 
@@ -747,7 +743,7 @@ def test_the_latest_thing_a_person_said_is_the_one_that_answers():
     assert shuffled.rhythm_of(BRAND, "out") == ("annual",)
 
 
-def test_a_prior_under_a_descriptor_key_survives_a_grammar_naming_the_brand():
+def test_requested_a_prior_under_a_descriptor_key_survives_a_grammar_naming_the_brand():
     """The same crack, on the other half of the question.
 
     A merchant enriched before a grammar existed carries its record under the
@@ -775,7 +771,7 @@ def test_a_prior_under_a_descriptor_key_survives_a_grammar_naming_the_brand():
 
 # --- what the ledger will accept --------------------------------------------
 
-def test_a_periodicity_outside_the_closed_set_raises_at_construction():
+def test_requested_a_periodicity_outside_the_closed_set_raises_at_construction():
     with pytest.raises(ValueError):
         ruling_recorded(SCOPE_RHYTHM, f"{BRAND}|out", "2026-04-02",
                         value="fortnightly", said="every other week")
@@ -785,19 +781,19 @@ def test_a_periodicity_outside_the_closed_set_raises_at_construction():
                         value="monthly+whenever", said="")
 
 
-def test_a_rhythm_ruling_with_nothing_confirmed_raises():
+def test_requested_a_rhythm_ruling_with_nothing_confirmed_raises():
     with pytest.raises(ValueError):
         ruling_recorded(SCOPE_RHYTHM, f"{BRAND}|out", "2026-04-02", value="")
 
 
-def test_a_rhythm_subject_names_a_counterparty_and_a_direction():
+def test_requested_a_rhythm_subject_names_a_counterparty_and_a_direction():
     with pytest.raises(ValueError):
         ruling_recorded(SCOPE_RHYTHM, BRAND, "2026-04-02", value="monthly")
     with pytest.raises(ValueError):
         ruling_recorded(SCOPE_RHYTHM, "|out", "2026-04-02", value="monthly")
 
 
-def test_a_direction_outside_the_two_the_ledger_measures_raises():
+def test_requested_a_direction_outside_the_two_the_ledger_measures_raises():
     """Both halves of the subject are closed, for one reason. Money moves one
     of two ways and the statistics are measured one of two ways, so a subject
     naming any other direction is one no read could ever answer — and in an
@@ -813,7 +809,7 @@ def test_a_direction_outside_the_two_the_ledger_measures_raises():
                                "2026-04-02", value="monthly", said="monthly")
 
 
-def test_the_value_fence_still_holds_everywhere_else():
+def test_requested_the_value_fence_still_holds_everywhere_else():
     """Admitting rhythm scope is a net tightening, not a hole: every other
     scope still carries no value at all."""
     with pytest.raises(ValueError):
@@ -827,7 +823,7 @@ def test_the_value_fence_still_holds_everywhere_else():
 
 # --- the boundary, and the shape of the read --------------------------------
 
-def test_a_person_shaped_stream_reaches_no_prompt_no_catalog_and_no_question():
+def test_requested_a_person_shaped_stream_reaches_no_prompt_no_catalog_and_no_question():
     """A stream a grammar named as a person never crosses to enrichment, so it
     can hold no billing prior, so it can raise no question. The fence is that
     nothing about a person is ever asked of a model in the first place."""
@@ -880,7 +876,7 @@ def _key_for(proj, description):
                 if m.description == description)
 
 
-def test_a_slot_declared_person_contributes_no_flow_however_steady_or_licensed():
+def test_requested_a_slot_declared_person_contributes_no_flow_however_steady_or_licensed():
     """A person a grammar slot declared is out of the measurement itself: no
     flow, no hypothesis, no question — for the steady monthly run and the
     erratic one alike, each carrying a record that says everything a record can
@@ -899,7 +895,7 @@ def test_a_slot_declared_person_contributes_no_flow_however_steady_or_licensed()
     assert _rhythm_questions(proj) == []
 
 
-def test_a_merchant_on_the_same_rail_still_reaches_a_rhythm_question():
+def test_requested_a_merchant_on_the_same_rail_still_reaches_a_rhythm_question():
     """The same bank, the same rail and the same monthly shape still propose an
     arrangement where a slot named a brand rather than a party."""
     txns = _peer_txns()
@@ -931,7 +927,7 @@ _ANY_COUNT = (1, 2, MIN_FOR_CADENCE, MIN_FOR_CADENCE + 3)
 
 
 @pytest.mark.parametrize("kind", [KIND_PEER, KIND_INSTRUMENT])
-def test_a_counterparty_that_is_not_a_business_is_asked_nothing(kind):
+def test_requested_a_counterparty_that_is_not_a_business_is_asked_nothing(kind):
     """An arrangement is a thing one has with a business. A record naming any
     other kind of counterparty raises no hypothesis and no question, whatever
     the world says about how they bill, however the record is graded, and on
@@ -947,7 +943,7 @@ def test_a_counterparty_that_is_not_a_business_is_asked_nothing(kind):
                 assert _rhythm_questions(proj) == [], where
 
 
-def test_a_record_that_names_no_counterparty_kind_licenses_nothing():
+def test_requested_a_record_that_names_no_counterparty_kind_licenses_nothing():
     """The fence fails closed. A reply naming a kind outside the closed set
     leaves a record carrying its billing model and no kind at all, and that
     record licenses nothing: what is missing withholds rather than passes."""
@@ -968,7 +964,7 @@ def test_a_record_that_names_no_counterparty_kind_licenses_nothing():
                 assert _rhythm_questions(proj) == [], where
 
 
-def test_a_business_record_still_reaches_both_branches_of_the_read():
+def test_requested_a_business_record_still_reaches_both_branches_of_the_read():
     """The licensed kind is the ordinary case, and it reaches both branches.
     Above the floor the measurement speaks and below it the world's knowledge
     does, and both arrive as one question."""
@@ -994,7 +990,7 @@ def _flow_shapes(proj):
             rhythm_read._flows_by_merchant(proj._core).items()}
 
 
-def test_the_flows_the_ledger_measures_do_not_depend_on_the_catalog():
+def test_requested_the_flows_the_ledger_measures_do_not_depend_on_the_catalog():
     """What is withheld is the question, never the measurement.
 
     The same movements form the same flows, holding the same counts and the
@@ -1029,7 +1025,7 @@ def _licensed(proj):
             for h in proj.rhythm_hypotheses()}
 
 
-def test_no_catalog_value_licenses_a_pair_the_billing_prior_alone_would_not(
+def test_requested_no_catalog_value_licenses_a_pair_the_billing_prior_alone_would_not(
         monkeypatch):
     """The conjunction property, over every combination of catalog values.
 
@@ -1058,7 +1054,7 @@ def test_no_catalog_value_licenses_a_pair_the_billing_prior_alone_would_not(
     assert narrowed_somewhere, "the second fact never withheld anything"
 
 
-def test_a_withheld_pair_stays_withheld_whatever_order_the_ledger_filled_in():
+def test_requested_a_withheld_pair_stays_withheld_whatever_order_the_ledger_filled_in():
     """The fence is part of a pure function of the movement set: a person who
     loads a year in one afternoon and a person who loads a statement a month
     reach the same silence, and a record arriving after the movements changes
@@ -1077,7 +1073,7 @@ def test_a_withheld_pair_stays_withheld_whatever_order_the_ledger_filled_in():
         assert late.rhythm_hypotheses() == []
 
 
-def test_the_hypothesis_is_a_pure_function_of_the_movement_set():
+def test_requested_the_hypothesis_is_a_pure_function_of_the_movement_set():
     """Order in, same beliefs out — a person who loads a year in one afternoon
     and a person who loads a statement a month reach the same reading."""
     txns = _monthly(n=5)
@@ -1093,11 +1089,11 @@ def test_the_hypothesis_is_a_pure_function_of_the_movement_set():
     assert late.rhythm_hypotheses() == forwards
 
 
-def test_the_read_writes_nothing_and_adds_no_event_type(tmp_path):
+def test_requested_the_read_writes_nothing_and_adds_no_event_type(tmp_path):
     ledger = _ledger(tmp_path, _monthly())
     ledger.append(_prior(BRAND, "standing", "monthly"))
     n_before = len(list(ledger.events()))
-    open_questions(ledger, as_of="2026-06-01")
+    _requested_questions(ledger, as_of="2026-06-01")
     assert len(list(ledger.events())) == n_before
 
     record_rhythm(_vault(ledger), BRAND, "out", ["monthly"], said="monthly")
@@ -1116,7 +1112,7 @@ def test_the_read_writes_nothing_and_adds_no_event_type(tmp_path):
 
 # --- the answer path --------------------------------------------------------
 
-def test_an_answer_to_a_rhythm_question_routes_to_one_ruling(tmp_path):
+def test_requested_an_answer_to_a_rhythm_question_routes_to_one_ruling(tmp_path):
     """The declared slot holds SEVERAL periodicities, and what comes back
     through it is what is recorded — nothing re-reads the sentence."""
     ledger = _ledger(tmp_path, _monthly())
@@ -1136,7 +1132,7 @@ def test_an_answer_to_a_rhythm_question_routes_to_one_ruling(tmp_path):
     assert not _rhythm_questions(ledger)
 
 
-def test_every_word_a_person_may_confirm_can_be_read_back_into_the_slot(tmp_path):
+def test_requested_every_word_a_person_may_confirm_can_be_read_back_into_the_slot(tmp_path):
     """The reading path for this question, through the slots it really
     declares.
 
@@ -1173,7 +1169,7 @@ def test_every_word_a_person_may_confirm_can_be_read_back_into_the_slot(tmp_path
     assert not outside.ok
 
 
-def test_an_answer_that_landed_no_periodicity_records_nothing(tmp_path):
+def test_requested_an_answer_that_landed_no_periodicity_records_nothing(tmp_path):
     ledger = _ledger(tmp_path, _monthly())
     ledger.append(_prior(BRAND, "standing", "monthly"))
     n_before = len(list(ledger.events()))
@@ -1182,7 +1178,7 @@ def test_an_answer_that_landed_no_periodicity_records_nothing(tmp_path):
     assert len(list(ledger.events())) == n_before
 
 
-def test_every_sentence_of_a_rhythm_question_comes_from_the_pack(tmp_path):
+def test_requested_every_sentence_of_a_rhythm_question_comes_from_the_pack(tmp_path):
     """Nothing here writes words. The queue supplies the figures and the
     evidence; the pack supplies every sentence, in order."""
     from viva.render import merchant as render_merchant

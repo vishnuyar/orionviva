@@ -1,5 +1,7 @@
 # From Your Words to the Ledger — Viva listens
 
+**Current behavior:** [Automatic accounting](automatic-accounting.md) and [ADR-017](decisions/ADR-017-automatic-accounting.md) supersede the classification-review and confirmation-first interaction described below. The active public queue is document recovery only; retained low-level question builders serve explicitly requested edits. Automatic interpretations and understood corrections apply reversibly with evidence and scoped learning. The mechanisms below remain historical context where they imply a proactive classification question.
+
 **State:** built
 **Rules:** A1, A2, A3, PROJ-26, PROJ-27, PROJ-28, PROJ-29, PROJ-30, PROJ-31, PROJ-32, PROJ-33, PROJ-59
 
@@ -94,7 +96,7 @@
 ### PROJ-32 — confirmation covers account changes and expense/income naming hints
 **State:** enforced
 **Code:** product/viva/listen.py:658
-**Test:** product/tests/test_ask.py::test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written
+**Test:** product/tests/test_ask.py::test_requested_an_answer_that_would_open_an_account_is_proposed_before_it_is_written
 
 1. `listen` and direct `propose` construct reviewable proposals without applying them. The engine holds a proposal when `new_accounts` or `confirm_accounts` is nonempty, or when the original checked Interpretation contains any expense/income leg with a nonempty stripped hint. This condition is checked on the original hints even when source-role normalization clears them.
 2. Held proposals apply only after explicit confirmation. Their summary names retained components in leg order, describes default legs as ordinary spending/income with no separate named component, preserves category and unknown-split disclosures, and never describes expense/income naming as account creation. Existing durable proposal identity carries the hold across reload without a new saved flag.

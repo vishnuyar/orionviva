@@ -1,11 +1,12 @@
-"""The question queue: one ranked front door for the four ask-and-learn loops.
+"""Explicitly requested structured editors retain checked reading and evidence.
 
-The promises under test: rank by what answering MOVES, scope a ruling to the
-most general unit that is still honest, never hide the tail, and never introduce
-a new event type to do it.
+Classification and interview builders here are invoked deliberately; the public
+default queue stays quiet and is covered by separate automatic-accounting tests.
 """
 
 from decimal import Decimal
+from _requested_question_support import _requested_questions, _requested_pending_questions
+
 
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          assign_merchant_category, capture_and_ingest,
@@ -36,7 +37,7 @@ def _checking(tmp_path, txns, opening="100000.00", tag=b"chk"):
     return ledger
 
 
-def test_identity_held_bridge_suppresses_the_false_gap_question(tmp_path):
+def test_requested_identity_held_bridge_suppresses_the_false_gap_question(tmp_path):
     from viva.ledger import account_opened, opening_balance_observed
     from viva.ledger.events import Provenance, statement_held
     from viva.questions import IDENTITY, RECONCILIATION
@@ -69,14 +70,14 @@ def test_identity_held_bridge_suppresses_the_false_gap_question(tmp_path):
         "gap", gap.to_dict(), {"message": "A period appears missing."},
         "gap", gap.closing_date, Provenance(doc_id="gap")))
 
-    review = [question for question in open_questions(ledger, as_of="2026-04-01")[
+    review = [question for question in _requested_questions(ledger, as_of="2026-04-01")[
         "questions"] if question["kind"] in (IDENTITY, RECONCILIATION)]
 
     assert [question["kind"] for question in review] == [IDENTITY]
     assert review[0]["refs"]["doc_id"] == "bridge"
 
 
-def test_an_old_identity_hold_does_not_hide_a_real_later_gap(tmp_path):
+def test_requested_an_old_identity_hold_does_not_hide_a_real_later_gap(tmp_path):
     from viva.ledger import account_opened, opening_balance_observed
     from viva.ledger.events import Provenance, statement_held
     from viva.questions import IDENTITY, RECONCILIATION
@@ -106,14 +107,14 @@ def test_an_old_identity_hold_does_not_hide_a_real_later_gap(tmp_path):
         {"message": "A period appears missing."}, "gap", gap.closing_date,
         Provenance(doc_id="gap")))
 
-    kinds = [question["kind"] for question in open_questions(
+    kinds = [question["kind"] for question in _requested_questions(
         ledger, as_of="2026-04-01")["questions"]
         if question["kind"] in (IDENTITY, RECONCILIATION)]
 
     assert sorted(kinds) == sorted([IDENTITY, RECONCILIATION])
 
 
-def test_multi_account_identity_choice_posts_to_the_selected_account(
+def test_requested_multi_account_identity_choice_posts_to_the_selected_account(
         tmp_path, monkeypatch):
     """A lossy last four can name several accounts; the answer must carry the
     exact selection through the language-only question path."""
@@ -149,7 +150,7 @@ def test_multi_account_identity_choice_posts_to_the_selected_account(
          "key": checking, "message": "Two accounts share these digits."},
         "identity", facts.closing_date, Provenance(doc_id=facts.doc_id)))
 
-    (question,) = [q for q in open_questions(
+    (question,) = [q for q in _requested_questions(
         ledger, as_of="2026-03-01")["questions"] if q["kind"] == IDENTITY]
     slot = question["slots"][0]
     assert slot["name"] == "account_choice"
@@ -172,7 +173,7 @@ def test_multi_account_identity_choice_posts_to_the_selected_account(
     assert ledger.projection().open_holds() == []
 
 
-def test_zero_candidate_identity_hold_can_be_confirmed_as_new(
+def test_requested_zero_candidate_identity_hold_can_be_confirmed_as_new(
         tmp_path, monkeypatch):
     from viva import engine
     from viva.questions import IDENTITY
@@ -192,7 +193,7 @@ def test_zero_candidate_identity_hold_can_be_confirmed_as_new(
         raw, ledger, b"contradictory-account-signals",
         lambda data, doc_id: _stamp(facts, doc_id), captured_at="2026-03-01")
     assert held.action == "identity"
-    (question,) = [q for q in open_questions(
+    (question,) = [q for q in _requested_questions(
         ledger, as_of="2026-03-01")["questions"] if q["kind"] == IDENTITY]
     assert question["slots"][0]["choices"] == ["a new account"]
     vault = Vault(ledger=ledger, raw=raw, directory=tmp_path)
@@ -206,25 +207,25 @@ def test_zero_candidate_identity_hold_can_be_confirmed_as_new(
     assert ledger.projection().open_holds() == []
 
 
-def test_questions_are_ranked_by_what_answering_moves(tmp_path):
+def test_requested_questions_are_ranked_by_what_answering_moves(tmp_path):
     ledger = _checking(tmp_path, [
         ("2026-03-05", "TINY SHOP", "-12.00"),
         ("2026-03-06", "BIG MOTORS", "-30000.00"),
         ("2026-03-07", "MIDDLE STORE", "-500.00"),
     ])
-    result = open_questions(ledger)
+    result = _requested_questions(ledger)
     amounts = [Decimal(q["amount"]) for q in result["questions"]]
     assert amounts == sorted(amounts, reverse=True)      # biggest stake first
     assert "BIG MOTORS" in result["questions"][0]["text"]
 
 
-def test_the_tail_is_summarized_never_dropped(tmp_path):
+def test_requested_the_tail_is_summarized_never_dropped(tmp_path):
     ledger = _checking(tmp_path, [
         (f"2026-03-{d:02d}", f"SHOP {d}", f"-{d}.00") for d in range(1, 13)
     ])
     # as_of pinned near the fixture dates so the cadence expectation
     # stays quiet and this asserts exactly the twelve merchant questions.
-    result = open_questions(ledger, limit=3, as_of="2026-04-01")
+    result = _requested_questions(ledger, limit=3, as_of="2026-04-01")
     assert len(result["questions"]) == 3
     assert result["total"] == 12
     assert result["tail"]["count"] == 9
@@ -232,19 +233,19 @@ def test_the_tail_is_summarized_never_dropped(tmp_path):
     assert Decimal(result["tail"]["amount"]) == sum(Decimal(d) for d in range(1, 10))
 
 
-def test_an_unknown_merchant_asks_what_it_is_scoped_to_the_merchant(tmp_path):
+def test_requested_an_unknown_merchant_asks_what_it_is_scoped_to_the_merchant(tmp_path):
     ledger = _checking(tmp_path, [
         ("2026-03-05", "ACME HARDWARE #12", "-100.00"),
         ("2026-03-09", "ACME HARDWARE #44", "-150.00"),
     ])
-    (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == MERCHANT]
+    (q,) = [q for q in _requested_questions(ledger)["questions"] if q["kind"] == MERCHANT]
     assert q["count"] == 2 and Decimal(q["amount"]) == Decimal("250.00")
     assert q["scope"] == "pattern"           # one ruling clears both, and future
     assert q["refs"]["movements"] == []       # explicit: this ruling is not per-row
     assert "ACME HARDWARE" in q["text"]
 
 
-def test_answering_a_resolved_numbered_merchant_closes_that_exact_question(
+def test_requested_answering_a_resolved_numbered_merchant_closes_that_exact_question(
         tmp_path, monkeypatch):
     """A resolved key is already an identity, not a descriptor to normalize."""
     from viva import engine
@@ -268,7 +269,7 @@ def test_answering_a_resolved_numbered_merchant_closes_that_exact_question(
                                      "2026-03-05"))
     vault = Vault(ledger=ledger, raw=RawStore.open(tmp_path / "raw", "pw"),
                   directory=tmp_path)
-    (question,) = [q for q in open_questions(ledger, as_of="2026-04-01")[
+    (question,) = [q for q in _requested_questions(ledger, as_of="2026-04-01")[
         "questions"] if q["kind"] == MERCHANT]
     assert question["refs"]["merchant"] == key
     monkeypatch.setattr(engine, "_interpreter", lambda: None)
@@ -278,11 +279,11 @@ def test_answering_a_resolved_numbered_merchant_closes_that_exact_question(
     assert outcome["ok"] is True
     assert key in ledger.projection().merchant_categories()
     assert normalize_merchant(key) != key
-    assert not [q for q in open_questions(ledger, as_of="2026-04-01")[
+    assert not [q for q in _requested_questions(ledger, as_of="2026-04-01")[
         "questions"] if q["id"] == question["id"]]
 
 
-def test_a_merchant_question_counts_the_movements_its_money_is_over(tmp_path):
+def test_requested_a_merchant_question_counts_the_movements_its_money_is_over(tmp_path):
     """One population per sentence.
 
     A question that says "N payments, X in total" must have counted the same
@@ -296,7 +297,7 @@ def test_a_merchant_question_counts_the_movements_its_money_is_over(tmp_path):
         ("2026-03-11", "ACME HARDWARE #12", "40.00"),
     ])
     proj = ledger.projection()
-    (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == MERCHANT]
+    (q,) = [q for q in _requested_questions(ledger)["questions"] if q["kind"] == MERCHANT]
     population = [m for m in proj.uncategorized_expenses()
                   if proj.merchant_key_of(m) == q["refs"]["merchant"]]
     assert population, "the fixture asks about nothing"
@@ -304,11 +305,11 @@ def test_a_merchant_question_counts_the_movements_its_money_is_over(tmp_path):
     assert Decimal(q["amount"]) == sum(abs(m.amount) for m in population)
 
 
-def test_a_peer_payment_is_scoped_to_itself_not_a_rule(tmp_path):
+def test_requested_a_peer_payment_is_scoped_to_itself_not_a_rule(tmp_path):
     """A commercial merchant generalizes; a person does not — one Zelle is a
     gift, the next a loan repayment."""
     ledger = _checking(tmp_path, [("2026-03-05", "ZELLE PAYMENT TO JOHN", "-200.00")])
-    (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == MERCHANT]
+    (q,) = [q for q in _requested_questions(ledger)["questions"] if q["kind"] == MERCHANT]
     assert q["scope"] == "one"
     assert "only to this transaction" in q["text"]
 
@@ -321,16 +322,16 @@ def _enrich(ledger, merchant, category, implies=(), kind="business", subcategory
         attributes={"counterparty_kind": kind, "implies": list(implies)}))
 
 
-def test_an_ordinary_known_merchant_is_never_asked_about(tmp_path):
+def test_requested_an_ordinary_known_merchant_is_never_asked_about(tmp_path):
     """A supermarket we have already identified implies nothing beyond an
     ordinary expense — there is no question here, and asking one is the single
     largest source of noise in the queue."""
     ledger = _checking(tmp_path, [("2026-03-06", "WHOLE FOODS MKT", "-180.00")])
     _enrich(ledger, "whole foods mkt", "food", subcategory="grocery")
-    assert [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE] == []
+    assert [q for q in _requested_questions(ledger)["questions"] if q["kind"] == NATURE] == []
 
 
-def test_a_merchant_that_implies_structure_gets_a_proposal(tmp_path):
+def test_requested_a_merchant_that_implies_structure_gets_a_proposal(tmp_path):
     """And the counterpart: where the counterparty DOES imply something, we say
     what we believe rather than asking an open question."""
     ledger = _checking(tmp_path, [("2026-03-06", "BIG MOTORS", "-30000.00")])
@@ -338,7 +339,7 @@ def test_a_merchant_that_implies_structure_gets_a_proposal(tmp_path):
         {"relationship": "a vehicle", "major": "asset", "on": "outflow",
          "account_group": "Vehicles", "compound": False, "confidence": "suggested",
          "documents": "invoice or bill of sale", "ask": "Shall I track it?"}])
-    (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+    (q,) = [q for q in _requested_questions(ledger)["questions"] if q["kind"] == NATURE]
     assert q["scope"] == "pattern"
     # It states a hypothesis and its grounds, instead of asking what this is —
     # in the category this vault holds, not in the enrichment model's own words
@@ -362,12 +363,12 @@ def test_a_merchant_that_implies_structure_gets_a_proposal(tmp_path):
     legs = next(s for s in q["slots"] if s["name"] == "legs")
     major = next(p for p in legs["parts"] if p["name"] == "major")
     assert major["choices"] == ["expense", "asset", "liability", "income"]
-    assert {s["name"] for s in q["slots"]} == {"legs", "kind", "category"}
+    assert {s["name"] for s in q["slots"]} == {"legs", "kind", "category", "future_scope", "starts", "ends", "recurrence"}
     # And nothing in the payload is a button: no action, no arguments.
     assert "options" not in q and "action" not in repr(q)
 
 
-def test_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_path):
+def test_requested_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_path):
     """The core promise: one ruling clears every transaction from that merchant,
     past and future — and the question does not come back."""
     ledger = _checking(tmp_path, [
@@ -378,7 +379,7 @@ def test_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_p
         {"relationship": "a property purchase", "major": "asset", "on": "outflow",
          "account_group": "Property", "compound": False, "confidence": "suggested",
          "documents": "closing disclosure", "ask": ""}])
-    before = open_questions(ledger)["questions"]
+    before = _requested_questions(ledger)["questions"]
     assert any(q["kind"] == NATURE for q in before)
     proj = ledger.projection()
     # The implication ALREADY keeps it out of spending — but only provisionally,
@@ -388,7 +389,7 @@ def test_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_p
 
     rule_merchant_nature(ledger, "title company", "settlement", by="human")
 
-    after = open_questions(ledger)["questions"]
+    after = _requested_questions(ledger)["questions"]
     assert not [q for q in after if q["kind"] == NATURE]      # never asked again
     # Confirming does not change the figure — it removes the DOUBT about it.
     proj = ledger.projection()
@@ -396,7 +397,7 @@ def test_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_p
     assert proj.provisional_spending() == Decimal("0")
 
 
-def test_a_ruled_one_off_question_is_never_asked_again(tmp_path):
+def test_requested_a_ruled_one_off_question_is_never_asked_again(tmp_path):
     """The queue can be driven to empty.
 
     A payment to a person, a cheque or a cash withdrawal is asked about one at a
@@ -406,7 +407,7 @@ def test_a_ruled_one_off_question_is_never_asked_again(tmp_path):
     in every sitting after this one."""
     from viva.listen import Interpretation, apply_proposal, propose
     ledger = _checking(tmp_path, [("2026-03-05", "ZELLE PAYMENT TO JOHN", "-200.00")])
-    (before,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+    (before,) = [q for q in _requested_questions(ledger)["questions"] if q["kind"] == NATURE]
 
     proj = ledger.projection()
     (m,) = proj.movements()
@@ -415,12 +416,12 @@ def test_a_ruled_one_off_question_is_never_asked_again(tmp_path):
                 m.description, movement_key=m.key)
     apply_proposal(ledger, p, "2026-04-02")
 
-    after = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+    after = [q for q in _requested_questions(ledger)["questions"] if q["kind"] == NATURE]
     assert before["id"] not in [q["id"] for q in after]
     assert not after
 
 
-def test_the_queue_introduces_no_new_event_type(tmp_path):
+def test_requested_the_queue_introduces_no_new_event_type(tmp_path):
     """The queue is read-side. Answering must route to writers that already
     exist — a generic Ruling event would have to be earned by a fifth question
     type."""
@@ -438,7 +439,7 @@ def test_the_queue_introduces_no_new_event_type(tmp_path):
     assign_merchant_category(ledger, "big motors", "transport", by="model")
 
     n_before = len(list(ledger.events()))
-    open_questions(ledger)                       # a projection: writes nothing
+    _requested_questions(ledger)                       # a projection: writes nothing
     assert len(list(ledger.events())) == n_before
 
     rule_merchant_nature(ledger, "big motors", "settlement", by="human")
@@ -448,24 +449,24 @@ def test_the_queue_introduces_no_new_event_type(tmp_path):
     assert latest.body["attributes"]["nature"] == "settlement"
 
 
-def test_question_ids_are_stable_across_reads(tmp_path):
+def test_requested_question_ids_are_stable_across_reads(tmp_path):
     ledger = _checking(tmp_path, [("2026-03-05", "ACME HARDWARE", "-100.00")])
-    first = [q["id"] for q in open_questions(ledger)["questions"]]
-    second = [q["id"] for q in open_questions(ledger)["questions"]]
+    first = [q["id"] for q in _requested_questions(ledger)["questions"]]
+    second = [q["id"] for q in _requested_questions(ledger)["questions"]]
     assert first == second and first        # doesn't churn between projections
 
 
-def test_generated_open_question_ids_are_unique(tmp_path):
+def test_requested_generated_open_question_ids_are_unique(tmp_path):
     ledger = _checking(tmp_path, [
         ("2026-03-05", "ACME HARDWARE", "-100.00"),
         ("2026-03-06", "OTHER SHOP", "-75.00"),
     ])
-    ids = [q["id"] for q in open_questions(
+    ids = [q["id"] for q in _requested_questions(
         ledger, limit=None, as_of="2026-04-01")["questions"]]
     assert ids and len(ids) == len(set(ids))
 
 
-def test_a_transfer_suggestion_becomes_a_one_off_question(tmp_path):
+def test_requested_a_transfer_suggestion_becomes_a_one_off_question(tmp_path):
     """An ambiguous pair generalizes to nothing, so it is scoped to itself."""
     raw = RawStore.open(tmp_path / "raw", "pw")
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
@@ -488,13 +489,13 @@ def test_a_transfer_suggestion_becomes_a_one_off_question(tmp_path):
         account_number="000000001122", institution="Chase")
     capture_and_ingest(raw, ledger, b"chk", lambda d, i: _stamp(chk, i),
                        captured_at="2026-04-01")
-    qs = [q for q in open_questions(ledger)["questions"] if q["kind"] == TRANSFER]
+    qs = [q for q in _requested_questions(ledger)["questions"] if q["kind"] == TRANSFER]
     if qs:                                   # only if the matcher left it ambiguous
         assert qs[0]["scope"] == "one"
         assert "own accounts" in qs[0]["text"]
 
 
-def test_a_transfer_question_carries_its_source_and_candidate_identities(tmp_path):
+def test_requested_a_transfer_question_carries_its_source_and_candidate_identities(tmp_path):
     from viva.ledger import (Posting, account_opened, transaction_recorded,
                              transfer_suggested)
 
@@ -511,14 +512,14 @@ def test_a_transfer_question_carries_its_source_and_candidate_identities(tmp_pat
     ledger.append(transfer_suggested(
         source.key, candidates, {}, "2026-04-01"))
 
-    (question,) = [q for q in open_questions(
+    (question,) = [q for q in _requested_questions(
         ledger, as_of="2026-04-01")["questions"] if q["kind"] == TRANSFER]
 
     assert question["refs"]["movement"] == source.key
     assert question["refs"]["candidates"] == candidates
 
 
-def test_the_queue_carries_no_instructions_for_a_surface():
+def test_requested_the_queue_carries_no_instructions_for_a_surface():
     """The engine holds no rules for a surface. A question carries what is being
     asked and the slots an answer to it has — never a label to render, an action
     to call or arguments to send.
@@ -538,7 +539,7 @@ def test_the_queue_carries_no_instructions_for_a_surface():
             "surface again")
 
 
-def test_the_queue_supplies_the_sentences_a_caller_places(tmp_path):
+def test_requested_the_queue_supplies_the_sentences_a_caller_places(tmp_path):
     """Viva's words live in the persona pack, where the no-new-facts lint
     reaches them and a released version pins their bytes. The two sentences a
     caller needs around the questions — what the box a person writes in says,
@@ -546,6 +547,14 @@ def test_the_queue_supplies_the_sentences_a_caller_places(tmp_path):
     come from the queue, so nothing that shows a question keeps words of its
     own."""
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
-    payload = open_questions(ledger, as_of="2026-01-01", jurisdiction="US")
+    payload = _requested_questions(ledger, as_of="2026-01-01", jurisdiction="US")
     assert payload["invite"] == say("free_text_invite")
     assert payload["answered_by_document"] == say("answered_by_document")
+
+
+def test_default_queue_stays_quiet_for_unclassified_activity(tmp_path):
+    from viva.questions import open_questions as default_questions, open_question_counts
+    ledger = _checking(tmp_path, [('2026-03-03', 'SYNTHETIC UNCLASSIFIED', '-25')])
+    assert default_questions(ledger)['total'] == 0
+    assert open_question_counts(ledger)['total'] == 0
+    assert ledger.projection().movements()[0].provisional

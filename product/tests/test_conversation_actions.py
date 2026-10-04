@@ -17,7 +17,7 @@ from viva.vault import Vault
 
 
 def _vault(tmp_path) -> Vault:
-    """Return a synthetic vault with one open merchant question."""
+    """Return synthetic posted activity and one genuine document recovery issue."""
     vault = Vault.open(tmp_path / "vault", "pw")
     raw, ledger = vault.raw, vault.ledger
     facts = StatementFacts(
@@ -33,6 +33,15 @@ def _vault(tmp_path) -> Vault:
         return ReadResult(facts.doc_type, 0.98, facts)
 
     capture_and_ingest(raw, ledger, b"one-statement", read, captured_at="2026-05-01")
+    from viva.ledger.events import statement_held
+    held = StatementFacts(
+        doc_id="held-statement", doc_type="checking_statement", doc_type_confidence=0.98,
+        account_ref="Unreconciled Account", currency="USD",
+        opening_amount=Decimal("100"), opening_date="2026-04-01",
+        closing_amount=Decimal("125"), closing_date="2026-04-30", transactions=[])
+    ledger.append(statement_held(held.doc_id, held.to_dict(),
+                                {"message": "Printed totals do not reconcile."},
+                                "gap", "2026-05-01"))
     vault.synchronize_read_store()
     return vault
 
@@ -80,8 +89,8 @@ def test_setting_a_question_aside_moves_it_into_the_set_aside_count(tmp_path):
     assert after["pending"]["count"] == set_aside_before + 1
 
 
-def test_a_question_set_aside_twice_refuses_the_second_time(tmp_path):
-    """A stale second set-aside request refuses without moving the read."""
+def test_set_aside_document_recovery_remains_reachable_without_count_growth(tmp_path):
+    """Document recovery remains addressable after it has been set aside."""
     sidecar = _Sidecar(_vault(tmp_path))
     question_id = sidecar.conversation()["questions"][0]["id"]
     sidecar.send("viva.conversation.decline",
@@ -91,10 +100,10 @@ def test_a_question_set_aside_twice_refuses_the_second_time(tmp_path):
     outcome = sidecar.send("viva.conversation.decline",
                            {"question_id": question_id, "reason": "not_now"})
 
-    assert outcome["kind"] == "refused"
-    assert outcome["reason"]
+    assert outcome["kind"] == "set_aside"
     assert outcome["message"]
     assert sidecar.conversation()["total"] == settled["total"]
+    assert sidecar.conversation()["pending"] == settled["pending"]
 
 
 def test_a_plainly_written_answer_reaches_the_queue_with_no_model_named(tmp_path):

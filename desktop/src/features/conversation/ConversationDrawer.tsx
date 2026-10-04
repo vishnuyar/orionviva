@@ -1,13 +1,13 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Figure } from "../../components/Figure";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
 import { conversationEvidenceFigure } from "../../surface/evidence";
 import { Questions } from "./Questions";
 import { outcomePresentation } from "./questionPresentation";
-import type { ActionOutcome, AskActionState, AskContextMode, ConversationData, ConversationGoalDraft, ConversationTurn, DeclineReason, FeatureResult, MissingAnswerInput, QuestionActionState, TurnView } from "../../surface/types";
+import type { ActionResult, ActionOutcome, AskActionState, AskContextMode, ConversationData, ConversationGoalDraft, ConversationTurn, DeclineReason, FeatureResult, MissingAnswerInput, QuestionActionState, TurnView } from "../../surface/types";
 
-export type AskControls = { state: AskActionState; onAsk: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: AskContextMode) => void };
+export type AskControls = { state: AskActionState; onAsk: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: AskContextMode, movementIds?: readonly string[]) => void };
 export type ConversationControls = {
   state: QuestionActionState;
   onAnswer: (questionId: string, said: string) => void;
@@ -15,8 +15,12 @@ export type ConversationControls = {
   onDecline: (questionId: string, reason: DeclineReason) => void;
 };
 
-function AskBox({ ask }: { ask: AskControls }) {
+export type AccountingContext = { movementIds: readonly string[]; label: string };
+
+function AskBox({ ask, accountingContext, onClearAccountingContext }: { ask: AskControls; accountingContext?: AccountingContext | null; onClearAccountingContext?: () => void }) {
   const [question, setQuestion] = useState("");
+  const explanationRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { if (accountingContext) explanationRef.current?.focus(); }, [accountingContext]);
   const [contextMode, setContextMode] = useState<AskContextMode>("new_question");
   const [submitted, setSubmitted] = useState<{ question: string; observedWorking: boolean } | null>(null);
   const working = ask.state.state === "working";
@@ -42,21 +46,23 @@ function AskBox({ ask }: { ask: AskControls }) {
     if (working || !question.trim()) return;
     const exact = question.trim();
     setSubmitted({ question: exact, observedWorking: false });
-    ask.onAsk(exact, true, planRequest, contextMode);
+    if (accountingContext) ask.onAsk(exact, true, false, "new_question", accountingContext.movementIds);
+    else ask.onAsk(exact, true, planRequest, contextMode);
   }
   return <section className="conversation-ask" aria-labelledby="conversation-ask-title">
-    <h3 id="conversation-ask-title">Ask about your money</h3>
+    <h3 id="conversation-ask-title">{accountingContext ? "Explain accounting treatment" : "Ask about your money"}</h3>
+    {accountingContext ? <p className="conversation-context-help">Selected transaction: {accountingContext.label}. Explain its accounting treatment here; corrections update your reports.</p> : null}
     <form onSubmit={(event) => { event.preventDefault(); send(); }}>
-      <label htmlFor="conversation-ask-question">Your question</label>
-      <textarea id="conversation-ask-question" value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} />
-      <fieldset className="conversation-context-choice" aria-describedby="conversation-context-help">
+      <label htmlFor="conversation-ask-question">{accountingContext ? "Your explanation" : "Your question"}</label>
+      <textarea ref={explanationRef} id="conversation-ask-question" value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} />
+      {!accountingContext ? <><fieldset className="conversation-context-choice" aria-describedby="conversation-context-help">
         <legend>Use earlier questions?</legend>
         <label><input type="radio" name="ask-context-mode" value="new_question" checked={contextMode === "new_question"} onChange={() => setContextMode("new_question")} /> New question</label>
         <label><input type="radio" name="ask-context-mode" value="follow_up" checked={contextMode === "follow_up"} onChange={() => setContextMode("follow_up")} /> Follow-up</label>
       </fieldset>
-      <p className="conversation-context-help" id="conversation-context-help">New question excludes earlier Ask text. Follow-up uses questions and answers since your last New question.</p>
-      <button className="primary-button" type="submit" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : undefined}>Ask</button>
-      <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : undefined} onClick={() => send(true)}>Draft a save-up plan</button>
+      <p className="conversation-context-help" id="conversation-context-help">New question excludes earlier Ask text. Follow-up uses questions and answers since your last New question.</p></> : null}
+      <button className="primary-button" type="submit" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : undefined}>{accountingContext ? "Apply explanation" : "Ask"}</button>
+      {!accountingContext ? <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : undefined} onClick={() => send(true)}>Draft a save-up plan</button> : onClearAccountingContext ? <button className="text-button" type="button" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : undefined} onClick={() => { if (working) return; setQuestion(""); setContextMode("new_question"); onClearAccountingContext(); }}>Ask another question</button> : null}
     </form>
     {working ? <span className="action-explanation" id="conversation-ask-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
     <div className="visually-hidden" role="status" aria-live="polite">{said}</div>
@@ -115,12 +121,32 @@ function CapabilityBoundary({ item }: { item: MissingAnswerInput }) {
   </section>;
 }
 
-function AnswerDetail({ answer, onOpenFigure, onReviewPlan }: { answer: TurnView; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void }) {
+function CorrectionUndo({ id, onUndo }: { id: string; onUndo: (correctionId: string) => Promise<ActionResult> }) {
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState("");
+  const [completed, setCompleted] = useState(false);
+  async function undo() {
+    if (working || completed) return;
+    setWorking(true);
+    try {
+      const result = await onUndo(id);
+      if (result.state === "settled") {
+        setMessage(result.outcome.message || UNSPOKEN_REPLY);
+        setCompleted(result.outcome.kind === "completed");
+      } else { const copy = channelPresentation(result); setMessage(`${copy.title}. ${copy.detail}`); }
+    } catch { setMessage("The correction could not be undone. Try again."); }
+    finally { setWorking(false); }
+  }
+  return <div><button type="button" className="text-button" aria-disabled={working || completed} aria-describedby={working || completed ? `undo-status-${id}` : undefined} onClick={() => void undo()}>{working ? "Undoing correction…" : completed ? "Correction undone" : "Undo accounting correction"}</button>{working || message ? <p id={`undo-status-${id}`} role="status" aria-live="polite">{working ? "The correction is being undone. Wait for the result before trying again." : message}</p> : null}</div>;
+}
+
+function AnswerDetail({ answer, onOpenFigure, onReviewPlan, onUndoCorrection }: { answer: TurnView; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult> }) {
   const answerText = answer.text || answer.refusal;
   const ordinaryMissing = answer.missing.filter((item) => item.tag !== "unsupported_family" && (item.question || item.label || item.tag).trim() !== answerText.trim());
   const capability = answer.missing.find((item) => item.tag === "unsupported_family");
   return <div className="conversation-answer" role={answer.status === "capability_gap" ? "status" : undefined} aria-live={answer.status === "capability_gap" ? "polite" : undefined} aria-atomic={answer.status === "capability_gap" ? "true" : undefined}>
     <p className="conversation-answer-text">{answerText}</p>
+    {answer.accountingCorrection && onUndoCorrection ? <CorrectionUndo id={answer.accountingCorrection.id} onUndo={onUndoCorrection} /> : null}
     {answer.gradeSentence ? <p className="conversation-answer-grade">{answer.gradeSentence}</p> : null}
     {answer.figures.length ? <dl className="conversation-answer-figures">{answer.figures.map((figure) => <div key={figure.id}>
       <dt>{figure.evidenceId && figure.evidenceLinks.length ? <Figure figure={conversationEvidenceFigure(figure)} onOpenEvidence={onOpenFigure} className="conversation-figure-trigger" /> : figure.written || figure.what}</dt>
@@ -135,7 +161,7 @@ function AnswerDetail({ answer, onOpenFigure, onReviewPlan }: { answer: TurnView
   </div>;
 }
 
-function Timeline({ data, controls, onOpenFigure, onReviewPlan }: { data: ConversationData; controls: ConversationControls; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void }) {
+function Timeline({ data, controls, onOpenFigure, onReviewPlan, onUndoCorrection }: { data: ConversationData; controls: ConversationControls; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult> }) {
   if (!data.turns.length) return <section className="conversation-thread"><div className="empty-state"><strong>No conversation yet</strong><span>Ask Viva, or answer one of the questions below. New turns will remain with this vault.</span></div></section>;
   return <section className="conversation-thread" aria-labelledby="conversation-turns-title">
     <h3 id="conversation-turns-title">Conversation</h3>
@@ -146,23 +172,23 @@ function Timeline({ data, controls, onOpenFigure, onReviewPlan }: { data: Conver
       </div>
       <p>{turn.prompt}</p>
       {turn.said ? <blockquote>{turn.said}</blockquote> : null}
-      {turn.answer ? <AnswerDetail answer={turn.answer} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} /> : turn.message ? <p className="conversation-answer-text">{turn.message}</p> : null}
+      {turn.answer ? <AnswerDetail answer={turn.answer} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} onUndoCorrection={onUndoCorrection} /> : turn.message ? <p className="conversation-answer-text">{turn.message}</p> : null}
       {turn.proposal && turn.proposal.status !== "open" && turn.proposal.message ? <p>{turn.proposal.message}</p> : null}
       <ProposalReply turn={turn} controls={controls} />
     </li>)}</ol>
   </section>;
 }
 
-export function ConversationDrawer({ result, selectedQueue, onSelectQueue, onOpenFigure, onReviewPlan, ask, controls, mode = "combined" }: { result: FeatureResult<ConversationData>; selectedQueue: string; onSelectQueue: (id: string) => void; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; ask: AskControls | null; controls: ConversationControls; mode?: "ask" | "review" | "combined" }) {
+export function ConversationDrawer({ result, selectedQueue, onSelectQueue, onOpenFigure, onReviewPlan, ask, controls, mode = "combined", accountingContext = null, onUndoCorrection, onClearAccountingContext }: { result: FeatureResult<ConversationData>; selectedQueue: string; onSelectQueue: (id: string) => void; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; ask: AskControls | null; controls: ConversationControls; mode?: "ask" | "review" | "combined"; accountingContext?: AccountingContext | null; onClearAccountingContext?: () => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult> }) {
   const actionSaid = controls.state.state === "settled" ? outcomePresentation(controls.state.verb, controls.state.result) : null;
   const conversationReadable = result.state === "ready" || result.state === "partial" || result.state === "needs_input";
   return <>
-    {ask && mode !== "review" ? <AskBox ask={ask} /> : null}
+    {ask && mode !== "review" ? <AskBox ask={ask} accountingContext={accountingContext} onClearAccountingContext={onClearAccountingContext} /> : null}
     <PanelStateView result={result} copy={{ partial: "Some conversation details are unavailable.", needsInput: "This conversation needs input.", unavailable: { title: "Conversation unavailable", detail: "This build cannot read the conversation for this vault." }, failed: { title: "Conversation could not be read", detail: "The durable conversation read did not complete." } }}>
       {(data) => {
         const proposalIsRestored = data.turns.some((turn) => turn.proposal?.status === "open");
         const questionControls = proposalIsRestored ? { ...controls, onConfirm: undefined } : controls;
-        return <div className="conversation-body"><Timeline data={data} controls={controls} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} />{mode !== "ask" ? <Questions result={{ state: "ready", data: data.questions }} selectedQueue={selectedQueue} onSelectQueue={onSelectQueue} actions={questionControls} /> : null}</div>;
+        return <div className="conversation-body"><Timeline data={data} controls={controls} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} onUndoCorrection={onUndoCorrection} />{mode !== "ask" ? <Questions result={{ state: "ready", data: data.questions }} selectedQueue={selectedQueue} onSelectQueue={onSelectQueue} actions={questionControls} /> : null}</div>;
       }}
     </PanelStateView>
     {actionSaid && !conversationReadable ? <section className="conversation-action-outcome" role="status" aria-live="polite"><h3 id="conversation-action-outcome" tabIndex={-1}>{actionSaid.title}</h3><p>{actionSaid.detail}</p></section> : null}

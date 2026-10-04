@@ -19,6 +19,11 @@ from viva.read_store import store
 # desktop consumers whose field-level contracts require separate parity proof.
 FAMILIES = {
     "AccountOpened": ("accounts", "typed", "Overview Accounts Statements Plans"),
+    "AccountingRuleRecorded": ("accounting_controls", "typed+body-json", "Overview Activity Conversation Trust"),
+    "AccountingRuleApplied": ("accounting_controls", "typed+body-json", "Overview Activity Conversation Trust"),
+    "AccountingCorrectionRecorded": ("accounting_controls", "typed+body-json", "Overview Activity Conversation Trust"),
+    "AccountingCorrectionUndone": ("accounting_controls", "typed+body-json", "Overview Activity Conversation Trust"),
+    "AccountingTreatmentRestored": ("accounting_restorations", "typed+nested-json", "Overview Activity Conversation Trust"),
     "AccountIdentityObserved": ("accounts", "typed", "Overview Accounts Statements"),
     "OpeningBalanceObserved": ("balance_observations", "typed", "Overview Accounts Statements Trust"),
     "ClosingBalanceObserved": ("balance_observations", "typed", "Overview Accounts Statements Trust"),
@@ -57,6 +62,11 @@ FAMILIES = {
 
 
 BODY_FIELDS = {
+    "AccountingRuleRecorded": "rule_id anchor anchor_date context legs category starts ends recurrence excluded said prompt_version",
+    "AccountingRuleApplied": "rule_id movement previous previous_category",
+    "AccountingCorrectionRecorded": "correction_id rule_id movements previous legs said context created_accounts",
+    "AccountingCorrectionUndone": "correction_id rule_id",
+    "AccountingTreatmentRestored": "movement previous previous_category",
     "AccountAliasConfirmed": "account_id alias_key by doc_id kind learn_signal match_label match_names",
     "AccountIdentityObserved": "account_id account_names account_number institution",
     "AccountOpened": "account_id account_names account_number currency institution jurisdiction kind name origin",
@@ -86,13 +96,33 @@ BODY_FIELDS = {
     "PositionObserved": "account_id cost_basis currency grade instrument market_value units valuation_class",
     "QuestionDeclined": "amount by count kind pack_version question_id reason",
     "ReadRecorded": "cost_usd doc_id input_mode input_tokens model model_role output_tokens parse_error parse_ok phase prompt_version resolved_model response_text usage_reported",
-    "RulingRecorded": "by corroborates currency grade legs prompt_version said same_as scope subject value",
+    "RulingRecorded": "by corroborates currency grade legs prompt_version said same_as scope subject value grounds source_refs evidence_signature",
     "StatementHeld": "doc_id facts finding reason",
-    "TransactionRecorded": "description postings tags",
+    "TransactionRecorded": "description postings tags matched_movement_key matched_currency",
     "TransferLinked": "a b by evidence grade status",
     "TransferSuggested": "a candidates evidence status",
     "TransferUnlinked": "a b by status",
 }
+
+
+def _accounting_family_corpus():
+    context = dict(party="Example", private=False, direction="out", source_role="depository",
+                   source_account="", category="other", subcategory="")
+    legs = [{"major": "expense", "account": "Expenses:Example"}]
+    return [
+        events.accounting_rule_recorded("rule", "movement", "2026-01-01", context, legs,
+                                       "2026-01-02", said="Example explanation"),
+        events.accounting_rule_applied("rule", "movement", {}, {}, "2026-01-03"),
+        events.accounting_correction_recorded("correction", "rule", ["movement"],
+            {"movement": {"ruling": {}, "category": {}}}, legs, "Example explanation",
+            "2026-01-04", context=context, created_accounts=["Expenses:Example"]),
+        events.accounting_correction_undone("correction", "rule", "2026-01-05"),
+        events.accounting_treatment_restored("movement", {}, {}, "2026-01-05"),
+        events.ruling_recorded("movement", "movement", "2026-01-02", legs=legs,
+            grounds="Example reason", source_refs=["claim", "document"], evidence_signature="signature"),
+        events.Event("TransactionRecorded", "2026-01-02", {"description": "Example",
+            "postings": [], "tags": [], "matched_movement_key": "movement", "matched_currency": "USD"}),
+    ]
 
 
 def _declared_constructor_families():
@@ -149,7 +179,7 @@ def test_representative_typed_events_cover_every_registered_field():
     from product.tests import test_read_store_overlay_field_coverage as overlays
     from product.tests import test_read_store_document_field_coverage as documents
 
-    corpus = (_json_family_corpus() + typed._corpus() + overlays._corpus()
+    corpus = (_json_family_corpus() + _accounting_family_corpus() + typed._corpus() + overlays._corpus()
               + documents._corpus())
     observed = {}
     for event in corpus:

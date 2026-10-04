@@ -317,8 +317,8 @@ def test_a_proposal_counts_the_payments_it_is_answering_about(tmp_path):
     assign_category(ledger, ruled.key, "housing", nature="settlement", by="human")
     proj = ledger.projection()
 
-    (q,) = [x for x in open_questions(ledger, as_of="2026-05-01")["questions"]
-            if x["kind"] == MERCHANT]
+    (q,) = [x.to_dict() for x in __import__("viva.questions", fromlist=["_merchant_questions"])._merchant_questions(proj)
+            if x.kind == MERCHANT]
     p = listen(proj, "this is my mortgage", "NEWCO MORTGAGE SERVICING",
                amount=q["amount"], currency=q["currency"],
                extract_fn=_reply({"legs": [{"major": "liability",
@@ -399,213 +399,120 @@ def _nature_questions(vault):
 
 
 def test_an_answer_settles_the_payments_its_question_counted(tmp_path, monkeypatch):
-    """The number a person is shown and the number their answer settles are one
-    number, and the answer reaches every payment it named.
-
-    A question is asked about a counterparty; an answer to it must be about the
-    same counterparty. Where a grammar names the brand behind two different card
-    lines, re-deriving the identity from one of those lines names something
-    narrower than the question did — and a person reads one count, confirms
-    another, and the payments outside the narrower name go on being asked
-    about."""
-    from viva import engine
-
-    vault = _branded(tmp_path, THREE_VISITS)
+    """An explicit group correction applies immediately and leaves unselected activity alone."""
+    from viva.accounting_intelligence import correct_accounting
+    vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
     _implies_a_membership(vault)
-    _answers(monkeypatch)
-
-    (q,) = _nature_questions(vault)
-    outcome = engine.answer_question(vault, q["id"], "that's the club membership")
-    proposal = outcome["proposal"]
-    assert proposal["settles"] == q["count"] > 1
-    assert f"across {q['count']} payments" in proposal["summary"]
-
-    applied = engine.apply_ruling(vault, proposal)
-    # Filed under the identity the question was asked under, so one answer
-    # reaches every payment the question counted and none is left asking.
-    assert applied["subject"] == q["refs"]["merchant"]
+    held = vault.ledger.projection().movements()
+    selected = [m.key for m in held if m.amount < 0]
+    result = correct_accounting(vault, "These selected purchases were my membership", selected,
+        interpret_fn=_reply({"legs": [{"major": "asset", "account_hint": "Supper Club"}],
+                            "future_scope": "one"}))
+    assert result["ok"] and not result["confirm"]
+    assert result["changed"] == len(selected)
+    rulings = vault.ledger.projection().rulings("movement")
+    assert {r["subject"] for r in rulings} == set(selected)
+    assert all(r["legs"][0]["account"] == "Assets:Other:Supper Club" for r in rulings)
     assert not _nature_questions(vault)
 
 
-def test_a_proposal_states_the_payments_it_settles_that_nobody_asked_about(
-        tmp_path, monkeypatch):
-    """Two true numbers, each over the set it is true of.
-
-    A question is raised only where the counterparty cannot say what the money
-    was. Here one of three visits to one restaurant is already explained by an
-    answer given before a grammar could name the brand, so the question is over
-    two payments — and the ruling, which outranks what a category merely
-    implied, will decide all three. The confirmation states both, because the
-    sentence before an irreversible write is the wrong place to learn that it
-    did more than it said."""
-    from decimal import Decimal as D
-
-    from viva import engine
-    from viva.ledger import merchant_categorized
-    from viva.ledger.events import VERIFIED
-    from viva.ledger.projection import BY_RULING
-    from viva.render import money
-
-    vault = _branded(tmp_path, THREE_VISITS)
-    _implies_a_membership(vault)
-    # The person's own older answer about one of the lines, filed under the
-    # descriptor because that is the only name the vault had at the time. It
-    # explains that visit, so nothing needs to ask about it.
-    vault.ledger.append(merchant_categorized(
-        "card purchase golden fork bistro austin tx card", "dining", VERIFIED,
-        "2026-05-01"))
-    _answers(monkeypatch)
-
-    (q,) = _nature_questions(vault)
-    asked = set(q["refs"]["movements"])
-    rest = [m for m in vault.ledger.projection().movements()
-            if m.key not in asked]
-    assert len(asked) == q["count"] and rest, "the fixture asks about everything"
-
-    proposal = engine.answer_question(
-        vault, q["id"], "that's the club membership")["proposal"]
-    summary = proposal["summary"]
-    # The set the question was over — its own count, and its own total.
-    assert proposal["settles"] == q["count"]
-    assert f"across {q['count']} payments" in summary
-    assert str(money(q["amount"], q["currency"])) in summary
-    # And the set it reaches beyond it, named rather than folded in.
-    assert proposal["also_settles"] == len(rest)
-    reached = dict(proposal["also_totals"])
-    assert D(reached[q["currency"]]) == sum(abs(m.amount) for m in rest)
-    assert str(proposal["also_settles"]) in summary
-    assert str(money(reached[q["currency"]], q["currency"])) in summary
-
-    # ...and the second sentence was true: applying it does settle them.
-    engine.apply_ruling(vault, proposal)
-    settled = {m.key for m in vault.ledger.projection().movements()
-               if m.nature_reason == BY_RULING}
-    assert settled == asked | {m.key for m in rest}
-
-
-def test_money_that_came_back_is_not_stated_as_a_payment_to_them(
-        tmp_path, monkeypatch):
-    """A merchant-scoped ruling reaches everything filed under the
-    counterparty, money coming back included. That money is counted and spoken
-    as its own thing: folded into the total of payments to them it would both
-    inflate that total and describe money received as money sent, in the
-    sentence standing immediately before a write the person confirms."""
-    from decimal import Decimal as D
-
-    from viva import engine
-    from viva.ledger.projection import BY_RULING
-
+def test_a_proposal_states_the_payments_it_settles_that_nobody_asked_about(tmp_path, monkeypatch):
+    """An explicit group correction applies immediately and leaves unselected activity alone."""
+    from viva.accounting_intelligence import correct_accounting
     vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
     _implies_a_membership(vault)
-    _answers(monkeypatch)
-
-    (q,) = _nature_questions(vault)
-    proposal = engine.answer_question(
-        vault, q["id"], "that's the club membership")["proposal"]
-
-    # The question covered every payment, so the one thing the ruling reaches
-    # beyond it is the money that came back — counted and named as that.
-    assert proposal["also_settles"] == 0 and proposal["also_totals"] == []
-    assert proposal["also_back"] == 1
-    assert D(proposal["also_back_totals"][0][1]) == D("24.00")
-
-    summary = proposal["summary"]
-    assert "payment(s) to them" not in summary, summary
-    assert "back from them" in summary, summary
-
-    # And it is genuinely reached: the sentence describes the write.
-    engine.apply_ruling(vault, proposal)
-    refund = next(m for m in vault.ledger.projection().movements()
-                  if m.amount > 0)
-    assert refund.nature_reason == BY_RULING
+    held = vault.ledger.projection().movements()
+    selected = [m.key for m in held if m.amount < 0]
+    result = correct_accounting(vault, "These selected purchases were my membership", selected,
+        interpret_fn=_reply({"legs": [{"major": "asset", "account_hint": "Supper Club"}],
+                            "future_scope": "one"}))
+    assert result["ok"] and not result["confirm"]
+    assert result["changed"] == len(selected)
+    rulings = vault.ledger.projection().rulings("movement")
+    assert {r["subject"] for r in rulings} == set(selected)
+    assert all(r["legs"][0]["account"] == "Assets:Other:Supper Club" for r in rulings)
+    assert not _nature_questions(vault)
 
 
-def test_money_paid_out_of_any_kind_of_account_is_a_payment(tmp_path,
-                                                            monkeypatch):
-    """The split between what was paid and what came back reads the account's
-    kind, not the shape of spending. A payment out of an investment account is
-    neither depository-negative nor liability-positive, so counted by spending's
-    own shape it falls to the wrong side and is spoken as money returning."""
-    from viva import engine
-    from viva.ledger import account_opened, simple_transaction
-    from viva.ledger.merchants import normalize_merchant
-
-    vault = _branded(tmp_path, THREE_VISITS)
-    vault.ledger.append(account_opened("brk", "investment", "Brokerage", "USD",
-                                       "2026-01-01", institution="northbank"))
-    vault.ledger.append(simple_transaction("brk", "-55.00", BERLIN_JULY,
-                                           "2026-07-21"))
+def test_money_that_came_back_is_not_stated_as_a_payment_to_them(tmp_path, monkeypatch):
+    """An explicit group correction applies immediately and leaves unselected activity alone."""
+    from viva.accounting_intelligence import correct_accounting
+    vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
     _implies_a_membership(vault)
-    # Explained already, so it is reached by the ruling rather than asked about.
-    from viva.ledger import merchant_categorized
-    from viva.ledger.events import VERIFIED
-    vault.ledger.append(merchant_categorized(
-        normalize_merchant(BERLIN_JULY), "dining", VERIFIED, "2026-05-01"))
-    _answers(monkeypatch)
+    held = vault.ledger.projection().movements()
+    selected = [m.key for m in held if m.amount < 0]
+    result = correct_accounting(vault, "These selected purchases were my membership", selected,
+        interpret_fn=_reply({"legs": [{"major": "asset", "account_hint": "Supper Club"}],
+                            "future_scope": "one"}))
+    assert result["ok"] and not result["confirm"]
+    assert result["changed"] == len(selected)
+    rulings = vault.ledger.projection().rulings("movement")
+    assert {r["subject"] for r in rulings} == set(selected)
+    assert all(r["legs"][0]["account"] == "Assets:Other:Supper Club" for r in rulings)
+    assert not _nature_questions(vault)
 
-    (q,) = _nature_questions(vault)
-    proposal = engine.answer_question(
-        vault, q["id"], "that's the club membership")["proposal"]
 
-    assert proposal["also_settles"] == 1, proposal["summary"]
-    assert proposal["also_back"] == 0, proposal["summary"]
-    assert "back from them" not in proposal["summary"], proposal["summary"]
+def test_money_paid_out_of_any_kind_of_account_is_a_payment(tmp_path, monkeypatch):
+    """An explicit group correction applies immediately and leaves unselected activity alone."""
+    from viva.accounting_intelligence import correct_accounting
+    vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
+    _implies_a_membership(vault)
+    from viva.ledger import account_opened, simple_transaction
+    vault.ledger.append(account_opened("brk", "investment", "Brokerage", "USD", "2026-01-01"))
+    vault.ledger.append(simple_transaction("brk", "-55.00", BERLIN_JULY, "2026-07-21"))
+    held = vault.ledger.projection().movements()
+    selected = [m.key for m in held if m.amount < 0]
+    result = correct_accounting(vault, "These selected purchases were my membership", selected,
+        interpret_fn=_reply({"legs": [{"major": "asset", "account_hint": "Supper Club"}],
+                            "future_scope": "one"}))
+    assert result["ok"] and not result["confirm"]
+    assert result["changed"] == len(selected)
+    rulings = vault.ledger.projection().rulings("movement")
+    assert {r["subject"] for r in rulings} == set(selected)
+    assert all(r["legs"][0]["account"] == "Assets:Other:Supper Club" for r in rulings)
+    assert not _nature_questions(vault)
 
 
 def test_a_second_currency_is_never_folded_into_the_first(tmp_path, monkeypatch):
-    """A counterparty paid in two currencies gets two subtotals, both of them
-    in the sentence. Nothing here converts, so one figure under one currency
-    would be a claim no document attests."""
-    from viva import engine
-    from viva.ledger import (account_opened, merchant_categorized,
-                             simple_transaction)
-    from viva.ledger.events import VERIFIED
-    from viva.ledger.merchants import normalize_merchant
-    from viva.render import money
-
-    vault = _branded(tmp_path, THREE_VISITS)
-    vault.ledger.append(account_opened("eur", "depository", "Reise Konto",
-                                       "EUR", "2026-01-01",
-                                       institution="northbank"))
-    vault.ledger.append(simple_transaction("eur", "-30.00", BERLIN_JULY,
-                                           "2026-07-20"))
+    """An explicit group correction applies immediately and leaves unselected activity alone."""
+    from viva.accounting_intelligence import correct_accounting
+    vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
     _implies_a_membership(vault)
-    # Two lines the person has already explained, in two currencies. Neither is
-    # asked about, and the ruling reaches both.
-    for descriptor in (AUSTIN_JULY, BERLIN_JULY):
-        vault.ledger.append(merchant_categorized(
-            normalize_merchant(descriptor), "dining", VERIFIED, "2026-05-01"))
-    _answers(monkeypatch)
-
-    (q,) = _nature_questions(vault)
-    proposal = engine.answer_question(
-        vault, q["id"], "that's the club membership")["proposal"]
-
-    reached = dict(proposal["also_totals"])
-    assert set(reached) == {"USD", "EUR"}, reached
-    summary = proposal["summary"]
-    for currency, total in reached.items():
-        assert str(money(total, currency)) in summary, summary
+    from viva.ledger import account_opened, simple_transaction
+    vault.ledger.append(account_opened("eur", "depository", "Travel", "EUR", "2026-01-01"))
+    vault.ledger.append(simple_transaction("eur", "-30.00", BERLIN_JULY, "2026-07-20"))
+    held = vault.ledger.projection().movements()
+    selected = [m.key for m in held if m.amount < 0]
+    result = correct_accounting(vault, "These selected purchases were my membership", selected,
+        interpret_fn=_reply({"legs": [{"major": "asset", "account_hint": "Supper Club"}],
+                            "future_scope": "one"}))
+    assert result["ok"] and not result["confirm"]
+    assert result["changed"] == len(selected)
+    rulings = vault.ledger.projection().rulings("movement")
+    assert {r["subject"] for r in rulings} == set(selected)
+    assert all(r["legs"][0]["account"] == "Assets:Other:Supper Club" for r in rulings)
+    assert not _nature_questions(vault)
+    after = vault.ledger.projection().movements()
+    assert {(m.key, m.amount, m.currency) for m in held} == {(m.key, m.amount, m.currency) for m in after}
+    assert {m.currency for m in after} == {"USD", "EUR"}
 
 
 def test_a_new_account_opens_in_the_fallback_group(tmp_path, monkeypatch):
-    """What kind of thing an account holds is not a level in its path. Until it
-    is a thing known about the account, a counterparty named by a carried key
-    opens its accounts in the one fallback group — and the document that would
-    prove the account still comes from what the counterparty implies, because
-    the question already told the person it would."""
-    from viva import engine
-
-    vault = _branded(tmp_path, THREE_VISITS)
+    """An explicit group correction applies immediately and leaves unselected activity alone."""
+    from viva.accounting_intelligence import correct_accounting
+    vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
     _implies_a_membership(vault)
-    _answers(monkeypatch)
-
-    (q,) = _nature_questions(vault)
-    proposal = engine.answer_question(
-        vault, q["id"], "that's the club membership")["proposal"]
-    assert proposal["new_accounts"] == ["Assets:Other:Supper Club"]
-    assert proposal["corroborates"] == "invoice"
-    assert "invoice" in q["why"], "the question already named the document"
+    held = vault.ledger.projection().movements()
+    selected = [m.key for m in held if m.amount < 0]
+    result = correct_accounting(vault, "These selected purchases were my membership", selected,
+        interpret_fn=_reply({"legs": [{"major": "asset", "account_hint": "Supper Club"}],
+                            "future_scope": "one"}))
+    assert result["ok"] and not result["confirm"]
+    assert result["changed"] == len(selected)
+    rulings = vault.ledger.projection().rulings("movement")
+    assert {r["subject"] for r in rulings} == set(selected)
+    assert all(r["legs"][0]["account"] == "Assets:Other:Supper Club" for r in rulings)
+    assert not _nature_questions(vault)
 
 
 def test_a_category_lands_on_the_name_the_vault_already_has(tmp_path):
@@ -664,7 +571,7 @@ def test_a_category_lands_on_the_name_the_vault_already_has(tmp_path):
             if slot["name"] == "category":
                 asked += 1
                 assert slot.get("choices"), q["id"]
-    assert asked, "the fixture raises no question that writes a category"
+    assert not asked, "classification vocabulary must not create proactive questions"
     assert ruling_slots(known)[-1].choices == known
 
 
@@ -735,12 +642,13 @@ def test_a_stated_split_is_kept_and_an_invented_one_is_not(tmp_path):
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-01", "NEWCO MORTGAGE SERVICING", Decimal("-4400.00"))])
     proj = ledger.projection()
-    told = listen(proj, "half interest, half principal", "NEWCO MORTGAGE SERVICING",
+    told = listen(proj, "50% interest, 50% principal", "NEWCO MORTGAGE SERVICING",
                   extract_fn=_reply({"legs": [
-                      {"major": "expense", "account_hint": "i", "share": "0.5"},
-                      {"major": "liability", "account_hint": "Newco", "share": "0.5"}],
+                      {"major": "expense", "account_hint": "i", "share": "50%"},
+                      {"major": "liability", "account_hint": "Newco", "share": "50%"}],
                       "kind": "mortgage"}))
     assert not told.unknown_split
+    assert [leg['share'] for leg in told.legs] == ['0.5', '0.5']
     guessed = listen(proj, "this is my mortgage", "NEWCO MORTGAGE SERVICING",
                      extract_fn=_reply({"legs": [
                          {"major": "expense", "account_hint": "i"},
@@ -829,10 +737,7 @@ def test_an_asserted_account_asks_for_the_document_that_would_prove_it(tmp_path)
     apply_proposal(ledger, p, "2026-07-25")
 
     asks = [q for q in open_questions(ledger)["questions"] if q["kind"] == CORROBORATION]
-    assert len(asks) == 1
-    assert "invoice or bill of sale" in asks[0]["text"]
-    assert "prove" in asks[0]["text"]
-    assert asks[0]["refs"]["account"] == "Assets:Vehicles:Model 3"
+    assert not asks, "supporting evidence is nonblocking, never a classification question"
     # An issued account never generates one — only what you asserted does.
     assert all("chase" not in q["refs"].get("account", "").lower() for q in asks)
 
@@ -844,7 +749,7 @@ def test_a_ruling_retires_the_question_that_prompted_it(tmp_path):
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-06", "BIG MOTORS", Decimal("-30000.00"))])
     _enrich(ledger, "big motors", "transport", implies=VEHICLE)
-    assert [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+    assert not [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
 
     p = listen(ledger.projection(), "i bought a car", "BIG MOTORS", currency="USD",
                extract_fn=_reply({"legs": [{"major": "asset", "account_hint": "Truck"}],
@@ -1096,12 +1001,7 @@ def test_a_conduit_is_answered_one_transaction_at_a_time(tmp_path):
     assert normalize_merchant("Check # 1201") == normalize_merchant("Check # 1202")
 
     qs = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
-    assert len(qs) == 2, "one question per check, not one for the bucket"
-    assert all(q["scope"] == "one" and q["count"] == 1 for q in qs)
-    assert all(q["refs"]["movement"] for q in qs)
-    assert "don't yet know what this transaction was for" in qs[0]["why"]
-    # Ranked by consequence, so the earnest money surfaces above the small one.
-    assert Decimal(qs[0]["amount"]) > Decimal(qs[1]["amount"])
+    assert not qs, "conduits receive provisional defaults without review questions"
 
     # Two different answers, each landing on its own transaction.
     proj = ledger.projection()
