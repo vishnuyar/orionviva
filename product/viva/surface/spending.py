@@ -17,7 +17,7 @@ from typing import Any
 
 from .. import render
 from ..ledger.events import CORROBORATED, VERIFIED
-from ..ledger.projection.movements import (BY_DEFAULT, BY_RULING, MIXED, SETTLEMENT,
+from ..ledger.projection.movements import (MIXED, SETTLEMENT,
                                            SPENDING, TRANSFER)
 from .account_ledger import AccountLedgerIdentityError, _deduplicate
 
@@ -135,9 +135,6 @@ def spending_breakdown(projection, locale: str, read_on: str, *,
                 exclusions[("conflicted_posting" if "conflicted" in member_grades
                             else "unattested_posting")] += 1
                 continue
-            if any(member.provisional for member in members):
-                exclusions["provisional_treatment"] += 1
-                continue
             treatments = {(member.nature,
                            str(getattr(member, "nature_reason", "") or ""),
                            projection._is_expense(member))
@@ -150,10 +147,6 @@ def spending_breakdown(projection, locale: str, read_on: str, *,
             nature, nature_reason, expense_shaped = next(iter(treatments))
             if nature != SPENDING or not expense_shaped:
                 exclusions[_non_spending_reason(nature, expense_shaped)] += 1
-                continue
-            if nature_reason != BY_RULING:
-                exclusions[("undecided_treatment" if nature_reason == BY_DEFAULT
-                            else "unknown_treatment")] += 1
                 continue
             category, subcategory, uncertain = next(iter(classifications))
             if uncertain:
@@ -171,7 +164,7 @@ def spending_breakdown(projection, locale: str, read_on: str, *,
                          for bar in section["bars"])
     exclusion_rows = _exclusions(exclusions)
     notes = [
-        "Only expense-shaped movements with an attested posting and a settled spending treatment are included.",
+        "Spending includes ordinary and inferred expense treatment when source postings and statement coverage are attested. Classification does not require confirmation.",
         "Each currency is totaled and scaled separately. No exchange rate or cross-currency total is used.",
     ]
     if classification_uncertain:
@@ -550,13 +543,11 @@ def _exclusions(counts: Counter[str]) -> list[dict[str, Any]]:
         "outside_attested_coverage": "Movement(s) outside attested statement coverage were excluded.",
         "unattested_posting": "Movement(s) without an attested posting grade were excluded.",
         "conflicted_posting": "Movement(s) with conflicted posting evidence were excluded.",
-        "provisional_treatment": "Movement(s) with provisional treatment were excluded.",
-        "transfer": "Own-account transfer movement(s) were excluded.",
-        "debt_or_settlement": "Debt or settlement movement(s) were excluded.",
-        "mixed_treatment": "Movement(s) with an unresolved mixed treatment were excluded.",
+        "transfer": "Movement(s) treated as transfers or asset acquisitions were excluded from spending.",
+        "debt_or_settlement": "Movement(s) treated as debt repayment or settlement were excluded from spending.",
+        "mixed_treatment": "Compound movement(s) are outside this whole-movement chart. Financial statements can total expense portions when component amounts are allocated.",
         "income_or_non_expense": "Income and movements without an expense direction were excluded.",
         "unknown_treatment": "Movement(s) with an unknown treatment were excluded.",
-        "undecided_treatment": "Movement(s) whose spending treatment rested only on a default were excluded.",
         "duplicate_conflict": "Overlapping duplicate movement(s) with inconsistent meaning were excluded.",
         "account_scope_conflict": "Movement(s) whose currency or account kind conflicted with their account were excluded.",
         "invalid_date": "Movement(s) without a valid calendar date were excluded.",

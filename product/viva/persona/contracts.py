@@ -607,6 +607,8 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "activity_scope":                  frozenset(),
     "activity_transfer":               frozenset(),
     "activity_provisional":            frozenset(),
+    "activity_inferred_expense":       frozenset(),
+    "activity_inferred_compound":      frozenset(),
     "activity_unsettled":              frozenset(),
     "activity_category_recorded":      frozenset({"category"}),
     "activity_category_unchanged":     frozenset({"category"}),

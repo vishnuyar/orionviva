@@ -58,11 +58,9 @@ class MovementInfo:
     currency: str
     provenance: Provenance
     linked: bool = False
-    # Derived, with the rung that decided it. `provisional` means the nature
-    # rests only on a *suggested* implication: the suggestion is applied, so a
-    # movement it moves off `spending` is EXCLUDED from the spending aggregates
-    # and its amount is what `provisional_spending` reports — money removed on
-    # weak evidence, not money counted with a caveat.
+    # Derived, with the rung that decided it. Provisional marks inferred
+    # treatment or unknown component amounts; effective nature decides spending.
+    # The source amount's measurement grade remains separate.
     nature: str = SPENDING
     nature_reason: str = BY_DEFAULT
     provisional: bool = False
@@ -339,8 +337,9 @@ def spending_by_currency(core: ProjectionCore) -> dict[str, Decimal]:
     """Real spending per currency, as positive magnitudes.
 
     Currency is only a partition of the same population every other spending
-    aggregate reads.  In particular, card purchases count and transfers,
-    provisional movements and mixed movements do not.  Keeping that predicate
+    aggregate reads. Card purchases and inferred expenses count; transfers and
+    all mixed movements do not. Financial statements separately read attested
+    component allocations. Keeping that predicate
     in one place prevents two totals both labelled ``spending`` from describing
     different sets of movements.
     """

@@ -1709,7 +1709,7 @@ def _identity_test_profile(monkeypatch):
 def test_current_report_rejects_a_synthetic_profile_with_the_historical_persona_contract(monkeypatch):
     profile, _manifest, report = _identity_test_profile(monkeypatch)
     assert not validate_admission_report(report, profile)
-    assert versions.active(PACKAGE, "persona_pack") == "pack-v50"
+    assert versions.active(PACKAGE, "persona_pack") == "pack-v52"
     historical = versions.fingerprint(versions.path_of(PACKAGE, "pack-v49"))
     assert profile.persona_pack_digest != historical
     historical_profile = replace(profile, persona_pack_digest=historical)

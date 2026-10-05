@@ -308,7 +308,7 @@
               "loan_repayment_choices": [],
               "nature": "spending",
               "provisional": true,
-              "sentence": "",
+              "sentence": "Inferred expense treatment. You can explain a different treatment.",
               "subcategory": {
                 "id": null,
                 "label": ""
@@ -598,7 +598,7 @@
               "loan_repayment_choices": [],
               "nature": "spending",
               "provisional": true,
-              "sentence": "",
+              "sentence": "Inferred expense treatment. You can explain a different treatment.",
               "subcategory": {
                 "id": null,
                 "label": ""
@@ -639,7 +639,7 @@
               "loan_repayment_choices": [],
               "nature": "spending",
               "provisional": true,
-              "sentence": "",
+              "sentence": "Inferred expense treatment. You can explain a different treatment.",
               "subcategory": {
                 "id": null,
                 "label": ""
@@ -691,7 +691,7 @@
               "loan_repayment_choices": [],
               "nature": "spending",
               "provisional": true,
-              "sentence": "",
+              "sentence": "Inferred expense treatment. You can explain a different treatment.",
               "subcategory": {
                 "id": "rent",
                 "label": "rent"
@@ -4114,7 +4114,7 @@
           "exclusions": [],
           "granularity": "category",
           "notes": [
-            "Only expense-shaped movements with an attested posting and a settled spending treatment are included.",
+            "Spending includes ordinary and inferred expense treatment when source postings and statement coverage are attested. Classification does not require confirmation.",
             "Each currency is totaled and scaled separately. No exchange rate or cross-currency total is used.",
             "The selected range is not fully covered by continuous attested statements; totals include covered dates only."
           ],

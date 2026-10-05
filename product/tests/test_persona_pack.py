@@ -405,7 +405,7 @@ def test_corroborated_pack_promotes_only_the_two_reviewed_grade_sentences():
     root = pathlib.Path(persona.__file__).resolve().parent
     prior = json.loads((root / "pack-v49" / "moments.json").read_text())
     current = json.loads((root / "pack-v50" / "moments.json").read_text())
-    assert persona.ACTIVE_PACK == "pack-v50"
+    assert (root / "pack-v50").is_dir()
     assert set(current) == set(prior)
     assert {key for key in prior if prior[key] != current[key]} == {
         "stood_behind_corroborated", "rows_stood_behind_corroborated"}
@@ -418,3 +418,33 @@ def test_corroborated_pack_promotes_only_the_two_reviewed_grade_sentences():
     for name in ("phrasings.json", "tone.md"):
         assert (root / "pack-v50" / name).read_bytes() == (root / "pack-v49" / name).read_bytes()
     assert manifest.fingerprint(root / "pack-v50") == FROZEN_PACKS["pack-v50"]
+
+
+def test_inference_pack_changes_only_treatment_and_allocation_wording():
+    root = pathlib.Path(persona.__file__).resolve().parent
+    prior = json.loads((root / "pack-v50" / "moments.json").read_text())
+    current = json.loads((root / "pack-v51" / "moments.json").read_text())
+    assert set(current) == set(prior)
+    assert {key for key in prior if prior[key] != current[key]} == {
+        "activity_provisional", "activity_unsettled"}
+    assert "Inferred" in current["activity_provisional"]
+    assert "unallocated component amounts remain unknown" in current["activity_unsettled"]
+    assert "confirmed" not in current["activity_provisional"]
+    for name in ("phrasings.json", "tone.md"):
+        assert (root / "pack-v51" / name).read_bytes() == (root / "pack-v50" / name).read_bytes()
+    assert manifest.fingerprint(root / "pack-v51") == FROZEN_PACKS["pack-v51"]
+
+
+def test_inference_label_pack_adds_only_expense_and_compound_moments():
+    root = pathlib.Path(persona.__file__).resolve().parent
+    prior = json.loads((root / "pack-v51" / "moments.json").read_text())
+    current = json.loads((root / "pack-v52" / "moments.json").read_text())
+    assert persona.ACTIVE_PACK == "pack-v52"
+    assert set(current) - set(prior) == {"activity_inferred_expense", "activity_inferred_compound"}
+    assert {key: current[key] for key in prior} == prior
+    for key in set(current) - set(prior):
+        assert current[key].startswith("Inferred")
+        assert "confirmed" not in current[key]
+    for name in ("phrasings.json", "tone.md"):
+        assert (root / "pack-v52" / name).read_bytes() == (root / "pack-v51" / name).read_bytes()
+    assert manifest.fingerprint(root / "pack-v52") == FROZEN_PACKS["pack-v52"]

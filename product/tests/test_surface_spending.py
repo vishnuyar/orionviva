@@ -78,6 +78,41 @@ def read(**kwargs):
     return spending_breakdown(Projection(), "en-US", "2026-09-04", **kwargs)
 
 
+@pytest.mark.parametrize("reason,provisional", [("default", True), ("ruling", True)])
+def test_source_backed_default_and_inferred_expenses_enter_chart(reason, provisional):
+    projection = Projection()
+    projection.rows = [Movement("inferred", "acct:usd", "2026-08-01", "-11",
+                                "Synthetic purchase", "USD", "usd-main",
+                                nature_reason=reason, provisional=provisional)]
+    result = spending_breakdown(projection, "en-US", "2026-09-04", currency="USD")
+    assert result["sections"][0]["total_display"] == "USD 11.00"
+    assert result["coverage"]["included_count"] == 1
+    assert result["exclusions"] == []
+
+
+@pytest.mark.parametrize("grade,reason", [("unverified", "unattested_posting"),
+                                         ("conflicted", "conflicted_posting")])
+def test_inferred_treatment_does_not_upgrade_source_number_grades(grade, reason):
+    projection = Projection()
+    projection.rows = [Movement("inferred", "acct:usd", "2026-08-01", "-11",
+                                "Synthetic purchase", "USD", "usd-main", provisional=True)]
+    projection.movement_grades = lambda: {"inferred": grade}
+    result = spending_breakdown(projection, "en-US", "2026-09-04", currency="USD")
+    assert result["sections"][0]["total_display"] == "USD 0.00"
+    assert [row["kind"] for row in result["exclusions"]] == [reason]
+
+
+def test_inferred_categories_group_source_backed_spending_without_confirmation():
+    projection = Projection()
+    projection.rows = [Movement("inferred", "acct:usd", "2026-08-01", "-11",
+                                "Synthetic purchase", "USD", "usd-main", provisional=True)]
+    projection.derived_category = lambda _: {"category": "groceries", "subcategory": "supermarket",
+                                             "grade": "unverified", "by": "model"}
+    result = spending_breakdown(projection, "en-US", "2026-09-04", currency="USD")
+    assert result["sections"][0]["bars"][0]["label"] == "groceries"
+    assert result["sections"][0]["total_display"] == "USD 11.00"
+
+
 def test_breakdown_authors_exact_currency_totals_groups_deduplication_and_exclusions():
     result = read()
 
@@ -89,18 +124,18 @@ def test_breakdown_authors_exact_currency_totals_groups_deduplication_and_exclus
     assert result["coverage"]["state"] == "partial"
     assert [section["currency"] for section in result["sections"]] == ["EUR", "USD"]
     usd = result["sections"][1]
-    assert usd["total_display"] == "USD 108.00"
-    assert usd["included_count"] == 5
+    assert usd["total_display"] == "USD 119.00"
+    assert usd["included_count"] == 6
     assert [bar["label"] for bar in usd["bars"]] == [
-        "groceries", "dining", "transport", "Uncategorized"]
+        "groceries", "dining", "Uncategorized", "transport"]
     assert sum(bar["share_basis_points"] for bar in usd["bars"]) == 10000
     assert usd["bars"][0]["bar_basis_points"] == 10000
     assert [bar["order"] for bar in usd["bars"]] == list(range(len(usd["bars"])))
-    assert result["coverage"]["included_count"] == 6
+    assert result["coverage"]["included_count"] == 7
     kinds = {item["kind"]: item["count"] for item in result["exclusions"]}
     assert kinds == {
         "outside_attested_coverage": 1, "unattested_posting": 1,
-        "provisional_treatment": 1, "transfer": 1,
+        "transfer": 1,
         "debt_or_settlement": 1, "mixed_treatment": 1,
         "income_or_non_expense": 1}
     assert "exact duplicate" in " ".join(result["notes"])
@@ -113,7 +148,7 @@ def test_subcategory_account_and_currency_are_compound_and_exactly_scoped():
     assert result["scope_summary"] == "Everyday · USD"
     assert [bar["label"] for bar in result["sections"][0]["bars"]] == [
         "groceries · fresh_produce", "dining · cafes",
-        "transport · rail", "Uncategorized"]
+        "Uncategorized", "transport · rail"]
     assert result["controls"]["selected_account_id"] == "acct:usd"
     assert result["controls"]["selected_currency"] == "USD"
     assert [item["id"] for item in result["controls"]["accounts"]] == ["acct:usd"]
@@ -124,7 +159,7 @@ def test_currency_filter_authors_coverage_for_only_that_currency_scope():
 
     assert result["coverage"]["state"] == "complete"
     assert result["scope_summary"] == "All available USD accounts · USD"
-    assert result["sections"][0]["included_count"] == 5
+    assert result["sections"][0]["included_count"] == 6
 
 
 def test_periods_are_inclusive_calendar_ranges_and_handle_leap_years():
@@ -176,7 +211,7 @@ def test_duplicate_meaning_and_account_currency_conflicts_are_excluded():
 
     assert exclusions["duplicate_conflict"] == 1
     assert exclusions["account_scope_conflict"] == 1
-    assert result["sections"][1]["total_display"] == "USD 88.00"
+    assert result["sections"][1]["total_display"] == "USD 99.00"
 
 
 @pytest.mark.parametrize("mutation", [
@@ -332,7 +367,7 @@ def test_authored_contract_uses_exact_json_scalar_types():
                for item in result["coverage"]["gaps"])
 
 
-def test_default_treatment_refunds_credits_and_non_spending_natures_are_excluded():
+def test_default_spending_enters_while_refunds_credits_and_non_spending_stay_excluded():
     projection = Projection()
     projection.rows.extend([
         Movement("default", "acct:usd", "2026-08-09", "-12", "Default",
@@ -357,13 +392,13 @@ def test_default_treatment_refunds_credits_and_non_spending_natures_are_excluded
     result = spending_breakdown(projection, "en-US", "2026-09-04")
     exclusions = {item["kind"]: item["count"] for item in result["exclusions"]}
 
-    assert exclusions["undecided_treatment"] == 1
-    assert exclusions["unknown_treatment"] == 1
+    assert "undecided_treatment" not in exclusions
+    assert "unknown_treatment" not in exclusions
     assert exclusions["income_or_non_expense"] == 3
     assert exclusions["transfer"] == 1
     assert exclusions["debt_or_settlement"] == 1
     assert exclusions["mixed_treatment"] == 1
-    assert result["sections"][1]["total_display"] == "USD 108.00"
+    assert result["sections"][1]["total_display"] == "USD 144.00"
 
 
 def test_equal_amount_labels_use_backend_ordinals_for_deterministic_order():

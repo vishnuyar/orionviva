@@ -16,6 +16,7 @@ from ..ledger.projection import accounts as account_views
 from ..ledger.projection import categories as category_views
 from ..ledger.projection import movements as movement_views
 from ..ledger.projection import merchants as merchant_views
+from ..ledger.projection import rulings as ruling_views
 from ..ledger.merchant_keys import resolve_keys
 from .held import _identity_core
 from .store import ReadStoreError
@@ -309,6 +310,12 @@ class SQLHistoricalActivityProjection:
 
     def movement_grades(self):
         return dict(self._grades)
+
+    def rulings(self):
+        return ruling_views.rulings(self._core)
+
+    def merchant_keys_of(self, movement):
+        return merchant_views.merchant_keys_of(self._core, movement)
 
     def account_info(self, account):
         return account_views.account_info(self._core, account)

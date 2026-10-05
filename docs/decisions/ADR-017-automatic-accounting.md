@@ -10,6 +10,12 @@ Original events remain immutable. Separate accounting control and restoration ev
 
 ## Consequences
 
+The owner amended the interpretation contract on 2026-10-05: “you do not need evidence for category and treatment, evidence is required only for source of numbers”. Accounting prompt v3 describes only the counterpart of an already recorded source posting. Paying through a liability source does not itself add a liability counterpart. Categories and compound meaning remain eligible for provisional inference; no categorical proof gate is introduced. Component amounts and arithmetic remain local and require numeric allocation evidence.
+
+The manifest names v1/v2 as older contracts whose automatic-model, unverified, multiple-leg, empty-share treatments retire at the next interpretation entry. Restoration appends before a reread and refreshes the effective projection. It preserves stronger treatments and valid single asset/liability interpretations; v3 compounds survive unchanged runs. An unavailable or unsuccessful reread leaves the ordinary baseline usable, while a valid inferred compound can again remain unresolved numerically. Reload alone is not a migration.
+
+The spending chart admits default and inferred expense meaning subject to its source-number, identity, coverage, currency and overlap safeguards. Persona pack v51 describes inferred non-spending treatment and missing component amounts without demanding classification confirmation. No outbound fields or destinations change; intentionally revised instruction bytes are versioned and old prompt/persona bytes stay immutable. Actual-model compliance is reserved for the paid Witness restart; synthetic dispatch and restoration tests cannot establish it.
+
 M1 permits automatically inferred asset/liability treatment with provenance and reversibility. X3 reserves confirmation for irreversible operations and unresolved targets, not reversible interpretation. Previous question-first documents remain historical descriptions of their requested-editor substrate; the active behavior is specified in [automatic-accounting.md](../automatic-accounting.md).
 
 No private transaction descriptors, amounts or account identifiers enter the automatic classification envelope. Only shipped public taxonomy labels and bounded sanitized examples may be transmitted. Current extraction adapters lack search tools; broader public research is an explicitly unsupported capability rather than a hidden assumption.

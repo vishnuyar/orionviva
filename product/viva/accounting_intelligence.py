@@ -318,14 +318,33 @@ def interpret_activity(vault, *, extract_fn=None):
         return False
     plans, unresolved, signatures, examples = [], [], {}, {}
     version = versions.active(PACKAGE, "accounting_interpret")
+    retired_contracts = versions.manifest(PACKAGE)["in_force"]["accounting_interpret"].get(
+        "retire_unallocated_compounds", [])
+    restored = False
+    for movement in proj.movements():
+        current = rulings.get(movement.key, {})
+        if current.get("by") in ("human", "human_rule") or current.get("grade") == VERIFIED:
+            continue
+        stronger = movement.linked or supported(movement)
+        legs = current.get("legs", [])
+        older_compound = (current.get("by") == "model"
+                          and current.get("grade") == UNVERIFIED
+                          and current.get("prompt_version") in retired_contracts
+                          and len(legs) > 1
+                          and all(not leg.get("share") for leg in legs))
+        if ((stronger and current.get("by") in ("model", "merchant_prior"))
+                or (not stronger and older_compound)):
+            ledger.append(accounting_treatment_restored(movement.key, {},
+                proj._core._categories.get(movement.key, {}), _today()))
+            restored = True
+    if restored:
+        proj = ledger.projection()
+        rulings = {r["subject"]: r for r in proj.rulings(SCOPE_MOVEMENT)}
     for movement in proj.movements():
         current = rulings.get(movement.key, {})
         if current.get("by") in ("human", "human_rule") or current.get("grade") == VERIFIED:
             continue
         if movement.linked or supported(movement):
-            if current.get("by") in ("model", "merchant_prior"):
-                ledger.append(accounting_treatment_restored(movement.key, {},
-                    proj._core._categories.get(movement.key, {}), _today()))
             continue
         examples[movement.key] = correction_examples(ledger, proj, movement)
         context = _envelope(proj, [movement], examples)["movements"][0]

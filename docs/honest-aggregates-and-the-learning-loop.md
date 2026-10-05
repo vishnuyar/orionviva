@@ -36,14 +36,15 @@
 2. `spending_by_category`, `spending_by_subcategory`, `spending_by_category_then_subcategory`, `spending_by_tag` and `uncategorized_expenses` all filter on that one predicate.
 3. A category label such as `transfers` or `loan_payments` never appears as a line item inside a spending breakdown.
 
-### MON-4 — weak evidence excludes the money and says so
+### MON-4 — provisional meaning is usable and remains attributed
 **State:** enforced
 **Code:** product/viva/ledger/projection/movements.py:284 (rung 4), :323 (`provisional_spending`)
 **Test:** product/tests/test_nature.py::test_a_suggested_implication_is_provisional_not_silent
 
 1. A `forced` implication decides the nature and is not provisional.
 2. A `suggested` implication decides the nature and marks the movement provisional.
-3. A provisional movement is **excluded** from the spending aggregates, and `provisional_spending()` reports the total that was removed on that evidence.
+3. Provisional classification alone does not exclude money. Expense-shaped movements whose effective nature is spending contribute, including ordinary defaults and inferred expenses. Transfers, settlements and acquisitions are excluded by their meaning. `provisional_spending()` reports the magnitude resting on provisional treatment; it is not a total removed from spending.
+4. The spending chart additionally requires attested source postings and statement coverage, keeps currencies separate and rejects source or duplicate conflicts. It requires no classification confirmation. This follows the owner's ruling: “you do not need evidence for category and treatment, evidence is required only for source of numbers”.
 
 ### MON-5 — a ruling whose legs disagree is mixed, and is neither counted nor dropped
 **State:** enforced
@@ -51,7 +52,7 @@
 **Test:** product/tests/test_ruling.py::test_a_compound_payment_is_neither_counted_nor_dropped
 
 1. Legs of one major give that major's nature; legs of several majors give `mixed`.
-2. A `mixed` movement is provisional, is not in spending, and appears in `undecomposed()` with the document that would settle the split.
+2. A `mixed` movement has multiple counterpart components. Without numeric allocation it supplies no expense portion and appears in `undecomposed()`. Human/document-attested shares can allocate known amounts in financial statements; provisional compound meaning itself needs no proof or confirmation.
 
 ### MON-6 — every spending aggregate is on the nature predicate
 **State:** enforced
@@ -61,8 +62,9 @@
 1. Every aggregate that states spending counts card purchases and excludes non-`spending` natures.
 
 Currency and category are now partitions of the same population: both include
-card purchases and both exclude transfers, provisional movements and mixed
-movements through `counts_as_spending`.
+card purchases and inferred expenses, and both exclude transfers and mixed
+movements through `counts_as_spending`. The chart also applies its attested
+source-number and statement-coverage checks.
 
 ### MON-7 — which way the money went has one derivation (M2)
 **State:** enforced
@@ -124,7 +126,7 @@ The category cannot decide it. The largest "spending" category, `loan_payments`,
 
 The ladder's order is the argument. Rung 3 is a heuristic over description text matched against raw account tokens with no distinctiveness filter, so a bare institution name can fire it; a heuristic that loose must not outrank a person's explicit answer, which is why a ruling sits above it. Ordering them the other way costs a real number and discards an owner's answer in silence: a checking line reading `Payment To Northbank Card Ending IN 7799` against the owner's ruling "I paid a friend's card, not mine" is a four-hundred-dollar swing. The looseness of rung 3 is itself deliberate: a wrong nature is a weaker error than a wrong link, so nature gets the honest number without gambling on speculative links — a wrong link is a wrong number, an unlinked-but-transfer-natured movement is merely a weaker explanation.
 
-A nature is never invented from a coincidence. Where only a *suggested* implication speaks, the suggestion is applied and the movement is flagged, so the doubtful money is removed from the headline and named rather than counted with a caveat. The number is honest about its own uncertainty rather than quietly wrong in either direction (X2), and `provisional_spending` is how much rests that way.
+Treatment may be inferred from categorical context and remains correctable. A *suggested* implication applies provisionally; the effective nature determines whether the movement contributes to spending. The provisional flag describes classification, not the source amount's grade. Source-number safeguards still govern numeric admission, and unknown compound allocations remain visible rather than guessed.
 
 Deriving all of this on the read side is what makes it retroactive for free: aggregates re-derive from movements at query time, so an existing vault becomes honest on the next read with no re-ingest and no model cost. It also cost nothing to add, which is the standing trade — the read side is cheap and reversible, the write side is expensive and one-way.
 

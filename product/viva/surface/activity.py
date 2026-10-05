@@ -12,7 +12,8 @@ from ..ingest.categorize import (UNCATEGORIZED, normalize_category,
                                  open_loan_receivables_at)
 from ..ingest.transfers import is_transfer_candidate
 from ..listen import category_vocabulary
-from ..ledger.projection.movements import (BY_CATEGORY, MIXED, SETTLEMENT,
+from ..ledger.projection.merchants import record_for_keys
+from ..ledger.projection.movements import (BY_CATEGORY, BY_DEFAULT, BY_RULING, MIXED, SETTLEMENT,
                                            SPENDING, TRANSFER, is_expense)
 from ..ledger.events import GRADES
 from ..ledger.streams import money_effect
@@ -72,10 +73,12 @@ def activity(projection, locale: str = "", limit: int = DEFAULT_LIMIT,
             shown = ([*shown[:-1], focused] if shown else [focused])
     shown_keys = {movement.key for movement in shown}
     rest = [movement for movement in ordered if movement.key not in shown_keys]
+    rulings = {(ruling["scope"], ruling["subject"]): ruling
+               for ruling in getattr(projection, "rulings", lambda: [])()}
     return {
         "state": PanelState.READY.value,
         "sentence": moment("activity_scope"),
-        "items": [_row(projection, movement, locale, vocabularies)
+        "items": [_row(projection, movement, locale, vocabularies, rulings)
                   for movement in shown],
         # Report the exact number excluded by the bounded page.
         "beyond": {"count": page[1] if page is not None else len(rest)},
@@ -84,7 +87,7 @@ def activity(projection, locale: str = "", limit: int = DEFAULT_LIMIT,
 
 
 def _row(projection, movement, locale: str,
-         vocabularies: dict[str, Any]) -> dict[str, Any]:
+         vocabularies: dict[str, Any], rulings: dict | None = None) -> dict[str, Any]:
     """Return one renderable movement with its reviewed controls."""
     effect = money_effect(movement.kind, movement.amount)
     current = _current_classification(projection, movement)
@@ -124,8 +127,9 @@ def _row(projection, movement, locale: str,
         # Surface the recorded treatment and loan name.
         "treatment": _treatment(movement, effect),
         "loan_repayment_choices": repayment_choices,
-        # Ordinary spending has no additional nature sentence.
-        "sentence": _sentence(movement),
+        # Inference wording is separate from source amounts and allocation gaps.
+        "sentence": _sentence(movement, (_inferred_treatment(projection, movement, rulings)
+                                         if rulings is not None else None)),
         # Carry the projection's recorded nature reason.
         "decided_by": movement.nature_reason,
         "provisional": bool(movement.provisional),
@@ -449,13 +453,31 @@ def _vocabularies(projection) -> dict[str, Any]:
     }
 
 
-def _sentence(movement) -> str:
-    """The reviewed line for what this row is, or nothing.
+def _inferred_treatment(projection, movement, rulings) -> bool:
+    """Use the effective ruling's attribution, independently of missing shares."""
+    if movement.nature_reason == BY_RULING:
+        ruling = rulings.get(("movement", movement.key)) or record_for_keys(
+            getattr(projection, "merchant_keys_of", lambda _m: ())(movement),
+            lambda key: rulings.get(("merchant", key)))
+        return bool(ruling and ruling.get("grade") == "unverified"
+                    and ruling.get("by") not in ("human", "human_rule", "document"))
+    return (movement.nature_reason == BY_CATEGORY
+            or (movement.nature_reason == BY_DEFAULT and movement.provisional
+                and movement.nature == SPENDING))
 
-    A movement held out of spending on weak evidence is said before what its
-    nature nominally is: that it rests on a hint is the more important fact,
-    and it is the one that explains why a total moved."""
-    if movement.provisional or movement.nature_reason == BY_CATEGORY:
+
+def _sentence(movement, inferred: bool | None) -> str:
+    """Describe the effective treatment and any missing component amounts."""
+    if movement.nature == MIXED:
+        return moment("activity_inferred_compound" if inferred else "activity_unsettled")
+    # Account-ledger pages share row rendering without the treatment lookup.
+    if inferred is None:
+        inferred = movement.provisional or movement.nature_reason == BY_CATEGORY
+        if movement.nature == SPENDING:
+            return ""
+    if inferred:
+        if movement.nature == SPENDING and is_expense(movement):
+            return moment("activity_inferred_expense")
         if movement.nature != SPENDING:
             return moment("activity_provisional")
     key = NATURES.get(movement.nature, "")

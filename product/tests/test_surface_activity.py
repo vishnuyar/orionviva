@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
-from viva.ledger.projection.movements import (BY_CATEGORY, BY_LINK, MIXED,
+from viva.ledger.projection.movements import (BY_CATEGORY, BY_LINK, BY_RULING, MIXED,
                                               SPENDING, TRANSFER)
 from viva.ledger.events import Provenance
 from viva.persona import moment
@@ -46,9 +46,16 @@ class _Movement:
 
 
 class _Projection:
-    def __init__(self, movements, classifications=None) -> None:
+    def __init__(self, movements, classifications=None, rulings=()) -> None:
         self._movements = list(movements)
         self._classifications = dict(classifications or {})
+        self._rulings = list(rulings)
+
+    def rulings(self):
+        return self._rulings
+
+    def merchant_keys_of(self, movement):
+        return ("synthetic merchant",)
 
     def movements(self):
         return list(self._movements)
@@ -150,20 +157,56 @@ def test_money_between_a_persons_own_pockets_says_it_is_not_spending():
     assert read["items"][0]["linked"] is True
 
 
-def test_a_row_held_out_of_spending_on_weak_evidence_says_which_it_is():
-    """That it rests on a hint is the more important fact, and the one that
-    explains why a total moved."""
+def test_inferred_non_spending_describes_treatment_without_requiring_confirmation():
     read = _read([_Movement(nature=TRANSFER, reason=BY_CATEGORY,
                             provisional=True)])
 
     assert read["items"][0]["sentence"] == moment("activity_provisional")
     assert read["items"][0]["provisional"] is True
+    assert "Inferred non-spending treatment" in read["items"][0]["sentence"]
+    assert "confirmed" not in read["items"][0]["sentence"]
 
 
 def test_a_movement_whose_proportions_are_unknown_gets_its_own_line():
     read = _read([_Movement(nature=MIXED)])
 
     assert read["items"][0]["sentence"] == moment("activity_unsettled")
+
+
+def test_provisional_compound_alone_does_not_claim_inference():
+    read = _read([_Movement(nature=MIXED, provisional=True)])
+    assert read["items"][0]["sentence"] == moment("activity_unsettled")
+    assert "unallocated component amounts remain unknown" in read["items"][0]["sentence"]
+
+
+def test_inferred_expense_has_a_sentence_without_a_confirmation_gate():
+    read = _read([_Movement(kind="liability", provisional=True)])
+    sentence = read["items"][0]["sentence"]
+    assert sentence == moment("activity_inferred_expense")
+    assert "Inferred expense treatment" in sentence
+    assert "Counted as spending" not in sentence
+    assert "confirmed" not in sentence
+
+
+@pytest.mark.parametrize("by,grade,inferred", [
+    ("model", "unverified", True), ("merchant_prior", "unverified", True),
+    ("human", "unverified", False), ("human", "verified", False),
+    ("document", "verified", False), ("model", "verified", False),
+])
+def test_compound_inference_label_follows_effective_treatment(by, grade, inferred):
+    movement = _Movement(nature=MIXED, reason=BY_RULING, provisional=True)
+    read = activity(_Projection([movement], rulings=[{
+        "scope": "movement", "subject": movement.key, "by": by, "grade": grade,
+        "legs": [{"major": "expense"}, {"major": "liability"}],
+    }]))
+    sentence = read["items"][0]["sentence"]
+    assert sentence == moment("activity_inferred_compound" if inferred else "activity_unsettled")
+    assert sentence.startswith("Inferred") is inferred
+    assert "unallocated component amounts remain unknown" in sentence
+
+
+def test_inbound_default_does_not_claim_to_be_an_inferred_expense():
+    assert _read([_Movement(amount="10", provisional=True)])["items"][0]["sentence"] == ""
 
 
 def test_the_reason_the_projection_recorded_is_carried_rather_than_re_derived():
