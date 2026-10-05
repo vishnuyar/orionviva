@@ -1361,7 +1361,7 @@ def test_a_read_that_fails_leaves_the_picture_saying_something_it_reviewed():
                                    "happened yet; entity, metric, read.")
 
     picture = overview_module._picture(turned_down, "en-US", "2026-09-30", {},
-                                       set())
+                                       set(), {})
 
     assert picture["figures"] == []
     assert picture["coverage"] == moment("picture_no_figure")

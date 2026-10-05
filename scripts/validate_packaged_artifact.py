@@ -12,6 +12,10 @@ in a temporary home, so this exercises the path a person takes rather than a
 fixture: no passphrase is passed in, none is printed, and nothing this touches
 is anybody's own records. The home is removed on the way out.
 
+Pagination is checked separately against eleven synthetic captured held
+statements, constructed by source event APIs before the artifact opens them.
+Only the packaged process answers the protocol and surface assertions.
+
 **It asserts the build names itself.** A build that cannot say which revision it
 is is the one somebody filing a report most needs named, so a handshake that
 answers with the word for not knowing fails here rather than reaching a person.
@@ -25,12 +29,14 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -52,6 +58,8 @@ SURFACES = ("overview", "spending", "documents", "conversation", "review", "jobs
             "account_ledger", "plans")
 READ_ON = "2026-09-30"
 SPENDING_MAX_SAFE_INTEGER = 9_007_199_254_740_991
+PAGINATION_COUNT = 11
+PAGINATION_PASSPHRASE = "synthetic-pagination-only"
 
 
 def fail(message: str) -> NoReturn:
@@ -82,15 +90,79 @@ def _spending_integer(value: Any, minimum: int = 0,
     return type(value) is int and minimum <= value <= maximum
 
 
+def _isolated_environment(home: Path) -> dict[str, str]:
+    """Keep startup configuration, credentials and learned records disposable."""
+    config = home / ".orionviva"
+    config.mkdir(parents=True, exist_ok=True)
+    empty_env = config / ".env"
+    empty_env.write_text("", encoding="utf-8")
+    environment = {key: value for key, value in os.environ.items()
+                   if key in {"PATH", "SYSTEMROOT", "WINDIR", "TMPDIR", "TEMP",
+                              "TMP", "LANG", "LC_ALL"}}
+    environment.update({
+        "HOME": str(home), "USERPROFILE": str(home),
+        "APPDATA": str(home / "AppData"),
+        "LOCALAPPDATA": str(home / "AppData" / "Local"),
+        "VIVA_DEMO_HOME": str(home / "demo"),
+        "VIVA_ENV_FILE": str(empty_env),
+        "MERCHANTCORE_HOME": str(home / "merchant-store"),
+    })
+    return environment
+
+
+def _create_pagination_vault(home: Path) -> Path:
+    """Mint source records independently of the executable being measured."""
+    directory = home / "pagination-vault"
+    environment = _isolated_environment(home)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        str(ROOT / package) for package in ("product", "core", "merchant"))
+    construction = """
+import sys
+from decimal import Decimal
+from pathlib import Path
+from viva import env, configuration
+from viva.vault import Vault
+from viva.ingest import StatementFacts
+from viva.ledger.events import document_captured, statement_held
+home = Path.home()
+assert env.CONFIG_HOME == home / '.orionviva'
+assert configuration.SETTINGS_FILE == home / '.orionviva' / 'settings.json'
+assert env.env_file() == home / '.orionviva' / '.env'
+assert env.env_file().is_file() and env.env_file().read_text() == ''
+vault = Vault.open(Path(sys.argv[1]), sys.argv[2])
+try:
+    for index in range(int(sys.argv[3])):
+        raw = f'Synthetic held document {index}'.encode()
+        doc = vault.raw.put(raw)
+        vault.ledger.append(document_captured(
+            doc, f'synthetic-pagination-{index}.txt', len(raw),
+            'checking_statement', .98, '2026-01-31'))
+        facts = StatementFacts(
+            doc_id=doc, doc_type='checking_statement', doc_type_confidence=.98,
+            account_ref=f'Synthetic pagination account {index}', currency='USD',
+            opening_amount=Decimal('100'), opening_date='2026-01-01',
+            closing_amount=Decimal('85'), closing_date='2026-01-31', transactions=[])
+        vault.ledger.append(statement_held(
+            doc, facts.to_dict(), {'message': 'Synthetic totals do not reconcile.'},
+            'gap', '2026-01-31'))
+    vault.synchronize_read_store()
+finally:
+    vault.close()
+"""
+    created = subprocess.run(
+        [sys.executable, "-c", construction, str(directory),
+         PAGINATION_PASSPHRASE, str(PAGINATION_COUNT)],
+        env=environment, cwd=home, capture_output=True, text=True, timeout=60)
+    if created.returncode != 0:
+        fail("the independent synthetic pagination vault could not be constructed")
+    return directory
+
+
 class Sidecar:
     """One packaged executable, spoken to the way the host speaks to it."""
 
     def __init__(self, executable: Path, home: Path) -> None:
-        environment = dict(os.environ)
-        # The sample vault goes somewhere this run owns and deletes. Without
-        # this it would be minted in the home directory of whoever ran the
-        # check, which is a real folder on a real machine.
-        environment["VIVA_DEMO_HOME"] = str(home)
+        environment = _isolated_environment(home)
         self._process = subprocess.Popen(
             [str(executable)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, env=environment, cwd=str(home))
@@ -214,6 +286,43 @@ def _review_conversation_ids(review: dict[str, Any], conversation: dict[str, Any
                 or conversation_binding.get("allowed_actions") != item.get("allowed_actions")):
             fail("Review and conversation question semantics disagree")
     return review_ids
+
+
+def _pagination_surfaces(sidecar: Sidecar, phase: str) -> dict[str, dict[str, Any]]:
+    """Wait only for the declared asynchronous current-read-store refusal."""
+    surfaces: dict[str, dict[str, Any]] = {}
+    for surface in ("conversation", "review"):
+        deadline = time.monotonic() + 20
+        while True:
+            answered = sidecar.ask("viva.surface.read", {
+                "surface": surface, "job_id": f"validate-{phase}-{surface}",
+                "parameters": {}})
+            error = answered.get("error") or {}
+            if (answered.get("ok") is False
+                    and error.get("code") == "invalid_request"
+                    and error.get("message") == "current read store is not caught up"
+                    and time.monotonic() < deadline):
+                time.sleep(.05)
+                continue
+            read = _result(answered, f"viva.surface.read({surface})")
+            data = read.get("data")
+            if not isinstance(data, dict):
+                fail(f"the {phase} {surface} read was not data")
+            surfaces[surface] = data
+            break
+    return surfaces
+
+
+def _pagination_identities(conversation: dict[str, Any]) -> None:
+    """Bind the surfaced questions to all eleven independently captured blobs."""
+    docs = [hashlib.sha256(f"Synthetic held document {index}".encode()).hexdigest()
+            for index in range(PAGINATION_COUNT)]
+    expected = {f"reconciliation:{doc[:12]}": doc for doc in docs}
+    questions = conversation["questions"]
+    actual = {question["id"]: (question.get("refs") or {}).get("doc_id")
+              for question in questions}
+    if actual != expected:
+        fail("the pagination questions did not retain the eleven captured document identities")
 
 
 def _spending_contract(spending: dict[str, Any]) -> None:
@@ -551,26 +660,36 @@ def validate(executable: Path) -> list[str]:
 
         question_ids = _review_conversation_ids(
             surface_data["review"], surface_data["conversation"])
-        if len(question_ids) <= 10:
-            fail("the sample supplied no actionable question beyond the old ten-item window")
+        if not question_ids:
+            fail("the sample supplied no actionable question to pair with Review")
+        checked.append("pairs every shown sample Review target with conversation")
+
+        pagination_vault = _create_pagination_vault(home)
+        _result(sidecar.ask("bridge.open_vault", {
+            "vault_directory": str(pagination_vault),
+            "passphrase": PAGINATION_PASSPHRASE, "create": False}),
+            "bridge.open_vault")
+        pagination = _pagination_surfaces(sidecar, "pagination")
+        question_ids = _review_conversation_ids(
+            pagination["review"], pagination["conversation"])
+        if (len(question_ids) != PAGINATION_COUNT
+                or pagination["conversation"].get("total") != PAGINATION_COUNT):
+            fail("the pagination vault did not supply all eleven actionable identities")
+        _pagination_identities(pagination["conversation"])
         beyond_ten = question_ids[10]
-        _result(sidecar.ask("viva.conversation.decline", {
+        outcome = _result(sidecar.ask("viva.conversation.decline", {
             "question_id": beyond_ten, "reason": "not_now"}),
             "viva.conversation.decline")
-        refreshed: dict[str, dict[str, Any]] = {}
-        for surface in ("conversation", "review"):
-            read = _result(sidecar.ask("viva.surface.read", {
-                "surface": surface, "job_id": f"validate-refreshed-{surface}",
-                "parameters": {}}), f"viva.surface.read({surface})")
-            data = read.get("data")
-            if not isinstance(data, dict):
-                fail(f"the refreshed {surface} read was not data")
-            refreshed[surface] = data
+        if outcome.get("kind") != "set_aside":
+            fail("the actionable question beyond index ten was not set aside")
+        refreshed = _pagination_surfaces(sidecar, "refreshed")
         refreshed_ids = _review_conversation_ids(
             refreshed["review"], refreshed["conversation"])
-        if beyond_ten in refreshed_ids or len(refreshed_ids) != len(question_ids) - 1:
+        if (refreshed_ids != [identity for identity in question_ids
+                              if identity != beyond_ten]
+                or refreshed["conversation"].get("total") != PAGINATION_COUNT - 1):
             fail("an actionable question beyond index ten did not resolve authoritatively")
-        checked.append("pairs every shown Review target with conversation and resolves one beyond index ten")
+        checked.append("pairs all eleven synthetic Review targets with conversation and resolves one beyond index ten, preserving the other ten identities in order")
 
         refused = sidecar.ask("viva.surface.snapshot")
         if refused.get("ok") is not False:

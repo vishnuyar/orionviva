@@ -42,7 +42,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v49"
+      "active": "pack-v50"
     },
     "schema_pack": {
       "in": "schemas",
@@ -251,6 +251,7 @@
     "pack-v48": "e77e781b89b0c766",
     "pack-v49": "1b657beb5b4dc5da",
     "accounting-interpret-v1": "be71b679922cd870",
-    "accounting-interpret-v2": "2f92a6bad038d8cb"
+    "accounting-interpret-v2": "2f92a6bad038d8cb",
+    "pack-v50": "04f076ff9508d97f"
   }
 }

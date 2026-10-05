@@ -69,6 +69,8 @@ def test_other_payload_is_identical_to_previous_coverage_pack(monkeypatch, event
     from viva.persona import moment
     from viva.surface import overview as module
     projection = LedgerProjection(events)
+    monkeypatch.setattr(module, "moment", lambda key, **fields:
+                        moment(key, version="pack-v47", **fields))
     current = overview(projection, "en-US", TODAY)
     monkeypatch.setattr(module, "moment", lambda key, **fields:
                         moment(key, version="pack-v46", **fields))

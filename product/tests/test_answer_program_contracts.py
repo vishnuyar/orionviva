@@ -1706,6 +1706,18 @@ def _identity_test_profile(monkeypatch):
     return admitted_profile(object(), manifest=manifest), manifest, report
 
 
+def test_current_report_rejects_a_synthetic_profile_with_the_historical_persona_contract(monkeypatch):
+    profile, _manifest, report = _identity_test_profile(monkeypatch)
+    assert not validate_admission_report(report, profile)
+    assert versions.active(PACKAGE, "persona_pack") == "pack-v50"
+    historical = versions.fingerprint(versions.path_of(PACKAGE, "pack-v49"))
+    assert profile.persona_pack_digest != historical
+    historical_profile = replace(profile, persona_pack_digest=historical)
+
+    assert validate_admission_report(report, historical_profile) == (
+        "admission_contract_mismatch:persona_pack",)
+
+
 def test_profile_identity_codec_accepts_legacy_but_refuses_conflicts(monkeypatch):
     from viva.answer_program import AdmissionProfile
 

@@ -392,10 +392,29 @@ def test_counterpart_pack_activates_only_the_reviewed_document_requests():
     root = pathlib.Path(persona.__file__).resolve().parent
     prior = json.loads((root / "pack-v48" / "phrasings.json").read_text())
     current = json.loads((root / "pack-v49" / "phrasings.json").read_text())
-    assert persona.ACTIVE_PACK == "pack-v49"
+    assert "pack-v49" in FROZEN_PACKS
     assert set(current) - set(prior) == {"counterpart_wait", "counterpart_wait_why"}
     for key, value in prior.items():
         if not key.startswith("_"):
             assert current[key] == value
     for name in ("moments.json", "tone.md"):
         assert (root / "pack-v49" / name).read_bytes() == (root / "pack-v48" / name).read_bytes()
+
+
+def test_corroborated_pack_promotes_only_the_two_reviewed_grade_sentences():
+    root = pathlib.Path(persona.__file__).resolve().parent
+    prior = json.loads((root / "pack-v49" / "moments.json").read_text())
+    current = json.loads((root / "pack-v50" / "moments.json").read_text())
+    assert persona.ACTIVE_PACK == "pack-v50"
+    assert set(current) == set(prior)
+    assert {key for key in prior if prior[key] != current[key]} == {
+        "stood_behind_corroborated", "rows_stood_behind_corroborated"}
+    assert current["stood_behind_corroborated"] == (
+        "Read this answer as corroborated: the available records support "
+        "what it rests on; this is a step below verified.")
+    assert current["rows_stood_behind_corroborated"] == (
+        "Read this list as corroborated: the available records support "
+        "these figures; this is a step below verified.")
+    for name in ("phrasings.json", "tone.md"):
+        assert (root / "pack-v50" / name).read_bytes() == (root / "pack-v49" / name).read_bytes()
+    assert manifest.fingerprint(root / "pack-v50") == FROZEN_PACKS["pack-v50"]

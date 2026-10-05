@@ -133,6 +133,7 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
     # a name claiming both.
     result = registry.call(*BALANCES)
     aggregate = registry.call(*NET_WORTH)
+    filenames = projection.captured_filenames()
     accounts, issues = [], []
     known = _known(result) if result.ok else {}
     if result.ok:
@@ -141,7 +142,7 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
             account, issue = _account(
                 row, by_account.get(row["record_id"], []), known, locale,
                 today, tuple(result.caveats or ()),
-                _account_mixed_vintage(projection, row["record_id"]))
+                _account_mixed_vintage(projection, row["record_id"]), filenames)
             accounts.append(account)
             if issue is not None:
                 issues.append(issue)
@@ -165,7 +166,7 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
         account, issue = _account(
             {"record_id": info.account, "kind": info.kind,
              "name": info.name}, [], known, locale, today,
-            tuple(result.caveats or ()), None)
+            tuple(result.caveats or ()), None, filenames)
         accounts.append(account)
         if issue is not None:
             issues.append(issue)
@@ -208,7 +209,7 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
         # not among the accounts that read named, so without them it would be
         # written from its ledger path rather than from what it is called.
         "picture": _picture(aggregate, locale, today, _known(result),
-                            _vault_accounts(projection, _known(result))),
+                            _vault_accounts(projection, _known(result)), filenames),
     }
 
 
@@ -270,7 +271,7 @@ def _account_named(fig: dict) -> str:
 
 def _account(row: dict, figures: list, known: dict, locale: str,
              read_on: str, read_caveats: tuple,
-             mixed_vintage: bool | None) -> tuple[dict, dict | None]:
+             mixed_vintage: bool | None, filenames: dict) -> tuple[dict, dict | None]:
     """One account row, with its figure where the figure can be shown whole.
 
     Returns ``(row, issue)``. The row is always returned; only the figure is
@@ -290,7 +291,7 @@ def _account(row: dict, figures: list, known: dict, locale: str,
     if code is None:
         try:
             figure = _figure(row, figures[0], known, locale, read_on,
-                             read_caveats, mixed_vintage)
+                             read_caveats, mixed_vintage, filenames)
         except (ValueError, TypeError):
             # FigureView refuses to be built without identity, measure, date
             # and coverage; what it refuses is withheld rather than checked a
@@ -322,7 +323,8 @@ def _withheld(figures: list) -> str | None:
 
 
 def _figure(row: dict, fig: dict, known: dict, locale: str, read_on: str,
-            read_caveats: tuple, mixed_vintage: bool | None) -> FigureView:
+            read_caveats: tuple, mixed_vintage: bool | None,
+            filenames: dict) -> FigureView:
     """One account's worth, as a figure already interpreted for a reader.
 
     Every fact in it is the read's; what is decided here is the words. The
@@ -365,7 +367,7 @@ def _figure(row: dict, fig: dict, known: dict, locale: str, read_on: str,
         # Where the figure came from is said by the citation. The balances
         # view's own prose is not carried: it describes an account's balance,
         # not a figure composed of that balance and the holdings beside it.
-        citations=_citations(row["record_id"], fig, grade),
+        citations=_citations(row["record_id"], fig, grade, filenames),
         # No read-level caveat is placed on a single figure: what the read
         # wrote is about the set it took, not about this account.
         caveats=(),
@@ -402,14 +404,16 @@ def _coverage(fig: dict, known: dict) -> str:
     return " ".join(lines)
 
 
-def _citations(account: str, fig: dict, grade: FigureGrade) -> tuple[Citation, ...]:
+def _citations(account: str, fig: dict, grade: FigureGrade,
+               filenames: dict) -> tuple[Citation, ...]:
     """The route from this figure back to the records it stands on.
 
     One citation per document the figure declares, the account's own record id
     excluded. No page is claimed: a composed figure stands on parts and the
     read records the page of one part only. A figure whose read recorded no
     document gets no citations rather than one that would not open."""
-    return tuple(Citation(document_id=document, relation=_CITED_AS[grade])
+    return tuple(Citation(document_id=document, relation=_CITED_AS[grade],
+                          label=filenames.get(document, ""))
                  for document in fig["record_ids"]
                  if document and document != account)
 
@@ -418,7 +422,7 @@ def _citations(account: str, fig: dict, grade: FigureGrade) -> tuple[Citation, .
 
 
 def _picture(result, locale: str, today: str, held: dict,
-             vault_accounts: set) -> dict[str, Any]:
+             vault_accounts: set, filenames: dict) -> dict[str, Any]:
     """The whole picture over one read of the net-worth point.
 
     The coverage sentence is composed whether or not a figure could be stood
@@ -458,7 +462,7 @@ def _picture(result, locale: str, today: str, held: dict,
         if fig["quantity"] != quantity.NET_WORTH:
             continue
         view = _picture_figure(fig, point, held_in, known, locale, today,
-                               tuple(result.caveats or ()))
+                               tuple(result.caveats or ()), filenames)
         if view is None:
             # A currency whose total was kept back is said. A person shown
             # fewer totals than they hold currencies, with nothing beside them,
@@ -580,7 +584,7 @@ def _reach(point: dict, figures: list,
 
 def _picture_figure(fig: dict, point: dict, held_in: dict, known: dict,
                     locale: str, read_on: str,
-                    result_caveats: tuple) -> dict | None:
+                    result_caveats: tuple, filenames: dict) -> dict | None:
     """One currency's part of the picture, ready to render, or None.
 
     None is where it is kept back: a figure whose boundary this surface has no
@@ -642,7 +646,7 @@ def _picture_figure(fig: dict, point: dict, held_in: dict, known: dict,
                 mixed_vintage_qualification=moment("proof_mixed_vintage"),
                 boundary_qualifications=tuple(lines)),
             record_ids=tuple(sorted({row["account"] for row in beneath})),
-            citations=_picture_citations(beneath, grade),
+            citations=_picture_citations(beneath, grade, filenames),
             # A caveat is about the set the read took, not about this
             # currency's part of it.
             caveats=(),
@@ -834,14 +838,15 @@ def _beneath(rows, currency: str, held_in: dict) -> list:
 
 
 def _picture_citations(beneath: list,
-                       grade: FigureGrade) -> tuple[Citation, ...]:
+                       grade: FigureGrade, filenames: dict) -> tuple[Citation, ...]:
     """The route from the picture back to the records beneath it.
 
     One citation per document the lines beneath this figure stand on. No page
     is claimed and nothing says which part came from where: the read records
     the page of one part, and a part's page offered as the page of a whole is
     a claim about evidence the record does not support."""
-    return tuple(Citation(document_id=document, relation=_CITED_AS[grade])
+    return tuple(Citation(document_id=document, relation=_CITED_AS[grade],
+                          label=filenames.get(document, ""))
                  for document in sorted({str(row["proves"]) for row in beneath
                                          if row.get("proves")}))
 

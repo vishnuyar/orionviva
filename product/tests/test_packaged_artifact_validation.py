@@ -14,6 +14,7 @@ reading of a conversation, and a conversation is the same over either.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -80,6 +81,7 @@ def _stand_in(tmp_path: Path, replies: dict, name: str = "sidecar") -> Path:
         "#!/usr/bin/env python3\n"
         "import copy, json, sys\n"
         f"replies = json.loads({json.dumps(json.dumps(replies))})\n"
+        "behavior = replies.pop('__behavior__', {})\n"
         "declined = set()\n"
         "for line in sys.stdin:\n"
         "    if not line.strip():\n"
@@ -87,9 +89,13 @@ def _stand_in(tmp_path: Path, replies: dict, name: str = "sidecar") -> Path:
         "    asked = json.loads(line)\n"
         "    operation = asked['operation']\n"
         "    payload = asked.get('payload') or {}\n"
-        "    if operation == 'viva.conversation.decline':\n"
+        "    if operation == 'viva.conversation.decline' and not behavior.get('ignore_decline'):\n"
         "        declined.add(payload.get('question_id'))\n"
         "    surface_key = operation + ':' + str(payload.get('surface', ''))\n"
+        "    if str(payload.get('job_id', '')).startswith(('validate-pagination-', 'validate-refreshed-')):\n"
+        "        surface_key = 'pagination:' + surface_key\n"
+        "        if surface_key not in replies:\n"
+        "            surface_key = surface_key.removeprefix('pagination:')\n"
         "    said = replies.get(surface_key, replies.get(operation, replies.get('*')))\n"
         "    if said is None:\n"
         "        said = {'ok': False, 'error': {'code': 'operation_not_allowed'}}\n"
@@ -97,6 +103,8 @@ def _stand_in(tmp_path: Path, replies: dict, name: str = "sidecar") -> Path:
         "    data = (said.get('result') or {}).get('data')\n"
         "    if isinstance(data, dict) and declined:\n"
         "        if payload.get('surface') == 'conversation':\n"
+        "            if behavior.get('remove_other'):\n"
+        "                declined = {data['questions'][0]['id']}\n"
         "            data['questions'] = [q for q in data.get('questions', []) if q.get('id') not in declined]\n"
         "            data['total'] = len(data['questions'])\n"
         "            data['tail'] = {'count': 0, 'amount': '0'}\n"
@@ -108,6 +116,12 @@ def _stand_in(tmp_path: Path, replies: dict, name: str = "sidecar") -> Path:
         "            count = sum(len(g['items']) for g in data['groups'])\n"
         "            data['actionable_count'] = data['shown_count'] = count\n"
         "            data['remaining_count'] = 0\n"
+        "        if behavior.get('reverse_after'):\n"
+        "            if payload.get('surface') == 'conversation':\n"
+        "                data['questions'].reverse()\n"
+        "            if payload.get('surface') == 'review':\n"
+        "                for group in data['groups']:\n"
+        "                    group['items'].reverse()\n"
         "    said.setdefault('protocol', '2.1')\n"
         "    said['request_id'] = asked['request_id']\n"
         "    sys.stdout.write(json.dumps(said) + '\\n')\n"
@@ -118,16 +132,19 @@ def _stand_in(tmp_path: Path, replies: dict, name: str = "sidecar") -> Path:
 
 
 def _working(**overrides) -> dict:
-    ids = [f"question-{index}" for index in range(11)]
+    docs = [hashlib.sha256(f"Synthetic held document {index}".encode()).hexdigest()
+            for index in range(11)]
+    ids = [f"reconciliation:{doc[:12]}" for doc in docs]
+    documents = dict(zip(ids, docs))
     def binding(identity):
         target = {"kind": "conversation", "question_id": identity,
                   "disclosure": "Open the exact conversation."}
         return {
             "item_id": f"question:{identity}", "question_id": identity,
-            "question_kind": "identity", "label": f"Question {identity}",
+            "question_kind": "reconciliation", "label": f"Question {identity}",
             "reason": "Synthetic package question.",
             "refs": {"movement": "", "movements": [], "candidates": [],
-                     "document": "", "doc_id": "", "account": ""},
+                     "document": "", "doc_id": documents[identity], "account": ""},
             "target": target, "status": "open",
             "primary_action": "open_question",
             "allowed_actions": ["open_question"],
@@ -146,14 +163,15 @@ def _working(**overrides) -> dict:
             "state": "absent", "origin": "packaged", "revision": "abcdef123456"}},
         "bridge.open_demo_vault": {"ok": True, "result": {
             "state": "opened", "sample": True, "frame": GOOD_FRAME}},
+        "bridge.open_vault": {"ok": True, "result": {"state": "opened"}},
         "viva.surface.read": {"ok": True, "result": {
             "surface": "overview", "job_id": "j", "data": {"state": "ready"}}},
         "viva.surface.read:conversation": {"ok": True, "result": {
             "surface": "conversation", "job_id": "j", "data": {
                 "state": "ready", "questions": [{
-                    "id": identity, "kind": "identity",
+                    "id": identity, "kind": "reconciliation",
                     "text": f"Question {identity}",
-                    "why": "Synthetic package question.", "refs": {},
+                    "why": "Synthetic package question.", "refs": {"doc_id": documents[identity]},
                     "review_binding": bindings[identity],
                 } for identity in ids],
                 "total": len(ids), "tail": {"count": 0, "amount": "0"}}}},
@@ -165,7 +183,7 @@ def _working(**overrides) -> dict:
         "viva.surface.read:spending": {"ok": True, "result": {
             "surface": "spending", "job_id": "j", "data": _spending()}},
         "viva.conversation.decline": {"ok": True, "result": {
-            "kind": "completed", "message": "Set aside.", "reason": None,
+            "kind": "set_aside", "message": "Set aside.", "reason": None,
             "state": None}},
     }
     if "viva.surface.read" in overrides:
@@ -298,6 +316,137 @@ def test_the_sample_vault_is_minted_where_this_run_owns_it(tmp_path: Path, monke
 
     assert seen and not Path(seen[0]).exists()
     assert str(Path.home()) not in seen[0]
+
+
+def test_one_sample_question_does_not_replace_the_eleven_document_pagination_proof(tmp_path):
+    replies = _working()
+    for surface in ("conversation", "review"):
+        key = f"viva.surface.read:{surface}"
+        replies[f"pagination:{key}"] = json.loads(json.dumps(replies[key]))
+    conversation = replies["viva.surface.read:conversation"]["result"]["data"]
+    review = replies["viva.surface.read:review"]["result"]["data"]
+    conversation["questions"] = conversation["questions"][:1]
+    conversation["total"] = 1
+    review["groups"][0]["items"] = review["groups"][0]["items"][:1]
+    review["actionable_count"] = review["shown_count"] = 1
+
+    assert any("all eleven synthetic" in line for line in _run(tmp_path, replies))
+
+
+def test_sample_binding_proof_cannot_be_vacuously_empty(tmp_path):
+    replies = _working()
+    for surface in ("conversation", "review"):
+        key = f"viva.surface.read:{surface}"
+        replies[f"pagination:{key}"] = json.loads(json.dumps(replies[key]))
+    conversation = replies["viva.surface.read:conversation"]["result"]["data"]
+    review = replies["viva.surface.read:review"]["result"]["data"]
+    conversation["questions"] = []
+    conversation["total"] = 0
+    review["groups"] = []
+    review["actionable_count"] = review["shown_count"] = 0
+    with pytest.raises(SystemExit, match="sample supplied no actionable question to pair"):
+        _run(tmp_path, replies)
+
+
+def test_a_pagination_question_without_identity_cannot_pass(tmp_path):
+    replies = _working()
+    question = replies["viva.surface.read:conversation"]["result"]["data"]["questions"][0]
+    question["id"] = ""
+    question["review_binding"]["question_id"] = ""
+    question["review_binding"]["target"]["question_id"] = ""
+    with pytest.raises(SystemExit, match="one-for-one in order"):
+        _run(tmp_path, replies)
+
+
+def test_coherently_truncated_pagination_questions_cannot_pass(tmp_path):
+    replies = _working()
+    conversation = replies["viva.surface.read:conversation"]["result"]["data"]
+    review = replies["viva.surface.read:review"]["result"]["data"]
+    conversation["questions"].pop()
+    conversation["total"] = 10
+    review["groups"][0]["items"].pop()
+    review["actionable_count"] = review["shown_count"] = 10
+
+    with pytest.raises(SystemExit, match="all eleven actionable identities"):
+        _run(tmp_path, replies)
+
+
+def test_matching_semantics_cannot_substitute_a_captured_document_identity(tmp_path):
+    replies = _working()
+    question = replies["viva.surface.read:conversation"]["result"]["data"]["questions"][0]
+    question["refs"]["doc_id"] = "substituted-document"
+    question["review_binding"]["refs"]["doc_id"] = "substituted-document"
+
+    with pytest.raises(SystemExit, match="eleven captured document identities"):
+        _run(tmp_path, replies)
+
+
+@pytest.mark.parametrize("behavior", ["ignore_decline", "remove_other", "reverse_after"])
+def test_removal_preserves_exact_other_identities_and_order(tmp_path, behavior):
+    replies = _working(__behavior__={behavior: True})
+    with pytest.raises(SystemExit, match="did not resolve authoritatively"):
+        _run(tmp_path, replies)
+
+
+def test_successful_frame_without_set_aside_outcome_cannot_pass(tmp_path):
+    replies = _working(**{"viva.conversation.decline": {"ok": True, "result": {
+        "kind": "refusal", "message": "No change."}}})
+    with pytest.raises(SystemExit, match="was not set aside"):
+        _run(tmp_path, replies)
+
+
+def test_startup_is_isolated_before_either_fixture_or_artifact_imports(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIVA_MODEL", "must-not-inherit")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "synthetic-must-not-inherit")
+    monkeypatch.setenv("HTTPS_PROXY", "https://must-not-inherit.invalid")
+    monkeypatch.setenv("VIVA_ENV_FILE", "/must-not-read.env")
+    monkeypatch.setenv("MERCHANTCORE_HOME", "/must-not-use-store")
+    seen = []
+    real = checker.subprocess.Popen
+
+    def watched(*args, **kwargs):
+        environment = kwargs["env"]
+        home = Path(environment["HOME"])
+        assert home != Path.home()
+        blank = home / ".orionviva" / ".env"
+        assert blank.is_file() and blank.read_text() == ""
+        assert environment["VIVA_ENV_FILE"] == str(blank)
+        assert environment["MERCHANTCORE_HOME"] == str(home / "merchant-store")
+        assert not {"VIVA_MODEL", "OPENROUTER_API_KEY", "HTTPS_PROXY"} & set(environment)
+        seen.append(home)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(checker.subprocess, "Popen", watched)
+    _run(tmp_path, _working())
+    assert len(seen) == 2
+    assert all(not home.exists() for home in seen)
+
+
+@pytest.mark.parametrize("readiness", ["transient", "permanent", "other-refusal"])
+def test_pagination_waits_only_for_bounded_declared_read_store_readiness(monkeypatch, readiness):
+    clock = iter([0, 1, 21, 21, 21])
+    monkeypatch.setattr(checker.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(checker.time, "sleep", lambda _seconds: None)
+
+    class StartingSidecar:
+        calls = 0
+
+        def ask(self, _operation, _payload):
+            self.calls += 1
+            if readiness == "transient" and self.calls > 1:
+                return {"ok": True, "result": {"data": {"state": "ready"}}}
+            return {"ok": False, "error": {"code": "invalid_request", "message":
+                "current read store is not caught up" if readiness != "other-refusal"
+                else "a different invalid request"}}
+
+    sidecar = StartingSidecar()
+    if readiness == "transient":
+        assert set(checker._pagination_surfaces(sidecar, "pagination")) == {"review", "conversation"}
+        assert sidecar.calls == 3
+    else:
+        with pytest.raises(SystemExit, match="was refused: invalid_request"):
+            checker._pagination_surfaces(sidecar, "pagination")
+        assert sidecar.calls == (2 if readiness == "permanent" else 1)
 
 
 # ----------------------------------------------- each way a build can be wrong

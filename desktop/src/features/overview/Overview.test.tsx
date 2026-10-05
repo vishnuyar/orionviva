@@ -219,8 +219,8 @@ describe("the picture on the overview", () => {
   });
 
   // One route, in the shape every other figure on this screen uses, and no row
-  // of controls whose name is the word "unavailable". The read gives a picture
-  // figure's citations no labels, so a control per citation would be a stack
+  // of controls whose name is the word "unavailable". This fixture gives a
+  // picture figure's citations no captured labels, so a control per citation would be a stack
   // of identical buttons announcing an absence — the visual form of "every
   // number has a receipt", reading as broken links.
   it("gives the picture's figure a visible route and no unlabelled controls", () => {
