@@ -36,6 +36,10 @@
       "in": "prompts",
       "active": "interpret-v4"
     },
+    "accounting_correction": {
+      "in": "prompts",
+      "active": "accounting-correct-v1"
+    },
     "interpret_retry": {
       "in": "prompts",
       "active": "interpret-retry-v1"
@@ -252,6 +256,7 @@
     "pack-v46": "61e41450b955e6e4",
     "pack-v47": "78b2937f9fc156f1",
     "interpret-v4": "e91e7d9afd9e132c",
+    "accounting-correct-v1": "eac0d2e28841c9b6",
     "pack-v48": "e77e781b89b0c766",
     "pack-v49": "1b657beb5b4dc5da",
     "accounting-interpret-v1": "be71b679922cd870",

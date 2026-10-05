@@ -1,0 +1,93 @@
+A person was asked a question and answered in their own words. Turn what they
+said into the structure below. You are turning language into structure — you are
+not deciding anything and not answering anything yourself. Reply with JSON only.
+
+The question they were asked: {asked}
+Their answer: {said}
+What is already known:
+{context}
+
+Fill exactly these slots, and no others:
+{slots}
+
+Reply with one JSON object whose keys are the slot names above:
+{{"<slot name>": <value>}}
+
+How a value is written, by that slot's type:
+- money        {{"value": "1234.56", "currency": "USD"}} — the amount in plain
+               digits with a dot for the decimal, and the currency they meant.
+               Write what they SAID, normalised: "about 250k" is "250000",
+               "two fifty" said of a price is "250". Never a figure they did not
+               state.
+- date         "2019-06-01" — year, month, day.
+- rate         "4.25" — a proportion per hundred, digits only.
+- yes_no       "yes" or "no".
+- choice       exactly one of that slot's listed alternatives, copied
+               character for character. Never a word of your own.
+- label        their own short word for a thing they named, copied from their
+               words rather than tidied into a word you prefer. Many answers
+               name no thing at all — leave it empty then, and never manufacture
+               a name.
+- institution  the public name of the company, as they wrote it.
+- link         the account it points at, named exactly as the alternatives are.
+- a slot listed as SEVERAL holds a LIST of objects with the parts shown under
+  it. Return several where what they described is genuinely several things at
+  once, ordered most certain first.
+
+Rules that matter more than completeness:
+- Leave a slot out, or empty, rather than guess. An unfilled slot is handled
+  properly downstream; a guessed one puts something in someone's finances that
+  nobody said.
+- NEVER estimate or apportion a proportion. A split nobody stated is left
+  empty; that is the correct answer, not a gap.
+- Invent no amount, no date, no name. Numeric values and named identities must
+  be traceable to their words or to what is already known above. Category and
+  counterpart treatment may be inferred; they require no classification proof.
+- Answer about THIS question only. Anything else they mentioned that no slot
+  asks for is dropped.
+- What they are describing may sit in any financial instrument, in any country:
+  a bank or card account, a brokerage or retirement account, a loan account, a
+  wallet. Do not assume a currency, a date order or a jurisdiction.
+
+This is the dedicated selected-transaction accounting correction contract.
+The selected source posting already exists. source_role names the account kind;
+direction is the account-kind-aware money direction, not the posted sign.
+Homogeneous selections show scalar source_role and direction. For mixed contexts,
+both fields are aligned lists in selection order. A shared interpretation must
+fit the whole selection. If different selected contexts require different
+counterparts, return an empty legs list rather than choose the first member's
+meaning. For example, the card and bank sides of a repayment require different
+counterparts. Mixed context alone does not prove incompatibility.
+
+Every returned leg describes only a COUNTERPART of the already recorded source.
+Never repeat the recorded source as another component merely because the person
+mentions it. The two sides of one ordinary payment are not two counterpart
+components. On a liability-source card repayment, the debt reduction is already
+the source: its ordinary counterpart is asset, with transfer meaning. On a bank
+(depository) source payment of debt, the bank reduction is already the source:
+its ordinary counterpart is liability, with settlement meaning. Do not always
+encode repayment with the same major independent of the selected source.
+A refund reverses expense; a reward or legitimate income can be income. These
+meanings remain distinct from repayment. Do not request or infer new amounts,
+allocations or account balances.
+
+Fill counterpart_mode with exactly one of these categorical meanings:
+- ordinary: one generic counterpart for ordinary spending, income, transfer or
+  settlement, with no separately named holding relationship or component.
+  Return exactly ONE leg, with its existing accounting major, EMPTY account_hint
+  and EMPTY share. A generic bank/card reference does not name a new holding.
+- components: genuine counterpart component or holding treatment. This includes
+  a single named or unnamed acquisition/holding/liability, a named expense or
+  income component, or two or more genuine counterpart components. For asset or
+  liability components, account_hint names the distinct thing held or owed;
+  leave an unstated identity empty for local identification. Keep named expense
+  and income components, such as a premium and a repair or interest, distinct.
+
+Infer the categorical mode and treatment from the explanation and source context;
+no classification evidence or confirmation is required. Do not convert a genuine
+asset-plus-liability compound into repayment. Do not ban a distinct counterpart
+whose major matches the source role. A genuine compound preserves every
+counterpart component, including several of the same major. Preserve explicit
+allocations under the existing numeric slot rules and leave unstated shares
+empty. Never copy a source instrument's name into any counterpart merely because
+it was mentioned. Other scalar slot rules above remain unchanged.

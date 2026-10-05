@@ -55,8 +55,23 @@ def active_rules(ledger):
     return list(rules.values())
 
 
-def _matches(proj, movement, rule):
-    if context_key(proj, movement) != rule["context"]:
+def _unknown_purpose(proj, movement):
+    """Only effective, independently default-attributed fallback is unknown."""
+    from merchantcore.taxonomy import FALLBACK_CATEGORY, FALLBACK_SUBCATEGORY
+    category = proj.derived_category(movement) or {}
+    return (category.get("category") == FALLBACK_CATEGORY
+            and category.get("subcategory") == FALLBACK_SUBCATEGORY
+            and category.get("category_by", category.get("by")) == "default"
+            and category.get("subcategory_by", category.get("by")) == "default")
+
+
+def _matches(proj, movement, rule, *, unknown_purpose=False):
+    context = context_key(proj, movement)
+    recorded = rule["context"]
+    if unknown_purpose:
+        context = {k: v for k, v in context.items() if k not in ("category", "subcategory")}
+        recorded = {k: v for k, v in recorded.items() if k not in ("category", "subcategory")}
+    if context != recorded:
         return False
     if movement.key == rule["anchor"] or movement.key in rule.get("excluded", []):
         return False
@@ -78,7 +93,7 @@ def _matches(proj, movement, rule):
 
 
 def apply_learned_rules(ledger):
-    """Latest context rule wins; explicit movement corrections remain stronger."""
+    """Agreeing lessons fill unknown purpose; explicit corrections stay stronger."""
     proj = ledger.projection()
     rules = active_rules(ledger)
     applied = 0
@@ -86,7 +101,11 @@ def apply_learned_rules(ledger):
         current = next((r for r in proj.rulings(SCOPE_MOVEMENT) if r["subject"] == movement.key), None)
         if current and current.get("by") == "human":
             continue
-        matched = next((r for r in reversed(rules) if _matches(proj, movement, r)), None)
+        unknown = _unknown_purpose(proj, movement)
+        eligible = [r for r in rules if _matches(proj, movement, r, unknown_purpose=unknown)]
+        if unknown and len({_rule_output(r) for r in eligible}) > 1:
+            continue
+        matched = eligible[-1] if eligible else None
         if not matched or (current and current.get("said") == matched["said"] and current.get("legs") == matched["legs"]):
             continue
         ledger.append(accounting_rule_applied(matched["rule_id"], movement.key, current or {},
@@ -104,6 +123,12 @@ def apply_learned_rules(ledger):
 def _semantic_legs(legs):
     """A remembered relationship does not attest another payment's allocation."""
     return [{**leg, "share": ""} for leg in legs]
+
+
+def _rule_output(rule):
+    """Component order does not distinguish the remembered financial meaning."""
+    legs = tuple(sorted(json.dumps(leg, sort_keys=True) for leg in _semantic_legs(rule["legs"])))
+    return legs, rule.get("category", "")
 
 
 def save_correction(ledger, interp, proposal, selected, previous, original_context=None, created_accounts=None):
@@ -403,25 +428,62 @@ def interpret_activity(vault, *, extract_fn=None):
             "deferred": max(0, len(unresolved) - MAX_ITEMS), "research": research_capability()}
 
 
+def _correction_context(proj, movements):
+    """Homogeneous selections use scalars; mixed pairs retain selection order."""
+    roles = [proj.account_info(m.account).kind or "unknown" for m in movements]
+    directions = ["out" if money_effect(m) < 0 else "in" for m in movements]
+    homogeneous = len(set(zip(roles, directions))) == 1
+    return (("selected_transactions", str(len(movements))),
+            ("source_role", roles[0] if homogeneous else json.dumps(roles)),
+            ("direction", directions[0] if homogeneous else json.dumps(directions)))
+
+
+def _ordinary_counterpart(values):
+    """Check raw mode and shape so shared parsing cannot authorize a prefix."""
+    if "counterpart_mode" not in values:
+        return False
+    mode = values["counterpart_mode"]
+    if not isinstance(mode, str) or mode not in ("ordinary", "components"):
+        raise ValueError("invalid counterpart mode")
+    if mode == "components":
+        return False
+    legs = values.get("legs")
+    if (not isinstance(legs, list) or len(legs) != 1
+            or not isinstance(legs[0], dict)
+            or legs[0].get("major") not in MAJORS
+            or legs[0].get("account_hint", "") != ""
+            or legs[0].get("share", "") != ""):
+        raise ValueError("ordinary counterpart requires one unnamed, unallocated leg")
+    return True
+
+
 def correct_accounting(vault, said: str, movement_keys: list[str], interpret_fn=None):
     """Interpret a selected correction; selection is resolved locally before send."""
     from . import engine
     from .listen import ruling_from, ruling_slots
-    from .reply import interpret, read_reply
+    from .reply import Slot, interpret, read_reply
+    from .schemas import ANSWER_CHOICE
     proj = vault.ledger.projection()
     held = {m.key: m for m in proj.movements()}
     selected = list(dict.fromkeys(movement_keys))
     if not selected or any(key not in held for key in selected):
         return {"ok": False, "why": "movement_required", "message": "Select the transaction you want to explain."}
     extractor = interpret_fn or engine._interpreter()
-    slots = ruling_slots()
+    slots = ruling_slots() + (Slot(name="counterpart_mode", type=ANSWER_CHOICE,
+                                 choices=("ordinary", "components")),)
     filled = interpret(said, slots, extract_fn=extractor,
-                       context=(("selected_transactions", str(len(selected))),))
+                       version=versions.active(PACKAGE, "accounting_correction"),
+                       context=_correction_context(proj, [held[key] for key in selected]))
     parsed = read_reply(slots, filled.values)
     parsed.version = filled.version
     engine._record_interpret(vault, extractor, "", said, parsed)
     if filled.failure or not parsed.ok:
         return {"ok": False, "why": filled.failure or parsed.why,
+                "message": "I could not interpret that explanation. Your transactions are unchanged."}
+    try:
+        ordinary_counterpart = _ordinary_counterpart(filled.values)
+    except ValueError:
+        return {"ok": False, "why": "invalid_counterpart",
                 "message": "I could not interpret that explanation. Your transactions are unchanged."}
     interp = ruling_from(parsed, said)
     if not interp.legs:
@@ -431,7 +493,8 @@ def correct_accounting(vault, said: str, movement_keys: list[str], interpret_fn=
     anchor = held[selected[0]]
     result = engine.record_ruling(vault, interp, anchor.description,
         movement_key=anchor.key if len(selected) == 1 else "", movements=selected,
-        amount=str(abs(anchor.amount)), currency=anchor.currency)
+        amount=str(abs(anchor.amount)), currency=anchor.currency,
+        ordinary_counterpart=ordinary_counterpart)
     if result.get("ok") and not result.get("confirm"):
         result["message"] = (f"Updated {len(selected)} transaction(s). "
             + ("I will use this explanation for matching future activity. " if result.get("rule_id") else "This change applies to your selection. ")

@@ -1,34 +1,10 @@
-"""Viva listens — a sentence becomes double-entry.
+"""Resolve checked sentence interpretations into accounting proposals and rulings.
 
-What a movement's counter-leg is — expense, asset, liability, income — has too
-many members and too many compound cases for a fixed set of buttons: a mortgage
-payment is interest and principal and escrow at once. So the interface is a
-sentence, and this module is the path from one to a recorded ruling.
-
-The pipeline, and where the boundary sits:
-
-    1  frame_question      deterministic   the question queue (already built)
-    2  RULING_SLOTS        deterministic   the structure an answer to it has
-    3  reply.answer        ← THE MODEL     the sentence → those slots, filled,
-                                           then checked against their types
-    4  resolve_account     deterministic   exact / candidate to confirm / new
-    5  propose             deterministic   legs, accounts, what changes
-    6  apply               deterministic   RulingRecorded (+ an asserted account)
-
-The model touches step 3 only, and there it fills declared slots rather than
-writing anything of its own. It never sees the ledger, never chooses an account,
-and never supplies a figure: amounts come from the movement, and
-`ruling_recorded` refuses an amount outright.
-
-Two rules this path keeps:
-
-* **A missing document never blocks a ruling.** The account is created, the cash
-  is posted, only the *decomposition* is marked provisional, and the 1098 or the
-  invoice is asked for as corroboration.
-* **Selected corrections apply immediately.** The conversation engine resolves
-  the target and retains a narrow future matching context; an ambiguous account
-  match still needs identification before anything changes.
-"""
+Models fill declared slots. Local code validates those slots, resolves account
+identity and applies the resulting counterpart treatment. Source movements
+supply all amounts; rulings supply no new financial measurement. Explicitly
+ordinary selected corrections use generic buckets without opening holdings.
+Component proposals retain missing-name and ambiguous-account clarification."""
 
 from __future__ import annotations
 
@@ -118,8 +94,7 @@ def repair_asserted_account_aliases(ledger) -> int:
         aliases = proj.account_aliases()
     return repaired
 
-# The plain-language label for each major. The majors are what is stored; these
-# are what a person is shown, so the surface never says "asset".
+# Person-facing labels for stored accounting majors.
 PLAIN = {
     MAJOR_EXPENSE: "Spent — the money is gone",
     MAJOR_ASSET: "I still have it, in another form",
@@ -127,9 +102,7 @@ PLAIN = {
     MAJOR_INCOME: "Money that came to me",
 }
 
-# The same four as a clause, for the places one is read inside a longer
-# sentence. The form above is a whole sentence in the person's own voice; this
-# one is a fragment that sits in the middle of another sentence.
+# Accounting-major clause fragments for longer sentences.
 IN_A_SENTENCE = {
     MAJOR_EXPENSE: "money spent and gone",
     MAJOR_ASSET: "something you still have, in another form",
@@ -137,33 +110,20 @@ IN_A_SENTENCE = {
     MAJOR_INCOME: "money that came to you",
 }
 
-# What a ruling reaches beyond the payments its question asked about. The
-# question is raised only where the counterparty cannot say what the money was,
-# and a ruling applies to every movement filed under that counterparty — so the
-# sets differ, and each is named with its own count and total. Money that came
-# back from them gets its own sentence: the same ruling reaches it, and it is
-# not a payment.
+# Render additional ruled payments and refunds with separate counts/totals.
 ALSO_SETTLES = ("It also settles {count} other payment(s) to them, worth "
                 "{money} in total, that nothing needed to ask about.")
 ALSO_CAME_BACK = ("It also covers {count} movement(s) of money back from them, "
                   "worth {money} in total.")
 
-# The account group used when the counterparty implies nothing: one level under
-# the major's root. Otherwise the group, the corroborating document and the
-# ordering of the answers all come from the counterparty's implication
-# (`account_group`, `documents`), learned once at enrichment.
+# Use enrichment account-group/document/order implications, or the fallback group.
 _FALLBACK_GROUP = "Other"
 
 
 # --------------------------------------------------------------------- step 2
 
 
-# What an answer about the nature of money is MADE OF. A payment can be several
-# things at once — interest, principal and an amount held on your behalf — so
-# the legs slot holds several of something rather than one of anything, and each
-# leg's major must land in the ledger's own closed vocabulary. The plain-language
-# meanings travel with the alternatives so the four words are not asked about
-# bare.
+# Each counterpart leg has a checked major and person-facing meaning.
 RULING_SLOTS = (
     Slot(name="legs", required=True, parts=(
         Slot(name="major", type=ANSWER_CHOICE, choices=MAJORS,
@@ -180,14 +140,9 @@ RULING_SLOTS = (
 
 
 def category_vocabulary(proj) -> tuple:
-    """Every category this vault knows: the seeds, then every one already in
-    use, in that order, with no two spellings of one name.
+    """Return seed categories followed by used categories, deduplicated under _norm.
 
-    The one definition of the vocabulary: every path that offers a category and
-    every path that settles an answer against one reads it from here. A category
-    exists by being used, so the list grows with no event and no migration.
-    Names are compared under `_norm` and the first spelling wins, which puts a
-    seed ahead of any later variant of itself."""
+    The first spelling wins, so seed labels precede equivalent later spellings."""
     from .ingest.categorize import SEED_CATEGORIES
 
     used = sorted({(row.get("category") or "").strip()
@@ -201,26 +156,17 @@ def category_vocabulary(proj) -> tuple:
 
 
 def shareable_categories(names) -> tuple:
-    """The categories from a vault's vocabulary that may be named to a model.
+    """Filter a vault's category vocabulary through the shareability boundary.
 
-    A category is a name the person coined, so it can carry another person's
-    name in it. The model may be a third party, so what crosses that boundary
-    is held to the same test a merchant descriptor is before it reaches a
-    shared catalog (T9).
-
-    Fails closed, and what it costs is a prior rather than an answer: this
-    narrows a slot's ``offered`` only, so the whole vocabulary remains what the
-    reply is validated against and what `settled_category` matches on."""
+    The result supplies offered model choices. Local reply validation and
+    settled-category matching retain the complete vocabulary."""
     return tuple(name for name in names if is_shareable(name))
 
 
 def settled_category(proj, named: str) -> str:
-    """The vocabulary's own name for what an answer called something.
+    """Return the vocabulary spelling matching a label under _norm.
 
-    A name matching one in `category_vocabulary` under `_norm` returns as the
-    vocabulary spells it, so two spellings of one category never split a total.
-    A name nothing matches returns stripped, as the person wrote it: a category
-    they coin is theirs to add. An empty name returns empty."""
+    Unmatched labels return stripped; an empty label returns empty."""
     want = _norm(named)
     if not want:
         return ""
@@ -231,14 +177,10 @@ def settled_category(proj, named: str) -> str:
 
 
 def ruling_slots(categories=()) -> tuple:
-    """`RULING_SLOTS` with the category slot this vault's vocabulary makes.
+    """Return ruling slots with local category validation and shareable offered labels.
 
-    ``categories`` is what `category_vocabulary` returns for the same vault. The
-    whole of it rides in the slot's ``choices``, where it is a prior and not a
-    fence: a label the vocabulary does not hold is still read, and
-    `settled_category` decides what it lands on. Only the shareable part is
-    ``offered``, so what crosses to a model is held to T9
-    (local-categorization-and-custom-categories.md, D2)."""
+    ``categories`` is the full vocabulary. Labels outside it remain valid label
+    inputs and are normalized by ``settled_category``."""
     return RULING_SLOTS + (Slot(name="category", type=ANSWER_LABEL,
                                 choices=tuple(categories),
                                 offered=shareable_categories(categories)),)
@@ -256,13 +198,10 @@ class Interpretation:
     ends: str = ""
     recurrence: str = ""
     kind: str = ""                 # vehicle | property | mortgage | loan | ...
-    # A label the person named, not a guess about them. One sentence can carry
-    # both a major and a label, and both halves reach the ledger.
+    # Retain the submitted product-kind label alongside the major.
     category: str = ""
     said: str = ""                 # the person's own words, kept
-    # Why there are no legs, when there are none. `unreachable` — the call never
-    # landed — is carried distinctly from `unparseable` and `empty`, which are
-    # the model answering with something unusable.
+    # Distinguish transport, parse and empty-response outcomes.
     failure: str = ""              # "" | unreachable | unparseable | empty
     detail: str = ""               # the underlying error, verbatim
     raw: str = ""                  # what the model actually said
@@ -279,11 +218,9 @@ class Interpretation:
 
 def ruling_context(descriptor: str = "", category: str = "",
                    subcategory: str = "", source: str = "") -> tuple:
-    """What is already known about the movement being ruled on, as data.
+    """Return known categorical context for the movement's source instrument.
 
-    The movement may come from a bank, a card, a brokerage, a loan account or a
-    wallet, so the source is named where it is known and named as unknown
-    otherwise, rather than left to be assumed."""
+    An unreadable source is represented as unknown."""
     return (("counterparty", descriptor or "(unknown)"),
             ("source", source or "(an account they hold)"),
             ("category", category or "(unknown)"),
@@ -291,12 +228,9 @@ def ruling_context(descriptor: str = "", category: str = "",
 
 
 def ruling_from(reply, said: str = "") -> Interpretation:
-    """A checked reply to a nature question, as the reading the rest of this
-    module works on.
+    """Convert a checked reply into the interpretation used by proposal resolution.
 
-    Every value here has already been through its type's deterministic check —
-    each leg's major landed in the ledger's own vocabulary, or the leg was
-    dropped before it got here. This only renames what survived."""
+    Only values surviving deterministic slot validation are copied."""
     legs = [{"major": leg["major"],
              "account_hint": leg.get("account_hint", ""),
              "share": leg.get("share", "")}
@@ -314,12 +248,10 @@ def ruling_from(reply, said: str = "") -> Interpretation:
 
 
 def _ground_stated_shares(legs: list[dict], said: str) -> None:
-    """A categorical model reading cannot supply an unstated measurement.
+    """Retain allocations explicitly stated as percentages in the submitted words.
 
-    Require each allocation to occur explicitly as a percentage in the user's
-    words, including repeated equal allocations. Never infer a missing balance
-    or derive proportions from unrelated money, account numbers, or dates.
-    """
+    Repeated equal allocations require repeated explicit percentages. Unstated
+    shares, balances and proportions derived from other values are not supplied."""
     import re
     from collections import Counter
     from decimal import InvalidOperation
@@ -360,43 +292,30 @@ class AccountMatch:
     verdict: str               # "same" | "existing" | "ambiguous" | "new"
     candidate: str = ""
     reason: str = ""
-    # What the person calls this account, carried rather than read back off the
-    # path: an account a document opened is keyed by an identity whose last
-    # segment is part of its number.
+    # Retain the person-facing name separately from the issued account key.
     name: str = ""
 
 
 def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatch:
-    """Which account a leg belongs to.
+    """Resolve a leg's normalized name to a local account or an identity verdict.
 
-    Names are normalized before comparison, and what each candidate answers to
-    comes from `_candidates`. One exact match returns `same`; more than one, or
-    a substring match either way, returns `ambiguous` with the candidate and its
-    name; nothing matching returns `new` with a proposed path, and that is the
-    one verdict this path always confirms."""
-    # An expense or income leg with no named thing goes to the Uncategorized
-    # bucket the ledger already has, where the category does the descriptive
-    # work. Only a major that means "you now own or owe something" brings an
-    # account into being.
+    One exact candidate returns ``same``. Multiple exact or substring candidates
+    return ``ambiguous``; no match returns ``new`` with a proposed path. Empty
+    asset/liability names return ``unnamed`` rather than a holding path."""
+    # Empty expense/income hints resolve to existing Uncategorized buckets.
     if major in (MAJOR_EXPENSE, MAJOR_INCOME) and not hint.strip():
         return AccountMatch(MAJOR_UNCATEGORIZED[major], "existing",
                             reason="ordinary spending needs no account of its own")
-    # An answer that says "I still have it" without saying what it is cannot
-    # open an account: a path built from a placeholder is a thing nobody named
-    # reaching net worth. The verdict is a QUESTION, not a path.
+    # Empty asset/liability hints return the unnamed-identity verdict.
     if not hint.strip():
         return AccountMatch("", "unnamed",
                             reason="you now own or owe something, and it has no name yet")
     want = _norm(hint)
     candidates = _candidates(proj, major)
-    # A name more than one account answers to is `ambiguous`, not `same`.
-    # Accounts a document opened are named by their statements, so one name
-    # across two institutions is ordinary.
+    # Multiple matching accounts return ambiguous identity.
     exact = [(name, account) for name, account in candidates
              if want and _norm(name) == want]
-    # Counted by account rather than by pair: one account answers to more than
-    # one name — the tail of its path and what its statements call it — so two
-    # pairs matching does not mean two accounts do.
+    # Deduplicate name matches by account before checking uniqueness.
     if len({account for _, account in exact}) == 1:
         return AccountMatch(exact[0][1], "same",
                             reason="an account you already have")
@@ -419,10 +338,7 @@ def _norm(text: str) -> str:
     return " ".join((text or "").lower().replace("-", " ").split())
 
 
-# Which kinds of issued account an answer under each major could be naming. An
-# account a document opened is something the person holds or owes, and its kind
-# is what says which. The majors absent here name no instrument: ordinary
-# spending and ordinary income go to their own buckets.
+# Eligible issued-account kinds for each holding major.
 _ISSUED_KINDS = {
     MAJOR_ASSET: ("depository", "investment"),
     MAJOR_LIABILITY: ("liability",),
@@ -430,14 +346,10 @@ _ISSUED_KINDS = {
 
 
 def _candidates(proj, major: str) -> list:
-    """Every account an answer under this major could be naming, as
-    ``(the name it answers to, the account)`` pairs, sorted.
+    """Return sorted (name, account) pairs eligible for an interpretation major.
 
-    A ruled account's path ends in the name somebody gave it, so its tail is
-    what it answers to. An account a document opened is keyed by an identity
-    rather than by a name, so what it answers to is `info.name` — what its
-    statements call it — and it is a candidate only where its kind is one
-    `_ISSUED_KINDS` lists under this major."""
+    Ruled paths use their final name segment. Issued accounts use their statement
+    name and must have a kind listed under that major in ``_ISSUED_KINDS``."""
     pairs = {(account.split(":")[-1], account)
              for account in set(proj.ruled_accounts())
              | {a for a in proj.accounts()
@@ -483,37 +395,27 @@ def _source_aliases(proj, selected: set[str], held_movements) -> set[str] | None
 
 @dataclass
 class Proposal:
-    """A structured, un-applied intent: what would change, how much money it
-    moves, what it rests on, and what it does not know.
+    """An unapplied accounting intent with resolved legs, scope and uncertainty.
 
-    Nothing is written until `apply_proposal` is called with it. `Finding` is
-    the read side's equivalent."""
+    ``apply_proposal`` performs its writes; constructing a proposal writes nothing."""
     scope: str
     subject: str
     legs: list[dict] = field(default_factory=list)
     new_accounts: list[str] = field(default_factory=list)
     confirm_accounts: list[str] = field(default_factory=list)
-    # What the person calls each of those, where it is not the last segment of
-    # the path — an account a document opened is filed under an identity ending
-    # in part of its number. Positional with `confirm_accounts`; empty where the
-    # path's own tail is the name.
+    # Display names aligned with confirm_accounts; empty entries use path tails.
     confirm_names: list[str] = field(default_factory=list)
-    # Legs whose thing has no name yet. A proposal carrying one cannot be
-    # applied: there is a question to ask first.
+    # Unnamed legs prevent proposal application.
     needs_name: list[str] = field(default_factory=list)
-    # What the person said one attribute of an account IS, at attribute scope.
+    # Supplied account-attribute value at attribute scope.
     value: str = ""
-    # Further attributes the same confirmation settles — the link a loan makes
-    # to the property it secures, stated in the breath that opened it.
+    # Additional supplied attributes, including a secured-account link.
     attributes: list[dict] = field(default_factory=list)
     corroborates: str = ""
     category: str = ""             # what the person called it, if they said
     said: str = ""
     unknown_split: bool = False
-    # The payments the question asked about, and what the same ruling reaches
-    # beyond them: separate sets, each with its own count and its own total.
-    # Money paid to them and money that came back from them are counted apart,
-    # and every total is per currency — nothing here converts between them.
+    # Keep selected and additional movements, payment directions and currencies separate.
     settles: int = 1
     also_settles: int = 0
     also_totals: tuple = ()        # ((currency, total), ...) paid to them
@@ -522,24 +424,19 @@ class Proposal:
     amount: str = ""
     currency: str = ""
     prompt_version: str = ""       # which instructions read the sentence
-    # How a figure is written for this person. The confirmation is the last
-    # sentence before an irreversible write, so it is written by the same
-    # renderer as the question that led to it.
+    # Figure renderer used by the proposal summary.
     locale: str = ""
 
     @property
     def applicable(self) -> bool:
-        """False while something in it has no name. Applying then would open an
-        account nobody named."""
+        """Return false while any proposed holding lacks its required name."""
         return not self.needs_name
 
     def _totals(self, totals) -> str:
-        """Every currency's own subtotal, written and joined into one phrase.
+        """Render separate currency subtotals from ((currency, amount), ...) pairs.
 
-        `totals` is `((currency, amount), ...)`. Nothing converts between
-        currencies, so two of them come out as two figures and no third that
-        would add them. Empty totals write zero in the proposal's own
-        currency."""
+        Empty totals render zero in the proposal's currency. No currency conversion
+        or cross-currency addition is performed."""
         written = [str(render_money(amount, currency, locale=self.locale))
                    for currency, amount in totals]
         if len(written) < 2:
@@ -564,9 +461,7 @@ class Proposal:
         return str(render_accounts({"path": p} for p in paths))
 
     def summary(self) -> str:
-        """One sentence back before anything is written: the money moved and
-        what it becomes, any account this would create, an unknown split, the
-        category, and the document that would corroborate it."""
+        """Render treatment, proposed accounts, category and allocation uncertainty."""
         if self.needs_name:
             return ("You still have it, so it belongs somewhere of its own — "
                     "but I don't know what to call it yet, and I won't invent "
@@ -645,16 +540,10 @@ class Proposal:
 
 
 def movements_answered_about(proj, merchant: str) -> list:
-    """The payments an answer about this counterparty is about, derived.
+    """Derive unsettled expense-shaped movements under a counterparty.
 
-    For a caller with no question behind it. Where a question raised the
-    subject it carries the movements it grouped, and that list is used instead:
-    a population computed once and handed on cannot drift from the count and
-    the amount a person was shown, and one derived a second time can.
-
-    Expense-shaped movements filed under the counterparty, whose nature nothing
-    stronger has settled — a link, an account the person holds, or a ruling
-    already made."""
+    Question-backed callers supply their existing selection instead. Stronger
+    links, held accounts and existing rulings exclude movements from this result."""
     return [m for m in proj.movements()
             if merchant in proj.merchant_keys_of(m)
             and proj._is_expense(m)
@@ -674,13 +563,10 @@ def _by_currency(movements) -> tuple:
 
 
 def movements_also_settled(proj, merchant: str, asked: set) -> list:
-    """The payments a merchant-scoped ruling reaches that were not asked about.
+    """Return additional unruled movements reached by a merchant-scoped ruling.
 
-    A ruling outranks what a counterparty's category merely implied, so it
-    decides every movement filed under that counterparty — including ones no
-    question raised, and money that came back from them. A live transfer link
-    outranks a ruling, and a movement already ruled keeps the ruling it has, so
-    neither is among these."""
+    The result includes both payment directions. Live transfer links and existing
+    rulings retain precedence and are excluded."""
     return [m for m in proj.movements()
             if merchant in proj.merchant_keys_of(m)
             and m.key not in asked
@@ -694,27 +580,22 @@ class MovementSelectionRequired(ValueError):
 
 def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
             currency: str = "", movement_key: str = "", locale: str = "",
-            merchant_key: str = "", movements=()) -> Proposal:
-    """Turn a reading into a concrete, reviewable proposal, deterministically.
+            merchant_key: str = "", movements=(),
+            ordinary_counterpart: bool = False) -> Proposal:
+    """Resolve a checked interpretation into a concrete proposal without writing.
 
-    A commercial merchant generalizes: the proposal is scoped to the merchant
-    and settles every payment to it, past and future. A peer descriptor or an
-    instrument is scoped to one movement. Raises ValueError when a
-    movement-scoped answer has no key and the descriptor covers more than one
-    movement.
-
-    ``merchant_key`` is the identity the question was asked under, carried in
-    rather than re-derived. A descriptor is one line of one statement, and
-    normalizing it names the line; the key names the counterparty. Without a
-    key, the normalized descriptor is used. The raw descriptor determines
-    whether an answer may generalize.
-
-    ``movements`` are the movement keys the question grouped — the very set its
-    count and its amount were computed over, carried in rather than rebuilt
-    here. A caller with no question behind it passes none, and the population is
-    derived instead."""
+    Commercial merchant scope covers its eligible payments; peer or instrument
+    scope covers a movement. A missing movement key with multiple descriptor
+    matches raises MovementSelectionRequired. ``merchant_key`` and ``movements``
+    retain the caller's identity and selected population; absent values are
+    derived locally. Checked ``ordinary_counterpart`` context resolves a generic
+    leg on the dedicated correction path. Other callers use account resolution."""
     from merchantcore.resolve import resolve_descriptor
 
+    if ordinary_counterpart and (len(interp.legs) != 1
+            or interp.legs[0].get("account_hint", "") != ""
+            or interp.legs[0].get("share", "") != ""):
+        raise ValueError("ordinary counterpart requires one unnamed, unallocated leg")
     held_movements = proj.movements()
     described = [m for m in held_movements if m.description == descriptor]
     if not described and movement_key:
@@ -725,9 +606,7 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         raise MovementSelectionRequired(f"{descriptor!r} needs a specific transaction: "
                          "its description does not establish a counterparty")
     merchant = "" if insufficient else merchant_key or normalize_merchant(descriptor)
-    # An instrument — a check, an ATM withdrawal, a wire — never generalizes,
-    # even when several share a descriptor. The kind comes from enrichment
-    # (`counterparty_kind`), not from a list of words kept by hand.
+    # Enrichment counterparty_kind keeps instrument descriptors movement-scoped.
     matches = (described if insufficient else
                [m for m in held_movements if merchant in proj.merchant_keys_of(m)])
     evidence = [decide(m.description, proj.counterparty_kind(m)) for m in matches]
@@ -737,7 +616,7 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
     scope = SCOPE_MERCHANT if generalizes and not movement_key else SCOPE_MOVEMENT
     subject = merchant if scope == SCOPE_MERCHANT else movement_key
     if scope == SCOPE_MOVEMENT and not subject:
-        # Refuse rather than quietly settle a whole conduit bucket on one answer.
+        # Refuse descriptor-wide conduit-bucket settlement.
         if len(matches) != 1:
             raise ValueError(
                 f"{descriptor!r} needs a specific transaction: it covers "
@@ -759,24 +638,22 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
     legs, new_accounts, confirm, unnamed = [], [], [], []
     confirm_names: list = []
     implied = proj.implication_for(merchant) if merchant else None
-    # A counterparty named by a key carried in opens its new accounts in the
-    # fallback group. Which group an account belongs in is a thing to know about
-    # the account rather than a level in its path, and until that is where it
-    # lives, one flat group is what a person reads.
+    # Explicit merchant keys use the fallback account group for new accounts.
     group = "" if merchant_key else (implied or {}).get("account_group", "")
     for leg in interp.legs:
         hint = leg.get("account_hint", "")
         component = leg["major"] in (MAJOR_EXPENSE, MAJOR_INCOME)
         if component and (source_aliases is None or _norm(hint) in source_aliases):
             hint = ""
-        match = resolve_account(proj, leg["major"], hint, group=group)
+        match = (AccountMatch(account=MAJOR_UNCATEGORIZED[leg["major"]], verdict="same")
+                 if ordinary_counterpart else
+                 resolve_account(proj, leg["major"], hint, group=group))
         legs.append({"major": leg["major"], "account": match.account,
                      "share": leg.get("share", "")})
         if match.verdict == "new" and not component:
             new_accounts.append(match.account)
         elif match.verdict == "ambiguous":
-            # The path goes to the write; the name goes to the sentence the
-            # person confirms.
+            # Store the resolved path and display the retained account name.
             confirm.append(match.candidate)
             confirm_names.append(match.name)
         elif match.verdict == "unnamed":
@@ -788,17 +665,14 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
                  else {m.key for m in movements_answered_about(proj, merchant)})
         rest = movements_also_settled(proj, merchant, asked)
         settles = len(asked)
-        # The ruling reaches both, and only one of them is a payment. Which way
-        # a movement went comes from `money_effect` — the account's kind —
-        # rather than from the shape of spending.
+        # Compute payment/refund direction with account-kind-aware money_effect.
         paid = [m for m in rest if money_effect(m) < 0]
         back = [m for m in rest if money_effect(m) > 0]
     return Proposal(
         scope=scope, subject=subject, legs=legs, new_accounts=new_accounts,
         confirm_accounts=confirm, confirm_names=confirm_names,
         needs_name=unnamed,
-        # The document comes from the counterparty's implication, learned at
-        # enrichment, and never from the interpreter's free text.
+        # Corroborating document kinds come from enrichment implications.
         corroborates=(implied or {}).get("documents", ""),
         category=settled_category(proj, interp.category), said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
@@ -810,12 +684,10 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
 
 
 def one_shot_extractor(spec):
-    """The live model edge for interpretation — one call, never continued.
+    """Return an interpretation extractor with continuation disabled.
 
-    The shared driver continues across truncation; this sets
-    `max_continuations=0`, so a reply that hits the token limit is reported
-    rather than stitched back together. The returned text is prefixed with
-    `TRUNCATED_MARK` in that case."""
+    Token-limit truncation is reported with ``TRUNCATED_MARK`` rather than joined
+    with a subsequent response."""
     from vivacore.models import adapter_for
 
     adapter = adapter_for(replace(spec, max_continuations=0))
@@ -825,9 +697,7 @@ def one_shot_extractor(spec):
         result = adapter.extract([], prompt)
         exchanges.append({"prompt": prompt, "result": result})
         if result.finish_reason == "length":
-            # Neither a transport failure nor a bad reading, but a third case,
-            # marked so `interpret` reports it as `too_long` rather than as
-            # `unparseable`.
+            # Preserve truncation as too_long, separately from parse failure.
             log.warning("interpret: the model ran past its limit (%d output tokens) "
                         "— refusing to stitch a bounded answer back together",
                         result.output_tokens)
@@ -849,23 +719,17 @@ class InvalidAccountRegistration(ValueError):
 
 def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
                    by: str = "human") -> dict:
-    """Write it. Deterministic, and the only path from a sentence to the ledger.
+    """Append the resolved proposal's ruling and any named asserted accounts.
 
-    An account the person brought into being is opened with `origin=asserted`,
-    which is how the ledger keeps what an issuer attests separate from what a
-    person told it. Returns the scope, subject, accounts opened, how many
-    movements it settles, and the category, if any.
-
-    Refuses a proposal with an unnamed leg: there is a question to ask first,
-    and an account nobody named is the thing this path exists to prevent."""
+    Return scope, subject, opened accounts, affected movement count and category.
+    An unnamed leg is refused before application."""
     if not proposal.applicable:
         raise ValueError("this proposal has something with no name yet — ask "
                          "what it is before writing anything")
     grade = VERIFIED if by == "human" else UNVERIFIED
     opened = []
     for account in proposal.new_accounts:
-        # An account path is root, group and the person's name for the thing;
-        # anything shorter or emptier names a group.
+        # Require root, group and name segments for a holding-account path.
         if not isinstance(account, str):
             raise InvalidAccountRegistration("an account path must be text")
         parts = account.split(":")
@@ -887,13 +751,10 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
         proposal.scope, proposal.subject, occurred_at, legs=proposal.legs,
         by=by, grade=grade, said=proposal.said,
         corroborates=proposal.corroborates,
-        # The account's currency is what it is OPENED in; the naming answer a
-        # proposal carries is a word, not an amount, and stamping a currency on
-        # it would declare text to be money.
+        # Open the account with the explicit currency, separately from its name.
         value=proposal.value, currency="",
         prompt_version=proposal.prompt_version))
-    # One confirmation can settle several facts about the same account — the
-    # loan's name and what it secures, said in one breath.
+    # Record additional supplied attributes and secured-account links.
     if proposal.attributes:
         account = proposal.subject.rpartition(":")[0]
         for attr in proposal.attributes:
@@ -901,8 +762,7 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
                 SCOPE_ATTRIBUTE, f"{account}:{attr['key']}", occurred_at,
                 by=by, grade=grade, said=attr.get("said", ""),
                 value=attr.get("value", ""), currency=attr.get("currency", "")))
-    # One sentence can carry two rulings — a major and a label. Both are
-    # written, through the existing writers, at the scope the ruling used.
+    # Append major and product-kind rulings at the proposal's scope.
     if proposal.category:
         from .ingest.categorize import assign_category, assign_merchant_category
         if proposal.scope == SCOPE_MERCHANT:

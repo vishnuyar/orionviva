@@ -2,6 +2,8 @@
 
 **Current behavior:** [Automatic accounting](automatic-accounting.md) and [ADR-017](decisions/ADR-017-automatic-accounting.md) supersede the classification-review and confirmation-first interaction described below. The active public queue is document recovery only; retained low-level question builders serve explicitly requested edits. Automatic interpretations and understood corrections apply reversibly with evidence and scoped learning. The mechanisms below remain historical context where they imply a proactive classification question.
 
+Scoped learning also reaches an otherwise matching row whose `other` / `unclassified` purpose remains independently default-attributed. Known purposes retain exact matching, and conflicting lessons leave automatic interpretation available. Existing lessons gain this bounded compatibility only at normal interpretation entry; reload alone rewrites nothing. Categories and treatment may be inferred; evidence remains required for source numbers.
+
 **State:** built
 **Rules:** A1, A2, A3, PROJ-26, PROJ-27, PROJ-28, PROJ-29, PROJ-30, PROJ-31, PROJ-32, PROJ-33, PROJ-59
 
@@ -253,7 +255,7 @@ a friend is a gift, the next a loan* — the design had it for peers and missed 
 for instruments.
 
 **A prompt is a file, and a slice that makes a model call puts its prompt in the
-library and its version on the event.** The interpreter reads under
+library and its version on the event.** Dedicated selected accounting corrections now use `accounting-correct-v1` with categorical source role/direction and temporary ordinary/components handling, as described in [automatic-accounting.md](automatic-accounting.md). The general typed-slot interpreter reads under
 `interpret-v4`, which adds explicit source-instrument versus destination-component guidance to the generic prompt about *any question a person was asked* rather
 than about one movement of money: it takes the question, a context block and the
 typed slots that question declares, and turns language into structure without
