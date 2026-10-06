@@ -25,6 +25,11 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
+import datetime
+import json
+import math
+import uuid
+from decimal import Decimal, InvalidOperation
 
 from .env import load_dotenv
 from .logs import configure as configure_logging
@@ -56,6 +61,69 @@ def catalog_path(vault_dir=None) -> pathlib.Path:
 
 
 CHUNK_FLAG = "--chunk-size"
+
+
+def recorded_model_extractor(ledger, spec):
+    """Record merchant request attempts locally without inventing receipts.
+
+    Each batch may draw hints from several documents, so its audit identity is
+    a new local claim rather than a falsely attributed captured document.
+    Response fragments are recorded before merchant parsing and catalog sync.
+    """
+    from merchantcore.enrich import model_extractor, ENRICHMENT_VERSION
+    from merchantcore.taxonomy import TAXONOMY_VERSION
+    from merchantcore.normalize import NORMALIZER_VERSION
+    from .ledger.events import read_recorded
+
+    version = f"{ENRICHMENT_VERSION}+{TAXONOMY_VERSION}+{NORMALIZER_VERSION}"
+
+    def record(turn, error, attempt, prompt):
+        response = getattr(turn, 'response', {}) or {}
+        usage = response.get('usage') if isinstance(response, dict) else None
+        usage = usage if isinstance(usage, dict) else {}
+        cost = None
+        value = usage.get('cost')
+        if value is not None and not isinstance(value, bool):
+            try:
+                amount = Decimal(str(value))
+                numeric = float(amount)
+                if amount.is_finite() and amount >= 0 and math.isfinite(numeric) \
+                        and (numeric != 0 or amount == 0):
+                    cost = numeric
+            except (InvalidOperation, ValueError, OverflowError):
+                pass
+        tokens = {}
+        for target, names in (
+                ('input_tokens', ('prompt_tokens', 'input_tokens')),
+                ('output_tokens', ('completion_tokens', 'output_tokens'))):
+            for name in names:
+                value = usage.get(name)
+                if type(value) is int and value >= 0:
+                    tokens[target] = value
+                    break
+        reported_model = response.get('model', '') if isinstance(response, dict) else ''
+        envelope = {
+            'transport_status': 'failed' if error is not None else 'returned',
+            'delivery_status': 'unknown' if error is not None else 'response_received',
+            'attempt': attempt, 'prompt': prompt,
+            'request': getattr(turn, 'request', None), 'response': response,
+            'text': getattr(turn, 'text', ''),
+            'error_category': type(error).__name__ if error is not None else None,
+        }
+        event = read_recorded(
+            doc_id=f"merchant-enrichment:{uuid.uuid4().hex}", model=spec.model,
+            resolved_model=reported_model if isinstance(reported_model, str) else '',
+            prompt_version=version, input_mode='text',
+            response_text=json.dumps(envelope, sort_keys=True), cost_usd=cost,
+            input_tokens=0, output_tokens=0, usage_reported=False,
+            parse_ok=False, parse_error='not_evaluated_at_transport_boundary',
+            occurred_at=datetime.date.today().isoformat(), phase='merchant_enrich')
+        event.body.update(tokens)
+        if tokens:
+            event.body['usage_reported'] = True
+        ledger.append(event)
+
+    return model_extractor(spec, on_exchange=record)
 
 
 def sync_installed_merchants(vault, doc_id: str) -> int:
@@ -119,7 +187,6 @@ def enrich_live_merchants(vault, *, chunk_size: int | None = None) -> dict:
                 "withheld_people": 0}
 
     from merchantcore import Catalog, home
-    from merchantcore.enrich import model_extractor
     from vivacore.models import ModelSpec
 
     from .induce_profile import profile_store
@@ -157,7 +224,7 @@ def enrich_live_merchants(vault, *, chunk_size: int | None = None) -> dict:
         return kinds[movement.account]
 
     return enrich_merchants(
-        vault.ledger, catalog, model_extractor(spec),
+        vault.ledger, catalog, recorded_model_extractor(vault.ledger, spec),
         profile_for=profile_for, kind_for=kind_for, chunk_size=chunk_size)
 
 
@@ -212,7 +279,6 @@ def main() -> None:
     load_dotenv()
     configure_logging()
     from merchantcore import Catalog
-    from merchantcore.enrich import model_extractor
     from vivacore.models import ModelSpec
     from .induce_profile import profile_store
     from .ingest import enrich_merchants
@@ -284,7 +350,7 @@ def main() -> None:
                 _kinds[m.account] = ""
         return _kinds[m.account]
 
-    result = enrich_merchants(vault.ledger, catalog, model_extractor(spec),
+    result = enrich_merchants(vault.ledger, catalog, recorded_model_extractor(vault.ledger, spec),
                               profile_for=profile_for, kind_for=kind_for,
                               chunk_size=chunk_size)
     print(f"submitted {result['submitted']} new merchant(s); enriched "

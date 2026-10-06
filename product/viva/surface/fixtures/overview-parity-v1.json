@@ -4168,7 +4168,7 @@
             "absences": [
               {
                 "id": "scope",
-                "sentence": "This record covers model calls and nothing else, because nothing else here sends anything. It does not cover a call that failed before it reached a provider \u2014 one that never left is not recorded as having left."
+                "sentence": "This record shows model requests recorded by this vault. It includes merchant-enrichment attempts whose delivery or charge is unknown. Configuration failures before an extraction attempt are not recorded as outbound requests; other failed model calls may be absent."
               },
               {
                 "id": "anchoring",
@@ -4181,9 +4181,9 @@
               "display": "USD 0.00",
               "exact_value": "0.0",
               "measured_calls": 10,
-              "sentence": "That has cost USD 0.00 altogether, as each provider reported the price at the time."
+              "sentence": "Recorded prices add up to USD 0.00. Calls without a recorded price are not included in this subtotal; it does not establish the final provider bill."
             },
-            "model_sentence": "1 different model(s) have been used.",
+            "model_sentence": "The record contains 1 distinct name(s) for models or routes. A name may have no recorded role.",
             "models": [
               {
                 "count": 10,
@@ -4202,7 +4202,7 @@
                 "sentence": "1 time(s), a question of yours was sent, with the parts of your records needed to answer it."
               }
             ],
-            "sentence": "Everything below left this machine. It is every model call this vault recorded, and a model call is the only way this product sends anything anywhere.",
+            "sentence": "These are the model requests this vault recorded. Failed attempts are included when delivery could not be confirmed.",
             "span": {
               "first": "2025-12-04",
               "last": "2026-09-04",

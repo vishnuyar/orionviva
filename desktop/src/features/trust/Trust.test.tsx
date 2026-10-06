@@ -147,7 +147,7 @@ describe("everything this vault has sent", () => {
     // Hiding it would keep the promise by having nothing to show rather than
     // by showing it.
     const { getByRole, getByText } = withRecord();
-    expect(getByRole("heading", { name: "Everything this vault has sent" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Model requests recorded by this vault" })).toBeInTheDocument();
     expect(getByText(moments.outbound_none)).toBeInTheDocument();
   });
 
@@ -181,7 +181,7 @@ describe("everything this vault has sent", () => {
     expect(getByRole("heading", { name: "Models reported by providers" })).toBeInTheDocument();
     expect(getByText("configured-alias")).toBeInTheDocument();
     expect(getByText("resolved-model-2026")).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Provider-reported tokens" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Recorded token subtotals" })).toBeInTheDocument();
     expect(getByText("150")).toBeInTheDocument();
     expect(getByText("1 of 1")).toBeInTheDocument();
   });

@@ -538,6 +538,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "outbound_phase_extract":          frozenset({"count"}),
     "outbound_phase_interpret":        frozenset({"count"}),
     "outbound_phase_speak":            frozenset({"count"}),
+    "outbound_phase_merchant_enrich":   frozenset({"count"}),
     "outbound_phase_unnamed":          frozenset({"count"}),
     "outbound_cost":                   frozenset({"amount"}),
     "outbound_window":                 frozenset({"first", "last"}),

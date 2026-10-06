@@ -3,11 +3,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Callable, Protocol
+
+from ..errors import ConfigError
 
 
 class AdapterError(Exception):
     """A model call failed in a way the runner should record and surface."""
+
+
+_extraction_observer = ContextVar("extraction_observer", default=None)
+
+
+@contextmanager
+def observe_extractions(observer):
+    """Observe each extraction turn or failed attempt in this execution context.
+
+    The callback receives (turn, error, zero-based attempt). It runs outside
+    transport-error handling, so persistence errors stop the driver without
+    being relabelled as another provider attempt. No request is changed.
+    """
+    token = _extraction_observer.set(observer)
+    try:
+        yield
+    finally:
+        _extraction_observer.reset(token)
 
 
 # --------------------------------------------------------- continuation driver
@@ -70,8 +92,19 @@ def run_to_completion(call_once: Callable[[str, int], Turn],
     finish = resolved = ""
     first_request: dict[str, Any] | None = None
     last_response: dict[str, Any] = {}
+    observer = _extraction_observer.get()
     for attempt in range(max_continuations + 1):
-        turn = call_once(accumulated, attempt)
+        try:
+            turn = call_once(accumulated, attempt)
+        except ConfigError:
+            # Key resolution can happen inside call_once, before transport.
+            raise
+        except Exception as error:
+            if observer is not None:
+                observer(None, error, attempt)
+            raise
+        if observer is not None:
+            observer(turn, None, attempt)
         accumulated += turn.text
         reasoning += turn.reasoning_text
         in_tok += turn.input_tokens
