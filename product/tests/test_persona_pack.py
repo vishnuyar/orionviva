@@ -439,7 +439,7 @@ def test_inference_label_pack_adds_only_expense_and_compound_moments():
     root = pathlib.Path(persona.__file__).resolve().parent
     prior = json.loads((root / "pack-v51" / "moments.json").read_text())
     current = json.loads((root / "pack-v52" / "moments.json").read_text())
-    assert persona.ACTIVE_PACK == "pack-v52"
+    assert "pack-v52" in FROZEN_PACKS
     assert set(current) - set(prior) == {"activity_inferred_expense", "activity_inferred_compound"}
     assert {key: current[key] for key in prior} == prior
     for key in set(current) - set(prior):
@@ -448,3 +448,17 @@ def test_inference_label_pack_adds_only_expense_and_compound_moments():
     for name in ("phrasings.json", "tone.md"):
         assert (root / "pack-v52" / name).read_bytes() == (root / "pack-v51" / name).read_bytes()
     assert manifest.fingerprint(root / "pack-v52") == FROZEN_PACKS["pack-v52"]
+
+
+def test_merchant_record_pack_promotes_only_outbound_disclosures():
+    root = pathlib.Path(persona.__file__).resolve().parent
+    prior = json.loads((root / "pack-v52" / "moments.json").read_text())
+    current = json.loads((root / "pack-v53" / "moments.json").read_text())
+    assert persona.ACTIVE_PACK == "pack-v53"
+    assert set(current) - set(prior) == {"outbound_phase_merchant_enrich"}
+    assert {key for key in prior if prior[key] != current[key]} == {
+        "outbound_none", "outbound_some", "outbound_scope", "outbound_cost",
+        "outbound_models", "settings_model_proposed", "settings_model_confirmed",
+        "settings_model_keyless_confirmed", "settings_model_cleared"}
+    for name in ("phrasings.json", "tone.md"):
+        assert (root / "pack-v53" / name).read_bytes() == (root / "pack-v52" / name).read_bytes()

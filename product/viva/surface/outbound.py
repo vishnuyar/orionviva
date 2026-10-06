@@ -36,8 +36,8 @@ from .. import render
 from ..persona import moment
 from .models import PanelState
 
-# The event a model call is recorded as. There is exactly one, which is what
-# makes a complete list of them a complete list of what has left.
+# Successful calls and merchant extraction attempts use this event. Absence
+# from the stream does not prove that no network traffic occurred.
 READ_RECORDED = "ReadRecorded"
 
 # Each pass a model call can belong to, against the sentence that says what was
@@ -46,6 +46,7 @@ READ_RECORDED = "ReadRecorded"
 PHASES: dict[str, str] = {
     "classify": "outbound_phase_classify",
     "extract": "outbound_phase_extract",
+    "merchant_enrich": "outbound_phase_merchant_enrich",
     "interpret": "outbound_phase_interpret",
     "speak": "outbound_phase_speak",
 }
@@ -191,14 +192,21 @@ def _day(call: Any) -> str:
 
 
 def _tokens(calls: list[Any]) -> dict[str, int] | None:
-    """Provider-reported token totals, only where at least one was measured."""
+    """Token subtotals for calls whose input and output were both measured.
+
+    Partial counters remain in the local record. They cannot be rendered as
+    this contract's complete input/output/total row without inventing a zero.
+    """
     inputs = outputs = measured = 0
     for call in calls:
         body = getattr(call, "body", {}) or {}
         # The marker makes zero measurable. Positive unmarked counters also
         # represent usage; unmarked zero remains absent.
         explicit = body.get("usage_reported") is True
-        found = False
+        values = [body.get(field) for field in ("input_tokens", "output_tokens")]
+        if not all(type(value) is int and value >= 0 for value in values) \
+                or (not explicit and not any(value > 0 for value in values)):
+            continue
         for field, target in (("input_tokens", "input"),
                               ("output_tokens", "output")):
             value = body.get(field)
@@ -208,8 +216,7 @@ def _tokens(calls: list[Any]) -> dict[str, int] | None:
                     inputs += value
                 else:
                     outputs += value
-                found = True
-        measured += int(found)
+        measured += 1
     if not measured:
         return None
     return {"input": inputs, "output": outputs, "total": inputs + outputs,

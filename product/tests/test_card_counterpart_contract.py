@@ -212,7 +212,7 @@ def test_retirement_refreshes_baseline_for_omitted_and_deferred_rows(tmp_path, m
 
 def test_new_prompt_and_persona_are_active_with_original_versions_intact():
     assert versions.active(intelligence.PACKAGE, "accounting_interpret") == "accounting-interpret-v3"
-    assert versions.active(intelligence.PACKAGE, "persona_pack") == "pack-v52"
+    assert versions.active(intelligence.PACKAGE, "persona_pack") == "pack-v53"
     for name in ("accounting-interpret-v1", "accounting-interpret-v2", "pack-v50", "pack-v51"):
         assert versions.fingerprint(versions.path_of(intelligence.PACKAGE, name)) == versions.pin(intelligence.PACKAGE, name)
 

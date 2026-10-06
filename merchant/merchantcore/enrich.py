@@ -326,14 +326,33 @@ class Enricher:
         return fresh
 
 
-def model_extractor(spec):
+def model_extractor(spec, *, on_exchange=None):
     """Wrap a ``vivacore.models`` adapter into an ``extract_fn(prompt) -> text``
-    for a text-only merchant call (no images). The live edge for production."""
+    for a text-only merchant call (no images). The live edge for production.
+
+    Optional on_exchange(turn, error, attempt, prompt) observes each underlying
+    turn before any continuation. Failed setup before the driver is not a call.
+    Adapters without turn observation retain one successful completion record.
+    """
     from vivacore.models import adapter_for
     adapter = adapter_for(spec)
 
     def _extract(prompt: str) -> str:
-        result = adapter.extract([], prompt)
+        if on_exchange is None:
+            result = adapter.extract([], prompt)
+        else:
+            from vivacore.models.base import observe_extractions
+            observed = False
+
+            def record(turn, error, attempt):
+                nonlocal observed
+                observed = True
+                on_exchange(turn, error, attempt, prompt)
+
+            with observe_extractions(record):
+                result = adapter.extract([], prompt)
+            if not observed:
+                record(result, None, 0)
         # A reply whose visible channel is empty while its reasoning channel is
         # not spent its whole output budget thinking and returned nothing to
         # parse. Named separately from truncation, which the adapter continues

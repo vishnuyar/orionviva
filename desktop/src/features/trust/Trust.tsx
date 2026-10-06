@@ -219,7 +219,7 @@ function EngineRow({ identity }: { identity: FeatureResult<EngineIdentity> }) {
 // outbound history remains a ready record and uses the same panel prominence.
 function OutboundRecord({ record }: { record: OutboundRecordView }) {
   return <section className="trust-outbound" aria-labelledby="trust-outbound-title">
-    <h3 id="trust-outbound-title">Everything this vault has sent</h3>
+    <h3 id="trust-outbound-title">Model requests recorded by this vault</h3>
     <p className="trust-outbound-lead">{record.sentence}</p>
     {record.phases.length ? <ul className="trust-outbound-phases">{record.phases.map((phase) => <li key={phase.id}>{phase.sentence}</li>)}</ul> : null}
     {record.span ? <p>{record.span.sentence}</p> : null}
@@ -227,7 +227,7 @@ function OutboundRecord({ record }: { record: OutboundRecordView }) {
     {record.models.length ? <><h4>Configured routes</h4><dl className="trust-outbound-models">{record.models.map((model) => <div key={model.name}><dt>{model.name}</dt><dd>{model.count}</dd></div>)}</dl></> : null}
     {record.reportedModels?.length ? <><h4>Models reported by providers</h4><dl className="trust-outbound-models">{record.reportedModels.map((model) => <div key={model.name}><dt>{model.name}</dt><dd>{model.count}</dd></div>)}</dl></> : null}
     {record.legacyModels?.length ? <><h4>Older calls with model role unavailable</h4><p>These calls predate separate configured and provider model fields, so their recorded model names cannot be labelled as either.</p><dl className="trust-outbound-models">{record.legacyModels.map((model) => <div key={model.name}><dt>{model.name}</dt><dd>{model.count}</dd></div>)}</dl></> : null}
-    {record.tokens ? <><h4>Provider-reported tokens</h4><dl className="trust-outbound-models"><div><dt>Input</dt><dd>{record.tokens.input}</dd></div><div><dt>Output</dt><dd>{record.tokens.output}</dd></div><div><dt>Total</dt><dd>{record.tokens.total}</dd></div><div><dt>Calls reporting usage</dt><dd>{record.tokens.measuredCalls} of {record.callCount}</dd></div></dl></> : null}
+    {record.tokens ? <><h4>Recorded token subtotals</h4><dl className="trust-outbound-models"><div><dt>Input</dt><dd>{record.tokens.input}</dd></div><div><dt>Output</dt><dd>{record.tokens.output}</dd></div><div><dt>Total</dt><dd>{record.tokens.total}</dd></div><div><dt>Calls with both usage counters</dt><dd>{record.tokens.measuredCalls} of {record.callCount}</dd></div></dl></> : null}
     {record.cost ? <p className="trust-outbound-cost">{record.cost.sentence}</p> : null}
     {record.absences.length ? <ul className="trust-outbound-absences">{record.absences.map((absence) => <li key={absence.id}>{absence.sentence}</li>)}</ul> : null}
   </section>;
