@@ -12,6 +12,7 @@ type Coordination = Pick<SessionCoordination,
   | "requestId"
   | "questionGeneration"
   | "activityLimit"
+  | "activityFocus"
   | "surfaceRevision"
   | "jobsGeneration"
   | "activityActions"
@@ -26,6 +27,7 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
     requestId,
     questionGeneration,
     activityLimit,
+    activityFocus,
     surfaceRevision,
     jobsGeneration,
     activityActions,
@@ -48,9 +50,7 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
   const overviewActions = session.source?.overviewActions ?? null;
   const planActions = session.source?.planActions ?? null;
 
-  // What is in force, asked once per source. It is this machine's rather than
-  // this vault's, so it is read whenever a source appears and never cleared by
-  // one going away.
+  // Read machine settings once per source; retain them when the source closes.
   useEffect(() => {
     if (!settingsActions) return undefined;
     let gone = false;
@@ -60,10 +60,7 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
     return () => { gone = true; };
   }, [settingsActions]);
 
-  // What the engine behind this source says about itself, asked once per
-  // source. Neither answer changes while one sidecar lives, so asking again
-  // per screen would be putting a settled question over and over; a source
-  // that is replaced is a different engine and is asked again.
+  // Read engine identity and registry standing once per source, including replacements.
   useEffect(() => {
     if (!source) return undefined;
     let gone = false;
@@ -74,9 +71,7 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
     return () => { gone = true; };
   }, [source]);
 
-  // One question verb at a time. The sidecar answers one request before reading
-  // the next, so a second press while the first is in flight would queue behind
-  // it and report against a queue that has already moved.
+  // Allow one question action at a time.
   async function runQuestionVerb(verb: QuestionVerb, questionId: string, run: (actions: ConversationActions) => Promise<ActionResult>) {
     const actions = conversationActions;
     const activeSource = source;
@@ -103,16 +98,15 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
     dispatch({ type: "question-acted", requestId: nextRequestId, questionId, verb, result, authoritative, resolved });
   }
 
-  // One exact movement selection correction at a time. The old snapshot remains on screen
-  // through both the write and the full read that follows it. An action reply
-  // is a receipt, not financial data, so no row is patched from it; only the
-  // completed source load may replace the picture.
+  // Allow one exact movement-selection correction at a time. Retain the old snapshot
+  // until the complete post-write read; action receipts do not patch financial rows.
   async function runActivityCorrection(verb: ActivityCorrectionVerb, movementIds: readonly string[], run: (actions: ActivityActions) => Promise<ActivityActionResult>) {
     const actions = activityActions;
     const activeSource = source;
     const movementId = movementIds[0] ?? "";
     if (!actions || !activeSource || !movementId.trim() || movementIds.some((id) => !id.trim()) || correctingActivity.current) return null;
     correctingActivity.current = true;
+    activityFocus.current = movementId;
     const nextRequestId = requestId.current;
     dispatch({ type: "activity-correcting", requestId: nextRequestId, movementId, movementIds, verb });
     try {
@@ -121,8 +115,8 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
       try {
         ++surfaceRevision.current;
         const snapshotWork = activeSource.loadCoherent
-          ? activeSource.loadCoherent(activityLimit.current, movementId, undefined, true)
-          : activeSource.load(activityLimit.current, movementId).then((snapshot) => ({ snapshot, revision: "" }));
+          ? activeSource.loadCoherent(50, movementId, undefined, true)
+          : activeSource.load(50, movementId).then((snapshot) => ({ snapshot, revision: "" }));
         const activeJobs = activeSource.loadJobs ? ++jobsGeneration.current : 0;
         const jobsWork = activeSource.loadJobs
           ? Promise.resolve().then(() => activeSource.loadJobs!()).catch(() => null)
@@ -173,10 +167,7 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
     }
   }
 
-  // One whole-vault copy at a time, out or back. The sidecar answers one
-  // request before it reads the next, so a second press while the first is in
-  // flight would queue behind it and report against a file that has already
-  // been written.
+  // Allow one export or restore request at a time.
   async function runTransfer(verb: TransferVerb, run: (actions: VaultTransferActions) => Promise<ActionResult>) {
     if (!transferActions || transferring.current) return;
     transferring.current = true;
@@ -336,9 +327,8 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
       if (!counterpartId.trim()) return;
       await runActivityCorrection("unlink_transfer", [movementId], (actions) => actions.unlinkTransfer(movementId, counterpartId));
     },
-    // One at a time. `spend` is the person's own word and is never inferred:
-    // the agent reaches a model, so a run nobody said to spend on plans and
-    // stops at the line where money starts.
+    // Allow one agent run at a time. Only explicit `spend` permits model spending;
+    // otherwise the agent plans and stops before paid work.
     async runMaintenance(spend: boolean) {
       if (spend && (session.jobStatus === "unavailable" || session.jobs.some((job) => job.operation === "viva.maintenance.run" && (job.state === "queued" || job.state === "running")))) return;
       await runTrust("maintenance", (actions) => actions.run(spend));
@@ -347,9 +337,8 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
       if (!file.trim()) return;
       await runTrust("diagnostic", (actions) => actions.diagnose(file.trim()));
     },
-    // One question at a time. `mirrored` says the drawer showing the answer is
-    // open, which is a fact about this screen rather than a preference: it is
-    // what decides whether anything may be spoken.
+    // Allow one question at a time. `mirrored` identifies an open answer drawer and
+    // controls whether the reply may be spoken.
     async askViva(question: string, mirrored: boolean, planRequest = false, contextMode: import("../surface/types").AskContextMode = "new_question", movementIds?: readonly string[]) {
       const activeSource = source;
       if (!conversationActions || !activeSource || !question.trim() || asking.current) return;

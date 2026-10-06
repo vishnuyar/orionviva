@@ -31,15 +31,8 @@ function settledPlans<TRaw extends { data: unknown }>(result: PromiseSettledResu
 }
 async function acted(call: Promise<unknown>): Promise<ActionResult> {
   const [replied] = await Promise.allSettled([call]);
-  // Which channel answered, decided here and nowhere else. The one code the
-  // sidecar means as "this request will not be taken" is the request being
-  // refused; every other code says the frame was never served.
-  //
-  // No message from any of them is carried out of here. The protocol puts the
-  // text of an exception a handler raised into that field, and an exception
-  // raised inside the engine can carry a merchant name, an account name or an
-  // amount read out of the vault — vault text reaching a screen ungraded,
-  // uncited and through no read model.
+  // Map request refusal to unserved and other channel failures to unanswered.
+  // Exception messages remain outside the view data.
   if (replied.status === "rejected") {
     if (replied.reason instanceof BridgeTimeout) throw replied.reason;
     if (replied.reason instanceof BridgeRefusal) return replied.reason.code === REQUEST_REFUSED ? { state: "unserved" } : { state: "unreadable" };
@@ -81,9 +74,29 @@ async function readTrustFeature(client: BridgeClient): Promise<FeatureResult<Tru
   return settled(read, (value) => adaptTrust(value.data));
 }
 
-async function readActivityFeature(client: BridgeClient, limit: number): Promise<FeatureResult<ActivityData>> {
-  const [read] = await Promise.allSettled([client.readActivity({ limit })]);
-  return settled(read, (value) => adaptActivity(value.data));
+async function requestActivityRead(client: BridgeClient, parameters: Record<string, string | number>) {
+  try { return await client.readActivity(parameters); }
+  catch (error) {
+    if (parameters.cursor || !(error instanceof BridgeRefusal) || error.code !== REQUEST_REFUSED) throw error;
+    const { page_version: _version, ...legacy } = parameters;
+    return client.readActivity(legacy);
+  }
+}
+
+function initialActivity(raw: unknown, focus = "") {
+  const data = adaptActivity(raw, focus);
+  return data?.page && data.page.cumulativeCount !== data.movements.length ? null : data;
+}
+
+async function readActivityFeature(client: BridgeClient, limit: number, cursor = "", focus = ""): Promise<FeatureResult<ActivityData>> {
+  const parameters = { page_version: 1, limit, ...(cursor ? { cursor } : {}), ...(focus ? { focus } : {}) };
+  const [read] = await Promise.allSettled([requestActivityRead(client, parameters)]);
+  const result = settled(read, (value) => adaptActivity(value.data, focus));
+  if ((result.state === "ready" || result.state === "partial" || result.state === "needs_input")
+      && ((result.data.page && result.data.movements.length > limit)
+          || (!cursor && result.data.page && result.data.page.cumulativeCount !== result.data.movements.length)
+          || (cursor && !result.data.page))) return { state: "failed", reason: "invalid_payload" };
+  return result;
 }
 
 export async function readAccountLedgerFeature(client: BridgeClient, accountId: string, cursor?: string, limit?: number): Promise<FeatureResult<AccountLedgerData>> {
@@ -113,18 +126,13 @@ export function privateSpendingBreakdownReader(client: BridgeClient): SpendingBr
   return { read: (request) => readSpendingBreakdownFeature(client, request) };
 }
 
-// What the sidecar declares about itself and about its own registry, read here
-// like every other payload. Both are asked once when a vault opens: neither
-// changes while one sidecar lives, and asking again per screen would be asking
-// a settled question over and over.
+// Parse engine identity and registry payloads, requested once per opened source.
 export async function readEngineIdentity(client: BridgeClient): Promise<FeatureResult<EngineIdentity>> {
   const [replied] = await Promise.allSettled([client.handshake()]);
   return settled(replied, adaptIdentity);
 }
 
-// What happens to this application when a new version exists. Asked once per
-// source like the handshake and the registry: it is a fact about the build
-// rather than about the vault, and it does not change while one sidecar lives.
+// Read update lifecycle once per source alongside identity and registry.
 export async function readUpdateLifecycle(client: BridgeClient): Promise<FeatureResult<UpdateLifecycleView>> {
   const [replied] = await Promise.allSettled([client.readLifecycle()]);
   return settled(replied, adaptLifecycle);
@@ -135,11 +143,7 @@ export async function readSurfaceRegistry(client: BridgeClient): Promise<Feature
   return settled(replied, adaptRegistry);
 }
 
-// What the sidecar says it is doing, as it does it, already read into the
-// shape a screen holds. The frame is opened here rather than above this line
-// for the same reason every other payload is: nothing over the boundary reads
-// a raw shape, and a frame this side cannot read is dropped rather than
-// rendered under the nearest word.
+// Parse streamed sidecar progress into job rows; discard malformed frames.
 export function privateJobStream(client: BridgeClient): JobStream | null {
   const subscribe = client.subscribeToJobProgress;
   if (!subscribe) return null;
@@ -150,10 +154,8 @@ export function privateJobStream(client: BridgeClient): JobStream | null {
   });
 }
 
-// The write side of the documents capability, and the read that follows it.
-// One path crosses per call and no bytes ever do; the vault is read again
-// afterwards so the list a person sees is the vault's own, not this screen's
-// idea of what it just did.
+// Document actions send one path per call without document bytes, then reread
+// the vault-backed document list.
 export function privateDocumentActions(client: BridgeClient): DocumentActions {
   return {
     upload: (path) => acted(client.uploadDocument(path)),
@@ -161,10 +163,8 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
     reread: () => readDocumentsFeature(client),
     cancel: (jobId) => acted(client.cancelJob(jobId)),
     readJobs: () => readJobsFeature(client),
-    // Two answers from one frame, kept apart. `result` is which channel spoke
-    // and what the vault said; `report` is what the pass did, and it is read
-    // only from a reply the vault itself settled — a channel that never
-    // answered has nothing to report about.
+    // Keep channel outcome and rescan report separate. Parse a report only from
+    // a settled reply.
     rescan: async () => {
       const [replied] = await Promise.allSettled([client.rescanDocuments()]);
       if (replied.status === "rejected" && replied.reason instanceof BridgeTimeout) throw replied.reason;
@@ -195,9 +195,7 @@ export function privateConversationActions(client: BridgeClient): ConversationAc
       ? acted(client.undoAccountingCorrection(correctionId))
       : Promise.resolve({ state: "unserved" }),
     reread: () => readConversationFeature(client),
-    // A completed turn durably appends one outbound event per model exchange.
-    // Read Trust after the turn so the snapshot cannot remain the one taken
-    // when the vault first opened.
+    // Refresh Trust after a completed turn appends durable model-exchange records.
     rereadTrust: () => readTrustFeature(client),
   };
 }
@@ -239,9 +237,8 @@ export function privateSettingsActions(client: BridgeClient): SettingsActions {
   };
 }
 
-// A whole vault out, and a whole vault back. Neither is followed by a read of
-// this vault: the export does not change it, and the restore writes somewhere
-// else entirely, so re-reading here would claim a change nothing made.
+// Export and restore send paths. Export leaves this vault unchanged; restore
+// writes a different vault, so neither reloads this source.
 export function privateTransferActions(client: BridgeClient): VaultTransferActions {
   return {
     export: (archive) => acted(client.exportVault(archive)),
@@ -254,7 +251,7 @@ export function privateTransferActions(client: BridgeClient): VaultTransferActio
 // read: every surface is read again by the session after it arrives.
 export function privateActivityActions(client: BridgeClient): ActivityActions {
   return {
-    read: (limit) => readActivityFeature(client, limit),
+    read: (limit, cursor, focus) => readActivityFeature(client, limit, cursor, focus),
     assignCategory: (movementId, categoryId) => activityActed(client.assignActivityCategory(movementId, categoryId)),
     assignClassification: (movementIds, categoryId, subcategoryId) => activityActed(client.assignActivityClassification(movementIds, categoryId, subcategoryId)),
     assignMeaning: (movementId, meaning, counterparty) => activityActed(client.assignActivityMeaning(movementId, meaning, counterparty)),
@@ -290,8 +287,8 @@ export type CoherentSnapshot = { snapshot: SurfaceSnapshot; revision: string };
 export async function loadCoherentSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string, start?: PrioritySnapshot, refresh = false): Promise<CoherentSnapshot> {
   const first = await waitForPublication(client, disclosure, start ?? await loadPrioritySnapshot(client, disclosure, refresh));
   if (first.freshness !== "current" || !first.revision) throw new Error("aggregate_revision_unavailable");
-  const activityParameters = { ...(activityLimit ? { limit: activityLimit } : {}), ...(activityFocus ? { focus: activityFocus } : {}) };
-  const [documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
+  const activityParameters = { page_version: 1, limit: 50, ...(activityFocus ? { focus: activityFocus } : {}) };
+  const [documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), requestActivityRead(client, activityParameters), client.readPlans()]);
   const confirmed = await loadPrioritySnapshot(client, disclosure);
   if (confirmed.freshness !== "current" || confirmed.revision !== first.revision) throw new Error("aggregate_revision_mismatch");
   return { revision: first.revision, snapshot: buildLiveSnapshot(
@@ -299,7 +296,7 @@ export async function loadCoherentSnapshot(client: BridgeClient, disclosure?: Su
     settled(documentsRead, (read) => adaptDocuments(read.data)),
     settled(conversationRead, (read) => adaptConversation(read.data)),
     settled(trustRead, (read) => adaptTrust(read.data)),
-    settled(activityRead, (read) => adaptActivity(read.data)),
+    settled(activityRead, (read) => initialActivity(read.data, activityFocus)),
     settledPlans(plansRead),
     disclosure,
     settled(reviewRead, (read) => adaptReview(read.data)),
@@ -363,14 +360,14 @@ export async function loadPrioritySnapshot(client: BridgeClient, disclosure?: Su
 }
 
 export async function loadSecondarySnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string): Promise<SurfaceSnapshot> {
-  const activityParameters = { ...(activityLimit ? { limit: activityLimit } : {}), ...(activityFocus ? { focus: activityFocus } : {}) };
-  const [documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
+  const activityParameters = { page_version: 1, limit: 50, ...(activityFocus ? { focus: activityFocus } : {}) };
+  const [documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), requestActivityRead(client, activityParameters), client.readPlans()]);
   return buildLiveSnapshot(
     { state: "absent", reason: "priority_owned" },
     settled(documentsRead, (read) => adaptDocuments(read.data)),
     settled(conversationRead, (read) => adaptConversation(read.data)),
     settled(trustRead, (read) => adaptTrust(read.data)),
-    settled(activityRead, (read) => adaptActivity(read.data)),
+    settled(activityRead, (read) => initialActivity(read.data, activityFocus)),
     settledPlans(plansRead), disclosure,
     settled(reviewRead, (read) => adaptReview(read.data)),
   );
@@ -389,14 +386,14 @@ export async function loadStartupSecondarySnapshot(client: BridgeClient, disclos
   );
 }
 
-export async function loadPrivateDestination(client: BridgeClient, destination: "documents" | "review" | "trust" | "activity" | "plans", activityLimit = 50): Promise<Partial<SurfaceSnapshot>> {
+export async function loadPrivateDestination(client: BridgeClient, destination: "documents" | "review" | "trust" | "activity" | "plans", activityLimit = 50, activityFocus = ""): Promise<Partial<SurfaceSnapshot>> {
   if (destination === "documents") return { documents: await readDocumentsFeature(client) };
   if (destination === "review") {
     const [review, conversation] = await Promise.allSettled([client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readConversation()]);
     return { review: settled(review, (value) => adaptReview(value.data)), conversation: settled(conversation, (value) => adaptConversation(value.data)) };
   }
   if (destination === "trust") return { trust: await readTrustFeature(client) };
-  if (destination === "activity") return { activity: await readActivityFeature(client, activityLimit) };
+  if (destination === "activity") return { activity: await readActivityFeature(client, 50, "", activityFocus) };
   const [read] = await Promise.allSettled([client.readPlans()]);
   return { plans: settledPlans(read) };
 }

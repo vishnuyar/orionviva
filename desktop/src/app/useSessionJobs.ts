@@ -8,7 +8,10 @@ type Coordination = Pick<SessionCoordination,
   | "dispatch"
   | "requestId"
   | "activityLimit"
+  | "activityFocus"
   | "priorityGeneration"
+  | "surfaceRevision"
+  | "destinationGeneration"
   | "jobsGeneration"
   | "documentActions"
   | "source"
@@ -21,7 +24,10 @@ export function useSessionJobs(context: Coordination) {
     dispatch,
     requestId,
     activityLimit,
+    activityFocus,
     priorityGeneration,
+    surfaceRevision,
+    destinationGeneration,
     jobsGeneration,
     documentActions,
     source,
@@ -31,11 +37,8 @@ export function useSessionJobs(context: Coordination) {
   const recheckingJobs = useRef(false);
   const jobStream = session.source?.jobStream ?? null;
 
-  // What the sidecar is doing, as it does it. It cannot arrive in a reply:
-  // the reply comes when the work is over, and a channel that only speaks
-  // after the fact reports nothing a person could act on. The source hands
-  // over rows that were already read; a source whose host cannot deliver one
-  // mid-job carries no stream, and nothing here waits for one.
+  // Subscribe to parsed sidecar progress rows during work. Sources without a
+  // mid-job stream have no subscription.
   useEffect(() => {
     if (!jobStream) return undefined;
     let stop: (() => void) | null = null;
@@ -48,6 +51,8 @@ export function useSessionJobs(context: Coordination) {
       ++jobsGeneration.current;
       dispatch({ type: "job-progress", requestId: subscribedRequest, job });
       if (subscribedSource && ["completed", "failed", "cancelled"].includes(job.state)) {
+        ++surfaceRevision.current;
+        ++destinationGeneration.current;
         const activePriority = ++priorityGeneration.current;
         void (async () => {
           if (!subscribedSource.loadPriority) return;
@@ -65,8 +70,8 @@ export function useSessionJobs(context: Coordination) {
             return;
           }
           const reread = subscribedSource.loadCoherent
-            ? await subscribedSource.loadCoherent(activityLimit.current, undefined, latest)
-            : { snapshot: await subscribedSource.load(activityLimit.current), revision: latest.revision };
+            ? await subscribedSource.loadCoherent(50, activityFocus.current || undefined, latest)
+            : { snapshot: await subscribedSource.load(50, activityFocus.current || undefined), revision: latest.revision };
           if (!current()) return;
           if (reread.revision !== latest.revision) {
             dispatch({ type: "mutation-refresh-failed", requestId: subscribedRequest });

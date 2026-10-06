@@ -17,7 +17,7 @@ read model.
 | Classification, tags, transfer state | `category_history`, `merchant_history`, `tag_history`, `ruling_history`, `transfer_history` | Fold eligible overlays in source order with canonical precedence and tie rules; recompute effective movement fields, tags, links, and suggestions. |
 | Statement evidence and document links | `documents`, `document_account_history`, `document_reads`, `statement_periods`, `posted_document_events` | Keep only eligible records and select the canonical successful extract/accepted statement pair; document links cannot point forward. |
 | Overview obligations, questions, and coverage | Rhythm/obligation records in `ruling_history`, held/review histories, eligible account/movement/document families | Use the historical projection semantics, not the mixed current-state `as_of` queue contract used by Review and Conversation. |
-| Activity controls and page | Historical movement/overlay/document families above | Complete-or-refused vocabularies, pending-first order, exact count, and focus from the same held temporal state. |
+| Activity controls and page | Historical movement/overlay/document families above | Complete-or-refused vocabularies, pending-first order, exact count, and focus from the same held temporal state. [Versioned continuation](activity-pagination.md) authenticates the cutoff and revision scope and preserves displaced focus coverage without filtering latest-state rows. |
 
 The existing `applied_events` table is an authenticated identity/mapping ledger,
 not a body mirror. The existing `movements`, `movement_tags`, `transfer_links`,

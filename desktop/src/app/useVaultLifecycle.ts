@@ -23,6 +23,7 @@ type Coordination = Pick<SessionCoordination,
   | "hostBridge"
   | "requestId"
   | "activityLimit"
+  | "activityFocus"
   | "surfaceRevision"
   | "priorityGeneration"
   | "secondaryGeneration"
@@ -38,6 +39,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
     hostBridge,
     requestId,
     activityLimit,
+    activityFocus,
     surfaceRevision,
     priorityGeneration,
     secondaryGeneration,
@@ -76,6 +78,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
           return;
         }
         activityLimit.current = 50;
+        activityFocus.current = "";
         ++surfaceRevision.current;
         void readOpenedSource(privateSource(hostBridge), activeRequest);
       })
@@ -97,15 +100,14 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
       opening.current = true;
       const nextRequestId = ++requestId.current;
       activityLimit.current = 50;
+      activityFocus.current = "";
       ++surfaceRevision.current;
       dispatch({ type: "opening", requestId: nextRequestId });
       try {
         await hostBridge.openVault(vaultDirectory, passphrase, create);
       } catch (refused) {
-        // The sidecar's own sentence, and only from the codes whose message is
-        // a reviewed sentence about a folder. It is what tells a mistyped path
-        // apart from a wrong passphrase. Every other code carries machine text
-        // out of an engine, which is never repeated here.
+        // Display sidecar messages only for reviewed folder/passphrase refusal codes;
+        // other codes retain the generic UI refusal.
         const said = refused instanceof BridgeTimeout && refused.mayHaveWritten
           ? "Opening or creating this vault stopped answering and may already have changed which vault is active. Inspect the named vault folder, then reopen it before continuing. OrionViva did not retry the open."
           : refused instanceof BridgeRefusal && OPEN_REFUSALS.includes(refused.code) ? refused.message : "";
@@ -131,32 +133,27 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
       }
       return true;
     },
-    // The one affordance the sample vault is entered from. It names no
-    // directory and no passphrase, because the request carries neither: where
-    // the sample vault lives and what opens it are the engine's, so a person
-    // pressing this cannot be pointed anywhere except at the sample.
+    // Open the engine-owned sample vault without a directory or passphrase argument.
     async openSampleVault() {
       if (!hostBridge || opening.current) return false;
       opening.current = true;
       const nextRequestId = ++requestId.current;
       activityLimit.current = 50;
+      activityFocus.current = "";
       ++surfaceRevision.current;
       dispatch({ type: "opening", requestId: nextRequestId });
       let frame;
       try {
         frame = await hostBridge.openSampleVault();
       } catch (failure) {
-        // The sidecar's own sentence is not repeated here: the codes a sample
-        // open can fail with are about a directory this person never named, so
-        // there is nothing in them for them to act on.
+        // Sample-open failures omit directory-specific sidecar messages.
         const said = failure instanceof BridgeTimeout && failure.mayHaveWritten ? "Opening the sample vault stopped answering and may already have changed which vault is active. Close and reopen the sample vault before continuing. OrionViva did not retry the open." : "";
         if (requestId.current === nextRequestId) dispatch({ type: "open-failed", requestId: nextRequestId, said });
         opening.current = false;
         return false;
       }
       if (requestId.current !== nextRequestId) { opening.current = false; return false; }
-      // No frame, no sample vault. A shell that went in anyway would be
-      // showing somebody invented money with nothing saying it was invented.
+      // A sample vault requires its sidecar-supplied frame before opening the shell.
       if (!frame) { dispatch({ type: "open-failed", requestId: nextRequestId, said: "" }); opening.current = false; return false; }
       const source = sampleSource(hostBridge, frame);
       const reading = readOpenedSource(source, nextRequestId);
@@ -184,6 +181,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
       ++priorityGeneration.current;
       ++secondaryGeneration.current;
       activityLimit.current = 50;
+      activityFocus.current = "";
       ++surfaceRevision.current;
       dispatch({ type: "reset", requestId: nextRequestId });
     },

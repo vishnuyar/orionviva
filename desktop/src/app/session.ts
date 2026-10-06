@@ -41,33 +41,18 @@ export type SurfaceSession = {
   jobs: readonly JobView[];
   jobStatus: "available" | "unavailable";
   jobCheck: "idle" | "checking" | "failed" | "succeeded";
-  // What the engine behind this source says about itself: which build answered,
-  // and which destinations its own registry says a read reaches. It is asked
-  // once per source, because neither answer changes while one sidecar lives.
+  // Engine build identity and registry standing, requested once per source.
   description: SourceDescription;
-  // What became of the last whole-vault copy a person asked for, out or back.
-  // It is not cleared by moving screens: it is a receipt for a file that now
-  // exists, or for one that does not, and either outlives the screen a person
-  // happened to be on.
+  // The last export or restore receipt persists across destination navigation.
   transferAction: TransferActionState;
-  // What the last pass back over this vault said it did. It stays on the
-  // screen after the pass: it is a receipt for events that were written, and
-  // clearing it on the next navigation would take a record of a change away
-  // from the person the change was made for.
+  // The last rescan receipt persists across destination navigation.
   rescanAction: RescanActionState;
-  // What is in force, and where a settings exchange stands. The proposal is
-  // held in the session rather than in the panel, because a proposal is a
-  // thing a person was shown and a screen that lost it on a re-render would
-  // ask them to agree to something they can no longer read.
+  // Current settings and the proposal retained in the session across panel renders.
   settings: FeatureResult<SettingsView>;
   settingsAction: SettingsActionState;
-  // What was asked of Viva, and the turn it produced. It lives in the session
-  // rather than in the drawer, because the drawer closes and a turn is a thing
-  // that happened — and because voice reads the same turn a screen does.
+  // The requested Viva turn, retained in the session when its drawer closes.
   askAction: AskActionState;
-  // What became of the last unattended run or diagnostic asked for. It is a
-  // receipt for something that happened, so it outlives the screen a person
-  // was on when it landed.
+  // The last unattended-run or diagnostic receipt persists across destination navigation.
   trustAction: TrustActionState;
 };
 
@@ -102,6 +87,9 @@ export type SessionAction =
   | { type: "activity-refreshed"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult; snapshot: SurfaceSnapshot; revision?: string; jobs?: readonly JobView[] }
   | { type: "activity-refresh-failed"; requestId: number; movementId: string; movementIds?: readonly string[]; verb: ActivityCorrectionVerb; result: ActivityActionResult }
   | { type: "activity-page-loaded"; requestId: number; activity: FeatureResult<ActivityData> }
+  | { type: "activity-page-loading"; requestId: number }
+  | { type: "activity-page-failed"; requestId: number }
+  | { type: "activity-first-page-loaded"; requestId: number; activity: FeatureResult<ActivityData> }
   | { type: "capturing"; requestId: number }
   | { type: "captured"; requestId: number; result: ActionResult }
   | { type: "job-progress"; requestId: number; job: JobView }
@@ -163,6 +151,19 @@ function everyVaultSurfaceFailed(snapshot: SurfaceSnapshot) {
 function dataBearing<T>(result: FeatureResult<T> | undefined): result is Extract<FeatureResult<T>, { data: T }> {
   return result?.state === "ready" || result?.state === "partial" || result?.state === "needs_input";
 }
+
+function invalidateActivity(result: FeatureResult<ActivityData>): FeatureResult<ActivityData> {
+  return dataBearing(result) && result.data.page ? { ...result, data: { ...result.data,
+    beyond: { count: result.data.page.remainingCount }, page: undefined,
+    loadingMore: false, continuationFailed: false, continuationInvalidated: true } } : result;
+}
+
+function invalidateActivitySnapshot(snapshot: SurfaceSnapshot): SurfaceSnapshot {
+  const activity = invalidateActivity(snapshot.activity);
+  return activity === snapshot.activity ? snapshot : { ...snapshot, activity };
+}
+
+
 
 function sameReviewRefs(left: ReviewQuestionReferences, right: ReviewQuestionReferences): boolean {
   return left.movement === right.movement && left.document === right.document
@@ -239,12 +240,8 @@ function reviewConversationSemanticallyMatch(snapshot: SurfaceSnapshot): boolean
     });
 }
 
-// Review is the authored index of open conversation work. A post-write read
-// may replace neither side unless both arrived with data: an empty
-// conversation beside an absent/locked Review would otherwise erase the only
-// durable account of what is still waiting. Initial reads also fail the pair
-// closed, because a newly opened vault must not expose actions whose matching
-// conversation semantics it cannot prove.
+// Review and Conversation replace the prior pair only when both reads are present
+// and semantically match. Initial reads apply the same paired validation.
 export function hasAuthoritativeReviewConversationPair(snapshot: SurfaceSnapshot | null): snapshot is SurfaceSnapshot {
   return Boolean(snapshot && !hasReadFailure(snapshot) && reviewConversationSemanticallyMatch(snapshot));
 }
@@ -286,29 +283,20 @@ export function initialSession(): SurfaceSession {
   };
 }
 
-// What is known about the engine before anything has been asked. Not an empty
-// answer and not a false one: a source that has not been asked yet says so, and
-// nothing renders a destination as unserved on the strength of a question
-// nobody put.
+// Initial engine state explicitly records that identity and registry have not been read.
 export function unasked(): SourceDescription {
   return { identity: { state: "absent", reason: "not_asked" }, registry: { state: "absent", reason: "not_asked" }, lifecycle: { state: "absent", reason: "not_asked" } };
 }
 
-// One job's row replaced by a newer statement about the same job, or appended
-// when this is the first word about it. A frame carries no step list, so a
-// frame about a job the registry already described keeps the list the registry
-// gave it: a later statement about a job's progress is not a retraction of
-// what it said it would do.
+// Replace or append a job by identity. Progress frames preserve the steps supplied
+// by an earlier registry read.
 function withJob(jobs: readonly JobView[], job: JobView): readonly JobView[] {
   const held = jobs.find((candidate) => candidate.jobId === job.jobId);
   const merged = held && !job.steps.length ? { ...job, steps: held.steps } : job;
   return held ? jobs.map((candidate) => (candidate.jobId === job.jobId ? merged : candidate)) : [...jobs, merged];
 }
 
-// Before a vault is open, and while one is being read. Two names for two
-// facts: nothing has been asked for yet, and something has and has not come
-// back. A screen that could not tell them apart would say "reading" to
-// somebody who had opened nothing.
+// Absent and loading snapshots distinguish unopened vaults from pending reads.
 export function unopenedSnapshot(): SurfaceSnapshot {
   return {
     disclosure: {
@@ -352,10 +340,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return {
         ...state,
         phase: "reading",
-        // An already-rendered vault is the last trustworthy picture while a
-        // replacement read is in flight. Keep it intact until the whole new
-        // read can be committed; otherwise a dead transport blanks figures,
-        // evidence, and destinations before its failure is even reported.
+        // Retain the rendered snapshot until its complete replacement read is committed.
         source: state.source ?? action.source,
         snapshot: state.source ? state.snapshot : action.snapshot,
         destination: state.source ? state.destination : "overview",
@@ -383,6 +368,8 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         && dataBearing(state.snapshot.overview);
       const snapshot = { ...(sameSource ? state.snapshot : liveReadingSnapshot()),
         overview: retainComplete ? state.snapshot.overview : action.overview, disclosure: action.disclosure };
+      if (sameSource && ((state.readRevision && action.revision !== state.readRevision)
+          || action.freshness !== "current")) snapshot.activity = invalidateActivity(snapshot.activity);
       const ids = selectedIds(snapshot);
       return {
         ...state, phase: "settled", source: action.source, snapshot,
@@ -498,7 +485,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       if (action.requestId !== state.requestId) return state;
       const readFailed = hasReadFailure(action.snapshot);
       const pairUnavailable = !hasAuthoritativeReviewConversationPair(action.snapshot);
-      const snapshot = readFailed || pairUnavailable ? state.snapshot : action.snapshot;
+      const snapshot = readFailed || pairUnavailable ? invalidateActivitySnapshot(state.snapshot) : action.snapshot;
       const ids = selectedIds(snapshot);
       return {
         ...state,
@@ -523,19 +510,11 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     }
     case "mutation-refresh-failed":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, notice: { kind: "refused", text: "The action finished, but the full vault picture could not be read again. What is shown may be stale." } };
+      return { ...state, snapshot: invalidateActivitySnapshot(state.snapshot), notice: { kind: "refused", text: "The action finished, but the full vault picture could not be read again. What is shown may be stale." } };
     case "open-failed":
       if (action.requestId !== state.requestId) return state;
-      // The sidecar's own sentence stands where it gave one. It tells apart a
-      // folder holding no vault, a path that is not a folder, and a vault this
-      // passphrase will not open — three completely different next steps that
-      // one "could not be opened" made look like the same mistake.
-      //
-      // Where it gave none, the failure is not one of those three, and the
-      // fallback says so rather than sending a person back to a folder and a
-      // passphrase that were never rejected. It sent them there for a dead
-      // sidecar once, and re-typing a correct passphrase cannot fix a bridge
-      // that was never running.
+      // Display a reviewed sidecar refusal when provided. Otherwise describe an
+      // unanswered open without inferring a folder or passphrase rejection.
       return { ...state, phase: "settled", notice: { kind: "refused", text: action.said || "The local vault could not be opened. Nothing came back saying why — a wrong folder or a wrong passphrase would have said so." } };
     case "remembered-open-finished":
       if (action.requestId !== state.requestId) return state;
@@ -543,22 +522,13 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "load-failed":
       if (action.requestId !== state.requestId) return state;
       return { ...state, phase: "settled", notice: { kind: "refused", text: "The vault connection was lost while its surfaces were being read. The selected vault has not been replaced, but it must be reopened before it can be used." } };
-    // Leaving a vault, which is one action and takes everything with it. The
-    // whole session is rebuilt from nothing rather than having its fields
-    // cleared one at a time, so a field added later cannot be the one that
-    // survives a person leaving the sample vault.
+    // Leaving a vault rebuilds the whole session from its initial state.
     case "reset": {
       const reset = initialSession();
       return { ...reset, requestId: action.requestId, notice: { kind: "acknowledged", text: "Closed. Nothing from that vault is on this screen." } };
     }
-    // What was last done to a review question is said beside the question it
-    // was done to, so leaving a question or leaving the screen it was on
-    // clears it. A notice still standing after either would report an act on
-    // something the person is no longer looking at.
-    //
-    // What became of a capture is not cleared. It is a receipt for something
-    // durable that was written to the vault, and it belongs to the session
-    // rather than to the screen a person happened to be on when it landed.
+    // Leaving a review question or destination clears its action notice.
+    // Capture receipts remain in the session across destination changes.
     case "navigate": return { ...state, destination: action.destination, questionAction: { state: "idle" } };
     case "select-document": return { ...state, selectedDocument: action.id };
     case "select-queue":
@@ -605,10 +575,40 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     }
     case "activity-refresh-failed":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, activityAction: { state: "settled", movementId: action.movementId, movementIds: [...(action.movementIds ?? [action.movementId])], verb: action.verb, result: action.result, refresh: "failed" } };
-    case "activity-page-loaded":
+      return { ...state, snapshot: invalidateActivitySnapshot(state.snapshot), activityAction: { state: "settled", movementId: action.movementId, movementIds: [...(action.movementIds ?? [action.movementId])], verb: action.verb, result: action.result, refresh: "failed" } };
+    case "activity-page-loading":
+    case "activity-page-failed": {
       if (action.requestId !== state.requestId) return state;
+      const held = state.snapshot.activity;
+      return !dataBearing(held) ? state : { ...state, snapshot: { ...state.snapshot, activity: { ...held,
+        data: { ...held.data, loadingMore: action.type === "activity-page-loading", continuationFailed: action.type === "activity-page-failed" } } } };
+    }
+    case "activity-first-page-loaded": {
+      if (action.requestId !== state.requestId) return state;
+      if (!dataBearing(action.activity) || (action.activity.data.page
+          && action.activity.data.page.cumulativeCount !== action.activity.data.movements.length)) {
+        return sessionReducer(state, { type: "activity-page-failed", requestId: action.requestId });
+      }
       return { ...state, snapshot: { ...state.snapshot, activity: action.activity } };
+    }
+    case "activity-page-loaded": {
+      if (action.requestId !== state.requestId) return state;
+      const held = state.snapshot.activity, incoming = action.activity;
+      if (!dataBearing(held)) return state;
+      const previous = held.data.page;
+      const next = dataBearing(incoming) ? incoming.data.page : undefined;
+      const ids = new Set(held.data.movements.map((row) => row.id));
+      if (!previous?.nextCursor || !next || !dataBearing(incoming) || next.revision !== previous.revision
+          || incoming.data.movements.length === 0 || incoming.data.movements.length > 50
+          || new Set(incoming.data.movements.map((row) => row.id)).size !== incoming.data.movements.length
+          || next.focus !== previous.focus || next.cumulativeCount !== previous.cumulativeCount + incoming.data.movements.length
+          || next.remainingCount + next.cumulativeCount !== previous.remainingCount + previous.cumulativeCount
+          || next.nextCursor === previous.nextCursor || incoming.data.movements.some((row) => ids.has(row.id))) {
+        return sessionReducer(state, { type: "activity-page-failed", requestId: action.requestId });
+      }
+      return { ...state, snapshot: { ...state.snapshot, activity: { ...incoming, data: { ...incoming.data,
+        movements: [...held.data.movements, ...incoming.data.movements], loadingMore: false, continuationFailed: false } } } };
+    }
     case "capturing":
       if (action.requestId !== state.requestId) return state;
       return { ...state, captureAction: { state: "working", result: state.captureAction.state === "idle" ? null : state.captureAction.result } };
@@ -619,10 +619,8 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         captureAction: { state: "settled", result: action.result },
       };
     }
-    // A progress frame is the sidecar saying what it is doing right now, so it
-    // is taken whatever screen a person is on. Nothing here decides whether
-    // the job it names is the one a control belongs to; that is decided where
-    // the control is.
+    // Accept sidecar progress frames independently of the selected destination.
+    // Each control selects the job it targets.
     case "described":
       if (action.requestId !== state.requestId) return state;
       return { ...state, description: action.description };
@@ -638,9 +636,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "asked":
       if (action.requestId !== state.requestId || state.askAction.state !== "working" || state.askAction.question !== action.question) return state;
       return { ...state, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn, authoritative: action.authoritative } };
-    // Settings survive a vault opening and closing: they are this machine's,
-    // not this vault's, and clearing them on a source change would make a
-    // person say yes to the same thing twice.
+    // Machine settings survive vault opening and closing.
     case "settings-read": return { ...state, settings: action.settings };
     case "settings-working": return { ...state, settingsAction: { state: "working" } };
     case "settings-proposed": return { ...state, settingsAction: { state: "proposed", proposal: action.proposal } };
@@ -678,9 +674,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return { ...state, cancelAction: { state: "working", jobId: action.jobId } };
     case "cancelled":
       if (action.requestId !== state.requestId) return state;
-      // The registry read that followed the stop replaces the rows outright.
-      // A merge here would keep a job the registry has since forgotten, and a
-      // row nothing holds is a claim about work with no source.
+      // Replace job rows with the authoritative registry read after a stop.
       return { ...state, jobs: action.jobs, cancelAction: { state: "settled", jobId: action.jobId, result: action.result } };
     case "select-account": return { ...state, selectedAccount: action.id };
     case "select-prompt": return { ...state, selectedPrompt: action.id };

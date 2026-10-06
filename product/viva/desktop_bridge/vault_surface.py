@@ -35,9 +35,7 @@ class OpenedVaultSurfaceProvider:
                  cursor_secret: bytes | None = None) -> None:
         self._vault = vault
         self._jobs = jobs
-        # Cursors live only for this opened-provider session. Their contents
-        # can be inspected for diagnostics, but cannot be altered into another
-        # account, revision or anchor without this private key.
+        # Session-local cursor authentication binds account, revision and anchor.
         self._cursor_secret = (secrets.token_bytes(32)
                                if cursor_secret is None else cursor_secret)
         if not isinstance(self._cursor_secret, bytes) \
@@ -227,12 +225,7 @@ class OpenedVaultSurfaceProvider:
                 "current read store could not answer documents") from None
 
     def _activity(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
-        """Open the projection and hand it to the surface that composes it.
-
-        Which way each movement went, what it is where it is not plain
-        spending, and how it is written are all decided in the surface. What is
-        decided here is only the horizon the projection is cut at, because this
-        side of the boundary is where a caller's `as_of` is read."""
+        """Compose current or historical Activity from one held SQL revision."""
         from ..surface.activity import activity
 
         from ..surface.activity import DEFAULT_LIMIT
@@ -244,12 +237,16 @@ class OpenedVaultSurfaceProvider:
             raise BridgeRequestError("current read store is not caught up")
         try:
             with store.open_reader() as revision:
-                return activity(
-                    (revision.historical_activity_projection(as_of=as_of)
-                     if as_of else revision.activity_projection()),
-                    locale_from_env(),
-                    parameters.get("limit", DEFAULT_LIMIT),
-                    parameters.get("focus", ""))
+                projection = (revision.historical_activity_projection(as_of=as_of)
+                              if as_of else revision.activity_projection())
+                limit, focus = parameters.get("limit", DEFAULT_LIMIT), parameters.get("focus", "")
+                if parameters.get("page_version") == 1:
+                    from ..read_store.activity_page import activity_page
+                    selection, page = activity_page(revision, projection,
+                        secret=self._cursor_secret, limit=limit, focus=parameters.get('focus'),
+                        cursor=parameters.get("cursor", ""), as_of=as_of)
+                    return {**activity(projection, locale_from_env(), limit, focus, selection=selection), "page":page}
+                return activity(projection, locale_from_env(), limit, focus)
         except Exception:
             raise BridgeRequestError("current read store could not answer activity") from None
 
@@ -355,9 +352,7 @@ def _now() -> str:
 
 
 def _parameters(surface: str, parameters: Mapping[str, Any]) -> dict[str, Any]:
-    # `as_of` is the horizon a projection is cut at; `read_on` is the day a
-    # picture is read on. Two names one letter apart meaning two things is how
-    # a later change gets one of them wrong, so they are not spelled alike.
+    # `as_of` selects value time; `read_on` selects the picture date.
     allowed_by_surface = {
         "overview": {"as_of", "read_on"},
         "accounting": {"start", "end", "read_on"},
@@ -367,7 +362,7 @@ def _parameters(surface: str, parameters: Mapping[str, Any]) -> dict[str, Any]:
         "documents": set(),
         "jobs": set(),
         "trust": set(),
-        "activity": {"as_of", "limit", "focus"},
+        "activity": {"as_of", "limit", "focus", "page_version", "cursor"},
         "account_ledger": {"account_id", "cursor", "limit"},
         "plans": {"read_on"},
         "review": {"as_of", "limit", "jurisdiction"},
@@ -422,6 +417,14 @@ def _parameters(surface: str, parameters: Mapping[str, Any]) -> dict[str, Any]:
     if "focus" in result and (not isinstance(result["focus"], str)
                               or not result["focus"].strip()):
         raise BridgeRequestError("focus must be a non-empty movement identity")
+    if surface == "activity":
+        if "page_version" in result and (type(result["page_version"]) is not int or result["page_version"] != 1):
+            raise BridgeRequestError("Activity page_version must be 1")
+        if "cursor" in result and "page_version" not in result:
+            raise BridgeRequestError("Activity cursor requires page_version")
+        from ..read_store.activity_page import MAX_CURSOR_LENGTH
+        if len(result.get("cursor", "")) > MAX_CURSOR_LENGTH:
+            raise BridgeRequestError("Activity cursor exceeds its byte bound")
     if surface == "account_ledger":
         account_id = result.get("account_id")
         if not isinstance(account_id, str) or not account_id.strip():

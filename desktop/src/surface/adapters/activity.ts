@@ -1,19 +1,14 @@
 import type { AccountLedgerMovement, ActivityActionOutcome, ActivityCategoryVocabulary, ActivityClassification, ActivityData, ActivityRowAction, ActivitySubcategoryVocabulary, ActivityTagVocabulary, ActivityTransferReference, ActivityTransferState, ActivityTreatment, ActivityVocabularyItem, EvidenceLink, MovementView } from "../types";
 import { booleanValue, isRecord, optionalNonNegativeInteger, textValue } from "./primitives";
 
-// The two words a direction can be, closed on both sides. A word outside the
-// set is a movement this interface has not been taught to render, and the row
-// is dropped rather than shown under the nearest one — a purchase reported as
-// money arriving is exactly the defect that kept this read off a screen.
+// Accept only the supported movement directions; drop a row with another direction.
 const DIRECTIONS = ["in", "out"] as const;
 const TREATMENTS = ["spending", "loan", "loan_repayment", "settlement", "mixed", "not_spending"] as const;
 const ROW_ACTIONS = ["assign_category", "assign_meaning", "replace_tags", "confirm_transfer", "reject_transfer", "unlink_transfer"] as const;
 const TRANSFER_ACTIONS = ["confirm_transfer", "reject_transfer", "unlink_transfer"] as const;
 const CLASSIFICATION_GRADES: readonly ActivityClassification["grade"][] = ["verified", "corroborated", "unverified", "conflicted"];
 
-// Activity writes have three terminal answers. A proposal, a wait, or a review
-// disposition belongs to another capability; accepting one here would let an
-// unrelated receipt claim what happened to financial classification.
+// Activity writes accept only their three terminal outcomes.
 export function adaptActivityActionOutcome(raw: unknown): ActivityActionOutcome | null {
   if (!isRecord(raw) || Object.keys(raw).sort().join(",") !== "kind,message,reason,state") return null;
   if (raw.state !== null || typeof raw.message !== "string" || !raw.message.trim()) return null;
@@ -197,9 +192,7 @@ function movement(raw: unknown, categories: ActivityCategoryVocabulary, tagVocab
   const category = classificationValue(raw.category, false);
   const subcategory = classificationValue(raw.subcategory, true);
   const parsedClassification = classification(raw.classification);
-  // Category, subcategory, grade, and provenance are one authority record.
-  // Reading the pieces independently would let a finer label appear to be
-  // grounded when its parent or provenance was absent.
+  // Validate category, subcategory, grade and provenance as one authority record.
   const hasCategory = category.id !== null;
   const hasSubcategory = subcategory.id !== null;
   const hierarchyValid = !hasSubcategory || hasCategory;
@@ -248,10 +241,8 @@ function movement(raw: unknown, categories: ActivityCategoryVocabulary, tagVocab
   };
 }
 
-// AccountLedger reuses the exact movement contract without inheriting the
-// Activity write vocabulary. Its boundary is stricter than Activity's
-// progressive parser: a malformed read-only row invalidates the ledger rather
-// than becoming a row with silently downgraded evidence or closed state.
+// AccountLedger shares the movement contract without Activity write controls.
+// A malformed read-only row invalidates the ledger atomically.
 export function adaptReadOnlyMovement(raw: unknown): Omit<AccountLedgerMovement, "directionDisplay"> | null {
   const fields = ["id", "date", "description", "account", "account_id", "account_name", "direction", "exact_value", "currency", "display", "nature", "treatment", "loan_repayment_choices", "sentence", "decided_by", "provisional", "linked", "category", "subcategory", "classification", "tags", "evidence_links", "transfer", "actions", "deduplication"];
   if (!isRecord(raw) || !exactKeys(raw, fields)
@@ -314,11 +305,8 @@ function strictTransferScalars(raw: unknown): boolean {
     && finiteDecimal(reference.exact_value));
 }
 
-// What moved, read into the shape a screen holds. The panel's own sentence is
-// required: a read with none is one this side would have to narrate, and
-// narrating what a person's money did is the claim this interface must not
-// make.
-export function adaptActivity(raw: unknown): ActivityData | null {
+// Parse the Activity read into view data, requiring its panel sentence.
+export function adaptActivity(raw: unknown, focus = ""): ActivityData | null {
   if (!isRecord(raw)) return null;
   const sentence = textValue(raw.sentence);
   if (!sentence.trim()) return null;
@@ -328,14 +316,29 @@ export function adaptActivity(raw: unknown): ActivityData | null {
   const subcategories = subcategoryVocabulary(vocabularies.subcategories);
   const tags = tagVocabulary(vocabularies.tags);
   const movements = rows.map((row) => movement(row, categories, tags));
-  // A malformed additive identity invalidates the read atomically. Returning
-  // the other rows would look like a complete successful activity surface
-  // while silently removing a real movement.
+  // A malformed additive identity invalidates the entire Activity read.
   if (movements.some((row) => row === null)) return null;
+  let page: ActivityData["page"];
+  if ("page" in raw) {
+    const value = raw.page;
+    if (!isRecord(value) || !exactKeys(value, ["version", "revision", "next_cursor", "cumulative_count", "remaining_count"])
+        || value.version !== 1 || typeof value.revision !== "string" || !value.revision.trim() || value.revision.length > 4096
+        || !Number.isSafeInteger(value.cumulative_count) || (value.cumulative_count as number) < movements.length
+        || !Number.isSafeInteger(value.remaining_count) || (value.remaining_count as number) < 0
+        || !Number.isSafeInteger((value.cumulative_count as number) + (value.remaining_count as number))
+        || movements.length > 100 || new Set(movements.map((row) => row!.id)).size !== movements.length
+        || (value.next_cursor !== null && (typeof value.next_cursor !== "string" || !value.next_cursor.length || value.next_cursor.length > 4096))
+        || ((value.remaining_count === 0) !== (value.next_cursor === null))
+        || (value.remaining_count !== 0 && movements.length === 0)
+        || !isRecord(raw.beyond) || raw.beyond.count !== (value.cumulative_count as number) + (value.remaining_count as number) - movements.length) return null;
+    page = { version: 1, revision: value.revision, nextCursor: value.next_cursor as string | null,
+      cumulativeCount: value.cumulative_count as number, remainingCount: value.remaining_count as number, focus };
+  }
   return {
     sentence,
     movements: movements as MovementView[],
     beyond: { count: (isRecord(raw.beyond) ? optionalNonNegativeInteger(raw.beyond.count) : undefined) ?? 0 },
+    ...(page ? { page } : {}),
     vocabularies: { categories, subcategories, tags },
   };
 }

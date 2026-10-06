@@ -30,6 +30,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     ...actions,
     navigate(destination: Destination) { questionGeneration.current += 1; ++destinationGeneration.current; retryingDestination.current = null; dispatch({ type: "navigate", destination }); },
     openEvidence(link: EvidenceLink) { dispatch({ type: "select-document", id: link.targetDocumentId }); dispatch({ type: "navigate", destination: "documents" }); },
+    selectMovement(id: string) { context.activityFocus.current = id; },
     selectDocument(id: string) { dispatch({ type: "select-document", id }); },
     selectQueue(id: string) { questionGeneration.current += 1; dispatch({ type: "select-queue", id }); },
     selectAccount(id: string) { dispatch({ type: "select-account", id }); },

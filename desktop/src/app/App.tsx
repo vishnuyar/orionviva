@@ -34,10 +34,7 @@ const pageCopy: Record<Destination, { title: string; intro: string }> = {
   review: { title: "Review", intro: "Decisions the vault has explicitly asked you to make, in the order it supplied them." },
   trust: { title: "Trust & settings", intro: "Privacy, verification preferences, and tools for this local vault." },
 };
-// One mark per kind of notice, chosen by the word the notice declares. The
-// tick is reachable only from the kind that means something happened, and a
-// refusal carries no mark at all: its border says what it is, as it does on
-// the conversation.
+// Notice kinds select their marks. Success uses a tick; refusal uses only its border.
 const noticeIcons: Record<NoticeKind, ReactNode> = { acknowledged: <Check />, refused: null };
 type Overlay = null | { kind: "navigation" } | { kind: "conversation"; requestId: number; mode: "ask" | "review" } | { kind: "evidence"; selection: { figureId: string; requestId: number } } | { kind: "account_transaction"; requestId: number; accountId: string };
 type AccountOrigin = { kind: "overview" | "accounts"; accountId: string };
@@ -142,10 +139,7 @@ export function App() {
   const openingVault = session.phase === "opening";
   const priorityLoading = session.phase === "reading";
   const priorityHasPreviousData = surface.overview.state === "ready" || surface.overview.state === "partial" || surface.overview.state === "needs_input";
-  // The one job this screen has a control for: the newest capture the sidecar
-  // has said anything about. The registry holds more than one, and a screen
-  // that showed all of them would be showing work a person did not start from
-  // here; the stop belongs beside the thing they did start.
+  // The capture control targets the newest capture reported by the sidecar registry.
   const capturedJob = [...session.jobs].reverse().find((job) => (job.operation === "viva.documents.upload" || job.operation === "viva.documents.recover")) ?? null;
   const maintenanceJob = [...session.jobs].reverse().find((job) => job.operation === "viva.maintenance.run") ?? null;
   const evidenceSelection = overlay?.kind === "evidence" && overlay.selection.requestId === session.requestId ? overlay.selection : null;
@@ -202,13 +196,8 @@ export function App() {
     };
   }, [conversationOpen, pendingReviewFocus, session.requestId, session.selectedQueue]);
 
-  // A write that took leaves focus on a control that has gone with the
-  // question it belonged to. Focus therefore moves, one frame later once the
-  // read that followed the write has rendered, to the question the queue moved
-  // to, or to the empty state when the queue holds nothing more, or to what
-  // became of the write when that read failed and neither of those exists. A
-  // write that was refused moved nothing, so focus stays on the control the
-  // person must use again.
+  // After a successful write, move focus on the next rendered frame to the next question,
+  // empty state, or failed-refresh outcome. Refused writes retain control focus.
   useEffect(() => {
     const acted = session.questionAction;
     if (acted.state !== "settled" || settledReviewAction.current === acted) return undefined;
@@ -311,6 +300,7 @@ export function App() {
     if (!movement) return;
     openAskViva();
     setSelectedMovement(movementId);
+    control.selectMovement(movementId);
     setAccountingContext({ movementIds: [movementId], label: [movement.date, movement.description, movement.display].filter(Boolean).join(" · ") });
   }
   function openReviewQuestion(questionId: string, itemId = "", movementId = "") {
@@ -342,6 +332,7 @@ export function App() {
   function reviewMovement(movementId: string) {
     setOverlay(null);
     setSelectedMovement(movementId);
+    control.selectMovement(movementId);
     control.navigate("activity");
   }
   async function inspectOverviewDocument(documentId: string) {
@@ -398,12 +389,7 @@ export function App() {
     }
     requestAnimationFrame(() => restoreAccountIndexFocus(returningTo, pageTitleRef.current));
   }
-  // A dropped file changed the screen without the person asking, so the move
-  // goes through the same navigation every other screen change goes through,
-  // any open drawer is dismissed so the receipt is neither inert nor hidden
-  // behind it, and the heading is focused so the move is announced.
-  // What a gesture carrying more than one document is told, wherever it came
-  // from. One sentence, one place.
+  // File drops use destination navigation, dismiss open drawers and focus the heading.
   function refuseSeveral() { control.setNotice({ kind: "refused", text: "This takes one document at a time. Nothing was added." }); }
   function documentDropped(gesture: CaptureGesture) {
     if (gesture === "none") return;
@@ -522,10 +508,7 @@ export function App() {
       </div>
       </details>
       <nav id="primary-navigation" aria-label="Primary navigation"><div className="nav-label">Money</div>{shownDestinations.map((item) => {
-        // What the engine's own registry says about this place, said beside
-        // it. Nothing here decides it, and a destination whose standing has
-        // not been asked for carries no mark: a mark on everything while an
-        // answer is on its way is a mark that stops meaning anything.
+        // Destination marks use registry standing; an unanswered registry read carries no mark.
         const standing = standingOf(session.description.registry, item.id);
         const said = standingCopy[standing];
         const reviewBadge = item.id === "review" && reviewData ? (reviewCount > 999 ? "999+" : String(reviewCount)) : "";

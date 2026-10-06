@@ -13,6 +13,7 @@ export function useSessionState(onDropped?: (gesture: CaptureGesture) => void) {
   dropped.current = onDropped;
   const questionGeneration = useRef(0);
   const activityLimit = useRef(50);
+  const activityFocus = useRef("");
   // Full reads advance the revision that bounds asynchronous Activity pages.
   const surfaceRevision = useRef(0);
   const priorityGeneration = useRef(0);
@@ -21,16 +22,14 @@ export function useSessionState(onDropped?: (gesture: CaptureGesture) => void) {
   const destinationGeneration = useRef(0);
   const retryingDestination = useRef<{ destination: LazyDestination; source: NonNullable<typeof session.source>; request: number; generation: number } | null>(null);
   const retryingPriority = useRef<{ request: number; generation: number } | null>(null);
-  // Every verb this session has comes from the source, and before a vault is
-  // open there is no source and therefore no verb. A screen asks whether it
-  // has one; nothing here invents a verb that would have to refuse.
+  // Session actions come from the opened source; before opening, none is available.
   const documentActions = session.source?.documentActions ?? null;
   const activityActions = session.source?.activityActions ?? null;
   const source = session.source;
   const sourceIdentity = useRef(source);
   sourceIdentity.current = source;
 
-  return { session, dispatch, hostBridge, requestId, dropped, questionGeneration, activityLimit, surfaceRevision, priorityGeneration, secondaryGeneration, jobsGeneration, destinationGeneration, retryingDestination, retryingPriority, documentActions, activityActions, source, sourceIdentity };
+  return { session, dispatch, hostBridge, requestId, dropped, questionGeneration, activityLimit, activityFocus, surfaceRevision, priorityGeneration, secondaryGeneration, jobsGeneration, destinationGeneration, retryingDestination, retryingPriority, documentActions, activityActions, source, sourceIdentity };
 }
 
 export type SessionCoordination = ReturnType<typeof useSessionState>;

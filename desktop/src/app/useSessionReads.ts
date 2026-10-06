@@ -10,6 +10,7 @@ type Coordination = Pick<SessionCoordination,
   | "dispatch"
   | "requestId"
   | "activityLimit"
+  | "activityFocus"
   | "surfaceRevision"
   | "priorityGeneration"
   | "secondaryGeneration"
@@ -28,6 +29,7 @@ export function useSessionReads(context: Coordination) {
     dispatch,
     requestId,
     activityLimit,
+    activityFocus,
     surfaceRevision,
     priorityGeneration,
     secondaryGeneration,
@@ -39,6 +41,7 @@ export function useSessionReads(context: Coordination) {
     source,
     sourceIdentity,
   } = context;
+  const activityPageRequest = useRef<object | null>(null);
   const publicationRecovery = useRef<{ source: NonNullable<typeof source>; request: number; priority: number; destination: number } | null>(null);
   const accountLedgerReader = session.source?.accountLedgerReader ?? null;
   const spendingBreakdownReader = session.source?.spendingBreakdownReader ?? null;
@@ -99,8 +102,8 @@ export function useSessionReads(context: Coordination) {
     ++surfaceRevision.current;
     try {
       const snapshotWork = activeSource.loadCoherent
-        ? activeSource.loadCoherent(activityLimit.current, undefined, undefined, true)
-        : activeSource.load(activityLimit.current).then((snapshot) => ({ snapshot, revision: "" }));
+        ? activeSource.loadCoherent(50, activityFocus.current || undefined, undefined, true)
+        : activeSource.load(50, activityFocus.current || undefined).then((snapshot) => ({ snapshot, revision: "" }));
       const activeJobs = activeSource.loadJobs ? ++jobsGeneration.current : 0;
       const jobsWork = activeSource.loadJobs
         ? Promise.resolve().then(() => activeSource.loadJobs!()).catch(() => null)
@@ -141,7 +144,7 @@ export function useSessionReads(context: Coordination) {
     const activeGeneration = ++destinationGeneration.current;
     let gone = false;
     dispatch({ type: "destination-loading", requestId: activeRequest, destination });
-    void source.loadDestination(destination, activityLimit.current).then((snapshot) => {
+    void source.loadDestination(destination, 50, activityFocus?.current || undefined).then((snapshot) => {
       if (!gone && requestId.current === activeRequest && sourceIdentity.current === source && destinationGeneration.current === activeGeneration) {
         dispatch(destinationReadFailed(destination, snapshot)
           ? { type: "destination-failed", requestId: activeRequest, destination, snapshot }
@@ -166,7 +169,7 @@ export function useSessionReads(context: Coordination) {
     retryingDestination.current = retryToken;
     dispatch({ type: "destination-retrying", requestId: activeRequest, destination });
     try {
-      const snapshot = await activeSource.loadDestination(destination, activityLimit.current);
+      const snapshot = await activeSource.loadDestination(destination, 50, activityFocus?.current || undefined);
       if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration) return "ignored" as const;
       if (destinationReadFailed(destination, snapshot)) {
         dispatch({ type: "destination-failed", requestId: activeRequest, destination, snapshot });
@@ -182,6 +185,33 @@ export function useSessionReads(context: Coordination) {
       if (retryingDestination.current === retryToken) retryingDestination.current = null;
     }
   }
+
+  const activityRevision = useRef<{ source: typeof source; revision: string; freshness: string } | null>(null);
+  useEffect(() => {
+    const previous = activityRevision.current;
+    activityRevision.current = { source, revision: session.readRevision, freshness: session.priorityFreshness };
+    activityPageRequest.current = null;
+    if (!previous || previous.source !== source || !source || !source.activityActions
+        || session.destination !== "activity" || session.priorityFreshness !== "current"
+        || (previous.revision === session.readRevision && previous.freshness === "current")) return;
+    if (session.snapshot.activity.state !== "ready" || !session.snapshot.activity.data.continuationInvalidated) return;
+    const activeRequest = requestId.current;
+    const activeGeneration = ++destinationGeneration.current;
+    ++surfaceRevision.current;
+    let gone = false;
+    dispatch({ type: "destination-loading", requestId: activeRequest, destination: "activity" });
+    void source.activityActions.read(50, "", activityFocus?.current || undefined).then((activity) => {
+      if (!gone && requestId.current === activeRequest && sourceIdentity.current === source
+          && destinationGeneration.current === activeGeneration) {
+        dispatch({ type: activity.state === "failed" ? "destination-failed" : "destination-loaded",
+          requestId: activeRequest, destination: "activity", snapshot: { activity } });
+      }
+    }).catch(() => {
+      if (!gone && requestId.current === activeRequest && sourceIdentity.current === source
+          && destinationGeneration.current === activeGeneration) dispatch({ type: "destination-failed", requestId: activeRequest, destination: "activity" });
+    });
+    return () => { gone = true; };
+  }, [source, session.requestId, session.readRevision, session.priorityFreshness]);
 
   // A completed publication may release the selected read that failed while it prepared.
   useEffect(() => {
@@ -263,18 +293,40 @@ export function useSessionReads(context: Coordination) {
     readSpendingBreakdown,
     async loadMoreActivity() {
       const current = session.snapshot.activity;
-      if (!activityActions || current.state !== "ready" || current.data.beyond.count < 1) return;
+      if (!activityActions || current.state !== "ready" || (!current.data.page?.nextCursor && !current.data.continuationInvalidated) || activityPageRequest.current) return;
+      const firstPage = current.data.continuationInvalidated === true;
       const nextRequestId = requestId.current;
       const startedAtRevision = surfaceRevision.current;
-      const nextLimit = current.data.movements.length + 50;
+      const startedAtPriority = priorityGeneration.current;
+      const startedAtDestination = destinationGeneration.current;
+      const activeSource = source;
+      const token = {};
+      activityPageRequest.current = token;
+      const canPublish = () => requestId.current === nextRequestId && surfaceRevision.current === startedAtRevision
+        && priorityGeneration.current === startedAtPriority && destinationGeneration.current === startedAtDestination
+        && sourceIdentity.current === activeSource;
+      dispatch({ type: "activity-page-loading", requestId: nextRequestId });
       try {
-        const activity = await activityActions.read(nextLimit);
-        if (requestId.current === nextRequestId && surfaceRevision.current === startedAtRevision) {
-          if (activity.state === "ready" || activity.state === "partial" || activity.state === "needs_input") activityLimit.current = nextLimit;
-          dispatch({ type: "activity-page-loaded", requestId: nextRequestId, activity });
+        const activity = await activityActions.read(50, firstPage ? "" : current.data.page!.nextCursor!, firstPage ? activityFocus?.current : current.data.page!.focus);
+        if (canPublish()) {
+          dispatch({ type: firstPage ? "activity-first-page-loaded" : "activity-page-loaded", requestId: nextRequestId, activity });
+          if (activity.state === "failed" && activeSource?.loadPriority) {
+            const activePriority = ++priorityGeneration.current;
+            const priority = await activeSource.loadPriority();
+            if (requestId.current === nextRequestId && surfaceRevision.current === startedAtRevision
+                && sourceIdentity.current === activeSource && priorityGeneration.current === activePriority
+                && destinationGeneration.current === startedAtDestination
+                && (priority.revision !== session.readRevision || priority.freshness !== "current")) {
+              dispatch({ type: "priority-loaded", requestId: nextRequestId, source: activeSource,
+                overview: priority.snapshot.overview, disclosure: priority.snapshot.disclosure,
+                revision: priority.revision, freshness: priority.freshness, lifecycle: priority.lifecycle, retryable: priority.retryable });
+            }
+          }
         }
       } catch {
-        if (requestId.current === nextRequestId && surfaceRevision.current === startedAtRevision) dispatch({ type: "notice", notice: { kind: "refused", text: "More activity could not be read. The movements already shown are unchanged." } });
+        if (canPublish()) dispatch({ type: "activity-page-failed", requestId: nextRequestId });
+      } finally {
+        if (activityPageRequest.current === token) activityPageRequest.current = null;
       }
     },
     async ensureDestination(destination: "documents" | "review" | "trust" | "activity" | "plans") {
@@ -282,7 +334,7 @@ export function useSessionReads(context: Coordination) {
       const activeRequest = requestId.current;
       if (!activeSource?.loadDestination) return false;
       try {
-        const snapshot = await activeSource.loadDestination(destination, activityLimit.current);
+        const snapshot = await activeSource.loadDestination(destination, 50, activityFocus?.current || undefined);
         if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource) return false;
         if (destinationReadFailed(destination, snapshot)) {
           dispatch({ type: "destination-failed", requestId: activeRequest, destination, snapshot });

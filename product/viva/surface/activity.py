@@ -44,10 +44,11 @@ NATURES: dict[str, str] = {
 
 
 def activity(projection, locale: str = "", limit: int = DEFAULT_LIMIT,
-             focus: str = "") -> dict[str, Any]:
+             focus: str = "", *, selection=None) -> dict[str, Any]:
     """Return pending-first Activity rows and the exact omitted-row count."""
-    page = (projection.activity_page(limit, focus)
-            if hasattr(projection, "activity_page") else None)
+    page = selection
+    if page is None and hasattr(projection, "activity_page"):
+        page = projection.activity_page(limit, focus)
     movements = (list(page[0]) if page is not None
                  else list(projection.movements()))
     vocabularies = _vocabularies(projection)

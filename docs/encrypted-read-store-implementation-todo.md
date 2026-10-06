@@ -454,10 +454,14 @@ contract parity, and then removes its replay path.
       movement protocol preserves Decimal text, posting grade, evidence links,
       canonical category components, direct and inherited tags, loan ruling
       accounts, and complete-or-refused transfer links and suggestions. Its
-      display query is pending-first, exact-counted, focus-aware, limited to
-      100 rows, and uses `movements_by_activity_order` without a temporary
-      sort; prerequisite movement/action inputs retain literal overflow
-      refusal. Spending reconstructs accepted statement records only from the
+      legacy prefix display query is pending-first, exact-counted, focus-aware,
+      limited to 100 rows, and uses `movements_by_activity_order` without a
+      temporary SQL sort. [Version-one Activity continuation](activity-pagination.md)
+      sorts the bounded held normalized projection in memory and selects at
+      most 100 rows per response, with an authenticated offset bound to that
+      unchanged scope. This is not direct SQL keyset pagination; prerequisite
+      movement/action inputs retain literal overflow refusal. Spending
+      reconstructs accepted statement records only from the
       latest successful extract reply plus its accepted closing observation,
       preserving declared opening dates/amounts, corrected closing values,
       exact duplicate semantics, attested grades, and Decimal arithmetic. The

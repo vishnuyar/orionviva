@@ -164,6 +164,7 @@ function MovementCorrection({ movement, data, controls }: { movement: MovementVi
 // read-level vocabularies.
 function Movements({ data, correction, onLoadMore, selectedMovement, onOpenEvidence, onExplainMovement }: { data: ActivityData; correction: ActivityCorrectionControls | null; onLoadMore: (() => void) | null; selectedMovement: string; onOpenEvidence: (link: EvidenceLink) => void; onExplainMovement?: ((movementId: string) => void) | null }) {
   const movements = data.movements ?? [];
+  const remaining = data.page?.remainingCount ?? data.beyond.count;
   const [query, setQuery] = useState("");
   const [account, setAccount] = useState("");
   const [category, setCategory] = useState("");
@@ -183,6 +184,7 @@ function Movements({ data, correction, onLoadMore, selectedMovement, onOpenEvide
       && (!tag || movement.tags.some((item) => item.id === tag))
       && (!reviewState || (reviewState === "attention" ? attention : !attention));
   });
+  const selectedRowAvailable = visible.some((movement) => movement.id === selectedMovement);
   const clearFilters = () => { setQuery(""); setAccount(""); setCategory(""); setTag(""); setReviewState(""); };
   useEffect(() => {
     if (!correction || correction.state.state !== "settled") return;
@@ -194,14 +196,15 @@ function Movements({ data, correction, onLoadMore, selectedMovement, onOpenEvide
     outcomeRef.current?.focus();
   }, [correction?.state]);
   useEffect(() => {
-    if (!selectedMovement) return;
+    if (!selectedMovement || !selectedRowAvailable) return;
     rows.current.get(selectedMovement)?.focus();
-  }, [selectedMovement, data]);
+  }, [selectedMovement, selectedRowAvailable]);
   return <section className="feature-panel activity-panel" aria-labelledby="transactions-panel-title">
     <header className="activity-header"><div className="detail-panel-label">Current vault read</div><h2 id="transactions-panel-title">Transactions</h2><p>{data.sentence}</p></header>
     {correction ? <CorrectionStatus state={correction.state} outcomeRef={outcomeRef} /> : null}
     {!movements.length ? <div className="empty-state"><strong>No transactions in this read</strong><span>{data.sentence}</span></div> : <>
       <section className="activity-controls" aria-labelledby="transaction-filters-title"><h3 id="transaction-filters-title">Find transactions</h3><label className="activity-search">Search<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Description, account, category, tag, or amount" /></label><details><summary>Filters</summary><div className="activity-filter-grid"><label>Account<select value={account} onChange={(event) => setAccount(event.target.value)}><option value="">All accounts</option>{accounts.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{categories.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label>Tag<select value={tag} onChange={(event) => setTag(event.target.value)}><option value="">All tags</option>{tags.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label>Review state<select value={reviewState} onChange={(event) => setReviewState(event.target.value)}><option value="">Any review state</option><option value="attention">Needs attention</option><option value="clear">No action waiting</option></select></label></div></details><button className="secondary-button" type="button" onClick={clearFilters}>Clear filters</button><p className="activity-result-count" aria-live="polite">{visible.length === 1 ? "1 transaction shown." : `${visible.length} transactions shown.`}</p></section>
+      <p className="activity-result-count">Search and filters cover the loaded transactions.</p>
       {!visible.length ? <div className="empty-state"><strong>No transactions match these filters</strong><span>Clear the search or filters to return to the full transaction list.</span><button className="secondary-button" type="button" onClick={clearFilters}>Clear filters</button></div> : <ul className="activity-movements">{visible.map((movement) => <li key={movement.id} ref={(node) => { if (node) rows.current.set(movement.id, node); else rows.current.delete(movement.id); }} tabIndex={-1} className={movement.direction === "in" ? "activity-movement inflow" : "activity-movement outflow"}>
         <span className="activity-movement-when">{movement.date}</span>
         <span className="activity-movement-what"><strong>{movement.description || "No description was recorded for this movement."}</strong><small>{movement.account}</small></span>
@@ -212,7 +215,11 @@ function Movements({ data, correction, onLoadMore, selectedMovement, onOpenEvide
         {correction ? <MovementCorrection movement={movement} data={data} controls={correction} /> : null}
         <details className="activity-source"><summary>Source details</summary>{movement.evidenceLinksValid && movement.evidenceLinks.length ? <ProofLinks label="Source statements" links={movement.evidenceLinks} onOpen={onOpenEvidence} /> : <p>{movement.evidenceLinksValid ? "No source statement link was supplied for this transaction." : "Source details are unavailable from this read."}</p>}</details>
       </li>)}</ul>}
-      {data.beyond && data.beyond.count > 0 ? <div className="activity-beyond"><p>{data.beyond.count} more are in this vault and not in this list.</p>{onLoadMore ? <button className="secondary-button" type="button" onClick={onLoadMore}>Load 50 more</button> : null}</div> : null}
+      {remaining > 0 ? <div className="activity-beyond"><p>{remaining} more are in this vault and not in this list.</p>
+        {data.continuationFailed ? <p role="status">More transactions could not be read. Your list is unchanged. Try loading again.</p> : null}
+        {!data.page ? <p role="status">{data.continuationInvalidated ? "Activity changed. Refresh Transactions to continue." : "Further transactions require an updated local reader. The initial list remains available."}</p> : null}
+        {onLoadMore && (data.page?.nextCursor || data.continuationInvalidated) ? <button className="secondary-button" type="button" aria-disabled={data.loadingMore === true} onClick={() => { if (!data.loadingMore) onLoadMore(); }}>{data.loadingMore ? "Loading more transactions" : data.continuationInvalidated ? "Refresh transactions" : "Load 50 more"}</button> : null}
+      </div> : null}
     </>}
   </section>;
 }

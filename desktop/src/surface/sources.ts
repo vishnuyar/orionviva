@@ -3,21 +3,10 @@ import { loadCoherentSnapshot, privateAccountingReader, loadPrivateDestination, 
 import type { PrioritySnapshot } from "./load-private-snapshot";
 import type { AccountLedgerReader, ActivityActions, DocumentActions, EngineIdentity, FeatureResult, JobsData, JobStream, OverviewActions, ConversationActions, PlanActions, SettingsActions, SpendingBreakdownReader, SurfaceRegistry, TrustActions, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
-// One kind of source, because there is now one kind of vault.
-//
-// The sample used to be a second implementation of this type, loading fixtures
-// composed in the shell, and every screen carried a second dialect to render
-// it: a qualifier beside each figure and an authored fallback under each
-// missing field. That is the design VOICE-139 calls the worse of two, and it
-// is gone. The sample is a vault on disk, minted by the engine, opened through
-// the same sidecar and read through the same adapters — so a screen has one
-// way to draw a figure and no way to know which vault it came from.
-//
-// `sample` is what the sidecar said about the vault it opened, carried here so
-// the shell can put one permanent frame around the place. It is not a
-// rendering switch: no screen branches on it. This source uses it only to
-// choose the permanent frame that says where a person is.
-export type SurfaceSource = { id: "bridge-client"; label: string; description: string; sample: boolean; frame: SampleFrame | null; load: (activityLimit?: number, activityFocus?: string) => Promise<SurfaceSnapshot>; loadCoherent?: (activityLimit?: number, activityFocus?: string, start?: PrioritySnapshot, refresh?: boolean) => ReturnType<typeof loadCoherentSnapshot>; loadPriority?: (refresh?: boolean) => ReturnType<typeof loadPrioritySnapshot>; loadSecondary?: (activityLimit?: number, activityFocus?: string) => Promise<SurfaceSnapshot>; loadDestination?: (destination: "documents" | "review" | "trust" | "activity" | "plans", activityLimit?: number) => Promise<Partial<SurfaceSnapshot>>; loadJobs?: () => Promise<FeatureResult<JobsData>>; accountingReader?: import("./types").AccountingReader | null; accountLedgerReader?: AccountLedgerReader | null; spendingBreakdownReader?: SpendingBreakdownReader | null; overviewActions?: OverviewActions | null; activityActions: ActivityActions; planActions?: PlanActions | null; documentActions: DocumentActions | null; jobStream: JobStream | null; transferActions: VaultTransferActions | null; settingsActions: SettingsActions | null; conversationActions: ConversationActions | null; trustActions: TrustActions | null; describe: () => Promise<SourceDescription> };
+// Sample and private vaults share the sidecar, read adapters and source type.
+// The engine creates the on-disk sample vault. `sample` carries the sidecar
+// identity into the shell frame; feature rendering uses the same read data.
+export type SurfaceSource = { id: "bridge-client"; label: string; description: string; sample: boolean; frame: SampleFrame | null; load: (activityLimit?: number, activityFocus?: string) => Promise<SurfaceSnapshot>; loadCoherent?: (activityLimit?: number, activityFocus?: string, start?: PrioritySnapshot, refresh?: boolean) => ReturnType<typeof loadCoherentSnapshot>; loadPriority?: (refresh?: boolean) => ReturnType<typeof loadPrioritySnapshot>; loadSecondary?: (activityLimit?: number, activityFocus?: string) => Promise<SurfaceSnapshot>; loadDestination?: (destination: "documents" | "review" | "trust" | "activity" | "plans", activityLimit?: number, activityFocus?: string) => Promise<Partial<SurfaceSnapshot>>; loadJobs?: () => Promise<FeatureResult<JobsData>>; accountingReader?: import("./types").AccountingReader | null; accountLedgerReader?: AccountLedgerReader | null; spendingBreakdownReader?: SpendingBreakdownReader | null; overviewActions?: OverviewActions | null; activityActions: ActivityActions; planActions?: PlanActions | null; documentActions: DocumentActions | null; jobStream: JobStream | null; transferActions: VaultTransferActions | null; settingsActions: SettingsActions | null; conversationActions: ConversationActions | null; trustActions: TrustActions | null; describe: () => Promise<SourceDescription> };
 // What a source says about the engine behind it: which build answered, and
 // which destinations its registry says a read reaches.
 export type SourceDescription = { identity: FeatureResult<EngineIdentity>; registry: FeatureResult<SurfaceRegistry>; lifecycle: FeatureResult<UpdateLifecycleView> };
@@ -35,14 +24,12 @@ export function vaultSource(client: BridgeClient, frame: SampleFrame | null): Su
     frame,
     label,
     description,
-    // Which vault a screen is looking at travels with the read rather than
-    // being decided inside it, because the one place a wrong answer here
-    // matters is the one the read cannot tell apart on its own.
+    // Carry the opened vault label and description with each source read.
     load: (activityLimit, activityFocus) => loadPrivateSnapshot(client, { title: label, subtitle, detail: description }, activityLimit, activityFocus),
     loadCoherent: (activityLimit, activityFocus, start, refresh) => loadCoherentSnapshot(client, { title: label, subtitle, detail: description }, activityLimit, activityFocus, start, refresh),
     loadPriority: (refresh) => loadPrioritySnapshot(client, { title: label, subtitle, detail: description }, refresh),
     loadSecondary: (activityLimit, activityFocus) => loadStartupSecondarySnapshot(client, { title: label, subtitle, detail: description }, activityLimit, activityFocus),
-    loadDestination: (destination, activityLimit) => loadPrivateDestination(client, destination, activityLimit),
+    loadDestination: (destination, activityLimit, activityFocus) => loadPrivateDestination(client, destination, activityLimit, activityFocus),
     loadJobs: () => readJobsFeature(client),
     accountingReader: privateAccountingReader(client),
     accountLedgerReader: privateAccountLedgerReader(client),
@@ -64,7 +51,5 @@ export function vaultSource(client: BridgeClient, frame: SampleFrame | null): Su
 }
 
 export function privateSource(client: BridgeClient): SurfaceSource { return vaultSource(client, null); }
-// A sample source exists only where the sidecar sent the frame's words. There
-// is no path here that makes one without them, so there is no state in which
-// somebody is inside the sample vault with nothing around it saying so.
+// A sample source requires the sidecar-supplied frame.
 export function sampleSource(client: BridgeClient, frame: SampleFrame): SurfaceSource { return vaultSource(client, frame); }

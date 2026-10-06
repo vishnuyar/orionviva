@@ -1238,9 +1238,7 @@ describe("surface session", () => {
   it("does not carry what was done on one screen to another", async () => {
     const { result } = renderHook(() => useSurfaceSession());
 
-    // Leaving the screen ends the account of what was done on it. A notice
-    // still standing on return reports an act on something the person is no
-    // longer looking at, minutes after it happened.
+    // Leaving the destination clears its action notice.
     act(() => result.current.navigate("overview"));
     expect(result.current.session.questionAction).toEqual({ state: "idle" });
     act(() => result.current.navigate("documents"));
@@ -1548,8 +1546,7 @@ describe("surface session", () => {
     await act(async () => { await result.current.openVault("/vault", "secret", false); });
     await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
 
-    // The sidecar read the request and would not take it, which is a state of
-    // its own; what it wrote about it names a payload field and is for a log.
+    // An unserved reply has its own channel state; its technical message is not displayed.
     expect(result.current.session.questionAction).toMatchObject({ result: { state: "unserved" } });
     expect(JSON.stringify(result.current.session.questionAction)).not.toContain("question_id");
   });
@@ -1667,7 +1664,7 @@ describe("surface session", () => {
     expect(relevant[0].payload).toEqual({ movement_key: "movement:key", category_id: "housing" });
     expect(relevant.slice(1).filter((frame) => frame.payload.surface !== "jobs").map((frame) => frame.payload.surface)).toEqual(aggregateSurfaces);
     expect(relevant.filter((frame) => frame.payload.surface === "jobs")).toHaveLength(1);
-    expect(relevant.find((frame) => frame.payload.surface === "activity")?.payload.parameters).toEqual({ limit: 50, focus: "movement:key" });
+    expect(relevant.find((frame) => frame.payload.surface === "activity")?.payload.parameters).toEqual({ page_version: 1, limit: 50, focus: "movement:key" });
   });
 
   it.each(["refused", "stale"] as const)("fully rereads after a typed %s Activity outcome", async (kind) => {
@@ -1719,7 +1716,7 @@ describe("surface session", () => {
       payload: { movement_ids: ["movement:key", "movement:two"], category_id: "groceries", subcategory_id: "supermarket" },
     });
     expect(frames.slice(1).map((frame) => frame.operation)).toEqual(Array(9).fill("viva.surface.read"));
-    expect(frames.find((frame) => frame.payload.surface === "activity")?.payload.parameters).toEqual({ limit: 50, focus: "movement:key" });
+    expect(frames.find((frame) => frame.payload.surface === "activity")?.payload.parameters).toEqual({ page_version: 1, limit: 50, focus: "movement:key" });
   });
 
   it.each([
@@ -1793,9 +1790,10 @@ describe("surface session", () => {
       }
       if (frame.operation === "viva.surface.read") {
         const surface = frame.payload.surface as SurfaceName;
-        if (surface === "activity" && (frame.payload.parameters as { limit?: number }).limit === 100) return page.promise as Promise<BridgeResponse<T>>;
+        if (surface === "activity" && (frame.payload.parameters as { cursor?: string }).cursor === "invented-cursor") return page.promise as Promise<BridgeResponse<T>>;
         const raw = surface === "activity" ? activityPayload(afterWrite ? "housing" : "groceries", afterWrite ? "Housing" : "Groceries") : completeSurfacePayload(surface);
         if (surface === "activity" && !afterWrite) (raw as ReturnType<typeof activityPayload>).beyond.count = 1;
+        if (surface === "activity") Object.assign(raw as object, { page: { version: 1, revision: afterWrite ? "new" : "old", next_cursor: afterWrite ? null : "invented-cursor", cumulative_count: 1, remaining_count: afterWrite ? 0 : 1 } });
         return ok(frame.requestId, { surface, job_id: "job", data: raw } as T);
       }
       return ok(frame.requestId, {} as T);

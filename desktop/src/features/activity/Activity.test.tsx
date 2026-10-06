@@ -16,6 +16,35 @@ const completed: ActivityActionResult = { state: "settled", outcome: { kind: "co
 function controls(state: ActivityCorrectionState, onAssignCategory = vi.fn(), onReplaceTags = vi.fn(), onConfirmTransfer = vi.fn(), onRejectTransfer = vi.fn(), onUnlinkTransfer = vi.fn(), onAssignMeaning = vi.fn()): ActivityCorrectionControls { return { state, onAssignCategory, onAssignMeaning, onReplaceTags, onConfirmTransfer, onRejectTransfer, onUnlinkTransfer }; }
 
 describe("Transactions surface", () => {
+  it.each(["loading", "failure", "append"])("keeps continuation focus with an existing selected row after %s", (phase) => {
+    const first: ActivityData = { ...read(Array.from({ length: 50 }, (_, index) => movement({ id: `synthetic-${index}` }))), beyond: { count: 110 }, page: { version: 1, revision: "invented", nextCursor: "synthetic-next", cumulativeCount: 50, remainingCount: 110, focus: "" } };
+    const props = { selectedMovement: "synthetic-10", onOpenEvidence: noAction, onLoadMore: noAction };
+    const view = render(<Activity {...props} result={ready(first)} />);
+    const selected = view.container.querySelectorAll(".activity-movement").item(10);
+    expect(selected).toHaveFocus();
+    const load = view.getByRole("button", { name: "Load 50 more" });
+    load.focus();
+    const next: ActivityData = phase === "append"
+      ? { ...first, movements: [...first.movements, ...Array.from({ length: 50 }, (_, index) => movement({ id: `later-${index}` }))], page: { ...first.page!, nextCursor: "synthetic-later", cumulativeCount: 100, remainingCount: 60 } }
+      : { ...first, loadingMore: phase === "loading", continuationFailed: phase === "failure" };
+    view.rerender(<Activity {...props} result={ready(next)} />);
+    expect(load).toBeInTheDocument();
+    expect(load).toHaveFocus();
+  });
+
+  it("focuses a newly selected identity and a selected row when it first becomes available", () => {
+    const props = { onOpenEvidence: noAction, onLoadMore: noAction };
+    const first = read([movement({ id: "one" }), movement({ id: "two" })]);
+    const view = render(<Activity {...props} selectedMovement="one" result={ready(first)} />);
+    expect(view.container.querySelectorAll(".activity-movement").item(0)).toHaveFocus();
+    view.rerender(<Activity {...props} selectedMovement="two" result={ready(first)} />);
+    expect(view.container.querySelectorAll(".activity-movement").item(1)).toHaveFocus();
+    view.rerender(<Activity {...props} selectedMovement="later" result={ready(first)} />);
+    view.getByRole("searchbox").focus();
+    view.rerender(<Activity {...props} selectedMovement="later" result={ready(read([...first.movements, movement({ id: "later" })]))} />);
+    expect(view.container.querySelectorAll(".activity-movement").item(2)).toHaveFocus();
+  });
+
   it("renders every FeatureResult state, and an empty read in the read's own words", () => {
     const props = { onOpenEvidence: noAction };
     const { getByText, queryByText, rerender } = render(<Activity {...props} result={{ state: "absent", reason: "none" }} />);
@@ -29,8 +58,7 @@ describe("Transactions surface", () => {
     rerender(<Activity {...props} result={{ state: "needs_input", data: read([]), issues: [{ code: "input", message: "bounded" }] }} />);
     expect(getByText("Some transactions need more information. Available transactions are shown below.")).toBeInTheDocument();
     rerender(<Activity {...props} result={ready(read([]))} />);
-    // The read composes its own sentence about knowing of nothing that moved,
-    // and it is not the same as nothing having moved.
+    // An empty recorded-activity view uses its own read-supplied sentence.
     expect(getByText(moments.activity_empty, { selector: "span" })).toBeInTheDocument();
   });
 
@@ -323,4 +351,11 @@ describe("Transactions surface", () => {
     expect(screen.getByText("Tags unavailable from this read")).toBeInTheDocument();
     expect(screen.queryByText(/Correct category, treatment, or tags/)).not.toBeInTheDocument();
   });
+});
+
+it('discloses older-reader continuation limits while keeping initial rows usable',()=>{
+  const {getByText,queryByRole,container}=render(<Activity result={ready({...read([movement()]),beyond:{count:110}})} onOpenEvidence={noAction} onLoadMore={()=>undefined}/>);
+  expect(container.querySelectorAll('.activity-movement')).toHaveLength(1);
+  expect(getByText(/updated local reader/)).toBeInTheDocument();
+  expect(queryByRole('button',{name:'Load 50 more'})).toBeNull();
 });

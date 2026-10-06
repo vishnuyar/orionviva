@@ -251,3 +251,17 @@ describe("Activity parity artifact", () => {
     expect(read.vocabularies.tags.items).toEqual((raw.vocabularies as { tags: { items: unknown[] } }).tags.items);
   });
 });
+
+describe('Activity continuation metadata',()=>{
+  const page={version:1,revision:'invented',next_cursor:'invented-cursor',cumulative_count:1,remaining_count:1};
+  it('validates new metadata atomically and leaves legacy reads unchanged',()=>{
+    expect(adaptActivity(payload({beyond:{count:1},page}))?.page?.remainingCount).toBe(1);
+    expect(adaptActivity(payload())?.page).toBeUndefined();
+  });
+  it.each([{version:2},{revision:''},{remaining_count:-1},{cumulative_count:0},{next_cursor:null},{next_cursor:'x'.repeat(4097)},{extra:1},{cumulative_count:Number.MAX_SAFE_INTEGER,remaining_count:1}])('refuses inconsistent page metadata %j',over=>{
+    expect(adaptActivity(payload({beyond:{count:1},page:{...page,...over}}))).toBeNull();
+  });
+  it('refuses duplicated movement identities in a page',()=>{
+    expect(adaptActivity(payload({items:[baseRow,baseRow],beyond:{count:1},page:{...page,cumulative_count:2}}))).toBeNull();
+  });
+});
