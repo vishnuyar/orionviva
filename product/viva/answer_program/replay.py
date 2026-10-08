@@ -9,7 +9,7 @@ from .bind import DeterministicBinder
 from .capability import CapabilityManifest
 from .execute import ProgramExecutor
 from .intents import SemanticFamilyRegistry
-from .schema import AnswerProgram, AnswerResourcePolicy
+from .schema import AnswerProgram, AnswerResourcePolicy, ContractError, QuestionContext
 from .validate import ProgramValidator
 
 
@@ -27,10 +27,15 @@ def replay_capture(captured, registry, *, locale="", policy=None):
         if expected_semantic and expected_semantic != actual_semantic:
             return {"replayed": False, "defects": [{
                 "tag": "semantic_request_digest_mismatch"}]}
-        families = SemanticFamilyRegistry(
-            entity_catalog_digest=str(
-                raw_semantic.get("entity_catalog_digest") or ""))
-        semantic = families.parse(raw_semantic, require_grounding=False)
+        families = SemanticFamilyRegistry(registry.semantic_entities())
+        if raw_semantic.get("entity_catalog_digest") != families.entity_catalog_digest:
+            return {"replayed": False, "defects": [{
+                "tag": "entity_catalog_digest_mismatch"}]}
+        try:
+            semantic = families.parse(raw_semantic, QuestionContext(question=str(payload.get("question") or "")), require_grounding=False)
+        except ContractError:
+            return {"replayed": False, "defects": [{
+                "tag": "semantic_request_contract_mismatch"}]}
         if semantic.kind == "unsupported":
             return {"replayed": False, "defects": [{
                 "tag": "unsupported_family",

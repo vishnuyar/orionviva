@@ -75,3 +75,9 @@ Before merging a suite change, verify that:
   `DOC-19`, and contains no filled local paths;
 - every relative Markdown link resolves; and
 - the repository documentation test and diff hygiene checks pass.
+
+## Financial capability additions
+
+`GUIDE-007`–`GUIDE-026` is an additive browser-first family: 17 capability checks plus three cross-family checks. Preserve the original 45 identities and pass conditions. The human inventory is 65; qualification is a separate 123-case contract and new automated browser declarations remain unverified until executed. Numerical evidence checks establish sources of numbers; do not add evidence approval for category or treatment. Keep [the retained document continuation](real-document-test.md) and complete scenario forms aligned with the active feature guide.
+
+Run `python acceptance/check_catalog.py` for the human inventory and `python acceptance/test_catalog.py` for omission/false-coverage counterexamples. When reconciling the sibling pack, pass `--sibling-pack <public-pack-copy>` to the catalog guard.

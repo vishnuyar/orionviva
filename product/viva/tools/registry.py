@@ -242,6 +242,12 @@ class Registry:
         args = _without_empties(spec.params, args)
         problems = _validate(spec.params, args)
         if problems:
+            if name == "simulate_scenario":
+                from .scenarios import FAMILIES, scenario_request
+                family = args.get("view")
+                if family in FAMILIES:
+                    tag = "scenario_premise_source_mismatch"
+                    return refusal(name, tag, scenario_request(tag, family))
             return refusal(name, "invalid_arguments",
                            "; ".join(problems), schema=spec.params)
         if spec.needs_figures:

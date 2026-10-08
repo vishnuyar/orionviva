@@ -2,7 +2,7 @@
   "in_force": {
     "answer_program_schema": {
       "in": "schemas",
-      "active": "answer-program-schema-v2"
+      "active": "answer-program-schema-v3"
     },
     "financial_query_schema": {
       "in": "schemas",
@@ -10,19 +10,19 @@
     },
     "semantic_request_schema": {
       "in": "schemas",
-      "active": "semantic-request-schema-v7"
+      "active": "semantic-request-schema-v8"
     },
     "semantic_request": {
       "in": "prompts",
-      "active": "semantic-request-v9"
+      "active": "semantic-request-v11"
     },
     "semantic_request_retry": {
       "in": "prompts",
-      "active": "semantic-request-retry-v8"
+      "active": "semantic-request-retry-v9"
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v24"
+      "active": "tools-v25"
     },
     "goal_binding": {
       "in": "prompts",
@@ -67,6 +67,22 @@
         "accounting-interpret-v1",
         "accounting-interpret-v2"
       ]
+    },
+    "financial_capability_cases": {
+      "in": "evals",
+      "active": "financial-capability-cases-v1"
+    },
+    "semantic_request_cases": {
+      "in": "evals",
+      "active": "semantic-request-cases-v4"
+    },
+    "answer_program_cases": {
+      "in": "evals",
+      "active": "answer-program-cases-v1"
+    },
+    "answer_program_adversarial": {
+      "in": "evals",
+      "active": "answer-program-adversarial-v1"
     }
   },
   "released": {
@@ -265,6 +281,19 @@
     "accounting-interpret-v3": "d766cd9532288de8",
     "pack-v51": "edc42690364b2d1a",
     "pack-v52": "7d948f75a7b32824",
-    "pack-v53": "6bff925ab8fad4da"
+    "pack-v53": "6bff925ab8fad4da",
+    "semantic-request-v10": "fd05c29c4562048a",
+    "semantic-request-v11": "1078f997cb7b27b7",
+    "tools-v25": "323c5cacab2f2250",
+    "semantic-request-schema-v8": "bb5b5cdc0e873e7a",
+    "semantic-request-retry-v9": "8a03be0e4643c34b",
+    "answer-program-schema-v3": "085d8f7343656d7f",
+    "financial-capability-cases-v1": "a738d3c2c9bb5c2b",
+    "answer-program-adversarial-v1": "efed01037ce16297",
+    "semantic-request-cases-v4": "dfb0da817443d3ee",
+    "semantic-request-cases-v3": "51178882a953be77",
+    "answer-program-cases-v1": "c7a04391629c387b",
+    "semantic-request-cases-v2": "f238ddb3383e5fab",
+    "semantic-request-cases-v1": "0d538b5b21e79557"
   }
 }

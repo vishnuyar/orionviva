@@ -38,7 +38,7 @@
 
 ### ING-73 — Extraction and conversation are separate contexts
 **State:** by-review
-**Code:** core/vivacore/models/base.py:139 (`extract`, ingest), core/vivacore/models/openai_compat.py:138 (`converse`, the tool-using path), product/viva/tools/__init__.py:31 (assertion 3 — the six registered verbs are all reads, and `local_only` is a registration gate)
+**Code:** core/vivacore/models/base.py:139 (`extract`, ingest), core/vivacore/models/openai_compat.py:138 (`converse`, the tool-using path), product/viva/tools/__init__.py:31 (assertion 3 — the registered verbs are all reads, and `local_only` is a registration gate)
 **Test:** none
 
 1. Nothing the extraction model says auto-acts.

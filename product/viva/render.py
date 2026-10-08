@@ -28,7 +28,7 @@ through a slot that asks for money.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 from vivacore.verify.normalize import separators_for
 
@@ -69,7 +69,7 @@ TYPES = (MONEY, COUNT, RATE, DATE, PERIOD, ACCOUNT, MERCHANT, CATEGORY,
 QUANTITY_OF_TYPE: dict[str, frozenset] = {
     MONEY: frozenset({quantity.SPENDING, quantity.INCOME, quantity.BALANCE,
                       quantity.OWED, quantity.NET_WORTH, quantity.GROSS_FLOW,
-                      quantity.NET_MOVEMENT, quantity.MOVEMENT}),
+                      quantity.NET_MOVEMENT, quantity.MOVEMENT, quantity.REPAYMENT}),
     COUNT: frozenset({quantity.COUNT}),
     RATE: frozenset({quantity.RATIO}) | frozenset(quantity.RATIOS),
     SUPPOSED: frozenset(quantity.KINDS),
@@ -188,10 +188,13 @@ def money(amount, currency: str = "", *, locale: str = "") -> Money:
     minus in front. An empty currency writes the value alone; that is what a
     figure whose currency is not known looks like, rather than a currency
     invented to fill the gap."""
-    value = Decimal(amount).quantize(CENTS)
+    raw = Decimal(amount)
+    with localcontext() as context:
+        context.prec = max(context.prec, len(raw.as_tuple().digits), raw.adjusted() + 4)
+        value = raw.quantize(CENTS)
     point, group = separators_for(locale)
     sign = "-" if value < 0 else ""
-    whole, _, fraction = str(abs(value)).partition(".")
+    whole, _, fraction = str(value.copy_abs()).partition(".")
     if group:
         whole = _grouped(whole, group)
     written = f"{whole}{point}{fraction}"

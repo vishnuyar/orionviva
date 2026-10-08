@@ -1,9 +1,23 @@
 """Tool compute contracts."""
 
+import copy
+
 from _tool_test_support import *
 from test_tool_contract import _every_figure
 
 # ------------------------------------------------------------------- compute
+
+
+def _measured_count_registry():
+    """Supply dated fictional card stock for complete-population assertions."""
+    events = [*copy.deepcopy(_events()),
+              document_captured("doc-card-measured-test", "measured-card-test.pdf",
+                                100, "bank_statement", 0.9, "2026-02-01"),
+              opening_balance_observed(
+                  "card", "300.00", "2026-01-01",
+                  Provenance("doc-card-measured-test", 1, "stock"))]
+    return default_registry(LedgerProjection(events))
+
 
 def _one_figure(registry, tool, args):
     """The figure book after one call, as the runner would stamp it."""
@@ -759,6 +773,7 @@ def test_a_figure_over_everything_is_hedged_the_same_way(registry):
     So one assertion about hedging stands where the scope vocabulary cannot
     move it: whatever a hole declares, a rounded figure still reaches a person
     saying it is rounded."""
+    registry = _measured_count_registry()
     spoken = _approximate_run(
         registry,
         _shape(("That is about {each} each.",
@@ -810,6 +825,11 @@ def test_every_money_figure_a_tool_emits_stands_on_a_record():
     strip a legitimate total of the evidence it did have."""
     for what, fig in _every_figure().items():
         if fig["currency"]:
+            if fig["kind"] == "hypothetical":
+                # The shared emitter sweep validates exact current-question
+                # role receipts; hypothetical values cannot acquire a grade.
+                assert not fig["grade"]
+                continue
             assert fig["record_ids"], (
                 f"{what!r} is an amount of money standing on no record")
 

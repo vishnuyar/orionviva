@@ -55,7 +55,7 @@
 
 ### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
 **State:** enforced
-**Code:** product/viva/prompts/semantic-request-v9.txt, product/viva/prompts/semantic-request-retry-v8.txt
+**Code:** product/viva/prompts/semantic-request-v11.txt, product/viva/prompts/semantic-request-retry-v9.txt
 **Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
 1. The repair prompt receives every compact-contract defect and asks for one complete replacement semantic request.
@@ -155,3 +155,12 @@ has since been bumped.
 - The literal test is textual. An id built by concatenation or an f-string passes it and is caught nowhere.
 - `FROZEN_SPEAK_PROMPTS` is the one frozen map still kept by hand; it is one comprehension away from deriving from `released` like the other four.
 - User-editable prompts, as content-addressed new versions rather than edits.
+
+The active semantic selection prompt is `semantic-request-v11`; the original
+`semantic-request-v10` and `semantic-request-retry-v8` bytes remain retained.
+The new prompt adds eight reviewed everyday analysis meanings, six measurement/projection meanings and three scenario meanings to the original
+six. Retry v9 permits only exact current-question scenario premises, with role-bearing quotes; recorded values and calculated answers remain prohibited. Program schema v3 adds the closed repayment quantity while v2 remains unchanged. Code owns the calculations, closed read arguments and answer binding.
+The active tool descriptions are `tools-v25`, and the selection schema is
+`semantic-request-schema-v8`. Fresh exact-model qualification is pending;
+changing guidance does not itself prove that live questions select the intended
+family.

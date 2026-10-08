@@ -40,7 +40,7 @@ Build and validate the candidate as required before using it for final Witness e
 
 Use the available supported browser/computer tools and read their documentation. Do not replace the user's browser journey with direct ingestion APIs, database writes or shell-driven UI automation. Read-only private snapshots and source comparisons may supplement the browser but cannot substitute for it.
 
-Create a disposable test vault and an isolated learned merchant/catalog store. A fresh vault with a reused learned store is not a clean restart. Preserve the user's shared catalog and unrelated vaults. Record exactly which folders belong to this test.
+For a new ingestion campaign, create a disposable test vault and an isolated learned merchant/catalog store. A fresh vault with a reused learned store is not a clean restart. Preserve the user's shared catalog and unrelated vaults. Record exactly which folders belong to this test.
 
 If the Mac is locked, request an unlock and continue independent checks. If browser policy requires the user to enter a new vault passphrase, prepare the concrete new-vault form first and hand off only credential entry/submission. Do not print the passphrase or work around the handoff. Opening an existing vault uses the applicable existing-credential policy.
 
@@ -69,7 +69,7 @@ Demonstrate a meaningful regression before the fix; verify it fails for the actu
 
 Distinguish stale prose, an obsolete run artifact and an independent evaluator contract: reconcile prose against current evidence, rerun an obsolete artifact, and preserve official evaluator results while requesting review of contract changes. Do not alter an independent evaluator merely to turn it green. Diagnose and report stale oracle/source packets separately, retain the official result, and obtain the appropriate evaluator review for any amendment. No release-ready claim while required evidence remains missing.
 
-**After every product bug fix, restart the entire document campaign:**
+**After an ingestion, financial-application or learned-state bug fix, restart the entire document campaign.** For a read-only analysis, measurement, scenario or wording repair, honor an explicit owner-authorized retained-vault continuation after verifying current state; record carried-forward and newly repeated checks separately. Do not impose reupload for an unrelated non-ingestion repair. When a restart is required:
 
 - Finish required checks, rebuild the app and verify what build the browser actually serves.
 - Close the superseded test vault. Prepare the next empty vault and isolated learned store.
@@ -80,11 +80,11 @@ After three unsuccessful repair cycles for the same failure signature, stop spec
 
 ## Ask financial questions after all 19
 
-Use [financial-questions.md](references/financial-questions.md) as a broad starting campaign, adapting names and periods to the actual source coverage. Ask one question at a time through the browser. Include follow-ups, paraphrases, exact transaction explanations, account-specific questions, missing-period questions and source navigation.
+Read the product repository’s `acceptance/real-document-test.md` for the current feature campaign, complete scenario forms, cent/calendar conventions, numerical-source-only evidence rule and owner-deferred boundaries. Use [financial-questions.md](references/financial-questions.md) as a broad starting campaign, adapting names and periods to the actual source coverage. Ask one question at a time through the browser. Include follow-ups, paraphrases, exact transaction explanations, account-specific questions, missing-period questions and source navigation.
 
 Check every answer's amount/sign, period, account/currency scope, uncertainty, derivation, citations and receipt against the pre-established oracle. Reconcile mixed-date net worth transparently; exclude own transfers from spending; distinguish deposits, investment purchases and returns. Record useful refusals and capability gaps separately from wrong answers. Inspect source links and persistence after reload. Do not invent real financial intent merely to exercise a synthetic edge case.
 
-Any new product bug returns to the same repair-and-fresh-vault loop. Testing ends only after the final 19-document pass and the final question campaign are complete, or a specific unresolved blocker is reported honestly.
+Any new product bug returns to the reviewed repair loop. Use the restart rule above; preserve an explicitly authorized retained-vault non-ingestion continuation when state remains suitable. Testing ends only after the final 19-document pass and the final question campaign are complete, or a specific unresolved blocker is reported honestly.
 
 ## Deliver and preserve continuity
 

@@ -57,9 +57,8 @@ missing input.
   correction. Inherited merchant tags also keep complete-set
   movement replacement unavailable when that action could not remove the
   effective overlay honestly.
-- **Deterministic scenarios.** No registered `project` read or scenario library
-  supplies amortisation, compounding, payoff, runway, or affordability results
-  with enumerated assumptions and inherited evidentiary basis.
+- **Scenario qualification and breadth.** The registered `simulate_scenario` read implements savings, monthly loan payoff and monthly cash flow with exact current-question receipts and hypothetical results. Expanded exact-model qualification and retained-vault testing remain pending. Avalanche/snowball comparison, affordability permission and lender-specific accrual are not supplied. See [financial-analysis-measurements-and-scenarios.md](financial-analysis-measurements-and-scenarios.md).
+- **Visible local numerical receipts.** Local goal event sources are retained in structured tool data, but the conversation viewer currently links captured documents only. Visible local receipt access remains deferred.
 - **General drafted-and-confirmed financial action.** Conversation and settings have
   bounded proposal-and-confirm flows, but there is no general action model that
   records a complete financial-action draft, re-checks its basis immediately

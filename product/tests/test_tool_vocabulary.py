@@ -1,11 +1,24 @@
 """Tool vocabulary contracts."""
 
+import copy
+
 from _tool_test_support import *
 from test_tool_contract import _probe_vault
 from test_tool_limits import _every_declared_call, _ledger
 from test_tool_scope import _spending_events
 
 # ------------------------------------------------- the vault's own vocabulary
+
+
+def _measured_count_registry():
+    """Supply dated fictional card stock for complete-population assertions."""
+    events = [*copy.deepcopy(_events()),
+              document_captured("doc-card-measured-test", "measured-card-test.pdf",
+                                100, "bank_statement", 0.9, "2026-02-01"),
+              opening_balance_observed(
+                  "card", "300.00", "2026-01-01",
+                  Provenance("doc-card-measured-test", 1, "stock"))]
+    return default_registry(LedgerProjection(events))
 
 
 def test_every_grouping_offered_names_the_kind_of_slice_it_cuts_by():
@@ -1380,14 +1393,26 @@ def test_every_read_says_what_set_each_of_its_figures_was_taken_over(registry,
     called = set()
     key = movement_key("doc-jan", "chk", "2026-01-20", Decimal("-60.00"),
                        "GREENFIELD MARKET", 0)
-    for tool, args in _EVERY_READ + (("get_provenance", {"record_id": key}),):
+    from test_tool_contract import _analysis_fixture_calls
+    analysis = tuple(("read_financial_analysis", args) for args in _analysis_fixture_calls(
+        next(schema["parameters"] for schema in registry.schemas()
+             if schema["name"] == "read_financial_analysis")))
+    from test_tool_contract import _measurement_projection_fixture_calls
+    measurements = tuple((schema["name"], args) for schema in registry.schemas()
+        if schema["name"] in {"read_account_measurements", "read_statement_coverage", "read_financial_projections"}
+        for args in _measurement_projection_fixture_calls(schema["name"], schema["parameters"]))
+    for tool, args in _EVERY_READ + analysis + measurements + (("get_provenance", {"record_id": key}),):
         result = registry.call(tool, args)
         called.add(tool)
-        assert (result.ok or (args.get("metric") == "recurring_spending"
+        assert (result.ok or (tool == "read_account_measurements" and args.get("view")=="recorded_owed" and result.refusal=="owed_measurement_unavailable")
+                or (tool == "read_financial_projections" and result.refusal in {
+                    "no_recorded_goals", "no_upcoming_expectations"}) or (args.get("metric") == "recurring_spending"
                               and result.refusal == "insufficient_history")
                 or (args.get("metric") in ("income", "spending", "surplus")
                     and result.refusal in {
-                        "unsupported_empty_scope", "partial_empty_scope"})), (
+                        "unsupported_empty_scope", "partial_empty_scope"})
+                or (tool == "read_financial_analysis" and args.get("view") == "period_income"
+                    and result.refusal in {"unsupported_empty_scope", "partial_empty_scope"})), (
                                   tool, args, result.text)
         for fig in result.figures:
             assert fig["boundary"] != {}, (tool, args, fig["what"])
@@ -1763,6 +1788,7 @@ def test_a_literal_contributes_no_set_and_takes_none_away(registry):
     measured, so the total is over neither: not everything its quantity ranges
     over, and no slice anybody can name. Two literals are that same number over
     no set anybody measured, which is a declaration rather than a silence."""
+    registry = _measured_count_registry()
     book = _one_figure(registry, "query_ledger", {"entity": "balances"})
     ids = [f["id"] for f in book.values() if f["quantity"] == quantity.BALANCE]
     counted = next(f["id"] for f in book.values()
@@ -2183,6 +2209,7 @@ def test_a_dropped_clause_is_not_held_to_what_it_would_have_named(registry):
     person, so a thing and a figure inside it that do not belong together are
     not a false sentence and do not cost the turn. The clause that does reach
     the person is checked, and answers."""
+    registry = _measured_count_registry()
     said = (("You have {count} accounts.", [("count", "count", "count",
                                              "whole")]),
             ("Your {which} holds {amount}, as of {when}.",

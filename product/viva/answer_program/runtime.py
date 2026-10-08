@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import copy
 
 from ..persona import moment
 from ..tools.runner import RunResult
@@ -77,7 +78,20 @@ class AnswerProgramRuntime:
         execution = self.executor.execute(program, context.question)
         binding = self.binder.bind(program, execution)
         result = binding.result
+        from .capabilities import analysis_families, measurement_projection_families, scenario_families
+        if program.question_kind in {*analysis_families(),*measurement_projection_families(),*scenario_families()}:
+            result.transcript=[{**item.to_dict(),"figures":copy.deepcopy(item.figures),
+                                "identifiers":copy.deepcopy(item.identifiers),
+                                "record_ids":list(item.record_ids)} for item in execution.transcript]
         status, tag = self._status(program, execution, binding)
+        missing_label = ""
+        if status == "missing_data":
+            from .capabilities import actionable_limit
+            limit = actionable_limit(program, execution, binding)
+            if limit is not None:
+                tag, result.text = limit
+                result.refusal = tag
+                missing_label = result.text
         interpretations = tuple(self.compiler.interpretations(
             compilation.semantic_outcome)) if hasattr(
                 self.compiler, "interpretations") else ()
@@ -90,6 +104,8 @@ class AnswerProgramRuntime:
         result.status = status
         result.outcome_tag = tag
         result.missing = [item.to_dict() for item in binding.unbound]
+        if missing_label:
+            result.missing = [dict(item, label=missing_label) for item in result.missing]
         question = ""
         if status == "needs_clarification":
             if candidates:

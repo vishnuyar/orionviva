@@ -100,6 +100,15 @@ The native build first creates the frontend and packaged Python sidecar, then
 asks Tauri to produce the platform bundle. Output is written under
 `desktop/src-tauri/target/release/bundle/`.
 
+The sidecar includes the exact source files authenticated by runtime admission
+alongside their bytecode. These cover the intent/capability builders, registered
+numerical reads and reused measurement/projection authorities, source-context
+facade, numerical envelopes and binding/rendering route, compiler, runtime,
+replay and model adapter. The source map in the sidecar specification and its
+owning parity test are the exact inventory. A missing required source stops the
+build; changed source invalidates the measured answering profile. Unrelated
+Python sources are not included in that admission source inventory.
+
 For frontend-only development:
 
 ```sh
@@ -151,3 +160,7 @@ Manager entry disables automatic opening but does not delete the vault.
 Report security-sensitive problems privately through
 [SECURITY.md](../SECURITY.md). For release construction and signing, use
 [RELEASING.md](../RELEASING.md).
+
+## Expanded conversation qualification
+
+The reviewed analysis, measurement and scenario capabilities require a fresh exact-model qualification before the expanded runtime profile is usable. Source builds and deterministic tests do not publish that profile. The unchanged canonical questions and mandatory independent capability supplement share authenticated case-specific fixture dates. Follow the concrete funded qualification plan and retained-vault Witness review; no document re-ingestion is required for this conversation-only change. See [financial-analysis-measurements-and-scenarios.md](financial-analysis-measurements-and-scenarios.md) for supported scenario input forms and the deferred local-receipt viewer limitation.

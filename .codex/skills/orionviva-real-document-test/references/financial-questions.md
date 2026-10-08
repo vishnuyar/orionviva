@@ -60,4 +60,26 @@ Distinguish deposits/withdrawals from trades, current-period from year-to-date a
 39. Ask one supported question with a short paraphrase and one abbreviated follow-up.
 40. Open an answer's cited source, inspect the exact supporting row/page, reload, and check the answer/receipt remains consistent.
 
-Do not penalize an honest unsupported feature as a fabricated-answer bug. Record capability, usefulness and factual accuracy separately. Ask additional questions when the actual documents suggest meaningful risks; the list is coverage guidance, not a substitute for judgment. Any established product bug triggers diagnosis, repair, fresh vault and the full document/campaign restart described in SKILL.md.
+Do not penalize an honest unsupported feature as a fabricated-answer bug. Record capability, usefulness and factual accuracy separately. Ask additional questions when the actual documents suggest meaningful risks; the list is coverage guidance, not a substitute for judgment. Any established product bug triggers the reviewed diagnosis/repair method in SKILL.md. Honor an explicitly authorized retained-vault continuation for non-ingestion repairs when state remains suitable; ingestion/durable-state repairs retain the full restart rule.
+
+## Current financial capability continuation
+
+Read the product repository’s `acceptance/real-document-test.md` and `acceptance/scenarios/financial-capabilities.md` for the authoritative public continuation and GUIDE-007–GUIDE-026 checks. All 19 uploaded files remain in the retained vault whose identity has been checked when the owner authorized non-ingestion continuation; do not automatically reupload. Historical inventory questions above are exploratory, not claims that every feature is supported.
+
+Exercise all 17 current additions: spending by category/merchant/account, comparison, movement search, attributed income, surplus, observed recurring spending; recorded cash, dated account history, held statement coverage, known remainder, next obligations, local goal progress; savings, loan payoff, cash flow. Recurrence accepts optional currency, not a merchant/account/custom-period filter. Cash needs a held account; coverage needs a held account and dates. Known remainder and upcoming obligations use a bounded horizon in days; local goal progress accepts optional currency only. Establish numerical source totals, dates, roles, currency and weakest grades before asking; category/treatment do not require separate evidence gates.
+
+Use these whole current-question forms after family selection. Replace placeholders, repeat one three-letter currency code, use semicolons and year-month-day dates:
+
+```text
+Simulate savings in [currency]: initial amount [currency] [amount]; monthly contribution [currency] [amount]; nominal annual rate [rate] percent; horizon [months] months; opening date [date]
+
+Simulate loan payoff in [currency]: principal [currency] [amount]; monthly payment [currency] [amount]; nominal annual rate [rate] percent; horizon [months] months; first payment date [date]
+
+Simulate cash flow in [currency]: initial amount [currency] [amount]; monthly income [currency] [amount]; monthly outflow [currency] [amount]; one-off outflow [currency] [amount]; one-off at month [month]; horizon [months] months; opening date [date]
+```
+
+For a recorded start, replace initial amount (savings/cash) or principal (loan) with `starting account [exact held account name]`, never both. Preserve every other clause. Prior-assistant numbers and partial replies cannot supply missing premises. Nominal annual percent is divided by 12; APY/effective yield/monthly rates are not converted. Normalize once to cents with HALF_EVEN, then round monthly interest/endpoints. Savings/cash first endpoint is one month after opening; loan first payment follows a full monthly interest period. Independently clamp each target month to the original anchor day. Explicit one-off amount/month is required even for zero.
+
+All derived scenarios are hypothetical with empty grades; actual starting measurement date/view/source/grade remains separate. Check stock versus flow, final/minimum/first-negative/payoff dates, positive-payment count, sample labels and full result refusal without truncation. At zero rate genuine zero payment leaves debt unchanged/no payoff; positive payment rounding to zero with positive modeled debt refuses.
+
+Retain owner-deferred local goal receipt navigation, D16 wording, D19 validation and older internal missing label. Source page/region access, actual browser receipt usability, signing/binding and paid 123-case qualification remain separate unverified gates. No private source records, exact answers or spending authorization belong in this reference.

@@ -7,7 +7,7 @@ them, they are one effect here and safety disclosures remain code-owned.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import copy
 import datetime
 import calendar
@@ -32,6 +32,7 @@ _ENTITY_PARAMETER_GROUPS = {
     "account_phrase": "accounts",
     "category": "categories",
     "movement_phrase": "counterparties",
+    "merchant": "counterparties",
 }
 
 
@@ -42,6 +43,7 @@ def _object(properties=None, required=()):
 
 _STRING = {"type": "string", "minLength": 1}
 _DATE = {"type": "string", "format": "date"}
+_SCENARIO_FAMILY = {"type":"string","enum":["savings_scenario","loan_payoff_scenario","cash_flow_scenario"]}
 
 
 @dataclass(frozen=True)
@@ -141,22 +143,24 @@ def _required(request, claim_clauses):
         for claim in request.requested_claims))
 
 
-def _named_account(request, manifest):
+def _named_account(request, manifest, account_kind):
+    quantity = "owed" if account_kind == "liability" else "balance"
+    label = "amount owed" if quantity == "owed" else "balance"
     wants_date = "measurement_date" in request.requested_claims
     clauses = [{
         "id": "balance_and_date" if wants_date else "balance",
-        "text": ("The supported balance is {balance}, measured on {date}."
-                 if wants_date else "The supported balance is {balance}."),
+        "text": (f"The supported {label} is {{balance}}, measured on {{date}}."
+                 if wants_date else f"The supported {label} is {{balance}}."),
         "slots": ([{"name": "balance", "type": "money",
-                    "quantity": "balance", "scope": ["account"]},
+                    "quantity": quantity, "scope": ["account"]},
                    {"name": "date", "type": "date"}]
                   if wants_date else
                   [{"name": "balance", "type": "money",
-                    "quantity": "balance", "scope": ["account"]}])}]
+                    "quantity": quantity, "scope": ["account"]}])}]
     node = _read("account_balance", "query_ledger", {
         "entity": "balances",
         "filters": {"account": request.parameters["account_phrase"]}})
-    selector = {"quantity": "balance", "scope": ["account"],
+    selector = {"quantity": quantity, "scope": ["account"],
                 "cardinality": "one"}
     bindings = [{"hole": "balance", "source": "account_balance",
                  "reference_kind": "figure", "selector": selector}]
@@ -284,6 +288,8 @@ class SemanticFamilyRegistry:
                          self.entity_catalog.get("categories", ())},
             "movement_phrase": {str(item.get("id") or "") for item in
                                 self.entity_catalog.get("counterparties", ())},
+            "merchant": {str(item.get("id") or "") for item in
+                         self.entity_catalog.get("counterparties", ())},
         }
         self._entity_rows = {
             name: {str(item.get("id") or ""): dict(item)
@@ -296,35 +302,35 @@ class SemanticFamilyRegistry:
                 "named_account_balance",
                 _object({"account_phrase": _STRING}, ("account_phrase",)),
                 ("balance", "measurement_date"), _named_account,
-                user_label="one account's balance",
-                user_example="the balance and date for one named account"),
+                user_label="one account's latest whole-account amount",
+                user_example="the latest whole-account amount and optional measurement date for one named account"),
             "needs_attention": SemanticFamily(
                 "needs_attention", _object(), ("attention_items",), _attention,
-                user_label="records that need attention",
-                user_example="accounts or documents that need a decision"),
+                user_label="queued account and document decisions",
+                user_example="show queued accounts or documents that need a decision"),
             "category_spending_period": SemanticFamily(
                 "category_spending_period",
                 _object({"category": _STRING, "from": _DATE, "to": _DATE},
                         ("category", "from", "to")),
                 ("spending",), _category_period,
                 user_label="spending for a category and date range",
-                user_example="grocery spending in one calendar month"),
+                user_example="show category spending over explicit inclusive dates"),
             "net_worth": SemanticFamily(
                 "net_worth", _object(), ("net_worth",), _net_worth,
-                user_label="net worth and exclusions",
-                user_example="net worth by currency and what is excluded"),
+                user_label="current supported net worth by currency",
+                user_example="show current supported net worth by currency with its limits"),
             "credit_card_debt": SemanticFamily(
                 "credit_card_debt", _object(),
                 ("card_debt",), _card_debt,
-                user_label="credit-card debt by card",
-                user_example="card totals and the amount on every card"),
+                user_label="measured credit-card debt",
+                user_example="list measured card amounts and their totals by currency"),
             "classification_explanation": SemanticFamily(
                 "classification_explanation",
                 _object({"movement_phrase": _STRING, "from": _DATE, "to": _DATE},
                         ("movement_phrase",)),
                 ("explanation",), _classification,
-                user_label="transaction classification explanations",
-                user_example="why a purchase was treated a certain way"),
+                user_label="why a transaction was treated that way",
+                user_example="explain why an identified movement was treated a certain way"),
             "account_inventory": SemanticFamily(
                 "account_inventory", _object(),
                 ("balance", "owed", "measurement_date", "evidence_grade",
@@ -332,6 +338,10 @@ class SemanticFamilyRegistry:
                 user_label="a full account inventory",
                 user_example="every account with its evidence status"),
         }
+        from .capabilities import analysis_families, measurement_projection_families, scenario_families
+        self._families.update(analysis_families())
+        self._families.update(measurement_projection_families())
+        self._families.update(scenario_families())
 
     @property
     def ids(self):
@@ -388,13 +398,13 @@ class SemanticFamilyRegistry:
             {"name": "semantic_clarification", "description": "clarify",
              "parameters": _object({"tag": {"type": "string",
                                                "enum": list(CLARIFICATION_TAGS)},
-                 "question": _STRING,
+                 "question": _STRING, "scenario_family": _SCENARIO_FAMILY,
                  "options": {"type": "array", "items": _object(
                      {"id": _STRING, "label": _STRING}, ("id", "label"))}},
                  ("tag", "question", "options"))},
             {"name": "semantic_assumption", "description": "assumption",
              "parameters": _object({"tag": _STRING, "label": _STRING,
-                                    "question": _STRING,
+                                    "question": _STRING, "scenario_family": _SCENARIO_FAMILY,
                                     "type": {"type": "string",
                                              "enum": ["user_stipulation"]}},
                                    ("tag", "label", "question", "type"))},
@@ -457,13 +467,13 @@ class SemanticFamilyRegistry:
         for outcome, fields, required in (
                 ("clarify", {"tag": {"type": "string",
                                        "enum": list(CLARIFICATION_TAGS)},
-                             "question": _STRING,
+                             "question": _STRING, "scenario_family": _SCENARIO_FAMILY,
                              "options": {"type": "array", "items": _object(
                                  {"id": _STRING, "label": _STRING},
                                  ("id", "label"))}},
                  ("tag", "question", "options")),
                 ("needs_assumption", {"tag": _STRING, "label": _STRING,
-                                      "question": _STRING,
+                                      "question": _STRING, "scenario_family": _SCENARIO_FAMILY,
                                       "type": {"type": "string",
                                                "enum": ["user_stipulation"]}},
                  ("tag", "label", "question", "type")),
@@ -514,6 +524,11 @@ class SemanticFamilyRegistry:
                         "phrase without verbatim grounding")
                 quote = str(proof.get("quote") or "")
                 candidates = self._catalog_candidates(name, quote)
+                coverage = self.entity_catalog.get("coverage", {}).get("accounts", {})
+                if (held.get("family") == "named_account_balance"
+                        and name == "account_phrase"
+                        and coverage.get("complete") is False):
+                    candidates = []
                 if len(candidates) == 1:
                     parameters[name] = candidates[0]["id"]
                     proof["derivation"] = "catalog_selection"
@@ -578,10 +593,30 @@ class SemanticFamilyRegistry:
             if family is None or not family.runtime_selectable:
                 return SemanticOutcome("unsupported",
                                        detail={"requested_family": family_id})
+            from ..tools.scenarios import FAMILIES, validate_premises, ScenarioError, scenario_request
+            if family_id in FAMILIES:
+                try:
+                    validate_premises(family_id,raw["parameters"],raw["parameter_sources"],
+                                      context.question if context is not None else "")
+                    if "account_phrase" in raw["parameters"]:
+                        quote = raw["parameter_sources"]["account_phrase"]["quote"]
+                        if (quote not in self._entity_rows.get("account_phrase", {})
+                                and self.entity_catalog.get("coverage", {}).get("accounts", {}).get("complete") is False):
+                            raise ScenarioError("scenario_premise_source_mismatch")
+                except ScenarioError as exc:
+                    message=scenario_request(exc.tag,family_id)
+                    return SemanticOutcome("needs_assumption",detail={"tag":exc.tag,"label":message,
+                        "question":message,"type":"user_stipulation","scenario_family":family_id})
             self._validate_parameters(family.parameter_schema, raw["parameters"])
-            self._validate_parameter_sources(
-                raw["parameters"], raw["parameter_sources"], context,
-                require_grounding=require_grounding)
+            if family_id not in FAMILIES:
+                self._validate_parameter_sources(
+                    raw["parameters"], raw["parameter_sources"], context,
+                    require_grounding=require_grounding)
+            elif "account_phrase" in raw["parameters"]:
+                self._validate_parameter_sources(
+                    {"account_phrase":raw["parameters"]["account_phrase"]},
+                    {"account_phrase":raw["parameter_sources"]["account_phrase"]},context,
+                    require_grounding=True)
             claims = raw["requested_claims"]
             if (not isinstance(claims, list) or not claims
                     or any(not isinstance(item, str) for item in claims)
@@ -594,7 +629,10 @@ class SemanticFamilyRegistry:
                 self.catalog_digest,
                 parameter_sources=dict(raw["parameter_sources"]),
                 entity_catalog_digest=self.entity_catalog_digest)
-            return SemanticOutcome("request", request)
+            outcome = SemanticOutcome("request", request)
+            if "account_phrase" in raw["parameters"]:
+                return self._named_account_outcome(outcome)
+            return outcome
         required = {
             "clarify": {"request_version", "outcome", "tag", "question", "options"},
             "needs_assumption": {"request_version", "outcome", "tag", "label",
@@ -602,7 +640,8 @@ class SemanticFamilyRegistry:
             "outside_domain": {"request_version", "outcome"},
             "unsupported": {"request_version", "outcome", "requested_family"},
         }[kind]
-        self._fields(raw, required, required, "semantic outcome")
+        allowed = required | ({"scenario_family"} if kind in {"clarify","needs_assumption"} else set())
+        self._fields(raw, allowed, required, "semantic outcome")
         detail = {key: raw[key] for key in raw
                   if key not in {"request_version", "outcome"}}
         self._validate_non_answer(kind, detail)
@@ -611,19 +650,93 @@ class SemanticFamilyRegistry:
     def lower(self, outcome: SemanticOutcome, manifest) -> AnswerProgram:
         if outcome.request is not None:
             family = self._families[outcome.request.family]
+            if family.id == "named_account_balance":
+                resolved = self._named_account_outcome(outcome)
+                if resolved.kind != "request":
+                    return self.lower(resolved, manifest)
+                row = self._account_role_candidates(
+                    outcome.request.parameters["account_phrase"])[0]
+                request = replace(outcome.request, parameters={
+                    **outcome.request.parameters, "account_phrase": row["id"]})
+                return family.builder(request, manifest, row["kind"])
+            if "account_phrase" in outcome.request.parameters:
+                resolved = self._named_account_outcome(outcome)
+                if resolved.kind != "request":
+                    return self.lower(resolved, manifest)
+                row = self._account_role_candidates(outcome.request.parameters["account_phrase"])[0]
+                request = replace(outcome.request, parameters={**outcome.request.parameters,"account_phrase":row["id"]})
+                return family.builder(request, manifest)
             return family.builder(outcome.request, manifest)
         if outcome.kind == "clarify":
             return self._non_answer_program(
                 manifest, "clarify", "semantic_clarification",
-                clarification=dict(outcome.detail or {}))
+                clarification=self._scenario_detail(outcome.detail))
         if outcome.kind == "needs_assumption":
             return self._non_answer_program(
                 manifest, "needs_assumption", "semantic_assumption",
-                assumptions=[dict(outcome.detail or {})])
+                assumptions=[self._scenario_detail(outcome.detail)])
         if outcome.kind == "outside_domain":
             return self._non_answer_program(
                 manifest, "outside_domain", "outside_domain")
         raise ValueError("an unsupported semantic outcome has no executable program")
+
+    def _account_role_candidates(self, phrase):
+        """Resolve a named account using the ledger's whole-word label policy."""
+        rows = self._entity_rows.get("account_phrase", {})
+        if phrase in rows:
+            row = rows[phrase]
+            return [{"id": phrase, "label": self._display_label("account_phrase", row),
+                     "kind": str(row.get("kind") or "")}]
+        wanted = self._tokens(phrase)
+        candidates = []
+        for identity, row in rows.items():
+            if wanted and any(self._contains_token_sequence(self._tokens(surface), wanted)
+                              for surface in (row.get("name"), row.get("institution"))
+                              if surface):
+                candidates.append({"id": identity,
+                                   "label": self._display_label("account_phrase", row),
+                                   "kind": str(row.get("kind") or "")})
+        return sorted(candidates, key=lambda item: (item["label"], item["id"]))
+
+    def _named_account_options(self, candidates):
+        """Distinguish named-account choices using only recorded metadata."""
+        options = [{"id": row["id"], "label": row["label"]} for row in candidates]
+        labels = [self._normalized(option["label"]) for option in options]
+        for option, label in zip(options, labels):
+            if labels.count(label) > 1:
+                row = self._entity_rows["account_phrase"][option["id"]]
+                institution = str(row.get("institution") or "").strip()
+                if institution:
+                    name = str(row.get("name") or option["label"]).strip()
+                    option["label"] = f"{name} — {institution}"
+        labels = [self._normalized(option["label"]) for option in options]
+        for option, label in zip(options, labels):
+            if labels.count(label) > 1:
+                option["label"] = option["id"]
+        if len({option["label"] for option in options}) != len(options):
+            for option in options:
+                option["label"] = option["id"]
+        return options[:3]
+
+    def _named_account_outcome(self, outcome):
+        phrase = outcome.request.parameters["account_phrase"]
+        canonical = phrase in self._entity_rows.get("account_phrase", {})
+        coverage = self.entity_catalog.get("coverage", {}).get("accounts", {})
+        if not canonical and coverage.get("complete") is False:
+            return SemanticOutcome("unsupported", detail={
+                "requested_family": "a named account amount with a known account kind"})
+        candidates = self._account_role_candidates(phrase)
+        if len(candidates) > 1:
+            detail={"tag":"ambiguous_account","question":"Which account do you mean?",
+                    "options":self._named_account_options(candidates)}
+            if outcome.request.family in _SCENARIO_FAMILY["enum"]:
+                detail["scenario_family"]=outcome.request.family
+            return SemanticOutcome("clarify",detail=detail)
+        if (len(candidates) != 1
+                or candidates[0]["kind"] not in {"depository", "investment", "liability"}):
+            return SemanticOutcome("unsupported", detail={
+                "requested_family": "a named account amount with a known account kind"})
+        return outcome
 
     def admission_digest(self, manifest) -> str:
         samples = {
@@ -635,13 +748,27 @@ class SemanticFamilyRegistry:
             "classification_explanation": {"movement_phrase": "Example shop"},
             "account_inventory": {},
         }
+        from .capabilities import analysis_samples, measurement_projection_samples, scenario_samples
+        samples.update(analysis_samples())
+        samples.update(measurement_projection_samples())
+        samples.update(scenario_samples())
+        probe = type(self)({"accounts": [
+            {"id": "account-held", "name": "Everyday account", "kind": "depository"},
+            {"id": "account-owed", "name": "Example debt", "kind": "liability"},
+        ]})
         programs = []
         for family_id in self.ids:
             family = self._families[family_id]
             request = SemanticRequest(family_id, samples[family_id], family.claims,
                                       self.catalog_digest)
-            programs.append(self.lower(SemanticOutcome("request", request),
+            programs.append(probe.lower(SemanticOutcome("request", request),
                                        manifest).to_dict())
+        for claims in (("balance",), ("balance", "measurement_date")):
+            request = SemanticRequest("named_account_balance",
+                                      {"account_phrase": "account-owed"},
+                                      claims, probe.catalog_digest)
+            programs.append(probe.lower(SemanticOutcome("request", request),
+                                        manifest).to_dict())
         payload = {
             "catalog": self.supported_family_report(),
             "output_schema": self.output_schema(),
@@ -657,7 +784,7 @@ class SemanticFamilyRegistry:
         """Stable probes bind provider schema and entity matching to admission."""
         probe = cls({
             "accounts": [{"id": "account-alpha", "name": "Primary Reserve",
-                          "institution": "Example Bank", "kind": "checking"}],
+                          "institution": "Example Bank", "kind": "depository"}],
             "categories": [{"id": "daily-goods", "label": "Daily Goods"}],
             "counterparties": [
                 {"id": "alpha", "label": "Alpha"},
@@ -699,6 +826,10 @@ class SemanticFamilyRegistry:
         )
         return {
             "model_output_schema": probe.model_output_schema(),
+            "named_account_roles": {
+                phrase: probe._account_role_candidates(phrase)
+                for phrase in ("account-alpha", "reserve", "Example Bank", "serv")
+            },
             "candidates": {
                 phrase: probe._catalog_candidates("movement_phrase", phrase)
                 for phrase in phrases
@@ -720,16 +851,69 @@ class SemanticFamilyRegistry:
     def _admitted_implementation_digests():
         """Bind executable selection, materialization and disclosure code."""
         from vivacore.models import openai_compat
-        from . import compiler, runtime
+        from . import compiler, runtime, replay, bind, execute, evidence, validate, schema
+        from . import capabilities, admission, eval as evaluation, admission_fixture, capability_fixture
+        from ..tools import (ledger_aggregates, ledger_common,
+                             ledger_movements, ledger_vocabulary)
+        from .. import tools
+        from ..tools import registry as tool_registry
+        from ..tools import envelope, boundary, shape, runner_binding, runner_delivery, runner
+        from ..tools.compute import compute as compute_function
+        compute = inspect.getmodule(compute_function)
+        from .. import quantity, render
+        from ..ledger.projection import (movements, categories, merchants,
+                                        core, accounts, balances, rhythm, measurements,
+                                        positions, current_period, obligations, goals)
+        from ..ledger import streams, scenarios as scenario_calculators, movement_identity, events, postings
+        from ..tools import scenarios as scenario_tools
+        from ..tools import measurements as measurement_tools, projections as projection_tools
+        from ..ingest import brokerage
+        from vivacore.verify import arithmetic, normalize
+        from ..ledger import statements
+        from ..ledger import projection as projection_facade
 
         modules = {
             "intents": inspect.getmodule(SemanticFamilyRegistry),
             "compiler": compiler,
             "runtime": runtime,
+            "replay": replay,
             "openai_compat": openai_compat,
+            "capabilities": capabilities,
+            "scenario_calculators": scenario_calculators, "scenario_tools": scenario_tools,
+            "capability_fixture": capability_fixture, "admission_fixture": admission_fixture,
+            "admission_gate": admission, "admission_evaluation": evaluation,
+            "movement_identity": movement_identity, "typed_events": events, "posting_construction": postings,
+            "ledger_aggregates": ledger_aggregates,
+            "ledger_common": ledger_common,
+            "ledger_movements": ledger_movements,
+            "ledger_vocabulary": ledger_vocabulary,
+            "movement_projection": movements,
+            "category_projection": categories,
+            "merchant_projection": merchants,
+            "statement_register": statements,
+            "tool_registrations": tools,
+            "tool_registry": tool_registry,
+            "ledger_tools": tools.ledger_tools,
+            "projection_core": core,
+            "account_projection": accounts,
+            "balance_projection": balances,
+            "rhythm_projection": rhythm,
+            "financial_streams": streams,
+            "answer_binding": bind, "answer_execution": execute, "answer_evidence": evidence,
+            "answer_validation": validate, "answer_contract_schema": schema,
+            "figure_envelope": envelope, "claim_boundary": boundary, "claim_shape": shape,
+            "figure_binding": runner_binding, "answer_delivery": runner_delivery,
+            "evidence_ground": runner, "arithmetic_tool": compute,
+            "financial_quantity": quantity, "financial_rendering": render,
+            "projection_facade": projection_facade,
+            "measurements": measurements, "measurement_tools": measurement_tools,
+            "projection_tools": projection_tools, "position_projection": positions,
+            "current_period_projection": current_period, "obligation_projection": obligations,
+            "goal_projection": goals, "brokerage_normalization": brokerage,
+            "arithmetic_verification": arithmetic, "number_normalization": normalize,
         }
         return {
-            name: hashlib.sha256(inspect.getsource(module).encode()).hexdigest()[:16]
+            name: hashlib.sha256(pathlib.Path(inspect.getsourcefile(module)).read_bytes()).hexdigest()[:16]
             for name, module in modules.items()
         }
 
@@ -789,7 +973,7 @@ class SemanticFamilyRegistry:
 
     @staticmethod
     def _contains_token_sequence(haystack, needle):
-        """Require catalog words to occur contiguously and in catalog order."""
+        """Require the complete whole-word sequence in its original order."""
         width = len(needle)
         return any(haystack[index:index + width] == needle
                    for index in range(len(haystack) - width + 1))
@@ -833,19 +1017,25 @@ class SemanticFamilyRegistry:
             if allowed and value not in allowed:
                 raise ContractError(
                     f"semantic parameter {name!r} is not in the supplied entity catalog")
-        start, end = parameters.get("from"), parameters.get("to")
-        if bool(start) != bool(end):
-            raise ContractError("a semantic period needs both from and to")
-        for name in ("from", "to"):
-            if parameters.get(name):
+        if "horizon_days" in parameters:
+            value=parameters["horizon_days"]
+            if not re.fullmatch(r"[0-9]{1,3}",value) or not 1 <= int(value) <= 366:
+                raise ContractError("horizon_days must be an integer decimal string from 1 to 366")
+        for prefix in ("", "baseline_"):
+            start, end = parameters.get(prefix + "from"), parameters.get(prefix + "to")
+            if bool(start) != bool(end):
+                raise ContractError("a semantic period needs both from and to")
+            if start and start > end:
+                raise ContractError("semantic period starts after it ends")
+        for name, specification in properties.items():
+            if specification.get("format") == "date" and parameters.get(name):
                 try:
-                    datetime.date.fromisoformat(parameters[name])
+                    if datetime.date.fromisoformat(parameters[name]).isoformat() != parameters[name]:
+                        raise ValueError
                 except ValueError as exc:
                     raise ContractError(
                         f"semantic parameter {name!r} must be an ISO date"
                     ) from exc
-        if start and start > end:
-            raise ContractError("semantic period starts after it ends")
 
     @staticmethod
     def _parameter_sources_schema(family):
@@ -857,6 +1047,10 @@ class SemanticFamilyRegistry:
                 "verbatim", "catalog_selection", "calendar_month_start",
                 "calendar_month_end"]},
         }, ("source", "quote", "derivation"))
+        if family.id in {"savings_scenario","loan_payoff_scenario","cash_flow_scenario"}:
+            evidence["properties"]["source"]["enum"]=["question"]
+            evidence["properties"].pop("turn",None)
+            evidence["properties"]["derivation"]["enum"].append("decimal_numeric")
         names = family.parameter_schema.get("properties", {})
         required = tuple(family.parameter_schema.get("required", ()))
         return _object({name: evidence for name in names}, required)
@@ -908,7 +1102,7 @@ class SemanticFamilyRegistry:
                     raise ContractError(
                         f"semantic parameter {name!r} differs from its source quote")
                 continue
-            if name not in ("from", "to"):
+            if name not in ("from", "to", "baseline_from", "baseline_to"):
                 raise ContractError("only date edges may be derived")
             parsed = None
             for pattern in ("%B %Y", "%b %Y", "%Y-%m"):
@@ -931,7 +1125,29 @@ class SemanticFamilyRegistry:
                     f"semantic parameter {name!r} does not match its derived month")
 
     @staticmethod
+    def _scenario_detail(detail):
+        from ..tools.scenarios import scenario_request
+        held=dict(detail or {})
+        family=held.pop("scenario_family",None)
+        if family:
+            tag="scenario_starting_account_ambiguous" if held.get("tag")=="ambiguous_account" else held.get("tag")
+            text=scenario_request(tag,family)
+            held["question"]=text
+            if "label" in held: held["label"]=text
+        return held
+
+    @staticmethod
     def _validate_non_answer(kind, detail):
+        from ..tools.scenarios import SCENARIO_REQUESTS, FAMILIES
+        family=detail.get("scenario_family")
+        tag=detail.get("tag")
+        scoped=kind=="needs_assumption" and tag in SCENARIO_REQUESTS
+        if scoped:
+            if family not in SCENARIO_REQUESTS[tag]:
+                raise ContractError("scenario assumption needs a compatible explicitly selected family")
+        elif "scenario_family" in detail:
+            if kind!="clarify" or tag!="ambiguous_account" or family not in FAMILIES:
+                raise ContractError("scenario context is not valid for this ordinary outcome")
         if kind == "clarify":
             options = detail.get("options")
             if (detail.get("tag") not in CLARIFICATION_TAGS

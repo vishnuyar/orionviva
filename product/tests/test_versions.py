@@ -58,8 +58,8 @@ def test_the_manifest_and_the_files_agree():
     assert versions.audit(PACKAGE) == []
 
 
-def test_tools_v24_is_active_and_v23_remains_resolvable():
-    assert versions.active(PACKAGE, "tools") == "tools-v24"
+def test_tools_v25_is_active_and_v24_and_v23_remain_resolvable():
+    assert versions.active(PACKAGE, "tools") == "tools-v25"
     assert versions.path_of(PACKAGE, "tools-v23").is_file()
     assert versions.path_of(PACKAGE, "tools-v24").is_file()
     assert versions.manifest(PACKAGE)["released"]["tools-v24"] == \

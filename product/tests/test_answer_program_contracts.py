@@ -39,7 +39,7 @@ from viva.answer_program.schema import ANSWER_PROGRAM_VERSION, ContractError
 from viva.answer_program.schema import _generated_program_json_schema, program_json_schema
 from viva.answer_program.eval import (CASES, EvalCase, derive_semantic_oracle,
                                       evaluate_adversarial,
-                                      load_adversarial_cases, load_cases, score)
+                                      load_adversarial_cases, load_cases, load_canonical_cases, score)
 from viva.ledger import LedgerProjection
 from viva.session import Session
 from viva.tools import default_registry
@@ -83,7 +83,7 @@ def _fully_validated_forged_report(manifest):
 
 def _program(manifest):
     return {
-        "program_version": "answer-program-schema-v2",
+        "program_version": ANSWER_PROGRAM_VERSION,
         "capability_manifest_version": "capability-manifest-v1",
         "capability_manifest_digest": manifest.digest,
         "mode": "answer",
@@ -328,9 +328,10 @@ def test_native_compiler_adds_envelope_and_rejects_tool_argument_envelope():
             return _turn(self.raw, "select_named_account_balance")
 
     def compile_raw(raw):
-        return AnswerProgramCompiler(
-            Adapter(raw), ProgramValidator(manifest, policy), manifest, policy
-        ).compile(_context(manifest))
+        compiler = AnswerProgramCompiler(
+            Adapter(raw), ProgramValidator(manifest, policy), manifest, policy)
+        compiler.set_entity_catalog(registry.semantic_entities())
+        return compiler.compile(_context(manifest))
 
     valid = compile_raw(arguments)
     assert valid.ok
@@ -360,9 +361,11 @@ def test_compiler_repairs_a_malformed_semantic_request_before_any_read():
 
     adapter = Adapter()
     policy = AnswerResourcePolicy()
-    compiled = AnswerProgramCompiler(
+    compiler = AnswerProgramCompiler(
         adapter, ProgramValidator(manifest, policy), manifest, policy
-    ).compile(_context(manifest))
+    )
+    compiler.set_entity_catalog(registry.semantic_entities())
+    compiled = compiler.compile(_context(manifest))
 
     assert compiled.ok
     assert len(compiled.exchanges) == 2
@@ -386,8 +389,8 @@ def test_text_compiler_uses_the_same_compact_contract_and_one_call_on_success():
             return SimpleNamespace(
                 text=json.dumps({
                     "request_version": SEMANTIC_REQUEST_VERSION,
-                    "catalog_digest": SemanticFamilyRegistry().catalog_digest,
-                    "entity_catalog_digest": SemanticFamilyRegistry()
+                    "catalog_digest": SemanticFamilyRegistry(registry.semantic_entities()).catalog_digest,
+                    "entity_catalog_digest": SemanticFamilyRegistry(registry.semantic_entities())
                     .entity_catalog_digest,
                     "outcome": "request", "family": "named_account_balance",
                     "parameters": {"account_phrase": {"grounded_phrase": True}},
@@ -401,9 +404,11 @@ def test_text_compiler_uses_the_same_compact_contract_and_one_call_on_success():
 
     adapter = Adapter()
     policy = AnswerResourcePolicy()
-    compiled = AnswerProgramCompiler(
+    compiler = AnswerProgramCompiler(
         adapter, ProgramValidator(manifest, policy), manifest, policy
-    ).compile(_context(manifest))
+    )
+    compiler.set_entity_catalog(registry.semantic_entities())
+    compiled = compiler.compile(_context(manifest))
     assert compiled.ok and len(compiled.exchanges) == 1
     assert "Reviewed semantic catalog" in adapter.prompts[0]
     assert "financial-query-v1" not in adapter.prompts[0]
@@ -630,7 +635,7 @@ def test_session_capture_records_program_validation_execution_and_outcome():
     assert turn.result.status == "answered"
     assert len(log.events) == 1
     payload = json.loads(log.events[0].body["response_text"])
-    assert payload["program"]["program_version"] == "answer-program-schema-v2"
+    assert payload["program"]["program_version"] == ANSWER_PROGRAM_VERSION
     assert payload["validation"]["defects"] == []
     assert payload["execution"]["nodes"][0]["status"] == "completed"
     assert payload["verdict"]["status"] == "answered"
@@ -644,11 +649,11 @@ def test_session_capture_records_program_validation_execution_and_outcome():
             "financial_query_schema", "capability_manifest", "persona",
             "tools"} <= set(
                 payload["prompt_versions"])
-    assert payload["prompt_versions"]["tools"].startswith("tools-v24@")
+    assert payload["prompt_versions"]["tools"].startswith("tools-v25@")
 
 
 def test_the_frozen_admission_corpus_has_35_exact_turns_and_paraphrases():
-    cases = load_cases()
+    cases = load_canonical_cases()
     exact = [case for case in cases if case.exact]
     assert len(exact) == 35
     assert len({case.exact_group for case in exact}) == 7
@@ -686,7 +691,7 @@ def test_version_4_corpus_keeps_every_version_3_question_unchanged():
 
 
 def test_all_73_frozen_cases_derive_real_oracles_before_scoring_a_bad_result():
-    cases = load_cases()
+    cases = load_canonical_cases()
     oracle_set, manifests = preflight_live_suite(
         cases=cases, registry_factory=admission_registry,
         policy=AnswerResourcePolicy(), locale="en-US")
@@ -728,7 +733,7 @@ def test_admission_fixture_is_fresh_and_its_labels_never_branch_runtime_reads():
 
 
 def test_late_broken_oracles_are_all_reported_before_compiler_or_provider_use():
-    cases = list(load_cases()[-4:])
+    cases = list(load_canonical_cases()[-4:])
     broken_indexes = (0, 3)
     for index in broken_indexes:
         cases[index] = replace(
@@ -902,7 +907,7 @@ def test_semantic_scoring_rejects_an_unsupported_financial_figure():
                      "quantity": "balance", "dated": "2026-01-31",
                      "subject_record_id": "chk"}]})
     manifest = CapabilityManifest.from_registry(_registry())
-    families = SemanticFamilyRegistry()
+    families = SemanticFamilyRegistry(_registry().semantic_entities())
     request = SemanticRequest(
         case.expected_family, dict(case.expected_parameters),
         tuple(case.expected_claims), families.catalog_digest)
@@ -931,7 +936,7 @@ def _score_fixture_interpretation(exact_group, parameters, claims):
     policy = AnswerResourcePolicy()
     oracle = derive_semantic_oracle(case, registry, manifest, policy,
                                     locale="en-US")
-    families = SemanticFamilyRegistry()
+    families = SemanticFamilyRegistry(registry.semantic_entities())
     semantic = SemanticOutcome("request", SemanticRequest(
         case.expected_family, parameters, tuple(claims),
         families.catalog_digest))
@@ -979,7 +984,7 @@ def test_a_refusal_is_missing_not_confidently_wrong():
     manifest = CapabilityManifest.from_registry(registry)
     policy = AnswerResourcePolicy()
     oracle = derive_semantic_oracle(case, registry, manifest, policy)
-    families = SemanticFamilyRegistry()
+    families = SemanticFamilyRegistry(registry.semantic_entities())
     semantic = SemanticOutcome("request", SemanticRequest(
         case.expected_family, dict(case.expected_parameters),
         case.expected_claims, families.catalog_digest))
@@ -996,6 +1001,93 @@ def test_a_refusal_is_missing_not_confidently_wrong():
     assert "wrong_keyed_figure" not in measured.defects
     assert measured.confidently_wrong == 0
     assert measured.financial_integrity_errors == 0
+
+
+
+@pytest.mark.parametrize(("tool", "arguments", "status"), [
+    ("semantic_clarification", {
+        "tag": "ambiguous_movement", "question": "Which movement?",
+        "options": []}, "needs_clarification"),
+    ("semantic_assumption", {
+        "tag": "define_scope", "label": "Scope",
+        "question": "What scope do you mean?", "type": "user_stipulation"},
+     "needs_assumption"),
+    ("semantic_outside_domain", {}, "outside_domain"),
+])
+def test_safe_non_answer_programs_spend_availability_without_integrity_errors(
+        tool, arguments, status):
+    from viva.answer_program.runtime import AnswerProgramRuntime
+
+    case = next(item for item in load_canonical_cases()
+                if item.id == "classification-explanation:paraphrase:1")
+    registry = admission_registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+    oracle = derive_semantic_oracle(case, registry, manifest, policy)
+
+    class Adapter:
+        def converse(self, messages, tools):
+            return _turn(arguments, tool)
+
+    runtime = AnswerProgramRuntime(
+        AnswerProgramCompiler(
+            Adapter(), ProgramValidator(manifest, policy), manifest, policy),
+        ProgramExecutor(registry, policy), DeterministicBinder(registry)).answer(
+            QuestionContext(question=case.question,
+                            capability_manifest_digest=manifest.digest))
+    assert runtime.result.status == status
+    assert runtime.result.figures == []
+    assert runtime.execution is None
+    assert runtime.compilation.exchanges[0].parse_ok
+    measured = score(replace(case, oracle=oracle), runtime)
+
+    assert not measured.passed
+    assert "wrong_status" in measured.defects
+    assert "missing_keyed_figure" in measured.defects
+    assert "wrong_lowered_family" not in measured.defects
+    assert measured.confidently_wrong == 0
+    assert measured.financial_integrity_errors == 0
+
+    cases = load_canonical_cases()
+    scores = [measured if item.id == case.id else
+              CaseScore(item.id, True, True, (), 0, 0) for item in cases]
+    report = evaluate_admission(
+        scores, attempts=[1] * len(cases),
+        first_attempt_valid=[True] * len(cases),
+        within_repair_valid=[True] * len(cases),
+        exact_first_attempt_clean=[True] * 35,
+        thresholds=MINIMUM_ADMISSION_THRESHOLDS)
+    assert report.admitted
+    assert report.metrics["answerable_completion"] == 72 / 73
+    assert report.metrics["financial_integrity_errors"] == 0
+
+
+@pytest.mark.parametrize(("status", "figures"), [
+    ("answered", []),
+    ("partial", []),
+    ("needs_clarification", [{
+        "value": "1.00", "currency": "USD", "quantity": "movement",
+        "kind": "financial", "record_ids": ["synthetic-record"]}]),
+])
+def test_a_non_answer_program_cannot_hide_delivered_answers_or_figures(
+        status, figures):
+    case = replace(load_cases()[0], oracle={
+        "figures": [], "exact_figures": False})
+    families = SemanticFamilyRegistry()
+    semantic = SemanticOutcome("clarify", detail={
+        "tag": "ambiguous_account", "question": "Which account?",
+        "options": []})
+    program = families.lower(
+        semantic, CapabilityManifest.from_registry(admission_registry()))
+    result = SimpleNamespace(status=status, outcome_tag="ambiguous_account",
+                             figures=figures, text="Which account?")
+    measured = score(case, SimpleNamespace(
+        result=result, compilation=SimpleNamespace(
+            exchanges=[SimpleNamespace(defect={})],
+            semantic_outcome=semantic, program=program)))
+    assert not measured.passed
+    assert "wrong_lowered_family" in measured.defects
+    assert measured.financial_integrity_errors >= 1
 
 
 def test_live_admission_report_is_bound_to_measured_identity_and_contracts(
@@ -1133,7 +1225,7 @@ def test_admission_oracle_is_derived_from_the_fresh_fixture_not_a_score():
 def test_all_six_families_and_separate_inventory_use_the_one_runtime():
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
-    families = SemanticFamilyRegistry()
+    families = SemanticFamilyRegistry(registry.semantic_entities())
     samples = {
         "named_account_balance": {"account_phrase": "Everyday Checking"},
         "needs_attention": {},
@@ -1146,7 +1238,7 @@ def test_all_six_families_and_separate_inventory_use_the_one_runtime():
             "to": "2026-01-31"},
         "account_inventory": {},
     }
-    assert len(families.supported_ids) == 6
+    assert set(samples) - {"account_inventory"} <= set(families.supported_ids)
     assert {item["id"] for item in manifest.known_intents} == set(families.ids)
     for family_id, parameters in samples.items():
         family_registry = registry
@@ -1158,6 +1250,13 @@ def test_all_six_families_and_separate_inventory_use_the_one_runtime():
                 closing_balance_observed(
                     account, "125.00", "2026-01-31",
                     Provenance("card-doc", 1, "balance")),
+            ]), today="2026-03-01")
+        if family_id == "account_inventory":
+            family_registry = default_registry(LedgerProjection([
+                *_events(),
+                closing_balance_observed(
+                    "card", "125.00", "2026-01-31",
+                    Provenance("example-inventory-card-doc", 1, "balance")),
             ]), today="2026-03-01")
         family = families.get(family_id)
         semantic = SemanticOutcome("request", SemanticRequest(
@@ -1306,7 +1405,7 @@ def test_compiler_can_choose_typed_semantics_without_a_second_path():
 
     class Adapter:
         def converse(self, messages, tools):
-            assert len(tools) == 10
+            assert len(tools) == len(SemanticFamilyRegistry().supported_ids) + 4
             return _turn(requested, "select_category_spending_period")
 
     policy = AnswerResourcePolicy()
@@ -1436,7 +1535,7 @@ def test_admission_is_absolute_and_profiles_cannot_publish_unmeasured_models():
 
 
 def test_admission_thresholds_safe_availability_misses_at_ninety_five_percent():
-    cases = load_cases()
+    cases = load_canonical_cases()
     scores = [CaseScore(case.id, True, True, (), 0, 0) for case in cases]
     scores[0] = CaseScore(
         cases[0].id, True, False,
@@ -1580,15 +1679,16 @@ def test_promoted_semantic_prompt_invalidates_old_profiles(monkeypatch):
                         lambda _measured: report)
     profile = admitted_profile(object(), manifest=manifest)
 
-    assert versions.active(PACKAGE, "semantic_request") == "semantic-request-v9"
+    assert versions.active(PACKAGE, "semantic_request") == "semantic-request-v11"
     assert versions.active(PACKAGE, "semantic_request_retry") == \
-        "semantic-request-retry-v8"
+        "semantic-request-retry-v9"
     assert profile.prompt_digest == current_contract_digests(
         manifest, AnswerResourcePolicy())["compiler_prompt"]
     assert profile.prompt_digest != promptstore.digest(
         PROMPTS, "semantic-request-v7")
     assert check_profile(profile, manifest, report).passed
-    for old_version in ("semantic-request-v7", "semantic-request-v8"):
+    for old_version in ("semantic-request-v7", "semantic-request-v8",
+                        "semantic-request-v9"):
         old_profile = replace(
             profile, prompt_version=old_version,
             prompt_digest=promptstore.digest(PROMPTS, old_version))
@@ -1606,7 +1706,8 @@ def test_fixture_and_oracle_contracts_bind_report_profile_build_and_bundle(
     report = _fully_validated_forged_report(manifest)
     contracts = dict(report.contract_digests)
 
-    assert report.admission_fixture_digest == admission_fixture_digest()
+    from viva.answer_program.admission_fixture import expanded_fixture_digest
+    assert report.admission_fixture_digest == expanded_fixture_digest()
     assert report.oracle_set_digest == contracts["oracle_set"]
     assert not validate_admission_report(report)
     assert admission_report_digest(report) != admission_report_digest(
@@ -1664,7 +1765,7 @@ def test_semantic_admission_oracle_rejects_wrong_financial_identity(field, wrong
                 "subject_record_id": "chk"}
     expected[field] = wrong
     case = replace(case, oracle={"figures": [expected]})
-    families = SemanticFamilyRegistry()
+    families = SemanticFamilyRegistry(_registry().semantic_entities())
     request = SemanticRequest(
         case.expected_family, case.expected_parameters, case.expected_claims,
         families.catalog_digest)
@@ -1886,3 +1987,71 @@ def test_candidate_reports_setup_failure_without_provider_details(
     assert "private provider detail" not in output
     assert json.loads(output) == {"status": "failed", "error_type": error_name}
     assert target.read_text() == "previous approval"
+
+
+def test_semantic_replay_authenticates_actual_catalog_before_reads():
+    registry = _registry()
+    families = SemanticFamilyRegistry(registry.semantic_entities())
+    manifest = CapabilityManifest.from_registry(registry)
+    semantic = SemanticRequest('named_account_balance', {'account_phrase': 'chk'},
+                               ('balance',), families.catalog_digest,
+                               parameter_sources={'account_phrase': {
+                                   'source': 'question', 'quote': 'checking',
+                                   'derivation': 'catalog_selection'}},
+                               entity_catalog_digest=families.entity_catalog_digest)
+    payload = {'question': 'checking balance?', 'semantic_request': semantic.to_dict(),
+               'program': families.lower(SemanticOutcome('request', semantic), manifest).to_dict()}
+    assert replay_capture(payload, registry)['replayed']
+    changed = registry.semantic_entities()
+    changed['accounts'][0]['name'] = 'Different Recorded Label'
+    registry.set_semantic_entity_provider(lambda: changed)
+    registry.call = lambda *args, **kwargs: pytest.fail('catalog mismatch must not read finances')
+    rejected = replay_capture(payload, registry)
+    assert rejected == {'replayed': False, 'defects': [{'tag': 'entity_catalog_digest_mismatch'}]}
+
+
+def test_replay_source_is_part_of_the_admitted_implementation(monkeypatch):
+    from viva.answer_program import replay
+    import inspect
+    families = SemanticFamilyRegistry()
+    profile, manifest, report = _identity_test_profile(monkeypatch)
+    assert check_profile(profile, manifest, report).passed
+    before = families._admitted_implementation_digests()
+    assert 'replay' in before
+    from pathlib import Path
+    getsource = Path.read_bytes
+    monkeypatch.setattr(Path, 'read_bytes', lambda path:
+                        getsource(path) + b'\n# changed source\n' if str(path)==inspect.getsourcefile(replay) else getsource(path))
+    after = families._admitted_implementation_digests()
+    assert after['replay'] != before['replay']
+    assert not check_profile(profile, manifest, report).passed
+    assert 'deterministic_builders_digest_mismatch' in check_profile(profile, manifest, report).failures
+    assert all(after[name] == digest for name, digest in before.items() if name != 'replay')
+
+
+@pytest.mark.parametrize('change', ['kind', 'membership', 'missing', 'coverage'])
+def test_semantic_replay_catalog_changes_refuse_before_reads(change):
+    registry = _registry()
+    catalog = registry.semantic_entities()
+    families = SemanticFamilyRegistry(catalog)
+    semantic = SemanticRequest('named_account_balance', {'account_phrase': 'chk'},
+                               ('balance',), families.catalog_digest,
+                               parameter_sources={'account_phrase': {
+                                   'source': 'question', 'quote': 'checking',
+                                   'derivation': 'catalog_selection'}},
+                               entity_catalog_digest=families.entity_catalog_digest)
+    manifest = CapabilityManifest.from_registry(registry)
+    payload = {'semantic_request': semantic.to_dict(), 'question': 'checking balance?',
+               'program': families.lower(SemanticOutcome('request', semantic), manifest).to_dict()}
+    if change == 'kind':
+        next(row for row in catalog['accounts'] if row['id'] == 'chk')['kind'] = 'liability'
+    elif change == 'membership':
+        catalog['accounts'] = [row for row in catalog['accounts'] if row['id'] != 'chk']
+    elif change == 'missing':
+        catalog = {}
+    else:
+        catalog['coverage']['accounts']['complete'] = False
+    registry.set_semantic_entity_provider(lambda: catalog)
+    registry.call = lambda *args, **kwargs: pytest.fail('catalog changes must not read finances')
+    assert replay_capture(payload, registry) == {
+        'replayed': False, 'defects': [{'tag': 'entity_catalog_digest_mismatch'}]}

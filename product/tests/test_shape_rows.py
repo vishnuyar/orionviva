@@ -1,7 +1,7 @@
 """Shape rows contracts."""
 
 from _shape_test_support import *
-from test_shape_claims import _figure_id, several
+from test_shape_claims import _figure_id, several, measured_several
 
 # ------------------------------------------------- more than one of a thing
 
@@ -563,7 +563,7 @@ def _lines_of(text: str) -> list:
 
 
 def test_a_balance_per_account_is_a_block_that_makes_no_claim_of_its_own(
-        several):
+        measured_several):
     """The balances read names one slice per figure, so it fills a block: one
     line per account, each written as the account it is.
 
@@ -576,7 +576,7 @@ def test_a_balance_per_account_is_a_block_that_makes_no_claim_of_its_own(
                  _script(_shape(*_PER_ACCOUNT_LIST),
                          ("query_ledger", {"entity": "balances"}),
                          bind=_bind_the_read),
-                 several)
+                 measured_several)
     assert result.answered, result.detail
     assert len(_lines_of(result.text)) == 2, result.text
     assert len(result.figures) == 2

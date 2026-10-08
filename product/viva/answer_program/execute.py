@@ -300,8 +300,12 @@ class ProgramExecutor:
             values["unique_entity_key"] = result.identifiers[0].get("id", "")
         if isinstance(result.data, dict):
             for key, value in result.data.items():
-                if isinstance(key, str) and isinstance(value, (str, int, bool)):
+                if key != "unique_figure_id" and isinstance(key, str) and isinstance(value, (str, int, bool)):
                     values[key] = value
+        if (result.ok and len(result.figures)==1
+                and isinstance(result.figures[0].get("id"),str)
+                and result.figures[0]["id"].strip()):
+            values["unique_figure_id"]=result.figures[0]["id"]
         return values
 
 

@@ -39,12 +39,12 @@ def _query_balances(proj, filters: dict) -> ToolResult:
         else:
             infos = [i for i in infos if i.kind == filters["kind"]]
     selected_infos = list(infos)
-    # An asserted loan account exists, but until a balance or dated holding has
-    # been observed its replay value of zero is only the additive identity. It
-    # is not evidence that nothing is owed. Keep such accounts in the boundary
-    # and identifiers, but emit no monetary figure for them.
+    # An account's existence does not establish a debt measurement. An
+    # unmeasured liability's replay zero is only the additive identity, whatever
+    # its origin. Keep it in the selected population and identifiers without a
+    # monetary row. Asserted held accounts retain the same measurement check.
     infos = [i for i in infos
-             if i.origin != "asserted"
+             if (i.origin != "asserted" and i.kind != LIABILITY)
              or _has_measured_value(proj, i.account)]
     if "account" in filters and selected_infos and not infos:
         return refusal(

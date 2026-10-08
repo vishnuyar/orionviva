@@ -8,11 +8,11 @@ import json
 import pathlib
 from dataclasses import dataclass
 
-CASES = pathlib.Path(__file__).resolve().parent.parent / "evals" / "semantic-request-cases-v4.json"
-LEGACY_CASES = (pathlib.Path(__file__).resolve().parent.parent / "evals"
-                / "answer-program-cases-v1.json")
-ADVERSARIAL_CASES = (pathlib.Path(__file__).resolve().parent.parent / "evals"
-                     / "answer-program-adversarial-v1.json")
+from vivacore import versions
+PACKAGE = pathlib.Path(__file__).resolve().parent.parent
+CASES = versions.path_of(PACKAGE, versions.active(PACKAGE,"semantic_request_cases"))
+LEGACY_CASES = versions.path_of(PACKAGE, versions.active(PACKAGE,"answer_program_cases"))
+ADVERSARIAL_CASES = versions.path_of(PACKAGE, versions.active(PACKAGE,"answer_program_adversarial"))
 
 
 @dataclass(frozen=True)
@@ -70,6 +70,11 @@ class SemanticEvalCase:
     expected_outcome_tag: str = ""
     forbidden_claims: tuple[str, ...] = ()
     max_model_attempts: int = 1
+    case_marker: str = ""
+    fixture_selector: str = ""
+    read_day: str = ""
+    parameter_sources: dict = None
+    supplement_contract: dict = None
 
     @property
     def required_claims(self) -> tuple[str, ...]:
@@ -77,9 +82,9 @@ class SemanticEvalCase:
         return self.expected_claims
 
 
-def load_cases(path=CASES) -> tuple[SemanticEvalCase, ...]:
+def load_canonical_cases(path=CASES) -> tuple[SemanticEvalCase, ...]:
     raw = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-    if raw.get("version") != "semantic-request-cases-v4":
+    if raw.get("version") != versions.active(PACKAGE,"semantic_request_cases"):
         raise ValueError("unsupported semantic-request case version")
     repetitions = int(raw.get("exact_repetitions") or 0)
     if repetitions != 5:
@@ -137,6 +142,61 @@ def load_cases(path=CASES) -> tuple[SemanticEvalCase, ...]:
     return held
 
 
+
+from vivacore import versions
+SUPPLEMENT_VERSION = versions.active(pathlib.Path(__file__).resolve().parent.parent, "financial_capability_cases")
+SUPPLEMENT_CASES = versions.path_of(pathlib.Path(__file__).resolve().parent.parent, SUPPLEMENT_VERSION)
+
+
+def load_supplement_cases():
+    from vivacore import versions
+    path=versions.path_of(SUPPLEMENT_CASES.parent.parent,SUPPLEMENT_VERSION)
+    raw=json.loads(path.read_text())
+    pinned=versions.manifest(SUPPLEMENT_CASES.parent.parent)["released"].get(SUPPLEMENT_VERSION)
+    if corpus_digest(path)!=pinned or raw.get("version")!=SUPPLEMENT_VERSION:
+        raise ValueError("supplemental capability corpus authentication failed")
+    cases=[]
+    for row in raw["cases"]:
+        marker=row["case_marker"]; selector=row["fixture_selector"]; day=row["read_day"]
+        if marker!=SUPPLEMENT_VERSION or raw["fixture_selectors"].get(selector,{}).get("read_day")!=day:
+            raise ValueError("supplemental fixture selector or reference day differs")
+        cases.append(SemanticEvalCase(id=row["id"],exact_group=row["exact_group"],exact=row["exact"],
+            question=row["question"],prior_turns=tuple((t["question"],t["answer"]) for t in row["prior_turns"]),
+            answerability_status=row["answerability_status"],expected_family=row["family"],
+            expected_parameters=copy.deepcopy(row["parameters"]),expected_claims=tuple(row["required_claims"]),
+            allowed_claims=tuple(row["allowed_claims"]),oracle_key=row["oracle_key"],
+            expected_outcome_tag=row["expected_outcome_tag"],max_model_attempts=row["max_model_attempts"],
+            case_marker=marker,fixture_selector=selector,read_day=day,
+            parameter_sources=copy.deepcopy(row["parameter_sources"]),supplement_contract=copy.deepcopy(row)))
+    if len(cases)!=50 or len({case.id for case in cases})!=50:
+        raise ValueError("the mandatory capability supplement must retain all fifty keyed cases")
+    return tuple(cases)
+
+
+def load_cases(path=None):
+    if path is not None:
+        return load_canonical_cases(path)
+    return (*load_canonical_cases(),*load_supplement_cases())
+
+
+def resolve_case_fixture(case, *, registry_factory=None, today=""):
+    from .admission_fixture import admission_registry, ADMISSION_TODAY
+    from .capability_fixture import capability_registry, READ_DAY
+    if case.case_marker or case.id.startswith("fc-v1:"):
+        expected=next((item for item in load_supplement_cases() if item.id==case.id),None)
+        fields=("case_marker","fixture_selector","read_day","question","prior_turns","answerability_status",
+                "expected_family","expected_parameters","expected_claims","allowed_claims","oracle_key",
+                "expected_outcome_tag","max_model_attempts","parameter_sources","supplement_contract")
+        if expected is None or any(getattr(case,key)!=getattr(expected,key) for key in fields) or case.read_day!=READ_DAY:
+            raise ValueError("supplemental case/fixture/read-day authentication failed")
+        return (lambda:capability_registry(case.fixture_selector)),READ_DAY
+    return registry_factory or admission_registry, today or ADMISSION_TODAY
+
+
+def combined_corpus_digest():
+    return hashlib.sha256((corpus_digest(CASES)+corpus_digest(SUPPLEMENT_CASES)).encode()).hexdigest()[:16]
+
+
 def corpus_digest(path) -> str:
     return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()[:16]
 
@@ -157,7 +217,7 @@ class AdversarialScore:
 
 def load_adversarial_cases(path=ADVERSARIAL_CASES) -> tuple[AdversarialCase, ...]:
     raw = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-    if raw.get("version") != "answer-program-adversarial-v1":
+    if raw.get("version") != versions.active(PACKAGE,"answer_program_adversarial"):
         raise ValueError("unsupported answer-program adversarial case version")
     cases = tuple(AdversarialCase(str(item["id"]), dict(item["mutation"]),
                                   str(item["expected"]))
@@ -278,6 +338,8 @@ FINANCIAL_INTEGRITY_DEFECTS = frozenset({
 def derive_semantic_oracle(case: SemanticEvalCase, registry, manifest, policy,
                            *, locale: str = "") -> dict:
     """Build a keyed oracle locally, without consulting the candidate model."""
+    if case.case_marker:
+        return derive_supplement_oracle(case,registry,manifest,policy,locale=locale)
     if not case.oracle_key:
         raise ValueError(f"admission case {case.id!r} has no oracle key")
     if case.answerability_status != "answered":
@@ -290,7 +352,7 @@ def derive_semantic_oracle(case: SemanticEvalCase, registry, manifest, policy,
                           SemanticRequest)
     from .validate import ProgramValidator
 
-    families = SemanticFamilyRegistry()
+    families = SemanticFamilyRegistry(registry.semantic_entities())
     family = families.get(case.expected_family)
     if family is None or not family.runtime_selectable:
         raise ValueError(
@@ -328,6 +390,8 @@ def derive_semantic_oracle(case: SemanticEvalCase, registry, manifest, policy,
 
 
 def _score_semantic(case: SemanticEvalCase, runtime_result) -> CaseScore:
+    if case.case_marker:
+        return _score_supplement(case,runtime_result)
     compilation = runtime_result.compilation
     exchanges = tuple(getattr(compilation, "exchanges", ()) or ())
     if (not exchanges or all((getattr(exchange, "defect", {}) or {}).get("tag")
@@ -395,7 +459,10 @@ def _score_semantic(case: SemanticEvalCase, runtime_result) -> CaseScore:
                 defects.append("unrequested_answer_effect")
         if program is None:
             defects.append("no_lowered_program")
-        elif program.question_kind != case.expected_family:
+        elif (program.question_kind != case.expected_family
+              and (getattr(program, "mode", "answer") == "answer"
+                   or result.status in ("answered", "partial")
+                   or getattr(result, "figures", ()))):
             defects.append("wrong_lowered_family")
 
     figures = list(getattr(result, "figures", ()) or ())
@@ -674,6 +741,173 @@ def score(case: EvalCase, runtime_result) -> CaseScore:
 
 __all__ = ["CASES", "LEGACY_CASES", "ADVERSARIAL_CASES", "EvalCase",
            "SemanticEvalCase", "CaseScore",
-           "AdversarialCase", "AdversarialScore", "load_cases",
+           "AdversarialCase", "AdversarialScore", "load_cases", "load_canonical_cases",
+           "load_supplement_cases", "resolve_case_fixture", "combined_corpus_digest",
            "load_adversarial_cases", "corpus_digest",
            "evaluate_adversarial", "derive_semantic_oracle", "score"]
+
+
+def _supplement_figures(case,result):
+    rows=list(getattr(result,'transcript',()) or ())
+    if case.supplement_contract['expected_figure_scope']=='scenario_summary_output':
+        rows=[row for row in rows if row.get('tool')=='simulate_scenario']
+    return [figure for row in rows if row.get('ok') for figure in row.get('figures',())]
+
+
+def _supplement_figure_matches(actual,expected):
+    from decimal import Decimal, InvalidOperation
+    try:
+        if Decimal(str(actual.get('value'))) != Decimal(expected['value']): return False
+    except (InvalidOperation,ValueError,TypeError): return False
+    for key in ('quantity','kind','currency','dated'):
+        if str(actual.get(key,''))!=str(expected.get(key,'')): return False
+    if actual.get('what')!=expected.get('what_exact'): return False
+    if actual.get('grade','')!=expected.get('required_grade',''): return False
+    if sorted(actual.get('record_ids',()))!=sorted(expected['required_sources']['record_ids']): return False
+    boundary=actual.get('boundary',{})
+    required=expected.get('required_boundary',{})
+    if bool(boundary.get('whole'))!=required.get('whole'): return False
+    for key in ('selected','cut'):
+        if sorted(boundary.get(key,[]),key=lambda row:row['kind'])!=sorted(required.get(key+'_exact',[]),key=lambda row:row['kind']): return False
+    if 'period' in required:
+        span={'kind':'period','value':required['period']['from'],'to':required['period']['to']}
+        if span not in boundary.get('selected',[]): return False
+    return True
+
+
+def _supplement_defects(case,result,semantic,program):
+    row=case.supplement_contract
+    defects=[]
+    if result.status!=case.answerability_status: defects.append('wrong_status')
+    if result.outcome_tag!=case.expected_outcome_tag: defects.append('wrong_outcome_tag')
+    request=getattr(semantic,'request',None)
+    if case.expected_family:
+        if (request is None or request.family!=case.expected_family or program is None
+                or program.mode!='answer' or program.question_kind!=case.expected_family):
+            defects.append('wrong_family')
+        else:
+            for key,value in case.expected_parameters.items():
+                if key not in {'account_phrase','category','merchant','movement_phrase'} and request.parameters.get(key)!=value:
+                    defects.append('wrong_scenario_or_period_premise');break
+            if not set(case.required_claims)<=set(request.requested_claims) or not set(request.requested_claims)<=set(case.allowed_claims):
+                defects.append('unrequested_answer_effect')
+    else:
+        if semantic is None or semantic.kind!='needs_assumption' or request is not None or program is None or program.mode!='needs_assumption':
+            defects.append('wrong_non_answer_semantics')
+        detail=getattr(semantic,'detail',{}) or {}
+        if detail.get('tag')!=case.expected_outcome_tag or any(detail.get(key)!=value for key,value in row.get('expected_semantic_detail',{}).items()):
+            defects.append('wrong_non_answer_tag')
+    actual=_supplement_figures(case,result)
+    unmatched=set(range(len(actual)))
+    for expected in row['expected_figures']:
+        found=next((i for i in unmatched if _supplement_figure_matches(actual[i],expected)),None)
+        if found is None: defects.append('missing_keyed_figure')
+        else: unmatched.remove(found)
+    if unmatched and row['exact_figures']: defects.append('wrong_keyed_figure')
+    if any(f.get('kind') in {'financial','computed'} and not f.get('record_ids') for f in actual): defects.append('unsupported_figure')
+    delivered=list(result.figures or ())
+    if any(not any(_supplement_figure_matches(f,e) for e in row['expected_figures']) for f in delivered):
+        defects.append('unexpected_keyed_figure')
+    text=str(result.text or '')
+    delivery=row.get('expected_delivery_constraints',{})
+    for dated in delivery.get('required_actual_dates',[]):
+        if dated not in text: defects.append('wrong_period_semantics')
+    if delivery.get('payoff_date') and delivery['payoff_date'] not in text: defects.append('wrong_period_semantics')
+    if delivery.get('requires_whole_scenario_resubmission_guidance') and 'Resubmit the whole scenario.' not in text:
+        defects.append('missing_caveat')
+    if delivery.get('no_raw_internal_codes') and any(token in text for token in ('measured_not_confirmed','balance_freshness_unconfirmed','scenario_monthly_','dependency_failed')):
+        defects.append('missing_caveat')
+    constraints=row.get('expected_receipt_constraints',{})
+    scenario=next((item for item in getattr(result,'transcript',()) if item.get('tool')=='simulate_scenario' and item.get('ok')),None)
+    if constraints.get('current_question_only') and result.status=='answered':
+        data=scenario.get('data',{}) if scenario else {}
+        receipt=data.get('assumption_receipt',{})
+        for key in ('current_question_only','hypothetical_grades_empty','parameter_role_binding','whole_positive_current_question','unique_complete_role_clauses','forbid_prior_assistant_scalars','currency_header','declared_start_date','declared_months','exact_numeric_inputs','exact_proofs','starting_account_clause'):
+            if key in constraints and receipt.get(key)!=constraints[key]: defects.append('scenario_premise_receipt_mismatch')
+        if any(f.get('grade') for f in actual if f.get('kind')=='hypothetical'): defects.append('scenario_grade_amplification')
+        observed=receipt.get('observed_start',{})
+        recorded=constraints.get('recorded_start',{})
+        for key,value in recorded.items():
+            if key=='account_id':
+                if observed.get('boundary',{}).get('selected')!=[{'kind':'account','value':value}]: defects.append('scenario_measured_start_mismatch')
+            elif key=='raw_observed':
+                if observed.get('value')!=value: defects.append('scenario_measured_start_mismatch')
+            elif key=='modeled_cents':
+                start_name={'savings_scenario':'initial_amount','cash_flow_scenario':'initial_cash','loan_payoff_scenario':'principal'}[case.expected_family]
+                if data.get('modeled_inputs',{}).get(start_name)!=value: defects.append('scenario_measured_start_mismatch')
+            elif key in {'quantity','kind','currency','dated','grade','record_ids'}:
+                if observed.get(key)!=value: defects.append('scenario_measured_start_mismatch')
+            elif key=='origin' and receipt.get('recorded_start',{}).get('origin')!=value: defects.append('scenario_measured_start_mismatch')
+            elif key=='claim_date_separate_from_scenario_start' and receipt.get(key)!=value: defects.append('scenario_measured_start_mismatch')
+        structured=row.get('expected_structured_constraints',{}) or {}
+        aliases={'final':'final_balance' if case.expected_family=='savings_scenario' else 'final_cash',
+                 'principal':'contributed_principal','remaining':'remaining_debt','interest':'interest_paid','repayments':'repayments_paid',
+                 'minimum':'minimum_cash','first_negative':'first_negative_date','final_date':'horizon_date'}
+        modeled_alias={'modeled_initial':'initial_amount','modeled_contribution':'monthly_contribution','modeled_principal':'principal','modeled_payment':'monthly_payment'}
+        for key,value in structured.items():
+            if key=='refusal' or key=='refusal_tag': continue
+            if key in modeled_alias: actual_value=data.get('modeled_inputs',{}).get(modeled_alias[key])
+            elif key in {'trajectory','endpoints'}: actual_value=[r.get('balance') for r in data.get('trajectory',[])]
+            elif key=='endpoint_dates': actual_value=[r.get('date') for r in data.get('trajectory',[])]
+            elif key=='measurement_date': actual_value=observed.get('dated')
+            else: actual_value=data.get(aliases.get(key,key))
+            if value is None and actual_value=='': actual_value=None
+            if actual_value!=value: defects.append('scenario_structured_mismatch')
+    return tuple(dict.fromkeys(defects))
+
+
+def derive_supplement_oracle(case,registry,manifest,policy,*,locale=''):
+    """Check implementation against independently frozen literal requirements."""
+    from types import SimpleNamespace
+    from .schema import QuestionContext
+    from .intents import SemanticFamilyRegistry, SemanticOutcome
+    from .validate import ProgramValidator
+    from .execute import ProgramExecutor
+    from .bind import DeterministicBinder
+    from .runtime import AnswerProgramRuntime
+    from ..tools.scenarios import scenario_request
+    resolve_case_fixture(case)
+    families=SemanticFamilyRegistry(registry.semantic_entities())
+    context=QuestionContext(question=case.question,today=case.read_day,prior_turns=case.prior_turns)
+    if case.expected_family:
+        raw={'request_version':families.output_schema()['oneOf'][0]['properties']['request_version']['enum'][0],
+             'outcome':'request','catalog_digest':families.catalog_digest,'entity_catalog_digest':families.entity_catalog_digest,
+             'family':case.expected_family,'parameters':copy.deepcopy(case.expected_parameters),
+             'parameter_sources':copy.deepcopy(case.parameter_sources),'requested_claims':list(case.required_claims)}
+        for name,proof in raw['parameter_sources'].items():
+            if name=='account_phrase' and proof.get('derivation')=='catalog_selection':
+                candidates=families._account_role_candidates(raw['parameters'][name])
+                if len(candidates)!=1: raise ValueError('independent fixture account reference is not unique')
+                raw['parameters'][name]=candidates[0]['id']
+        semantic=families.parse(raw,context)
+    else:
+        family=case.supplement_contract['expected_semantic_detail']['scenario_family']
+        text=scenario_request(case.expected_outcome_tag,family)
+        semantic=SemanticOutcome('needs_assumption',detail={'tag':case.expected_outcome_tag,'label':text,'question':text,'type':'user_stipulation','scenario_family':family})
+    program=families.lower(semantic,manifest)
+    checked=ProgramValidator(manifest,policy).validate(program)
+    if not checked.ok:
+        raise ValueError('supplemental program does not satisfy the current execution contract: '+str(checked.defects))
+    compilation=SimpleNamespace(ok=True,program=program,semantic_outcome=semantic,exchanges=())
+    compiler=SimpleNamespace(compile=lambda context:compilation)
+    runtime=AnswerProgramRuntime(compiler,ProgramExecutor(registry,policy,query_executor=getattr(registry,'query_executor',None)),DeterministicBinder(registry,locale))
+    actual=runtime.answer(context)
+    defects=_supplement_defects(case,actual.result,semantic,program)
+    if defects:
+        raise ValueError('independent supplemental requirements failed: '+', '.join(defects))
+    return {'oracle_key':case.oracle_key,'figures':copy.deepcopy(case.supplement_contract['expected_figures']),
+            'exact_figures':case.supplement_contract['exact_figures'],'supplement_contract':copy.deepcopy(case.supplement_contract)}
+
+
+def _score_supplement(case,runtime_result):
+    exchanges=tuple(getattr(runtime_result.compilation,'exchanges',()) or ())
+    if not exchanges or all((getattr(x,'defect',{}) or {}).get('tag')=='model_unreachable' for x in exchanges):
+        return CaseScore(case.id,False,False,('model_not_reached',),0,0)
+    if not case.oracle or case.oracle.get('supplement_contract')!=case.supplement_contract:
+        return CaseScore(case.id,True,False,('missing_deterministic_oracle',),0,0,financial_integrity_errors=1)
+    defects=list(_supplement_defects(case,runtime_result.result,getattr(runtime_result.compilation,'semantic_outcome',None),getattr(runtime_result.compilation,'program',None)))
+    if len(exchanges)>case.max_model_attempts: defects.append('routine_question_needed_repair')
+    integrity={'wrong_keyed_figure','missing_keyed_figure','unexpected_keyed_figure','unsupported_figure',
+               'scenario_premise_receipt_mismatch','scenario_grade_amplification','scenario_measured_start_mismatch','scenario_structured_mismatch','wrong_scenario_or_period_premise','wrong_period_semantics'}
+    return CaseScore(case.id,True,not defects,tuple(defects),int('unsupported_figure' in defects),int('wrong_keyed_figure' in defects),
+                     keyed_semantic_errors=len(defects),financial_integrity_errors=sum(d in integrity for d in defects))

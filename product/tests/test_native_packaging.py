@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
+
+import pytest
 
 
 ROOT = Path(__file__).parents[2]
@@ -23,6 +27,103 @@ SQLCIPHER_WHEEL_LOCK = ROOT / "product" / "requirements-sqlcipher-wheels.txt"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release-desktop.yml"
 SIDECAR_NAME = "viva-desktop-bridge"
 SIDECAR_LAUNCHER = DESKTOP / "scripts" / "build-sidecar.mjs"
+
+
+def _sidecar_analysis_data(monkeypatch, tmp_path, spec_path=SIDECAR_SPEC):
+    captured = {}
+
+    def analyze(*args, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(pure=[], scripts=[], binaries=[], datas=kwargs["datas"])
+
+    build_main = ModuleType("PyInstaller.building.build_main")
+    build_main.Analysis = analyze
+    build_main.PYZ = lambda *args, **kwargs: None
+    build_main.EXE = lambda *args, **kwargs: None
+    hooks = ModuleType("PyInstaller.utils.hooks")
+
+    def collect(package, *, include_py_files):
+        assert include_py_files is False
+        return [(str(tmp_path / f"{package}.asset"), package)]
+
+    hooks.collect_data_files = collect
+    monkeypatch.setitem(sys.modules, build_main.__name__, build_main)
+    monkeypatch.setitem(sys.modules, hooks.__name__, hooks)
+    revision = tmp_path / "revision.txt"
+    revision.write_text("synthetic-build")
+    monkeypatch.setenv("VIVA_BUILD_REVISION_FILE", str(revision))
+    runpy.run_path(str(spec_path), init_globals={"SPECPATH": str(spec_path.parent)})
+    return captured["datas"], revision
+
+
+def test_sidecar_delivers_exact_sources_authenticated_by_runtime_admission(monkeypatch, tmp_path):
+    data, revision = _sidecar_analysis_data(monkeypatch, tmp_path)
+    bundled = {
+        f"{destination}/{Path(source).name}": Path(source).read_bytes()
+        for source, destination in data if Path(source).suffix == ".py"
+    }
+    expected = {
+        **{f"viva/{name}.py": ROOT / f"product/viva/{name}.py"
+           for name in ("ledger/scenarios", "tools/scenarios", "answer_program/capability_fixture",
+                        "answer_program/admission_fixture", "answer_program/admission", "answer_program/eval",
+                        "ledger/movement_identity", "ledger/events", "ledger/postings")},
+        "viva/answer_program/intents.py": ROOT / "product/viva/answer_program/intents.py",
+        "viva/answer_program/compiler.py": ROOT / "product/viva/answer_program/compiler.py",
+        "viva/answer_program/runtime.py": ROOT / "product/viva/answer_program/runtime.py",
+        "viva/answer_program/replay.py": ROOT / "product/viva/answer_program/replay.py",
+        "vivacore/models/openai_compat.py": ROOT / "core/vivacore/models/openai_compat.py",
+        "viva/answer_program/capabilities.py": ROOT / "product/viva/answer_program/capabilities.py",
+        **{f"viva/tools/{name}.py": ROOT / f"product/viva/tools/{name}.py"
+           for name in ("ledger_aggregates", "ledger_common", "ledger_movements", "ledger_vocabulary")},
+        **{f"viva/ledger/projection/{name}.py": ROOT / f"product/viva/ledger/projection/{name}.py"
+           for name in ("movements", "categories", "merchants")},
+        "viva/ledger/statements.py": ROOT / "product/viva/ledger/statements.py",
+        **{f"viva/tools/{name}.py": ROOT / f"product/viva/tools/{name}.py"
+           for name in ("__init__", "registry", "ledger_tools")},
+        **{f"viva/ledger/projection/{name}.py": ROOT / f"product/viva/ledger/projection/{name}.py"
+           for name in ("core", "accounts", "balances", "rhythm")},
+        "viva/ledger/streams.py": ROOT / "product/viva/ledger/streams.py",
+        "viva/answer_program/bind.py": ROOT / "product/viva/answer_program/bind.py",
+        "viva/answer_program/execute.py": ROOT / "product/viva/answer_program/execute.py",
+        "viva/answer_program/evidence.py": ROOT / "product/viva/answer_program/evidence.py",
+        "viva/answer_program/validate.py": ROOT / "product/viva/answer_program/validate.py",
+        "viva/answer_program/schema.py": ROOT / "product/viva/answer_program/schema.py",
+        "viva/tools/envelope.py": ROOT / "product/viva/tools/envelope.py",
+        "viva/tools/boundary.py": ROOT / "product/viva/tools/boundary.py",
+        "viva/tools/shape.py": ROOT / "product/viva/tools/shape.py",
+        "viva/tools/runner_binding.py": ROOT / "product/viva/tools/runner_binding.py",
+        "viva/tools/runner_delivery.py": ROOT / "product/viva/tools/runner_delivery.py",
+        "viva/tools/runner.py": ROOT / "product/viva/tools/runner.py",
+        "viva/tools/compute.py": ROOT / "product/viva/tools/compute.py",
+        "viva/quantity.py": ROOT / "product/viva/quantity.py",
+        "viva/render.py": ROOT / "product/viva/render.py",
+        "viva/ledger/projection/__init__.py": ROOT / "product/viva/ledger/projection/__init__.py",
+        "viva/tools/measurements.py": ROOT / "product/viva/tools/measurements.py",
+        "viva/tools/projections.py": ROOT / "product/viva/tools/projections.py",
+        "viva/ledger/projection/measurements.py": ROOT / "product/viva/ledger/projection/measurements.py",
+        "viva/ledger/projection/positions.py": ROOT / "product/viva/ledger/projection/positions.py",
+        "viva/ledger/projection/current_period.py": ROOT / "product/viva/ledger/projection/current_period.py",
+        "viva/ledger/projection/obligations.py": ROOT / "product/viva/ledger/projection/obligations.py",
+        "viva/ledger/projection/goals.py": ROOT / "product/viva/ledger/projection/goals.py",
+        "viva/ingest/brokerage.py": ROOT / "product/viva/ingest/brokerage.py",
+        "vivacore/verify/arithmetic.py": ROOT / "core/vivacore/verify/arithmetic.py",
+        "vivacore/verify/normalize.py": ROOT / "core/vivacore/verify/normalize.py",
+    }
+    assert bundled.keys() == expected.keys()
+    for name, path in expected.items():
+        assert bundled[name] == path.read_bytes(), name
+    assert (str(revision), "viva") in data
+    for package in ("viva", "vivacore", "merchantcore"):
+        assert (str(tmp_path / f"{package}.asset"), package) in data
+
+
+def test_sidecar_build_refuses_a_missing_admission_source(monkeypatch, tmp_path):
+    clone = tmp_path / "clone/product/viva/desktop_bridge"
+    clone.mkdir(parents=True)
+    spec = clone / SIDECAR_SPEC.name
+    shutil.copyfile(SIDECAR_SPEC, spec)
+    with pytest.raises(SystemExit, match="missing admission source scenarios.py"):
+        _sidecar_analysis_data(monkeypatch, tmp_path, spec)
 
 
 def test_sidecar_build_script_has_reproducible_target_and_output_contract():
@@ -232,3 +333,44 @@ def test_the_release_ships_no_updater_it_cannot_honour():
     # And the step itself agrees, so a build that acquired half a channel fails
     # the release rather than only failing here.
     release.validate_update_channel()
+
+
+def test_sidecar_build_refuses_a_missing_replay_source(monkeypatch, tmp_path):
+    clone = tmp_path / 'clone'
+    destination = clone / 'product/viva/desktop_bridge'
+    destination.mkdir(parents=True)
+    spec = destination / SIDECAR_SPEC.name
+    shutil.copyfile(SIDECAR_SPEC, spec)
+    # Supply every other declared byte; the missing replay authority must be
+    # identified regardless of its position in the exact declaration list.
+    data,_=_sidecar_analysis_data(monkeypatch,tmp_path)
+    for source,_destination in data:
+        source=Path(source)
+        if source.suffix!='.py' or source.name=='replay.py': continue
+        relative=source.relative_to(ROOT)
+        target=clone/relative;target.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(source,target)
+    with pytest.raises(SystemExit, match='missing admission source replay.py'):
+        _sidecar_analysis_data(monkeypatch, tmp_path, spec)
+
+
+@pytest.mark.parametrize('relative',[
+    'product/viva/ledger/scenarios.py','product/viva/tools/scenarios.py',
+    'product/viva/answer_program/capability_fixture.py','product/viva/answer_program/admission_fixture.py',
+    'product/viva/answer_program/admission.py','product/viva/answer_program/eval.py',
+    'product/viva/ledger/movement_identity.py','product/viva/ledger/events.py','product/viva/ledger/postings.py',
+    'product/viva/answer_program/execute.py','product/viva/tools/registry.py',
+])
+def test_each_added_or_changed_authority_is_mandatory_in_native_source_bundle(monkeypatch,tmp_path,relative):
+    data,_=_sidecar_analysis_data(monkeypatch,tmp_path)
+    clone=tmp_path/'candidate'
+    for source,_destination in data:
+        source=Path(source)
+        if source.suffix!='.py':continue
+        path=source.relative_to(ROOT)
+        if str(path)==relative:continue
+        target=clone/path;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(source,target)
+    target=clone/'product/viva/desktop_bridge'/SIDECAR_SPEC.name
+    target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(SIDECAR_SPEC,target)
+    with pytest.raises(SystemExit,match=f'missing admission source {Path(relative).name}'):
+        _sidecar_analysis_data(monkeypatch,tmp_path,target)

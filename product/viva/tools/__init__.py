@@ -1,9 +1,11 @@
 """The agent's read tools: a typed registry over the ledger projection.
 
-Six verbs, all deterministic, all local: ``query_ledger`` (the workhorse, which
+Registered verbs are deterministic and local: ``query_ledger`` (the workhorse, which
 answers in totals), ``list_movements`` (the individual rows, for a narrow ask),
 ``check_completeness``, ``get_provenance``, ``get_transparency`` and
-``compute``. Verbs whose machinery does not exist yet are not registered at
+``compute``. ``read_financial_analysis`` supplies fixed views over those reads. The measurement,
+statement-coverage and projection verbs expose sourced local reads.
+Verbs whose machinery does not exist yet are not registered at
 all.
 
 ``default_registry(proj)`` builds the registry over one live projection;
@@ -71,7 +73,7 @@ def _semantic_entities(proj) -> dict:
 
 
 def default_registry(proj, locale: str = "", today: str = "") -> Registry:
-    """The six read tools, bound to one projection.
+    """The registered read tools, bound to one projection.
 
     The locale travels with them because a read writes amounts of its own — a
     caveat saying how much of a total is not yet settled is a sentence with an
@@ -83,6 +85,50 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     on the day it runs."""
     registry = Registry()
     registry.set_semantic_entity_provider(lambda: _semantic_entities(proj))
+    from ..answer_program.capabilities import ANALYSIS_PARAMS, read_financial_analysis
+    registry.register(ToolSpec(
+        name="read_financial_analysis", params=ANALYSIS_PARAMS,
+        fn=lambda args: read_financial_analysis(proj, args, locale, today),
+        emits={"reference_kinds": ["figure", "read", "read_figures", "date_of", "period"],
+               "figure_types": ["money", "count", "rate"],
+               "quantities": list(MEASURES), "entity_kinds": ["account", "merchant", "category"]},
+        bounds={"max_figures": 80, "max_payload_bytes": 5000,
+                "max_execution_ms": 2000}))
+    from .measurements import (MEASUREMENT_PARAMS, COVERAGE_PARAMS,
+                               read_account_measurements, read_statement_coverage)
+    from .projections import PROJECTION_PARAMS, read_financial_projections
+    for name, params, fn in (
+        ("read_account_measurements", MEASUREMENT_PARAMS, read_account_measurements),
+        ("read_statement_coverage", COVERAGE_PARAMS, read_statement_coverage),
+        ("read_financial_projections", PROJECTION_PARAMS, read_financial_projections),
+    ):
+        registry.register(ToolSpec(name=name, params=params,
+            fn=lambda args, fn=fn: fn(proj, args, locale, today),
+            emits={"reference_kinds": ["figure", "read", "read_figures", "date_of", "period"],
+                   "figure_types": ["money", "count"], "quantities": list(MEASURES),
+                   "entity_kinds": ["account", "document", "merchant"]},
+            bounds={"max_figures": 50, "max_payload_bytes": (50_000 if name == "read_account_measurements" else
+                                                          10_000 if name == "read_financial_projections" else 5000),
+                    "max_execution_ms": 2000}))
+    from .scenarios import SCENARIO_PARAMS, simulate_scenario
+    def resolve_scenario_account(quote):
+        # Reuse the bounded held-name policy; incomplete catalogs cannot prove
+        # name uniqueness. Exact held canonical identity remains checkable.
+        from ..answer_program.intents import SemanticFamilyRegistry
+        catalog = registry.semantic_entities()
+        policy = SemanticFamilyRegistry(catalog)
+        identities = {row['id'] for row in catalog.get('accounts', ())}
+        if quote not in identities and catalog.get('coverage', {}).get('accounts', {}).get('complete') is False:
+            return []
+        return policy._account_role_candidates(quote)
+    registry.register(ToolSpec(
+        name="simulate_scenario", params=SCENARIO_PARAMS,
+        fn=lambda args, figures, question: simulate_scenario(
+            args, figures, question, account_resolver=resolve_scenario_account),
+        needs_figures=True,
+        emits={"reference_kinds":["figure","read","read_figures","date_of"],
+               "figure_types":["money","count"], "quantities":list(MEASURES), "entity_kinds":[]},
+        bounds={"max_figures":4,"max_payload_bytes":10_000,"max_execution_ms":2000}))
     registry.register(ToolSpec(
         name="query_ledger", params=ledger_tools.QUERY_LEDGER_PARAMS,
         fn=lambda args: ledger_tools.query_ledger(proj, args, locale, today),

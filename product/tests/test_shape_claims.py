@@ -1,5 +1,7 @@
 """Shape claims contracts."""
 
+import copy
+
 from _shape_test_support import *
 
 # ------------------------------------------- where a stated figure's claim ends
@@ -44,6 +46,21 @@ def several():
     return default_registry(LedgerProjection(_two_accounts()))
 
 
+def _measured_two_accounts():
+    """The complete-population variant includes an explicit card stock source."""
+    return [*copy.deepcopy(_two_accounts()),
+            document_captured("doc-card-measured-test", "measured-card-test.pdf",
+                              100, "bank_statement", 0.9, "2026-02-01"),
+            opening_balance_observed(
+                "card", "300.00", "2026-01-01",
+                Provenance("doc-card-measured-test", 1, "stock"))]
+
+
+@pytest.fixture()
+def measured_several():
+    return default_registry(LedgerProjection(_measured_two_accounts()))
+
+
 def _figure_id(results, what):
     for result in results:
         for f in result.get("figures") or []:
@@ -52,7 +69,7 @@ def _figure_id(results, what):
     raise AssertionError(f"no figure described as {what!r} was emitted")
 
 
-def test_a_figure_over_part_of_a_set_says_so_whatever_the_shape_said(several):
+def test_a_figure_over_part_of_a_set_says_so_whatever_the_shape_said(measured_several):
     """One account's balance, correctly graded and correctly cited, stated
     under a sentence that reads like a total, says which set it came from.
 
@@ -65,7 +82,7 @@ def test_a_figure_over_part_of_a_set_says_so_whatever_the_shape_said(several):
                  _script(shape, ("query_ledger", {"entity": "balances"}),
                          bind=lambda r: {
                              "total": {"figure": _figure_id(r, "Signature Card")}}),
-                 several)
+                 measured_several)
     assert result.answered, result.detail
     assert result.text.startswith("You currently owe ")
     assert moment("boundary_accounts", counted=render.count(1),
@@ -215,7 +232,7 @@ def test_a_boundary_two_clauses_make_is_said_under_each_of_them(several):
     assert result.text.find(said) < result.text.find("That is spread over")
 
 
-def test_an_answer_covering_two_accounts_never_says_it_covers_one(several):
+def test_an_answer_covering_two_accounts_never_says_it_covers_one(measured_several):
     """The reach sentence counts the accounts the answer covers, not the
     accounts one of its figures covers.
 
@@ -230,7 +247,7 @@ def test_an_answer_covering_two_accounts_never_says_it_covers_one(several):
                          bind=lambda r: {
                              "a": {"figure": _figure_id(r, "Everyday Checking")},
                              "b": {"figure": _figure_id(r, "Signature Card")}}),
-                 several)
+                 measured_several)
     assert result.answered, result.detail
     for counted in (1, 2):
         assert moment("boundary_accounts", counted=render.count(counted),
@@ -293,7 +310,7 @@ def test_an_answer_naming_no_account_makes_no_claim_about_how_many_it_covers(
 
 
 def test_an_answer_reaching_more_accounts_than_it_names_states_no_reach(
-        several):
+        measured_several):
     """The other half of the same rule, and the one that keeps a false count
     out of the answer.
 
@@ -313,7 +330,7 @@ def test_an_answer_reaching_more_accounts_than_it_names_states_no_reach(
                              "a": {"figure": _figure_id(r, "Everyday Checking")},
                              "n": {"figure": _figure_id(r,
                                                         "accounts holding")}}),
-                 several)
+                 measured_several)
     assert result.answered, result.detail
     for counted in (1, 2):
         assert moment("boundary_accounts", counted=render.count(counted),

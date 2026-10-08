@@ -47,10 +47,16 @@ def test_a_per_account_balance_says_it_is_one_of_the_accounts_held(proj):
         assert f["boundary"] == {
             "whole": False, "accounts": {"counted": 1, "held": held},
             "cut": [{"kind": "account", "value": row["record_id"]}]}
-    # And the count of them covers every one this read ranged over.
+    # The unmeasured card remains held, so measured reach is two of three.
     counted = next(f for f in result.figures if f["quantity"] == quantity.COUNT)
-    assert counted["boundary"] == {"whole": True,
-                                   "accounts": {"counted": held, "held": held}}
+    assert counted["boundary"] == {"whole": False,
+                                   "accounts": {"counted": 2, "held": 3}}
+    assert "card" not in {row["record_id"] for row in result.data["balances"]}
+    assert not any(f["kind"] == "financial" and "card" in f["record_ids"]
+                   for f in result.figures)
+    assert any(item.get("account") == "card" for item in result.identifiers)
+    assert any("card" in caveat and "No balance has been observed" in caveat
+               and "not reported as zero" in caveat for caveat in result.caveats)
 
 
 def test_a_balance_read_narrowed_to_one_account_still_counts_what_is_held(proj):

@@ -28,7 +28,7 @@
 **Test:** product/tests/test_answer_program_contracts.py::test_executor_stamps_evidence_then_binder_reuses_the_single_claim_gate
 
 1. A number no tool emitted has no id, so it cannot be cited and cannot be said.
-2. A money-kind figure citing no record is refused before the answer is delivered.
+2. A money-kind figure citing no record is refused before the answer is delivered, except an authenticated stipulated hypothetical scenario figure supported by exact current-question assumption receipts. Canonical and recorded financial figures, including observed starting values and measured zero, retain their required numerical sources.
 3. The check runs in code, outside the invocation modality, identically for every planner.
 
 ### PROJ-16 — no registered verb writes
@@ -88,8 +88,10 @@ five policies, two cars and three loans — needs **thirteen** verbs, and adding
 rental property, another child or a fourth loan adds none.
 
 Two counts live in this file and must be kept apart. **Thirteen** is the
-design-intent verb set. **Six** is what the registry holds, which is derived by
-running the code. The tables below describe that design vocabulary, not a claim
+design-intent verb set. The executable membership is derived from the registry,
+which now includes `read_financial_analysis` for four fixed analysis views and
+`read_account_measurements`, `read_statement_coverage`, and
+`read_financial_projections` for sourced measurements and existing local projections, plus `simulate_scenario` for the three reviewed hypothetical calculations. The tables below describe that design vocabulary, not a claim
 that every named verb is registered or has product substrate today.
 
 ### Reading the ledger
@@ -113,7 +115,7 @@ that every named verb is registered or has product substrate today.
 | Tool | What it answers |
 |---|---|
 | `compute(expression, inputs)` | Exact Decimal arithmetic over other tools' outputs. The model never adds two numbers itself (ADR-010). |
-| `project(scenario)` | The financial-math library: amortization, compounding, avalanche versus snowball, affordability what-ifs. Pure formulas, every assumption enumerated. |
+| `simulate_scenario` | Implemented savings, monthly loan payoff and monthly cash flow under exact current-question assumptions or a compatible same-run recorded cash/owed start. All summaries are hypothetical; broader strategy/affordability scenarios remain future scope. |
 
 ### Memory
 
@@ -138,8 +140,7 @@ allowlisted operation or by the person. No tool touches the network; every
 registered verb operates on local state. Writes are events. "Nothing
 irreversible without your explicit yes" is thereby *structural*: there is no
 read tool with which Viva could be tricked, or prompt-injected, into doing
-damage. And every figure in every answer is a tool result with a record id — T1
-enforced in code, not in a prompt.
+damage. Financial figures retain numerical source records; stipulated scenario values instead retain exact current-question premise receipts and remain hypothetical with empty grades. Code enforces that distinction. See [financial-analysis-measurements-and-scenarios.md](financial-analysis-measurements-and-scenarios.md) for the fixed read boundaries and input forms.
 
 The stress test is chains, not verbs. *Can we afford the $8K vacation in
 December?* is `query_ledger` for liquid funds plus `list_obligations` through
@@ -155,7 +156,8 @@ DSL. And tool count is expected to stay at or below about fifteen through Phase
 2: pressure to add a verb is treated as a signal that either the data model or
 an existing verb is incomplete. That is the review test.
 
-The verb set holds. What has moved is the honesty machinery around it: figures
+Everyday analysis adds a local read with fixed comparison, transaction search,
+attributed income and account presentation views. The honesty machinery remains: figures
 have identities, a shape is committed before any read, and a refusal is a
 reviewed sentence. Widening what may be *said* has never widened what may be
 *asserted as money*.
@@ -198,3 +200,33 @@ structurally impossible).
 - Every capability recorded here is proven mechanically and lightly exercised
   against real data. Read the built ones as working in the suite and unproven in
   a real sitting.
+
+
+The measurement reads follow accepted document corrections before value dates;
+historical currency and account type retain their source context;
+account history has no interpolation and is bounded to fifty measurements.
+Known remainder preserves the complete inputs and uses one top-level `exclusions`
+list; each slice's `exclusion_refs` contains indices into that list, retaining
+the exact association without duplicating the exclusion records.
+The complete projection response is bounded to 10,000 bytes and fifty figures;
+an oversized whole set refuses rather than silently dropping inputs. Sourced
+measurement history has a 50,000-byte bound, while coverage retains 5,000 bytes.
+The measurement bound applies to the complete response, including held account
+names and source details; even a single measurement can exceed it. Dates appear
+beside each recorded amount and expected outgoing range, with remainder horizon
+endpoints identified as hypothetical. Held identifiers supply account names in
+scope explanations. Projection explanations use reviewed human wording for
+input limitations and goal status while keeping original diagnostic codes in
+structured data.
+Brokerage cash remains distinct from whole invested value, whose history needs
+a complete common accepted statement snapshot. Coverage cites held statements
+and their clipped intervals; an uncovered day does not prove a missing issued
+statement. Projection outputs keep future results hypothetical while preserving
+historical grades and dates in their inputs. Remainder retains reserves and
+missing discretionary spending and is not spending permission. It requires every
+included issuer depository starting balance to match a dated, sourced accepted
+measurement; a missing or superseded source cannot silently supply a zero.
+Upcoming
+obligations show only held next expectations, not a full payment calendar.
+Goal progress describes local terms and reservations, not bank transfers.
+Expanded exact-model qualification and retained-vault testing remain pending.

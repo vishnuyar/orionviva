@@ -58,7 +58,8 @@ but the tester remains responsible for inspecting every proposed commit.
    A development loopback test is useful evidence but does not prove the packaged
    host. Record which host and revision each result exercised.
 2. Start from the prerequisite named by each scenario. Do not reuse an old
-   vault unless the scenario explicitly requires retained state.
+   vault unless the scenario explicitly requires retained state. The owner-authorized
+   non-ingestion continuation uses the retained vault under [the current plan](real-document-test.md).
 3. Run the baseline scenarios in the catalog on each release platform in scope.
 4. For a private-data run, copy the example manifest outside the repository,
    map each local document to an anonymous role, and keep the completed copy
@@ -85,5 +86,9 @@ installation assertions retain their native-boundary checks. Never count a
 missing browser case as passed because a desktop case passed.
 
 See [browser session checks](browser-sessions.md) for the new host boundaries.
-These supplemental checks do not change the numbered 45-scenario catalog or
+These browser-session checks do not change the original 45-scenario baseline or
 claim that the independent evaluator automates all of it.
+
+## Financial capability continuation
+
+See [the 20 added browser checks](scenarios/financial-capabilities.md) and [the durable real-document continuation plan](real-document-test.md). The human catalog contains 65 checks: 45 preserved baseline checks plus 20 additions. Hosted qualification has 123 cases (73 canonical plus 50 supplemental); automated browser results are separate and declarations do not establish coverage.

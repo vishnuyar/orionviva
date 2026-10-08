@@ -415,7 +415,7 @@ def preflight_live_suite(*, cases, registry_factory=None, policy=None,
                          locale="") -> tuple[AdmissionOracleSet, tuple]:
     """Derive every oracle before a compiler or provider can be constructed."""
     from .admission_fixture import admission_registry
-    from .eval import derive_semantic_oracle
+    from .eval import derive_semantic_oracle, resolve_case_fixture
     from .schema import AnswerResourcePolicy
 
     factory = registry_factory or admission_registry
@@ -426,7 +426,8 @@ def preflight_live_suite(*, cases, registry_factory=None, policy=None,
     failures = []
     for case in selected:
         try:
-            registry = factory()
+            case_factory, read_day = resolve_case_fixture(case,registry_factory=registry_factory)
+            registry = case_factory()
             manifest = CapabilityManifest.from_registry(registry)
             oracle = derive_semantic_oracle(
                 case, registry, manifest, policy, locale=locale)
@@ -448,9 +449,9 @@ def preflight_live_suite(*, cases, registry_factory=None, policy=None,
 
 
 def current_contract_digests(manifest, policy) -> dict[str, str]:
-    from .admission_fixture import (admission_fixture_digest,
+    from .admission_fixture import (admission_fixture_digest, expanded_fixture_digest,
                                     admission_registry)
-    from .eval import (ADVERSARIAL_CASES, CASES, corpus_digest, load_cases)
+    from .eval import (ADVERSARIAL_CASES, CASES, corpus_digest, load_cases, combined_corpus_digest)
     from .intents import SemanticFamilyRegistry
     from ..query.schema import FINANCIAL_QUERY_SCHEMA_VERSION
 
@@ -459,7 +460,7 @@ def current_contract_digests(manifest, policy) -> dict[str, str]:
                                               "semantic_request_schema")
     families = SemanticFamilyRegistry()
     canonical_oracles, _manifests = preflight_live_suite(
-        cases=load_cases(), registry_factory=admission_registry,
+        cases=load_cases(),
         policy=policy, locale="en-US")
     return {
         "program_schema": versions.fingerprint(
@@ -474,11 +475,11 @@ def current_contract_digests(manifest, policy) -> dict[str, str]:
         "compiler_prompt": promptstore.digest(PROMPTS, COMPILER_VERSION),
         "capability_manifest": manifest.digest if manifest is not None else "",
         "resource_policy": resource_policy_digest(policy),
-        "keyed_corpus": corpus_digest(CASES),
+        "keyed_corpus": combined_corpus_digest(),
         "adversarial_corpus": corpus_digest(ADVERSARIAL_CASES),
         "persona_pack": versions.fingerprint(
             versions.path_of(PACKAGE, persona_version)),
-        "admission_fixture": admission_fixture_digest(),
+        "admission_fixture": expanded_fixture_digest(),
         "oracle_set": canonical_oracles.digest,
     }
 
@@ -620,9 +621,9 @@ def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thres
     Omit ``cases`` and ``registry_factory`` for canonical admission. Supplying
     either full-corpus input is rejected before deterministic or provider work.
     """
-    from .admission_fixture import (admission_fixture_digest,
+    from .admission_fixture import (admission_fixture_digest, expanded_fixture_digest,
                                     admission_registry)
-    from .eval import evaluate_adversarial, load_cases, score
+    from .eval import evaluate_adversarial, load_cases, score, resolve_case_fixture
     from .schema import AnswerResourcePolicy
     from .validate import ProgramValidator
     from ..session import Session
@@ -630,7 +631,8 @@ def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thres
     policy = policy or AnswerResourcePolicy()
     canonical_cases = load_cases()
     canonical_ids = tuple(case.id for case in canonical_cases)
-    expected_fixture = admission_fixture_digest()
+    expected_fixture = expanded_fixture_digest()
+    full_suite = cases is None
     if cases is None:
         cases = canonical_cases
         if registry_factory is not None:
@@ -659,12 +661,13 @@ def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thres
     turns = []
     oracles = {}
     for case, manifest in zip(cases, manifests):
-        registry = registry_factory()
+        case_factory, read_day = resolve_case_fixture(case,registry_factory=registry_factory, today="" if full_suite else today)
+        registry = case_factory()
         oracle = oracle_set.oracle_for(case.id)
         oracles[case.id] = oracle
         session = Session(
             registry, compiler_factory, resource_policy=policy,
-            today=(lambda value=today: value), locale=locale,
+            today=(lambda value=read_day: value), locale=locale,
             prior_turns=case.prior_turns)
         turn = session.ask(case.question)
         turns.append(turn)

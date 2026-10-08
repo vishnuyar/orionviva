@@ -43,7 +43,7 @@ def _ledger_events(accounts=6, months=12, per_month=3, docs=12, actions=0):
 
 def _payload(registry, tool, args):
     import json
-    result = registry.call(tool, args)
+    result = _swept_call(registry,tool,args)
     assert result.ok, result.text
     return len(json.dumps(result.to_dict()))
 
@@ -90,6 +90,20 @@ def _every_declared_call(registry) -> list:
         if schema["name"] in UNENUMERABLE:
             continue
         params = schema["parameters"]
+        if schema["name"] == "simulate_scenario":
+            from test_tool_contract import _scenario_fixture_calls
+            calls.extend((schema["name"],args) for args,_ in _scenario_fixture_calls())
+            continue
+        if schema["name"] == "read_financial_analysis":
+            from test_tool_contract import _analysis_fixture_calls
+            calls.extend((schema["name"], args) for args in _analysis_fixture_calls(
+                params, "2025-01-01", "2025-12-31", "acct0"))
+            continue
+        if schema["name"] in {"read_account_measurements", "read_statement_coverage", "read_financial_projections"}:
+            from test_tool_contract import _measurement_projection_fixture_calls
+            calls.extend((schema["name"], args) for args in _measurement_projection_fixture_calls(
+                schema["name"], params, "2025-01-01", "2025-12-31", "acct0"))
+            continue
         required = set(params.get("required", ()))
         choices = []
         for name, spec in sorted(params.get("properties", {}).items()):
@@ -106,6 +120,12 @@ def _every_declared_call(registry) -> list:
             if required <= set(args):
                 calls.append((schema["name"], args))
     return calls
+
+
+def _swept_call(registry,tool,args):
+    from test_tool_contract import _scenario_fixture_calls
+    question=next((text for candidate,text in _scenario_fixture_calls() if candidate==args),"") if tool=="simulate_scenario" else ""
+    return registry.call(tool,args,question=question)
 
 
 def test_the_sweep_reaches_every_tool_or_says_which_it_does_not():
@@ -169,7 +189,7 @@ def test_every_declared_call_answers_or_refuses_and_never_raises():
     instead ends the turn with no sentence at all."""
     registry = _ledger()
     for tool, args in _every_declared_call(registry):
-        result = registry.call(tool, args)
+        result = _swept_call(registry,tool,args)
         if result.ok:
             assert result.text, f"{tool} {args} answered with no sentence"
         else:
@@ -188,7 +208,7 @@ def test_every_figure_the_argument_space_emits_matches_its_own_declaration():
     registry = _ledger()
     seen = 0
     for tool, args in _every_declared_call(registry):
-        for fig in registry.call(tool, args).figures:
+        for fig in _swept_call(registry,tool,args).figures:
             seen += 1
             assert fig["what"], f"{tool} {args} emitted a figure naming nothing"
             assert fig["quantity"] in quantity.MEASURES, (tool, args, fig)
@@ -219,7 +239,22 @@ def test_no_uncapped_read_exceeds_what_a_result_may_cost():
     calls = _every_declared_call(registry)
     assert len(calls) > 10, "the argument space collapsed to a handful of calls"
     for tool, args in calls:
-        result = registry.call(tool, args)
+        result = _swept_call(registry,tool,args)
+        if tool == "read_financial_analysis" and args.get("view") == "movement_search":
+            from viva.tools.ledger_tools import MAX_ROWS
+            assert result.ok, result.text
+            assert len(result.data["movements"]) <= MAX_ROWS
+            assert result.data["total"] > MAX_ROWS
+            assert len([fig for fig in result.figures if fig["quantity"] == "movement"]) == MAX_ROWS
+            continue
+        if tool == "read_account_measurements" and result.ok:
+            assert len(result.figures) <= 50 and len(result.data["measurements"]) <= 50
+            assert len(json.dumps(result.to_dict()).encode()) <= 50_000
+            continue
+        if tool in {"read_financial_projections","simulate_scenario"}:
+            assert len(result.figures) <= 50
+            assert len(json.dumps(result.to_dict()).encode()) <= 10_000
+            continue
         size = len(json.dumps(result.to_dict()))
         assert size <= PAYLOAD_TARGET, (
             f"{tool} {args} returned {size} characters, over {PAYLOAD_TARGET}")

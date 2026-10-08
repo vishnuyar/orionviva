@@ -138,3 +138,9 @@ def admission_registry():
 __all__ = ["ADMISSION_FIXTURE_VERSION", "ADMISSION_TODAY",
            "admission_fixture_digest", "admission_fixture_events",
            "admission_registry"]
+
+
+def expanded_fixture_digest():
+    from .capability_fixture import fixture_contract_digest
+    payload={"canonical":admission_fixture_digest(),"capabilities":fixture_contract_digest()}
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(",",":")).encode()).hexdigest()[:16]

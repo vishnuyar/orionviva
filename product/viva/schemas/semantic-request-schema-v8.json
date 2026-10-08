@@ -1,0 +1,4817 @@
+{
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "named_account_balance"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "account_phrase"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "account_phrase"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "balance",
+              "measurement_date"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 2
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "needs_attention"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "attention_items"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "category_spending_period"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "category": {
+              "type": "string",
+              "minLength": 1
+            },
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "required": [
+            "category",
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "category": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "category",
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "spending"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "net_worth"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "net_worth"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "credit_card_debt"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "card_debt"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "classification_explanation"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "movement_phrase": {
+              "type": "string",
+              "minLength": 1
+            },
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "required": [
+            "movement_phrase"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "movement_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "movement_phrase"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "explanation"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "spending_by_category"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            },
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "spending"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "spending_by_merchant"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            },
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "spending"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "spending_by_account"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "spending"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "spending_comparison"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            },
+            "baseline_from": {
+              "type": "string",
+              "format": "date"
+            },
+            "baseline_to": {
+              "type": "string",
+              "format": "date"
+            },
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            },
+            "category": {
+              "type": "string",
+              "minLength": 1
+            },
+            "merchant": {
+              "type": "string",
+              "minLength": 1
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "from",
+            "to",
+            "baseline_from",
+            "baseline_to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "baseline_from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "baseline_to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "category": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "merchant": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "from",
+            "to",
+            "baseline_from",
+            "baseline_to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "comparison",
+              "percentage_change"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 2
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "movement_search"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            },
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            },
+            "category": {
+              "type": "string",
+              "minLength": 1
+            },
+            "merchant": {
+              "type": "string",
+              "minLength": 1
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "category": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "merchant": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "movements"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "period_income"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "income"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "period_surplus"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "surplus"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "recurring_spending"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "patterns"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "recorded_cash"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "account_phrase"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "account_phrase"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "recorded_cash"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "account_value_history"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            },
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "account_phrase",
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "account_phrase",
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "account_value_history"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "statement_period_coverage"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            },
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "required": [
+            "account_phrase",
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "from": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "to": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "account_phrase",
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "statement_period_coverage"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "known_remainder"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            },
+            "horizon_days": {
+              "type": "string",
+              "pattern": "^[0-9]{1,3}$"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "horizon_days": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "known_remainder"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "upcoming_obligations"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            },
+            "horizon_days": {
+              "type": "string",
+              "pattern": "^[0-9]{1,3}$"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "horizon_days": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "upcoming_obligations"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "goal_progress"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question",
+                    "prior_turn"
+                  ]
+                },
+                "turn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "goal_progress"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "savings_scenario"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "initial_amount": {
+              "type": "string",
+              "minLength": 1
+            },
+            "monthly_contribution": {
+              "type": "string",
+              "minLength": 1
+            },
+            "nominal_annual_rate_percent": {
+              "type": "string",
+              "minLength": 1
+            },
+            "months": {
+              "type": "string",
+              "minLength": 1
+            },
+            "start_date": {
+              "type": "string",
+              "format": "date"
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            },
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "monthly_contribution",
+            "nominal_annual_rate_percent",
+            "months",
+            "start_date",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "initial_amount": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "monthly_contribution": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "nominal_annual_rate_percent": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "months": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "start_date": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "monthly_contribution",
+            "nominal_annual_rate_percent",
+            "months",
+            "start_date",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "savings_scenario"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "loan_payoff_scenario"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "principal": {
+              "type": "string",
+              "minLength": 1
+            },
+            "monthly_payment": {
+              "type": "string",
+              "minLength": 1
+            },
+            "nominal_annual_rate_percent": {
+              "type": "string",
+              "minLength": 1
+            },
+            "months": {
+              "type": "string",
+              "minLength": 1
+            },
+            "start_date": {
+              "type": "string",
+              "format": "date"
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            },
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "monthly_payment",
+            "nominal_annual_rate_percent",
+            "months",
+            "start_date",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "principal": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "monthly_payment": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "nominal_annual_rate_percent": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "months": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "start_date": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "monthly_payment",
+            "nominal_annual_rate_percent",
+            "months",
+            "start_date",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "loan_payoff_scenario"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "catalog_digest": {
+          "type": "string",
+          "enum": [
+            "ebe5fcffcc81eb48"
+          ]
+        },
+        "entity_catalog_digest": {
+          "type": "string",
+          "enum": [
+            "44136fa355b3678a"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "request"
+          ]
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "cash_flow_scenario"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "initial_cash": {
+              "type": "string",
+              "minLength": 1
+            },
+            "monthly_income": {
+              "type": "string",
+              "minLength": 1
+            },
+            "monthly_outflow": {
+              "type": "string",
+              "minLength": 1
+            },
+            "one_off_outflow": {
+              "type": "string",
+              "minLength": 1
+            },
+            "one_off_month": {
+              "type": "string",
+              "minLength": 1
+            },
+            "months": {
+              "type": "string",
+              "minLength": 1
+            },
+            "start_date": {
+              "type": "string",
+              "format": "date"
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1
+            },
+            "account_phrase": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "monthly_income",
+            "monthly_outflow",
+            "one_off_outflow",
+            "one_off_month",
+            "months",
+            "start_date",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": {
+          "type": "object",
+          "properties": {
+            "initial_cash": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "monthly_income": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "monthly_outflow": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "one_off_outflow": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "one_off_month": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "months": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "start_date": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "currency": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            },
+            "account_phrase": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "question"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "derivation": {
+                  "type": "string",
+                  "enum": [
+                    "verbatim",
+                    "catalog_selection",
+                    "calendar_month_start",
+                    "calendar_month_end",
+                    "decimal_numeric"
+                  ]
+                }
+              },
+              "required": [
+                "source",
+                "quote",
+                "derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "monthly_income",
+            "monthly_outflow",
+            "one_off_outflow",
+            "one_off_month",
+            "months",
+            "start_date",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "requested_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cash_flow_scenario"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "catalog_digest",
+        "entity_catalog_digest",
+        "outcome",
+        "family",
+        "parameters",
+        "parameter_sources",
+        "requested_claims"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "clarify"
+          ]
+        },
+        "tag": {
+          "type": "string",
+          "enum": [
+            "ambiguous_account",
+            "ambiguous_movement",
+            "ambiguous_period"
+          ]
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenario_family": {
+          "type": "string",
+          "enum": [
+            "savings_scenario",
+            "loan_payoff_scenario",
+            "cash_flow_scenario"
+          ]
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "request_version",
+        "outcome",
+        "tag",
+        "question",
+        "options"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "needs_assumption"
+          ]
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenario_family": {
+          "type": "string",
+          "enum": [
+            "savings_scenario",
+            "loan_payoff_scenario",
+            "cash_flow_scenario"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "user_stipulation"
+          ]
+        }
+      },
+      "required": [
+        "request_version",
+        "outcome",
+        "tag",
+        "label",
+        "question",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "outside_domain"
+          ]
+        }
+      },
+      "required": [
+        "request_version",
+        "outcome"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_version": {
+          "type": "string",
+          "enum": [
+            "semantic-request-v11"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "unsupported"
+          ]
+        },
+        "requested_family": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "request_version",
+        "outcome",
+        "requested_family"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

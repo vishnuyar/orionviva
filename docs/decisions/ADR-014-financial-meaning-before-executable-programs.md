@@ -29,10 +29,23 @@ _This records reasoning, not current behaviour._
    no previous planner is a fallback.
 5. Runtime availability requires exact-model admission of the compact contract
    and deterministic-builder digest.
+6. A named request's balance effect means its latest whole-account measurement.
+   Trusted catalog major kind authors held balance for depository/investment
+   accounts and owed for liabilities, with wording and same-figure selectors
+   fixed before financial reads. Missing kind and incomplete phrase resolution
+   cannot establish a held amount by default.
+7. Structural validation cannot certify arbitrary prose interpretation. Selection
+   guidance must preserve the entire requested meaning and honestly limit
+   unsupported cash, historical series, payment terms and analytical meanings;
+   a nearby valid program is not proof that the person asked for it.
 
-**Exception:** the mechanism and publication gate are built, but no profile has
-yet passed and been published for the new contract. Runtime answering therefore
-remains unavailable outside explicit admission and Witness purposes.
+**Qualification status:** an exact v9 profile was published as qualification012
+and exercised in retained-vault campaign013; runtime availability was established
+for those bytes. The campaign's named liability and wrong-meaning failures
+motivated the current v10 guidance and kind-aware lowering. Fresh qualification
+and retained-vault retesting remain pending for the changed prompt, catalog,
+builder and authenticated replay source. Earlier measurements are retained,
+not reused as admission for a changed implementation.
 
 ## Context
 
@@ -79,7 +92,10 @@ Captures now keep both sides of the boundary: the semantic request and the
 lowered program, each with a digest. The exact admission profile binds the
 semantic prompt, schema, catalog, deterministic builders, retained runtime
 contracts, canonical synthetic admission fixture, fully derived oracle set,
-and resolved model identity. Every oracle is derived before the compiler or
+and resolved model identity. Replay authenticates the supplied registry's actual
+entity catalog before re-lowering, retaining its kind metadata rather than
+trusting a captured digest string. Replay source joins the exact source resources
+hashed for admission and collected by the frozen sidecar. Every oracle is derived before the compiler or
 provider is constructed, so an invalid case contract spends no live calls.
 
 ## Would reverse this

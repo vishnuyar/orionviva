@@ -101,7 +101,9 @@ Finish only when that report classifies as `pass`, reports `decision: ready`,
 executes every case declared by the evaluator pack, and identifies the committed
 revision. Otherwise classify the result and begin another bounded cycle.
 
-The maintained product catalog currently contains 45 human-readable scenarios.
+The maintained product catalog currently contains 65 human-readable scenarios.
 The evaluator's complete-pack coverage is a separate executable declaration.
-Report both counts in preflight and never claim that all 45 catalog scenarios are
+Report both counts in preflight and never claim that all 65 catalog scenarios are
 automated unless a reviewed mapping proves it.
+
+The synchronized evaluator pack declares 28 cases (11 existing plus 17 financial browser declarations). New financial declarations remain not_verified until mapped and executed. Mandatory hosted qualification is a distinct 123-case contract (73 canonical plus 50 independently frozen supplemental cases), not human or browser coverage.

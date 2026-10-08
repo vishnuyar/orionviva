@@ -62,6 +62,8 @@ NET_MOVEMENT = "net_movement"
 # sign. A single card settlement is one of these, and so is a single purchase.
 MOVEMENT = "movement"
 
+REPAYMENT = "repayment"
+
 # A number of things — accounts, documents, movements, months, counterparties.
 # Never an amount of money.
 COUNT = "count"
@@ -93,12 +95,12 @@ def ratio_of(kind: str) -> str:
 # What may be compared with something of its own kind. `TIME` is not among
 # them: it measures no magnitude, so nothing is a proportion of it.
 COMPARABLE = (SPENDING, INCOME, BALANCE, OWED, NET_WORTH, GROSS_FLOW,
-              NET_MOVEMENT, MOVEMENT, COUNT)
+              NET_MOVEMENT, MOVEMENT, REPAYMENT, COUNT)
 
 RATIOS = tuple(ratio_of(kind) for kind in COMPARABLE)
 
 KINDS = (SPENDING, INCOME, BALANCE, OWED, NET_WORTH, GROSS_FLOW,
-         NET_MOVEMENT, MOVEMENT, COUNT, RATIO, TIME) + RATIOS
+         NET_MOVEMENT, MOVEMENT, REPAYMENT, COUNT, RATIO, TIME) + RATIOS
 
 
 def is_ratio(name: str) -> bool:

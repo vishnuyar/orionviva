@@ -38,7 +38,7 @@ def test_active_attention_description_names_the_bounded_row_contract():
     named, version = descriptions()
     attention = named["check_completeness"]
 
-    assert version == DESCRIPTIONS_VERSION == "tools-v24"
+    assert version == DESCRIPTIONS_VERSION == "tools-v25"
     assert "bounded" in attention
     assert "consequence-ordered" in attention
     assert "each shown open question" in attention
@@ -116,10 +116,14 @@ def test_balances_match_the_projection_and_carry_grades(proj, registry):
     chk = figures["Everyday Checking — balance"]
     assert chk["value"] == str(proj.balance("chk").amount)
     assert chk["grade"] == CORROBORATED
-    # The card has no closing statement, so the composite is only as strong
-    # as its weakest part.
-    # A card measures what is owed, and it is written and declared as that.
-    assert figures["Signature Card — owed"]["grade"] == UNVERIFIED
+    # Movements without a dated stock observation do not establish card debt.
+    assert "Signature Card — owed" not in figures
+    assert "card" not in {row["record_id"] for row in result.data["balances"]}
+    assert not any(figure["kind"] == "financial" and "card" in figure["record_ids"]
+                   for figure in result.figures)
+    assert any(item.get("account") == "card" for item in result.identifiers)
+    assert any("card" in caveat and "No balance has been observed" in caveat
+               and "not reported as zero" in caveat for caveat in result.caveats)
 
 
 def test_an_unmeasured_asserted_liability_is_not_reported_as_zero(proj):
@@ -1046,6 +1050,11 @@ def _probe_vault(factor="1", more=0):
         question_declined("q-1", "nature", "2026-02-03",
                           amount=scaled("300.00")),
     ]
+    evs.extend([document_captured("probe-cash", "probe.pdf", 10, "bank_statement", 1, "2026-02-01"),
+                closing_balance_observed("chk", scaled("1149.25"), "2026-01-31", _p("probe-cash"))])
+    evs.append(read_recorded("doc-one", "synthetic", "fixture", "text",
+                             _statement_reply(scaled("1000.00"), "2026-01-01", scaled("1149.25"), "2026-01-31"),
+                             0, 0, 0, True, None, "2026-02-01"))
     evs.append(movement_tagged(
         movement_key("doc-one", "chk", "2026-01-20",
                      Decimal(scaled("-60.25")), "COUNTERPARTY ONE", 0),
@@ -1064,6 +1073,7 @@ def _probe_vault(factor="1", more=0):
                                      provenance=_p("doc-one")))
         evs.append(document_captured(f"doc-more-{n}", f"more{n}.pdf", 10,
                                      "bank_statement", 0.9, "2026-02-01"))
+        evs.append(closing_balance_observed(f"extra{n}", "0.00", "2026-01-31", _p(f"doc-more-{n}")))
         evs.append(agent_acted("enrich_unknown", "enrich", f"more-{n}", "done",
                                "2026-02-03", calls=1))
         evs.append(question_declined(f"q-more-{n}", "nature", "2026-02-03",
@@ -1091,6 +1101,63 @@ def _enumerated_args(schema: dict) -> list:
     return combos
 
 
+def _analysis_fixture_calls(schema, start="2026-01-01", end="2026-01-31", account="chk"):
+    """Every reviewed analysis view gets valid typed fixture arguments."""
+    views = {
+        "spending_comparison": [{"baseline_from": start, "baseline_to": end,
+                                  "include_percentage": flag,
+                                  "filters": {"account": account}}
+                                 for flag in (False, True)],
+        "movement_search": [{"filters": {"account": account}}],
+        "period_income": [{}],
+        "spending_by_account": [{}],
+    }
+    assert set(views) == set(schema["properties"]["view"]["enum"]), "an analysis view lacks a fixture call"
+    return [{"view": view, "from": start, "to": end, **arguments}
+            for view, cases in views.items() for arguments in cases]
+
+
+
+def _measurement_projection_fixture_calls(name, schema, start="2026-01-01", end="2026-01-31", account="chk"):
+    if name == "read_statement_coverage":
+        return [{"account": account, "from": start, "to": end}]
+    views = {
+        "read_account_measurements": {
+            "recorded_cash": [{"account": account}],
+            "recorded_owed": [{"account": "card"}],
+            "account_value_history": [{"account": account,"from": start,"to": end}],
+        },
+        "read_financial_projections": {
+            "known_remainder": [{}], "upcoming_obligations": [{}], "goal_progress": [{}],
+        },
+    }[name]
+    assert set(views) == set(schema["properties"]["view"]["enum"]), "a measurement/projection view lacks coverage"
+    return [{"view": view, **args} for view, cases in views.items() for args in cases]
+
+
+def _scenario_fixture_calls(factor="1"):
+    """Closed typed premises cover every scenario view, without recorded-value invention."""
+    import copy
+    from viva.answer_program.eval import load_supplement_cases
+    from viva.tools.scenarios import MONEY_ROLES, FAMILIES
+    samples={}
+    for case in load_supplement_cases():
+        if case.expected_family in FAMILIES and case.answerability_status=="answered" and "account_phrase" not in case.expected_parameters:
+            samples.setdefault(case.expected_family,case)
+    assert set(samples)==set(FAMILIES)
+    calls=[]
+    for family,case in samples.items():
+        args={"view":family,"parameters":copy.deepcopy(case.expected_parameters),"parameter_sources":copy.deepcopy(case.parameter_sources)}
+        question=case.question
+        for key in set(args["parameters"]) & set(MONEY_ROLES):
+            raw=args["parameters"][key]; value=str(Decimal(raw)*Decimal(factor))
+            old=args["parameter_sources"][key]["quote"]
+            new=old.replace(raw,value)
+            question=question.replace(old,new)
+            args["parameters"][key]=value;args["parameter_sources"][key]["quote"]=new
+        calls.append((args,question))
+    return calls
+
 def _every_figure(factor="1", more=0, stable_only=False) -> dict:
     """Every figure every registered tool emits over one vault, by what it
     says it is. A tool no call here reaches fails the coverage check, so a new
@@ -1102,7 +1169,15 @@ def _every_figure(factor="1", more=0, stable_only=False) -> dict:
         "list_movements": [{"filters": {"account": "chk"}}],
         "get_provenance": [{"record_id": "chk"}, {"record_id": "doc-one"},
                            {"record_id": movement}],
+        "read_financial_analysis": _analysis_fixture_calls(
+            next(schema["parameters"] for schema in registry.schemas()
+                 if schema["name"] == "read_financial_analysis")),
+        "simulate_scenario": [args for args,_ in _scenario_fixture_calls(factor)],
     }
+    for schema in registry.schemas():
+        if schema["name"] in {"read_account_measurements", "read_statement_coverage", "read_financial_projections"}:
+            from_the_vault[schema["name"]] = _measurement_projection_fixture_calls(
+                schema["name"], schema["parameters"], account="chk")
     out: dict = {}
     reached = set()
     book = _one_figure(registry, "query_ledger", {"entity": "balances"})
@@ -1117,10 +1192,16 @@ def _every_figure(factor="1", more=0, stable_only=False) -> dict:
                                        _enumerated_args(schema["parameters"])):
             calls.append((name, args))
     for name, args in calls:
-        result = registry.call(name, args, figures=book)
+        question=next((text for candidate,text in _scenario_fixture_calls(factor) if candidate==args),"") if name=="simulate_scenario" else ""
+        result = registry.call(name, args, figures=book,question=question)
         if not result.ok:
             continue
         reached.add(name)
+        if name=="simulate_scenario":
+            receipt=result.data["assumption_receipt"]
+            assert receipt["current_question_only"] and receipt["parameter_role_binding"]
+            assert receipt["exact_proofs"]==args["parameter_sources"]
+            assert all(f["kind"]=="hypothetical" and not f["grade"] for f in result.figures)
         # Capped rankings and winner selections can replace labels when records
         # are added, so the monotonic-label set excludes those reads.
         if (stable_only and name == "query_ledger"

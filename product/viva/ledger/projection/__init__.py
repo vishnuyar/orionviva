@@ -75,7 +75,15 @@ class LedgerProjection:
 
     def __init__(self, events: Iterable[Event], as_of: str | None = None,
                  resolve_keys=None) -> None:
-        self._core = ProjectionCore(events, as_of, resolve_keys)
+        from .measurements import MeasurementSources
+        sources = MeasurementSources()
+        def with_source_context():
+            for event in events:
+                if as_of is None or event.occurred_at <= as_of:
+                    sources.apply(event)
+                yield event
+        self._core = ProjectionCore(with_source_context(), as_of, resolve_keys)
+        self._core._measurement_sources = sources
 
     @property
     def core(self) -> ProjectionCore:
@@ -90,6 +98,8 @@ class LedgerProjection:
 
     def apply(self, event: Event) -> None:
         """Fold one event into the projection (respecting an as_of horizon)."""
+        if self.as_of is None or event.occurred_at <= self.as_of:
+            self._core._measurement_sources.apply(event)
         self._core.apply(event)
 
     def _state(self, account: str):
