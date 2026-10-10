@@ -10,15 +10,15 @@
     },
     "semantic_request_schema": {
       "in": "schemas",
-      "active": "semantic-request-schema-v8"
+      "active": "semantic-request-schema-v11"
     },
     "semantic_request": {
       "in": "prompts",
-      "active": "semantic-request-v11"
+      "active": "semantic-request-v14"
     },
     "semantic_request_retry": {
       "in": "prompts",
-      "active": "semantic-request-retry-v9"
+      "active": "semantic-request-retry-v12"
     },
     "tools": {
       "in": "prompts",
@@ -294,6 +294,15 @@
     "semantic-request-cases-v3": "51178882a953be77",
     "answer-program-cases-v1": "c7a04391629c387b",
     "semantic-request-cases-v2": "f238ddb3383e5fab",
-    "semantic-request-cases-v1": "0d538b5b21e79557"
+    "semantic-request-cases-v1": "0d538b5b21e79557",
+    "semantic-request-v12": "829bbc12b4d2cb4c",
+    "semantic-request-retry-v10": "cc145f9dc22fbb34",
+    "semantic-request-schema-v9": "e4c5cacb42da8742",
+    "semantic-request-v13": "8e57e8c2804e1859",
+    "semantic-request-retry-v11": "5d7986d0711a57b9",
+    "semantic-request-schema-v10": "950b9d05a85bbd88",
+    "semantic-request-v14": "a3f33ea3486ad3a9",
+    "semantic-request-retry-v12": "48fe3dc619c33c37",
+    "semantic-request-schema-v11": "ba07c67a43845903"
   }
 }

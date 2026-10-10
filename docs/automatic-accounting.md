@@ -17,7 +17,7 @@ At the next normal interpretation entry, old v1/v2 automatic-model, unverified, 
 
 Ordinary unexplained outflows become working expenses and inflows become working income, interpreted through the source account kind. Credit card purchases are expenses; repayments do not repeat the purchase expense. Supported transfers, borrowing, refunds and investment transactions retain their established meaning. The major category, minor category and merchant hierarchy groups reporting lines without counting the same money at each level.
 
-The profit-and-loss report preserves exact decimal amounts and separate currencies. Its period includes both end dates. Amount evidence and classification evidence are distinct: a reconciled amount can have an inferred treatment. Provisional contributions are included and shown separately. The balance sheet uses measured balances and dated holdings, with inferred acquisitions marked as such. Missing opening debt balances, unknown compound allocations and held documents remain disclosed. No model can manufacture a balance, exchange rate, principal split or depreciation schedule.
+The profit-and-loss report preserves exact decimal amounts and separate currencies. Its period includes both end dates. Amount evidence and classification evidence are distinct: a reconciled amount can have an inferred treatment. Provisional contributions are included and shown separately. The balance sheet uses measured balances, dated holdings and identified acquisitions with source-supported cost, retaining their grades. Generic counterpart treatment contributes unresolved holding coverage rather than another holding. Missing opening debt balances, unknown compound allocations and held documents remain disclosed. No model can manufacture a balance, exchange rate, principal split or depreciation schedule.
 
 Payroll decomposition retains the matched bank movement and currency. Legacy decompositions use only a unique matching deposit within the ingestion date tolerance. Explicit human or document-attested shares can allocate a known payment; a model-generated ratio cannot do so. Conversational percentages must occur explicitly in the user’s explanation. Unsupported monetary or verbal allocations stay unresolved. Learned treatment does not carry an installment’s proportions into other payments; each compound payment needs its own allocation evidence.
 
@@ -68,3 +68,20 @@ The default-purpose learning amendment has separate synthetic regressions for co
 The combined repaired implementation passed fresh independent pre-Steward verification at working-tree candidate `03fb9ef026f9740f95c34f746ab4717dfc407c33+worktree.3d530f478e2e`: 3,556 product tests and 212 core/merchant tests, with no failures or skips. Fifty-one independent synthetic controls passed and the regression failed against the preserved original matcher. Independent interface review found no introduced craft defect in three component observations; existing result-announcement and historical Undo limitations remain. Prose-only ship-time edits require a new identity and a preservation check; these measured results retain their original candidate attribution.
 
 The candidate's complete independent acceptance attempted eleven cases: eight passed, none failed and three remain incomplete (`acceptance_gap` / `insufficient_evidence`): packaged catalog, native compatibility/signed lifecycle and model-quality readiness. No hosted calls were made by that acceptance run. Eight packaged contracts and six same-artifact lifecycle checks passed, and compiled behavior/transport isolation were independently reviewed; they do not prove a signed installer or clean-target release. The complete nineteen-document browser campaign, actual future-learning/reload/undo journey and financial conversations remain incomplete. Synthetic checks, compiled-package checks and historical Witness results do not establish actual-model compliance or current release readiness.
+
+### Asset treatment and holding coverage
+
+A generic asset counterpart records treatment of source activity; it does not
+establish that an additional asset remains held. Neither automatic attribution,
+human confirmation, classification grade, nor an allocated component changes
+that boundary. Net worth excludes its cash-derived amount and discloses the
+unresolved holding coverage alongside the supported subtotal. Source-role money
+effects remain unchanged, including the distinction between bank activity and
+liability repayments.
+
+Identified named acquisition cost, refunds, loan receivable principal and
+repayments remain supported on their existing paths. Independently established
+held cash and dated measurements remain countable. A holding alias must resolve
+to existing holding authority; a measured destination is counted once. This is a
+read-only valuation rule, with no extra category confirmation, ruling rewrite,
+matching change, or ingestion change.

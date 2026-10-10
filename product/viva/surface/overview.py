@@ -21,6 +21,7 @@ from ..tools.boundary import (SELECTED_TERMS, UNPOSTED, account_written,
                               named_slice, said, statements)
 from ..ledger.projection.movements import leading_account
 from ..ledger.events import ASSERTED
+from ..ledger.postings import MAJOR_UNCATEGORIZED
 from ..ledger.identity import masked
 from ..tools.envelope import BY_ACCOUNT, BY_CURRENCY, GAP_REASONS
 from .models import Citation, CitationRelation, FigureGrade, FigureView, PanelState
@@ -221,12 +222,12 @@ def _vault_accounts(projection, named: dict) -> set:
     posted to reaches no read at all, because every read that would find it
     finds it through the movements it has none of.
 
-    Which account a ruling brings into being is the ledger's own question and
-    is answered by the ledger's own function, so this holds no second opinion
-    about which legs name a thing a person holds."""
+    A registered generic asset counterpart is activity coverage, not another
+    held account. Independently recorded accounts remain in the named set;
+    identified holding rulings retain the ledger's existing account authority."""
     ruled = {leading_account(ruling.get("legs") or [])
              for ruling in projection.rulings()}
-    return set(named) | (ruled - {""})
+    return set(named) | (ruled - {"", MAJOR_UNCATEGORIZED["asset"]})
 
 
 def _known(result) -> dict:
@@ -568,6 +569,9 @@ def _reach(point: dict, figures: list,
     a ruling may not yet have a posting or measurement, so neither set alone
     describes that population. Neither set attests to accounts outside the vault.
 
+    Unresolved generic asset activity is coverage, not an additional account.
+    A separately recorded or measured account keeps its place in the population.
+
     Each account is counted once, and withholding a figure never shrinks the
     denominator. The numerator comes only from the figures actually displayed.
     """
@@ -577,7 +581,10 @@ def _reach(point: dict, figures: list,
             for line in (point.get("lines") or []) if line.get("account")}
     held |= {str(row.get("account", "")) for row
              in (point.get("missing") or []) + (point.get("skipped") or [])
-             if row.get("account")}
+             if row.get("account") and (
+                 row["account"] != MAJOR_UNCATEGORIZED["asset"]
+                 or row["account"] in vault_accounts
+                 or row["account"] in held)}
     held |= {str(account) for account in vault_accounts if account}
     return len(counted), len(held)
 

@@ -1,6 +1,6 @@
 # Semantic requests and deterministic AnswerProgram lowering
 
-**State:** built; fresh v11 exact-model admission and retained-vault retest pending
+**State:** built; original v13 candidate qualified; current exact-candidate qualification, artifact acceptance and retained-vault retest pending
 **Rules:** AP-9, AP-10, AP-11, AP-12, AP-13
 **Invariants touched:** T1, T2, T3, T8, I1, X2
 
@@ -17,15 +17,37 @@ complete AnswerProgram. The already-built runtime then validates the whole
 program before any financial read and executes, binds, and renders it through
 the same one grounded path.
 
-The active compact artifacts are `semantic-request-v11`,
-`semantic-request-retry-v9`, and `semantic-request-schema-v8`; exact-model
+The active compact artifacts are `semantic-request-v14`,
+`semantic-request-retry-v12`, and `semantic-request-schema-v11`; exact-model
 publication uses `semantic-request-admission-v8`. The profile version changed
 because the admission policy changed; its availability thresholds remain unchanged.
 The active selection catalog adds eight everyday analysis meanings and six
 measurement/projection meanings and three scenario meanings to the original six. Fixed code-owned reads and arithmetic implement those meanings;
 the active descriptions are `tools-v25`. The prior admission profile does not
-qualify the expanded surface. Measurements and existing projections are
-implemented, including savings, loan-payoff and cash-flow scenarios; expanded qualification and retained-vault testing remain pending. See [financial-analysis-measurements-and-scenarios.md](financial-analysis-measurements-and-scenarios.md) for numerical source forms, timing, quantities and receipts.
+qualify the expanded surface.
+
+Retained v12 and retry v10 align scenario numerical, date, currency and
+account proof derivations with the existing validator; projection horizons quote
+only digits. Account catalog and materializable grounded-reference paths remain
+available, including valid aliases. Qualification002 remains failed; diagnostic003
+did not admit a model. Qualification004 was not admitted: 116 of 123 graded
+cases and 49 of 50 supplemental cases passed. Qualification005 admitted all
+123 cases on their first attempts for its original frozen v13 candidate. Retained
+schema v10 aligns only the 27 request-version labels with v13; retained schema
+v9 remains immutable. The original qualification record stays unchanged. The
+bounded packaging repair preserves those model-facing and deterministic source
+contracts; exact-contract equality does not accept the repaired artifact.
+Complete new-artifact binding and retained-vault browser Witness remain pending.
+
+Retained v13 and retry v11 explicitly keep native parameters, parameter_sources
+and requested_claims as sibling fields and provide a catalog-placeholder example.
+Ungrounded required account references ask which account; recorded-start account
+proofs exclude the starting-account role label. Scenario numerical and date proof clauses,
+matching, eligibility and missing-measurement refusals remain unchanged. These
+instructions and synthetic contract checks do not establish model obedience.
+
+Measurements and existing projections are
+implemented, including savings, loan-payoff and cash-flow scenarios; repaired-artifact acceptance and retained-vault testing remain pending. See [financial-analysis-measurements-and-scenarios.md](financial-analysis-measurements-and-scenarios.md) for numerical source forms, timing, quantities and receipts.
 
 ## Rules
 
@@ -215,10 +237,36 @@ implemented, including savings, loan-payoff and cash-flow scenarios; expanded qu
    capability builders, tool registration, reused numerical and measurement
    authorities, source-context facade, and numerical binding/rendering route
    alongside compiler, runtime, replay and model adapter. Frozen packaging
-   carries the exact source resources named by that map. This does not hash
-   unrelated ledger files or replace complete candidate binding; guarded
-   qualification still binds the full working diff and final host/sidecar/
-   instrument identities. Expanded catalog qualification remains pending.
+   carries the exact source resources named by that map. A generated manifest
+   covers the current strict 60-entry packaging map, including package sources
+   and the net-worth, accounting, SQL Overview and surface Overview authorities.
+   Surface Overview is an explicit source-only entry, not an engine import:
+   its raw bytes are hashed without constructing or executing the module. Its
+   fixed canonical regular-file path derives from the already authenticated
+   intents source. Strict resolution rejects missing files, symlinks and paths
+   outside the package. Frozen hosts also require the regular canonical manifest
+   with all 60 entries and the exact `viva.surface.overview` mapping to
+   `viva/surface/overview.py`. Independent verification of the source-only
+   correction and matching rebuilt source/artifact evidence passed. The retained
+   v14 product run passed 4,148 checks, with two packaged opt-in skips closed
+   separately. Fresh local-merge checks resolved after isolated Git metadata
+   was restored; both packaged opt-in checks passed separately. The complete
+   run and remediation are recorded separately.
+   The custom source-inspection hook runs immediately after PyInstaller's
+   built-in inspection hook, preserving every other startup script's order. It
+   recognizes only mapped module objects with the exact `PyiFrozenImporter`
+   loader and coherent identity, origin, package status and extraction-root
+   source path. It returns the readable sibling raw `.py` resource without
+   changing module metadata; other inspection requests delegate unchanged.
+   Missing or invalid resources refuse, and changed bytes reach the unchanged
+   admission mismatch gate. This does not hash unrelated ledger files or
+   replace complete candidate binding. Packaging-only repairs require equality
+   of all 13 admission contracts and explicit owner acceptance of complete
+   repaired-artifact provenance; equality does not authenticate startup code
+   outside that map. Qualification005 remains historical evidence for its
+   original 56-source candidate. The changed net-worth and Overview authorities
+   require fresh exact-candidate qualification, followed by retained-vault
+   Witness testing; neither is claimed complete.
 7. Admission reports keep a bounded interpretation observation and sanitized
    per-attempt failure code so a failure says what the model selected and why
    repair was needed without copying source excerpts or provider output. A
@@ -246,9 +294,10 @@ implemented, including savings, loan-payoff and cash-flow scenarios; expanded qu
 **Qualification status:** the earlier v9 qualification012 profile was published
 and used by the retained-vault campaign013. That campaign exercised 45 questions
 and found a named liability display failure plus eight wrong requested meanings.
-Those results remain evidence for the old bytes; they do not qualify this v11
-prompt, changed catalog labels, role-aware builder or replay digest. Fresh
-exact-model qualification and retained-vault retesting remain pending. The
+Those results remain evidence for the old bytes; they do not qualify this v14
+prompt, changed catalog labels, role-aware builder or replay digest.
+Qualification005 admitted the original frozen expanded candidate; complete
+repaired-artifact acceptance and retained-vault retesting remain pending. The
 canonical corpus and minimum availability/integrity thresholds are unchanged;
 it contains no named owed case, which needs supplemental fictional and live
 controls. No model-free result alone grants runtime admission.
@@ -320,3 +369,11 @@ only when it agrees with `resolved_model`. The admission policy remains v8 becau
 its criteria have not changed. Older application readers require the legacy field
 and cannot read newly serialized bundles; keep their original bundle when rolling
 back the application. Prompt, schema, and engine versions remain separate contracts.
+
+Active v14 and retry v12 clarify contiguous source quotes and ordinary period
+month/year expressions, excluding surrounding clauses and invented ellipses.
+Explicit ISO period edges keep verbatim date quotes. Scenario date proofs retain
+complete opening-date or first-payment-date role clauses. Active schema v11
+changes only the 27 request-version labels from v13 to v14; all predecessor
+artifacts remain immutable. This candidate has no successful qualification;
+model-free compatibility checks do not establish live model compliance.

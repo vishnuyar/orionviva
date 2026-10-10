@@ -69,7 +69,14 @@ def known_account(path: str, accounts) -> dict:
     same object as one of them.
     """
     known = accounts.get(path)
-    return known if known is not None else {"account": path}
+    if known is not None:
+        return known
+    from ..ledger.postings import MAJOR_UNCATEGORIZED
+    if path == MAJOR_UNCATEGORIZED["asset"]:
+        return {"account": path, "name": "unresolved transfer activity"}
+    if path == MAJOR_UNCATEGORIZED["liability"]:
+        return {"account": path, "name": "debt without a measured balance"}
+    return {"account": path}
 
 
 def account_written(path: str, accounts) -> render.Account:

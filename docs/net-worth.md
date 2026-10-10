@@ -15,7 +15,7 @@
 1. `net_worth(D)` is defined for any `D` between the earliest and latest dated observation, and is evaluated at every date where something changed — a statement closed, a holding was measured, a ruling was made.
 2. A depository or liability account contributes the observed closing balance the issuer attested, not a sum of the ledger's own postings.
 3. An investment account contributes **one line per currency**: its cash plus the holdings carried on its latest statement at or before `D` — one snapshot, not each instrument's own latest measurement (product/viva/ledger/projection/positions.py:174, product/tests/test_networth.py::test_a_holding_the_newest_statement_no_longer_lists_is_no_longer_held).
-4. An account a ruling brought into being contributes **cost at the ruling's date** for a purchased asset, or signed outstanding principal for a loan receivable—never an invented present-day market value.
+4. An identified holding a ruling brought into being contributes **cost at the ruling's date** for a purchased asset, or signed outstanding principal for a loan receivable—never an invented present-day market value.
 5. An account with no measurement at or before `D` contributes nothing — no zero (product/tests/test_networth.py::test_an_account_contributes_nothing_before_its_first_measurement).
 6. An earlier point never moves when a later document arrives (product/tests/test_networth.py::test_a_later_document_does_not_move_an_earlier_point).
 
@@ -43,10 +43,10 @@
 **Code:** product/viva/ledger/networth.py (`NetWorthLine.provable`, `NetWorthPoint.by_currency`)
 **Test:** product/tests/test_networth.py::test_both_figures_are_reported_the_whole_total_and_the_provable_part
 
-1. The personal view includes everything the person stated, at their word, badged with its grade.
+1. The personal view includes the person’s identified holding and value assertions at their word, badged with their grades. A generic counterpart treatment alone establishes neither a held identity nor another holding amount.
 2. The provable subtotal is the sum of `corroborated` lines only, derived rather than stored.
 
-### MON-87 — two different unknowns, and only one is a trust problem
+### MON-87 — holding amount, holding identity and liability coverage remain distinct
 **State:** enforced
 **Code:** product/viva/ledger/networth.py (`_asserted_lines`, `_asserted_asset_lines`, `_gap_for`); product/viva/ledger/projection/rulings.py (`ruled_accounts.reliable_balance`)
 **Test:** product/tests/test_networth.py::test_a_liability_from_cash_flow_alone_is_refused_and_named
@@ -129,3 +129,34 @@ One financial life can hold several currencies (I1), and there is no FX source w
 - Per-lot cost basis is unbuilt.
 - The curve ends at the last document and does not extrapolate; nothing projects forward in time.
 - Charts belong to a real presentation layer, not the debug one.
+
+### Counterpart clearing does not establish a holding
+
+The registered generic asset counterpart is an accounting bucket. Automatic or
+human treatment of a movement into that bucket establishes no separate holding,
+even when a component allocation is supported. Its cash activity contributes no
+additional asset amount. Net worth keeps the measured subtotal and reports
+incomplete holding coverage: what remains held, and whether the destination is
+already measured elsewhere, are unresolved. It does not invent a zero or ask for
+an acquisition price for an unidentified thing.
+
+An alias closes this boundary only through existing holding authority: a dated
+measurement in the source currency, or a separately opened person-asserted named
+holding in that currency. A measured
+destination contributes its observation once. Alias text alone is insufficient.
+Named acquisitions retain signed cost and refunds; named receivables retain
+outstanding principal and repayments. Explicitly established held cash and
+measured balances keep their existing valuation paths. Live transfer links keep
+their existing precedence; no destination is inferred from equal amounts.
+
+The canonical and SQL Overview projections share this read decision. The
+balance sheet and net-only figures retain its coverage disclosure; audit movement
+references travel through existing tool record IDs, separately from the numeric
+figure's counted population. Unresolved generic activity does not add a phantom
+held account to Overview coverage; independently recorded accounts retain their
+place. No events, treatments, or source measurements change.
+
+A separate direct named ruling into measured person-asserted cash can still
+retain both its cash-derived cost and its measured balance. That pre-existing
+path is outside this generic-counterpart repair and remains open for owner
+assessment; these controls do not establish that every cash double count is fixed.

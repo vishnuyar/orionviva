@@ -22,6 +22,7 @@ from decimal import Decimal, InvalidOperation
 from .events import ASSERTED, CORROBORATED, ISSUED, VERIFIED, UNVERIFIED
 from .projection import MIXED
 from .projection.movements import money_effect
+from .postings import MAJOR_UNCATEGORIZED
 
 ASSET_ROOT = "Assets:"
 LIABILITY_ROOT = "Liabilities:"
@@ -68,6 +69,8 @@ class NetWorthPoint:
     # Documents read but not posted. They may name an account that does not
     # exist yet, so they cannot appear in `skipped`.
     held: list = field(default_factory=list)
+    # Audit references travel through existing tool record ids, not prose.
+    _unresolved_source_ids: list = field(default_factory=list, repr=False)
 
     @property
     def complete(self) -> bool:
@@ -148,11 +151,34 @@ def recorded_shares(ruling):
     return list(zip(legs, shares))
 
 
+def unresolved_counterpart(proj, recorded_account: str, account: str, as_of: str, currency: str) -> bool:
+    """A registered clearing identity needs independent holding authority.
+
+    Aliasing a bucket does not itself establish a holding. A dated measurement
+    or an opened person-asserted named holding can establish the destination;
+    neither author nor classification grade can replace that authority.
+    """
+    generic = MAJOR_UNCATEGORIZED["asset"]
+    if recorded_account != generic and account != generic:
+        return False
+    infos = {info.account: info for info in proj.account_infos()}
+    info = infos.get(account)
+    if info is None or (info.opened_at and info.opened_at[:10] > as_of):
+        return True
+    if any(value.currency == currency for value in proj.composed_values(account, as_of)):
+        return False
+    if (account != generic and info.origin == ASSERTED and info.opened_at
+            and info.currency == currency):
+        return False
+    return True
+
+
 def _asserted_lines(proj, as_of: str):
     """Accounts a person's rulings brought into being. Returns
-    ``(lines, missing)``.
+    ``(lines, missing, unresolved source ids)``.
 
-    Three cases:
+    Registered unresolved asset counterparts disclose coverage, not a holding.
+    Identified counterpart accounts retain three cases:
 
     * ``Assets:`` with every contributing movement decided — a line at **cost**,
       what was paid, never a present-day value. Badged `asserted`.
@@ -164,6 +190,8 @@ def _asserted_lines(proj, as_of: str):
       with the ask and the document that would answer it.
     """
     groups: dict[tuple, dict] = {}
+    unresolved: dict[tuple, list] = {}
+    component_groups: set[tuple] = set()
     inactive = _inactive_accounts(proj)
     rulings = {(row["scope"], row["subject"]): row for row in proj.rulings()}
 
@@ -180,16 +208,32 @@ def _asserted_lines(proj, as_of: str):
         shares = recorded_shares(ruling)
         aliases = proj.account_aliases()
         if shares is not None:
-            contributions = [(aliases.get(leg.get("account", ""), leg.get("account", "")), share)
+            contributions = [(aliases.get(leg.get("account", ""), leg.get("account", "")), share, leg.get("account", ""))
                              for leg, share in shares if leg.get("major") in ("asset", "liability")]
         elif len(ruling.get("legs") or []) > 1:
-            contributions = [(aliases.get(leg.get("account", ""), leg.get("account", "")), Decimal("1"))
+            contributions = [(aliases.get(leg.get("account", ""), leg.get("account", "")), Decimal("1"), leg.get("account", ""))
                              for leg in ruling["legs"] if leg.get("major") in ("asset", "liability")]
         else:
-            contributions = [(m.ruling_account, Decimal("1"))]
-        for account, share in contributions:
+            leg = next(iter(ruling.get("legs") or []), {})
+            contributions = [(m.ruling_account, Decimal("1"), leg.get("account", m.ruling_account))]
+        for account, share, recorded_account in contributions:
+            if share == 0 or not account or account in inactive:
+                continue
+            if unresolved_counterpart(proj, recorded_account, account, as_of, m.currency):
+                group = (MAJOR_UNCATEGORIZED["asset"], m.currency)
+                unresolved.setdefault(group, []).append(m)
+                if len(ruling.get("legs") or []) > 1:
+                    component_groups.add(group)
+                continue
             if not account or account in issued or account in inactive:
                 continue
+            # A resolved clearing destination already measured contributes its
+            # observation, never a second cash-derived holding.
+            if (recorded_account == MAJOR_UNCATEGORIZED["asset"]
+                    or account == MAJOR_UNCATEGORIZED["asset"]):
+                if any(value.currency == m.currency
+                       for value in proj.composed_values(account, as_of)):
+                    continue
             g = groups.setdefault((account, m.currency), {
                 "paid": Decimal("0"), "as_of": "", "reliable": True, "inferred": False})
             # Signed cost counts only the attested asset component and allows
@@ -202,6 +246,19 @@ def _asserted_lines(proj, as_of: str):
                 g["reliable"] = False
 
     lines, missing = [], []
+    for (account, currency), movements in sorted(unresolved.items()):
+        names = {"depository": "bank account", "liability": "debt account",
+                 "investment": "investment account"}
+        roles = ", ".join(sorted({names.get(m.kind, "account") for m in movements}))
+        treatment = ("includes a transfer component" if (account, currency) in component_groups
+                     else "was treated as a transfer")
+        missing.append({
+            "account": account,
+            "why": f"Some {currency} {roles} activity {treatment}. "
+                   "The records do not establish what remains held or whether it is "
+                   "already included in another measured balance.",
+            "ask": "",
+            "would_fix": "identify what remains held or establish that the destination is already measured"})
     for (account, currency), g in groups.items():
         if account.startswith(LIABILITY_ROOT):
             missing.append({
@@ -233,7 +290,7 @@ def _asserted_lines(proj, as_of: str):
             # neither becomes a document-corroborated asset valuation.
             as_of=g["as_of"], grade=UNVERIFIED if g["inferred"] else VERIFIED,
             origin=ASSERTED, kind="asserted"))
-    return lines, missing
+    return lines, missing, sorted({m.key for movements in unresolved.values() for m in movements})
 
 
 def _asserted_asset_lines(proj, as_of: str, valued: set):
@@ -467,7 +524,7 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
                 origin=info.origin or ISSUED, kind=info.kind,
                 proves=value.proves, mixed_vintage=value.mixed_vintage))
 
-    asserted, missing = _asserted_lines(proj, as_of)
+    asserted, missing, point._unresolved_source_ids = _asserted_lines(proj, as_of)
     point.lines.extend(asserted)
     point.missing.extend(missing)
     valued = ({ln.account for ln in point.lines}

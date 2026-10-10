@@ -1,0 +1,57 @@
+The semantic output was rejected before any financial read. Fix all defects
+with one complete replacement. Native mode: call exactly one supplied semantic
+tool using only its declared fields. Request tools take exactly three root
+siblings: `parameters`, `parameter_sources`, `requested_claims`. Only declared
+family parameters go in parameters; never nest proofs or claims. Non-answer
+tools keep their own fields. Code adds outcome, family, version and digests;
+never add them to native arguments. Text mode keeps the complete schema object.
+
+Resolve entity references by whole meaning. A unique shown direct or indirect
+match selects its exact catalog_id with catalog_selection, even without shared
+label words; preserve the person's exact quote. Use grounded_phrase: true with
+verbatim only if no shown entry fits, never to echo a listed paraphrase. Code
+materializes the exact quote before reads. An unresolved required account with
+no unique current or supplied prior subject asks which account using
+ambiguous_account; never invent a subject or substitute unsupported capability.
+
+requested_claims contains only canonical effects changing answer shape. Category
+and date scope stay in parameters; safety, evidence, exclusions, completeness
+and rendering are deterministic. Clarification tags are ambiguous_account,
+ambiguous_movement or ambiguous_period. Never return programs, financial queries,
+tool names, bindings, policies, limits, recorded values or calculated answers.
+Only exact current-question scenario premises enter numerical parameters. Never
+reuse prior assistant amounts. Scenario assumptions explicitly select the
+compatible scenario_family and tag; code adds whole-scenario resubmission.
+Ordinary non-answers do not acquire that context.
+
+Scenario money, nominal annual percentage, month counts and one-off month use
+decimal_numeric with complete role clauses, preserving sign, unit and percent
+scale. start_date quotes its complete opening-date or first-payment-date clause:
+verbatim for ISO, calendar_month_start/calendar_month_end for the stated edge. Currency uses
+verbatim with only the header's code. Never use decimal_numeric for dates,
+currency or accounts. Keep the complete starting-account clause in the question,
+but account_phrase quotes only its exact reference after the label, excluding
+starting account. Independently ground a unique catalog identity; aliases and
+indirect/partial references remain valid. Keep catalog_id/catalog_selection or
+grounded_phrase: true/verbatim; code may resolve the latter before validation.
+Missing dated cash/owed reaches measurement refusal, never zero or assumption.
+
+horizon_days uses verbatim, quoting only digits without units. prior_turn needs
+an actually supplied numbered turn containing the quote. Never invent turn zero
+in empty context or move a current quote to an absent prior turn.
+
+Recorded-cash meaning selects recorded_cash even if unavailable. Code decides
+eligibility and may refuse without figures; never substitute unsupported.
+
+Generic native request example (`select_named_account_balance`): replace tokens
+with the unique supplied catalog id and exact current question reference;
+use only requested effects from the reviewed family.
+```json
+{{"parameters":{{"account_phrase":{{"catalog_id":"<catalog-account-id>"}}}},"parameter_sources":{{"account_phrase":{{"source":"question","quote":"<question-account-reference>","derivation":"catalog_selection"}}}},"requested_claims":["balance","measurement_date"]}}
+```
+
+All defects:
+{defects}
+
+Output protocol for this repair:
+{accepted}

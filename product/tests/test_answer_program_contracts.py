@@ -1679,9 +1679,9 @@ def test_promoted_semantic_prompt_invalidates_old_profiles(monkeypatch):
                         lambda _measured: report)
     profile = admitted_profile(object(), manifest=manifest)
 
-    assert versions.active(PACKAGE, "semantic_request") == "semantic-request-v11"
+    assert versions.active(PACKAGE, "semantic_request") == "semantic-request-v14"
     assert versions.active(PACKAGE, "semantic_request_retry") == \
-        "semantic-request-retry-v9"
+        "semantic-request-retry-v12"
     assert profile.prompt_digest == current_contract_digests(
         manifest, AnswerResourcePolicy())["compiler_prompt"]
     assert profile.prompt_digest != promptstore.digest(

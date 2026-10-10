@@ -107,7 +107,27 @@ facade, numerical envelopes and binding/rendering route, compiler, runtime,
 replay and model adapter. The source map in the sidecar specification and its
 owning parity test are the exact inventory. A missing required source stops the
 build; changed source invalidates the measured answering profile. Unrelated
-Python sources are not included in that admission source inventory.
+Python sources are not included in that admission source inventory. A generated
+manifest covers the current strict 60-entry inventory, including net worth,
+accounting, SQL Overview and surface Overview authorities. The earlier
+qualification005 package had 56 entries; its original record remains unchanged.
+Surface Overview is an explicit source-only resource: admission hashes its raw
+bytes without importing or executing the surface module. Its fixed canonical
+regular-file path derives from the already authenticated intents source; strict
+resolution rejects missing, symlinked or escaping resources. On a frozen host,
+the regular canonical manifest must retain all 60 entries and the exact
+`viva.surface.overview` to `viva/surface/overview.py` mapping. Verification of
+this bounded architecture correction remains pending.
+
+The sidecar source-inspection hook
+runs immediately after PyInstaller's built-in inspection hook and recognizes
+the exact `PyiFrozenImporter` loader for mapped modules. It checks module and
+package identity, extraction-root containment and readable raw source resources
+before returning their `.py` paths; unrelated inspection delegates unchanged.
+Packaging-only repairs require equality of all 13 admission contracts, complete
+artifact provenance and explicit owner acceptance. The current net-worth and
+Overview source changes require fresh exact-candidate qualification; original
+qualification005 does not admit changed valuation bytes.
 
 For frontend-only development:
 
@@ -163,4 +183,4 @@ Report security-sensitive problems privately through
 
 ## Expanded conversation qualification
 
-The reviewed analysis, measurement and scenario capabilities require a fresh exact-model qualification before the expanded runtime profile is usable. Source builds and deterministic tests do not publish that profile. The unchanged canonical questions and mandatory independent capability supplement share authenticated case-specific fixture dates. Follow the concrete funded qualification plan and retained-vault Witness review; no document re-ingestion is required for this conversation-only change. See [financial-analysis-measurements-and-scenarios.md](financial-analysis-measurements-and-scenarios.md) for supported scenario input forms and the deferred local-receipt viewer limitation.
+The reviewed analysis, measurement and scenario capabilities require a fresh exact-model qualification before the expanded runtime profile is usable. Source builds and deterministic tests do not publish that profile. The unchanged canonical questions and mandatory independent capability supplement share authenticated case-specific fixture dates. Qualification005 admitted the original expanded candidate. The repaired package needs complete artifact binding and explicit owner acceptance of retained-evidence applicability before browser Witness continuation; no document re-ingestion is required for this conversation-only change. See [financial-analysis-measurements-and-scenarios.md](financial-analysis-measurements-and-scenarios.md) for supported scenario input forms and the deferred local-receipt viewer limitation.

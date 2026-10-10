@@ -1055,7 +1055,7 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "", *,
         data={"metric": "net_worth", "point": data},
         grade=weakest(_grades_in(data)),
         dated=as_of,
-        record_ids=record_ids,
+        record_ids=sorted(set(record_ids) | set(point._unresolved_source_ids)),
         # A point rests on records of more than one date two ways: its lines
         # were measured on different days, or one line composes days of its
         # own. The sentence is as true of the second as of the first, and a
@@ -1063,7 +1063,8 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "", *,
         caveats=([MIXED_VINTAGE]
                  if _mixed_vintage(line.get("as_of", "") for line in lines)
                  or any(line.get("mixed_vintage") for line in lines)
-                 else []),
+                 else []) + [row["why"] for row in data.get("missing", [])
+                             if row["account"] == networth.MAJOR_UNCATEGORIZED["asset"]],
         text=f"Net worth as of {as_of or 'unknown'}.")
 
 

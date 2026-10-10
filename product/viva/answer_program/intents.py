@@ -16,6 +16,7 @@ import inspect
 import json
 import pathlib
 import re
+import sys
 
 from vivacore import versions
 
@@ -864,7 +865,8 @@ class SemanticFamilyRegistry:
         from ..ledger.projection import (movements, categories, merchants,
                                         core, accounts, balances, rhythm, measurements,
                                         positions, current_period, obligations, goals)
-        from ..ledger import streams, scenarios as scenario_calculators, movement_identity, events, postings
+        from ..ledger import streams, scenarios as scenario_calculators, movement_identity, events, postings, networth, accounting
+        from ..read_store import overview as read_overview
         from ..tools import scenarios as scenario_tools
         from ..tools import measurements as measurement_tools, projections as projection_tools
         from ..ingest import brokerage
@@ -883,6 +885,8 @@ class SemanticFamilyRegistry:
             "capability_fixture": capability_fixture, "admission_fixture": admission_fixture,
             "admission_gate": admission, "admission_evaluation": evaluation,
             "movement_identity": movement_identity, "typed_events": events, "posting_construction": postings,
+            "ledger_networth": networth, "ledger_accounting": accounting,
+            "financial_read_overview": read_overview,
             "ledger_aggregates": ledger_aggregates,
             "ledger_common": ledger_common,
             "ledger_movements": ledger_movements,
@@ -912,10 +916,55 @@ class SemanticFamilyRegistry:
             "goal_projection": goals, "brokerage_normalization": brokerage,
             "arithmetic_verification": arithmetic, "number_normalization": normalize,
         }
-        return {
+        digests = {
             name: hashlib.sha256(pathlib.Path(inspect.getsourcefile(module)).read_bytes()).hexdigest()[:16]
             for name, module in modules.items()
         }
+        digests.update({
+            name: hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+            for name, path in SemanticFamilyRegistry._admitted_source_only_paths().items()
+        })
+        return digests
+
+    @staticmethod
+    def _admitted_source_only_paths():
+        """Authenticate disclosure source bytes without executing their tier."""
+        anchor = pathlib.Path(inspect.getsourcefile(inspect.getmodule(SemanticFamilyRegistry)))
+        package = anchor.parent.parent
+        if anchor.resolve(strict=True) != anchor or package.resolve(strict=True) != package:
+            raise RuntimeError("admission source artifact: noncanonical package anchor")
+        resources = {
+            "financial_surface_overview": ("viva.surface.overview", "viva/surface/overview.py"),
+        }
+        if getattr(sys, "frozen", False) is True:
+            extraction = pathlib.Path(sys._MEIPASS)
+            if not extraction.is_absolute() or not extraction.is_dir():
+                raise RuntimeError("admission source artifact: inconsistent frozen package root")
+            root = extraction.resolve(strict=True)
+            if package != root / "viva":
+                raise RuntimeError("admission source artifact: inconsistent frozen package root")
+            manifest = root / "admission-source-map.json"
+            if manifest.resolve(strict=True) != manifest or not manifest.is_file():
+                raise RuntimeError("admission source artifact: invalid source map resource")
+            mapping = json.loads(manifest.read_bytes())
+            if not isinstance(mapping, dict) or len(mapping) != 60:
+                raise RuntimeError("admission source artifact: incomplete source map")
+            for name, relative in mapping.items():
+                if (not isinstance(name, str) or not isinstance(relative, str)
+                        or not all(part.isidentifier() for part in name.split("."))
+                        or relative not in (name.replace(".", "/") + ".py",
+                                            name.replace(".", "/") + "/__init__.py")):
+                    raise RuntimeError("admission source artifact: invalid source map identity")
+            if any(mapping.get(module) != relative for module, relative in resources.values()):
+                raise RuntimeError("admission source artifact: absent canonical resource mapping")
+        paths = {}
+        for name, (_module, relative) in resources.items():
+            candidate = package.parent / relative
+            resolved = candidate.resolve(strict=True)
+            if resolved != candidate or not resolved.is_relative_to(package) or not resolved.is_file():
+                raise RuntimeError("admission source artifact: invalid canonical source resource")
+            paths[name] = resolved
+        return paths
 
     @staticmethod
     def _fields(raw, allowed, required, where):
@@ -1047,13 +1096,29 @@ class SemanticFamilyRegistry:
                 "verbatim", "catalog_selection", "calendar_month_start",
                 "calendar_month_end"]},
         }, ("source", "quote", "derivation"))
-        if family.id in {"savings_scenario","loan_payoff_scenario","cash_flow_scenario"}:
-            evidence["properties"]["source"]["enum"]=["question"]
-            evidence["properties"].pop("turn",None)
-            evidence["properties"]["derivation"]["enum"].append("decimal_numeric")
+        scenario = family.id in {
+            "savings_scenario", "loan_payoff_scenario", "cash_flow_scenario"}
+        if scenario:
+            evidence["properties"]["source"]["enum"] = ["question"]
+            evidence["properties"].pop("turn", None)
         names = family.parameter_schema.get("properties", {})
         required = tuple(family.parameter_schema.get("required", ()))
-        return _object({name: evidence for name in names}, required)
+        proofs = {name: copy.deepcopy(evidence) for name in names}
+        for name, proof in proofs.items():
+            if scenario:
+                derivations = {
+                    "start_date": ["verbatim", "calendar_month_start",
+                                   "calendar_month_end"],
+                    "currency": ["verbatim"],
+                    "account_phrase": ["catalog_selection", "verbatim"],
+                }.get(name, ["decimal_numeric"])
+            elif (family.id in {"known_remainder", "upcoming_obligations"}
+                  and name == "horizon_days"):
+                derivations = ["verbatim"]
+            else:
+                continue
+            proof["properties"]["derivation"]["enum"] = derivations
+        return _object(proofs, required)
 
     def _validate_parameter_sources(self, parameters, sources, context,
                                     *, require_grounding):

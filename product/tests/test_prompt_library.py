@@ -387,7 +387,7 @@ def test_semantic_v10_is_pinned_and_preserves_prior_prompt_bytes():
     from vivacore import promptstore
     text = promptstore.load(PACKAGE / 'prompts', 'semantic-request-v10')
     released = manifest.manifest(PACKAGE)['released']
-    assert manifest.active(PACKAGE, 'semantic_request') == 'semantic-request-v11'
+    assert manifest.active(PACKAGE, 'semantic_request') == 'semantic-request-v14'
     assert hashlib.sha256(text.encode()).hexdigest()[:16] == released['semantic-request-v10']
     for version in ('semantic-request-v9', 'semantic-request-retry-v8'):
         previous = promptstore.load(PACKAGE / 'prompts', version)

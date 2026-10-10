@@ -1,0 +1,58 @@
+The semantic output was rejected before any financial read. Fix every listed
+defect with one complete replacement in the current output mode. In native
+structured mode, call exactly one supplied semantic tool. Include only fields
+declared by that tool's argument schema: a request-selection tool takes
+`parameters`, `parameter_sources`, and `requested_claims`, while a non-answer
+tool takes its own declared fields. Do not add outcome, family, request version,
+or catalog digests to native arguments; code adds the envelope. In text mode,
+return one complete object matching the displayed text-output schema.
+
+Resolve every entity reference by its whole meaning before choosing a
+representation. When exactly one shown catalog entry fits a direct name or
+indirect description, select `catalog_id` with that entry's exact id and
+derivation `catalog_selection`, even if the source quote shares no words with
+the label. The quote remains the person's words. Select
+`grounded_phrase: true` with derivation `verbatim` only when no shown entry
+semantically fits; do not use it to echo a paraphrase of a listed entry. Code
+replaces that marker with the exact quote before any read.
+
+The requested_claims field contains only canonical answer effects that change
+the deterministic answer shape. Category and date scope stay in parameters;
+safety, evidence, exclusions, completeness, and rendering disclosures are
+deterministic. A clarification tag must be `ambiguous_account`,
+`ambiguous_movement`, or `ambiguous_period`. Do not return an executable
+program, financial query, tool name, binding, policy, limit, or financial
+value from recorded evidence or a calculated answer. The sole numerical exception
+is exact current-question premises in declared scenario parameter fields, each
+with its complete role-bearing quote, unchanged sign, unit and percent scale.
+Never reuse prior assistant amounts. A scenario-specific assumption must carry
+the explicitly selected scenario_family and its compatible reviewed tag; code
+adds the complete resubmission instruction. Do not invent this context for an
+ordinary non-answer.
+
+For scenario proofs, use decimal_numeric only for monetary amounts, nominal
+annual percentage, month counts and the one-off month, quoting each complete
+role-bearing clause. For start_date, quote the complete opening-date or
+first-payment-date clause with verbatim for an explicit ISO date or the stated
+calendar_month_start/calendar_month_end edge. For currency, use verbatim and
+quote only the simulation header's currency code. Recorded starting accounts
+quote the exact reference in the starting-account clause, including a valid
+alias or indirect/partial reference. Keep catalog_id with catalog_selection or
+grounded_phrase: true with verbatim; code may resolve a unique grounded
+reference before scenario validation. Do not turn date or currency proofs into
+decimal_numeric.
+
+For projection horizon_days, use verbatim with only the digit text, excluding
+adjacent units. A prior_turn source requires an actually supplied numbered
+prior turn containing the quote. Never invent turn zero when prior context is
+empty or move a current-question quote to an absent prior turn.
+
+A request for an account's recorded cash selects recorded_cash even when the
+measurement may be unavailable. The deterministic read decides eligibility and
+may refuse without figures; do not substitute unsupported for that read.
+
+All defects:
+{defects}
+
+Output protocol for this repair:
+{accepted}

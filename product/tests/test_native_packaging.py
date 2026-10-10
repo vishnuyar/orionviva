@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import runpy
@@ -30,16 +31,39 @@ SIDECAR_LAUNCHER = DESKTOP / "scripts" / "build-sidecar.mjs"
 
 
 def _sidecar_analysis_data(monkeypatch, tmp_path, spec_path=SIDECAR_SPEC):
+    from PyInstaller.config import CONF
+
+    monkeypatch.setitem(CONF, "workpath", str(tmp_path / "work"))
     captured = {}
 
     def analyze(*args, **kwargs):
         captured.update(kwargs)
-        return SimpleNamespace(pure=[], scripts=[], binaries=[], datas=kwargs["datas"])
+        import PyInstaller
+        builtin = Path(PyInstaller.__file__).parent / "hooks/rthooks/pyi_rth_inspect.py"
+        scripts = [
+            ("pyi_rth_admission_sources", kwargs["runtime_hooks"][0], "PYSOURCE"),
+            ("pyi_rth_inspect", str(builtin), "PYSOURCE"),
+            ("__main__", args[0][0], "PYSOURCE"),
+        ]
+        return SimpleNamespace(pure=[], scripts=scripts, binaries=[], datas=kwargs["datas"])
 
     build_main = ModuleType("PyInstaller.building.build_main")
     build_main.Analysis = analyze
     build_main.PYZ = lambda *args, **kwargs: None
-    build_main.EXE = lambda *args, **kwargs: None
+    def executable(*args, **kwargs):
+        scripts = args[1]
+        builtin_index = next(i for i, entry in enumerate(scripts) if entry[0] == "pyi_rth_inspect")
+        assert scripts[builtin_index + 1][0] == "pyi_rth_admission_sources"
+        assert scripts[-1][0] == "__main__"
+        manifest_source = next(source for source, destination in args[3]
+                               if Path(source).name == "admission-source-map.json")
+        mapping = json.loads(Path(manifest_source).read_bytes())
+        assert set(mapping.values()) == {f"{destination}/{Path(source).name}"
+                                       for source, destination in args[3]
+                                       if Path(source).suffix == ".py"}
+        assert mapping["viva.tools"] == "viva/tools/__init__.py"
+        assert mapping["viva.ledger.projection"] == "viva/ledger/projection/__init__.py"
+    build_main.EXE = executable
     hooks = ModuleType("PyInstaller.utils.hooks")
 
     def collect(package, *, include_py_files):
@@ -52,7 +76,7 @@ def _sidecar_analysis_data(monkeypatch, tmp_path, spec_path=SIDECAR_SPEC):
     revision = tmp_path / "revision.txt"
     revision.write_text("synthetic-build")
     monkeypatch.setenv("VIVA_BUILD_REVISION_FILE", str(revision))
-    runpy.run_path(str(spec_path), init_globals={"SPECPATH": str(spec_path.parent)})
+    runpy.run_path(str(spec_path), init_globals={"SPECPATH": str(spec_path.parent), "workpath": CONF["workpath"]})
     return captured["datas"], revision
 
 
@@ -109,6 +133,8 @@ def test_sidecar_delivers_exact_sources_authenticated_by_runtime_admission(monke
         "vivacore/verify/arithmetic.py": ROOT / "core/vivacore/verify/arithmetic.py",
         "vivacore/verify/normalize.py": ROOT / "core/vivacore/verify/normalize.py",
     }
+    expected.update({f"viva/{relative}.py": ROOT / f"product/viva/{relative}.py"
+                     for relative in ("ledger/networth", "ledger/accounting", "read_store/overview", "surface/overview")})
     assert bundled.keys() == expected.keys()
     for name, path in expected.items():
         assert bundled[name] == path.read_bytes(), name
@@ -374,3 +400,19 @@ def test_each_added_or_changed_authority_is_mandatory_in_native_source_bundle(mo
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(SIDECAR_SPEC,target)
     with pytest.raises(SystemExit,match=f'missing admission source {Path(relative).name}'):
         _sidecar_analysis_data(monkeypatch,tmp_path,target)
+
+
+def test_sidecar_work_directory_matches_installed_spec_namespace():
+    import PyInstaller
+
+    build_main = Path(PyInstaller.__file__).parent / "building/build_main.py"
+    tree = ast.parse(build_main.read_text())
+    namespace = next(node.value for node in ast.walk(tree)
+                     if isinstance(node, ast.Assign) and
+                     any(isinstance(target, ast.Name) and target.id == "spec_namespace"
+                         for target in node.targets))
+    keys = {key.value for key in namespace.keys if isinstance(key, ast.Constant)}
+    assert "workpath" in keys and "WORKPATH" not in keys
+    spec = ast.parse(SIDECAR_SPEC.read_text())
+    names = {node.id for node in ast.walk(spec) if isinstance(node, ast.Name)}
+    assert "workpath" in names and "WORKPATH" not in names

@@ -55,7 +55,7 @@
 
 ### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
 **State:** enforced
-**Code:** product/viva/prompts/semantic-request-v11.txt, product/viva/prompts/semantic-request-retry-v9.txt
+**Code:** product/viva/prompts/semantic-request-v14.txt, product/viva/prompts/semantic-request-retry-v12.txt
 **Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
 1. The repair prompt receives every compact-contract defect and asks for one complete replacement semantic request.
@@ -156,11 +156,39 @@ has since been bumped.
 - `FROZEN_SPEAK_PROMPTS` is the one frozen map still kept by hand; it is one comprehension away from deriving from `released` like the other four.
 - User-editable prompts, as content-addressed new versions rather than edits.
 
-The active semantic selection prompt is `semantic-request-v11`; the original
-`semantic-request-v10` and `semantic-request-retry-v8` bytes remain retained.
-The new prompt adds eight reviewed everyday analysis meanings, six measurement/projection meanings and three scenario meanings to the original
-six. Retry v9 permits only exact current-question scenario premises, with role-bearing quotes; recorded values and calculated answers remain prohibited. Program schema v3 adds the closed repayment quantity while v2 remains unchanged. Code owns the calculations, closed read arguments and answer binding.
+The active semantic selection prompt is `semantic-request-v14` with retry
+`semantic-request-retry-v12`; all earlier released bytes remain retained. The
+catalog includes eight everyday analysis meanings, six measurement/projection
+meanings and three scenario meanings alongside the original six. Retained v12
+and retry v10 align scenario numerical, date, currency and account proof
+derivations with the existing validator; projection horizons quote only digits.
+Retained v13 and retry v11 reinforce the three sibling native argument fields
+with a generic catalog-placeholder example, unresolved-account clarification,
+and recorded-start account-reference quotes excluding the role label. Scenario numerical
+and date proofs keep complete role clauses; the executable example is a schema
+and parser check, not evidence of live model obedience.
+Account catalog and materializable grounded-reference paths remain available,
+including valid aliases. Recorded values and calculated answers remain
+prohibited. Code owns calculations, closed read arguments and answer binding.
+Program schema v3 adds the closed repayment quantity while v2 remains unchanged.
+
 The active tool descriptions are `tools-v25`, and the selection schema is
-`semantic-request-schema-v8`. Fresh exact-model qualification is pending;
-changing guidance does not itself prove that live questions select the intended
-family.
+`semantic-request-schema-v11`. Qualification002 remains failed; diagnostic003
+did not admit a model. Qualification004 was not admitted: 116 of 123 graded
+cases and 49 of 50 supplemental cases passed. Qualification005 admitted all
+123 cases on their first attempts for its original frozen v13 candidate. Retained
+schema v10 aligns only the 27 request-version labels with v13; retained schema
+v9 remains immutable. The earlier packaging-only repair preserved its admitted sources and
+all 13 admission contracts. Current net-worth and Overview authorities extend
+the strict inventory from the original 56 sources to 60 and require fresh
+exact-candidate qualification. Complete host/sidecar binding and retained-vault
+browser Witness remain pending. The original qualification record remains immutable. Changed guidance
+alone does not prove that live questions select the intended family.
+
+Active v14 and retry v12 clarify contiguous source quotes and ordinary period
+month/year expressions, excluding surrounding clauses and invented ellipses.
+Explicit ISO period edges keep verbatim date quotes. Scenario date proofs retain
+complete opening-date or first-payment-date role clauses. Active schema v11
+changes only the 27 request-version labels from v13 to v14; all predecessor
+artifacts remain immutable. This candidate has no successful qualification;
+model-free compatibility checks do not establish live model compliance.

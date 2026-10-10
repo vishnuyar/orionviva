@@ -409,11 +409,26 @@ def test_packaged_schemas_include_all_reviewed_scenario_contracts_and_repayment(
     from viva.answer_program.intents import SemanticFamilyRegistry
     from viva.answer_program.schema import _generated_program_json_schema,program_json_schema
     from viva.tools.registry import PACKAGE
+    assert versions.active(PACKAGE,'semantic_request_schema')=='semantic-request-schema-v11'
     assert json.loads(versions.path_of(PACKAGE,versions.active(PACKAGE,'semantic_request_schema')).read_text())==SemanticFamilyRegistry().output_schema()
     assert program_json_schema()==_generated_program_json_schema()
     assert 'repayment' in json.dumps(program_json_schema())
     assert versions.path_of(PACKAGE,'answer-program-schema-v2').is_file()
     assert versions.path_of(PACKAGE,'semantic-request-retry-v8').is_file()
+
+
+def test_semantic_schema_successor_changes_only_request_version_metadata():
+    from vivacore import versions
+    from viva.tools.registry import PACKAGE
+
+    previous=json.loads(versions.path_of(PACKAGE,'semantic-request-schema-v9').read_text())
+    current=json.loads(versions.path_of(PACKAGE,'semantic-request-schema-v10').read_text())
+    assert len(previous['oneOf'])==27
+    for branch in previous['oneOf']:
+        version=branch['properties']['request_version']
+        assert version['enum']==['semantic-request-v12']
+        version['enum']=['semantic-request-v13']
+    assert previous==current
 
 
 def test_all_combined_cases_preflight_authenticate_independent_supplement_before_provider():
