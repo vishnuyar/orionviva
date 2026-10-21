@@ -1,0 +1,77 @@
+The semantic output was rejected before any financial read. Fix all defects
+with one complete replacement. Native mode: call exactly one supplied semantic
+tool using only its declared fields. Request tools take exactly three root
+siblings: `parameters`, `parameter_sources`, `requested_claims`. Only declared
+family parameters go in parameters; never nest proofs or claims. Non-answer
+tools keep their own fields. Code adds outcome, family, version and digests;
+never add them to native arguments. Text mode keeps the complete schema object.
+
+A source quote copies one contiguous span from its designated current question or supplied numbered prior turn. Never join separate spans, paraphrase, or insert an ellipsis to shorten quoted text. Copy punctuation only when it appears in that span.
+
+Resolve entity references by whole meaning. A unique shown direct or indirect
+match selects its exact catalog_id with catalog_selection, even without shared
+label words; preserve the person's exact quote. Use grounded_phrase: true with
+verbatim only if no shown entry fits, never to echo a listed paraphrase. Code
+materializes the exact quote before reads. An unresolved required account with
+no unique current or supplied prior subject asks which account using
+ambiguous_account; never invent a subject or substitute unsupported capability.
+
+requested_claims contains only canonical effects changing answer shape. Category
+and date scope stay in parameters; safety, evidence, exclusions, completeness
+and rendering are deterministic. Clarification tags are ambiguous_account,
+ambiguous_movement or ambiguous_period. Never return programs, financial queries,
+tool names, bindings, policies, limits, recorded values or calculated answers.
+Only exact current-question scenario premises enter numerical parameters. Never
+reuse prior assistant amounts. Scenario assumptions explicitly select the
+compatible scenario_family and tag; code adds whole-scenario resubmission.
+Never emit scenario_family on a clarification. For a grounded scenario with
+an ambiguous starting account, select the scenario request with complete
+premises and a verbatim grounded account phrase; code derives clarification.
+
+For ordinary period parameters `from`, `to`, `baseline_from`, and `baseline_to`, an explicit calendar month uses `calendar_month_start` or `calendar_month_end`. Quote only the contiguous month-and-year expression as written in the source, such as `February 2024`, `Feb 2024`, or `2024-02`; exclude surrounding words such as `during`, `the first and last day of`, and `through`. The entire quote must be the month-and-year expression. Both edges of one stated month may use that same quote. Code verifies the inclusive dates.
+
+Example: for a question asking for spending “between the first and last day of February 2024”, both ordinary date proofs quote exactly `February 2024`; the start parameter is `2024-02-01` with `calendar_month_start`, and the end parameter is `2024-02-29` with `calendar_month_end`. Do not quote the longer surrounding clause or invent an ellipsis quote.
+
+For explicitly written ISO period edges, retain `verbatim` and quote the exact corresponding ISO date. Never substitute a subject or period the quoted context did not name.
+
+This ordinary-period rule does not replace scenario date proofs. Scenario `start_date` continues to quote its complete opening-date or first-payment-date role clause under the scenario instructions below.
+
+Scenario money, nominal annual percentage, month counts and one-off month use
+decimal_numeric with complete role clauses.
+Numeric scenario parameter values contain only the exact numeric token, with
+conventionally grouped commas removed; exclude currency, percent signs and unit
+words. Preserve sign and percentage scale without conversion. Their source
+quotes retain the complete role clause, including currency or unit.
+start_date quotes its complete opening-date or first-payment-date clause:
+verbatim for ISO, calendar_month_start/calendar_month_end for the stated edge. Currency uses
+verbatim with only the header's code. Never use decimal_numeric for dates,
+currency or accounts. Keep the complete starting-account clause in the question,
+but account_phrase quotes only its exact reference after the label, excluding
+starting account. Ground references against the catalog; select a unique
+identity when resolved and preserve an ambiguous grounded phrase verbatim.
+Aliases and indirect/partial references remain valid. Keep catalog_id/catalog_selection or
+grounded_phrase: true/verbatim; code may resolve the latter before validation.
+Missing dated cash/owed reaches measurement refusal, never zero or assumption.
+
+horizon_days uses verbatim, quoting only digits without units. prior_turn needs
+an actually supplied numbered turn containing the quote. Never invent turn zero
+in empty context or move a current quote to an absent prior turn.
+
+Recorded-cash meaning selects recorded_cash even if unavailable. Code decides
+eligibility and may refuse without figures; never substitute unsupported.
+
+Generic native request example (`select_named_account_balance`): replace tokens
+with the unique supplied catalog id and exact current question reference;
+use only requested effects from the reviewed family.
+```json
+{{"parameters":{{"account_phrase":{{"catalog_id":"<catalog-account-id>"}}}},"parameter_sources":{{"account_phrase":{{"source":"question","quote":"<question-account-reference>","derivation":"catalog_selection"}}}},"requested_claims":["balance","measurement_date"]}}
+```
+
+All defects:
+{defects}
+
+Output protocol for this repair:
+{accepted}
+
+Select only the claims requested by the current question. A follow-up may inherit its grounded account subject without inheriting earlier answer effects. When only the measurement date is requested, select measurement_date alone; do not also select balance.
+A scalar opening amount and a recorded starting account are alternative starting bases. A complete current scenario with a starting account already supplies its starting basis; do not request a scalar principal as well. Select the scenario with its exact current-question source proofs. If the basis is genuinely absent, use the reviewed missing-start assumption.

@@ -27,9 +27,22 @@ from .base import (AdapterError, CONTINUE_INSTRUCTION, ChatTurn, PageImage,
 
 class OpenAICompatAdapter:
     def __init__(self, candidate: ModelSpec):
+        candidate.validate_local_transport()
         self.candidate = candidate
         assert candidate.base_url, "openai-compatible candidates carry a base_url"
         self.url = candidate.base_url.rstrip("/") + "/chat/completions"
+
+    def _post(self, body: dict, headers: dict) -> httpx.Response:
+        c = self.candidate
+        c.validate_local_transport()
+        if c.unix_socket_path is None:
+            return httpx.post(self.url, json=body, headers=headers,
+                              timeout=c.timeout_s, trust_env=False)
+        transport = httpx.HTTPTransport(uds=c.unix_socket_path, retries=0,
+                                        trust_env=False)
+        with httpx.Client(transport=transport, timeout=c.timeout_s,
+                          trust_env=False, follow_redirects=False) as client:
+            return client.post(self.url, json=body, headers=headers)
 
     def extract(self, pages: list[PageImage], prompt: str) -> ModelResult:
         c = self.candidate
@@ -73,8 +86,7 @@ class OpenAICompatAdapter:
 
             started = time.monotonic()
             try:
-                resp = httpx.post(self.url, json=body, headers=headers,
-                              timeout=c.timeout_s, trust_env=False)
+                resp = self._post(body, headers)
             except httpx.HTTPError as e:
                 # The message carries the elapsed time, the configured timeout,
                 # and which attempt failed.
@@ -171,8 +183,7 @@ class OpenAICompatAdapter:
         try:
             # trust_env=False — see the note in anthropic_adapter: an ambient
             # proxy variable must not decide where a document is sent.
-            resp = httpx.post(self.url, json=body, headers=headers,
-                              timeout=c.timeout_s, trust_env=False)
+            resp = self._post(body, headers)
         except httpx.HTTPError as e:
             raise AdapterError(
                 f"[{c.name}] HTTP failure calling {self.url} after "

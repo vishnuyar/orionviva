@@ -14,6 +14,17 @@
 2. One `anthropic` adapter speaks the Messages API over plain HTTP.
 3. No provider SDK is imported anywhere; the only HTTP dependency is `httpx`.
 
+The shared `ModelSpec` also accepts an optional `unix_socket_path` for the
+OpenAI-compatible adapter. TCP remains the default. UNIX transport requires a
+canonical absolute path of at most 103 filesystem bytes, no symlink components,
+and an explicit logical `http://` base URL without credentials, query or
+fragment. A fresh HTTPX client sends each request with retries and redirects
+disabled and `trust_env=False`; there is no TCP fallback. Extraction and
+conversation use the same transport selection. The logical URL retains request
+path and provider-header semantics. See
+[ADR-018](decisions/ADR-018-exact-path-local-model-transport.md) for endpoint
+identity, custody and the limits of the isolation evidence.
+
 ### PROG-20 — Candidates are configuration, never code
 **State:** by-review
 **Code:** bench/vivabench/config.py:121-128 (`models.yaml` loading), core/vivacore/models/spec.py:38

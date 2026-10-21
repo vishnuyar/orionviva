@@ -387,7 +387,7 @@ def test_semantic_v10_is_pinned_and_preserves_prior_prompt_bytes():
     from vivacore import promptstore
     text = promptstore.load(PACKAGE / 'prompts', 'semantic-request-v10')
     released = manifest.manifest(PACKAGE)['released']
-    assert manifest.active(PACKAGE, 'semantic_request') == 'semantic-request-v14'
+    assert manifest.active(PACKAGE, 'semantic_request') == 'semantic-request-v17'
     assert hashlib.sha256(text.encode()).hexdigest()[:16] == released['semantic-request-v10']
     for version in ('semantic-request-v9', 'semantic-request-retry-v8'):
         previous = promptstore.load(PACKAGE / 'prompts', version)
@@ -401,3 +401,20 @@ def test_semantic_v10_is_pinned_and_preserves_prior_prompt_bytes():
                    'Work out grocery spending', 'Calculate my supported net worth',
                    'Sum my measured card debt', 'Explain the treatment'):
         assert phrase in text
+
+
+def test_current_claim_and_recorded_start_guidance_is_immutable_and_generic():
+    from vivacore import versions
+    for predecessor, digest in [('semantic-request-v16', 'b6fe405650527fa8'),
+                                ('semantic-request-retry-v14', 'dd26143585500530'),
+                                ('semantic-request-schema-v13', '80c32547b4163030'),
+                                ('answer-program-schema-v3', '085d8f7343656d7f')]:
+        assert hashlib.sha256(versions.path_of(PACKAGE, predecessor).read_bytes()).hexdigest()[:16] == digest
+        assert versions.pin(PACKAGE, predecessor) == digest
+    for role in ('semantic_request', 'semantic_request_retry'):
+        current = versions.path_of(PACKAGE, versions.active(PACKAGE, role)).read_text()
+        assert 'measurement_date alone' in current
+        assert 'alternative starting bases' in current
+        assert 'follow-up may inherit its grounded account subject' in current
+        old = versions.path_of(PACKAGE, 'semantic-request-v16' if role == 'semantic_request' else 'semantic-request-retry-v14').read_text()
+        assert 'measurement_date alone' not in old

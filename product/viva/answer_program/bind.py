@@ -40,6 +40,17 @@ class DeterministicBinder:
                 unbound.append(UnboundSelector(binding.hole, binding.source, reason))
             else:
                 bound[binding.hole] = reference
+        for binding in program.bindings:
+            if binding.reference_kind != "measurement_date_of" or binding.hole not in bound:
+                continue
+            node = next(item for item in program.nodes if item.id == binding.source)
+            refs = graph.references(binding.source, "read")
+            if (node.kind == "tool_read" and node.tool == "query_ledger"
+                    and node.args.get("entity") == "balances" and len(refs) == 1):
+                fid = bound[binding.hole]["measurement_date_of"]
+                graph.ground.measurement_dates[fid] = {
+                    "read": refs[0], "account": node.args.get("filters", {}).get("account"),
+                    "quantity": binding.selector.quantity}
         result = _gate({"bindings": bound}, execution.transcript, graph.ground,
                        program.shape, self.locale, tools=self.registry.names(),
                        result_policy=program.result_policy)
@@ -49,7 +60,7 @@ class DeterministicBinder:
         kind = binding.reference_kind
         ids = list(graph.references(binding.source, kind))
         selector = binding.selector
-        if kind in ("figure", "date_of"):
+        if kind in ("figure", "date_of", "measurement_date_of"):
             figures = [graph.ground.book[item] for item in ids
                        if item in graph.ground.book]
             if selector.quantity:
@@ -66,7 +77,7 @@ class DeterministicBinder:
             if chosen is None:
                 return None, reason
             return ({"figure": chosen["id"]} if kind == "figure"
-                    else {"date_of": chosen["id"]}), ""
+                    else {kind: chosen["id"]}), ""
         if kind == "entity":
             entities = [graph.ground.entities[item] for item in ids
                         if item in graph.ground.entities]

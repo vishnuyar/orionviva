@@ -409,7 +409,7 @@ def test_packaged_schemas_include_all_reviewed_scenario_contracts_and_repayment(
     from viva.answer_program.intents import SemanticFamilyRegistry
     from viva.answer_program.schema import _generated_program_json_schema,program_json_schema
     from viva.tools.registry import PACKAGE
-    assert versions.active(PACKAGE,'semantic_request_schema')=='semantic-request-schema-v11'
+    assert versions.active(PACKAGE,'semantic_request_schema')=='semantic-request-schema-v14'
     assert json.loads(versions.path_of(PACKAGE,versions.active(PACKAGE,'semantic_request_schema')).read_text())==SemanticFamilyRegistry().output_schema()
     assert program_json_schema()==_generated_program_json_schema()
     assert 'repayment' in json.dumps(program_json_schema())
@@ -566,3 +566,28 @@ def test_required_scenario_payload_refusal_delivers_human_request_without_figure
     assert outcome.result.refusal=='scenario_payload_limit'
     assert outcome.outcome.text==outcome.result.text and 'Resubmit the whole scenario' in outcome.outcome.text
     assert outcome.result.missing[0]['label']==outcome.outcome.text
+
+
+@pytest.mark.parametrize('family', ['savings_scenario', 'loan_payoff_scenario', 'cash_flow_scenario'])
+@pytest.mark.parametrize('basis', ['absent', 'scalar', 'account', 'both', 'duplicate', 'negated', 'quoted', 'unsupported_rate', 'followup'])
+def test_missing_start_assumptions_use_existing_whole_current_source_grammar(family, basis):
+    from viva.answer_program.intents import SemanticFamilyRegistry, SEMANTIC_REQUEST_VERSION
+    from viva.answer_program.schema import QuestionContext, ContractError
+    from viva.tools.scenarios import HEADERS, INPUTS, MONEY_ROLES, MISSING_TAGS
+    start = INPUTS[family][0]
+    clause = MONEY_ROLES[start] + ' USD 750'
+    body = {'absent': 'horizon 3 months', 'scalar': clause, 'account': 'starting account Example Loan',
+            'both': clause + '; starting account Example Loan', 'duplicate': clause + '; ' + clause,
+            'negated': 'not ' + clause, 'quoted': '"' + clause + '"',
+            'unsupported_rate': 'annual rate 5%', 'followup': 'Use the same amount as before'}[basis]
+    question = HEADERS[family] + ' in USD: ' + body
+    raw = {'request_version': SEMANTIC_REQUEST_VERSION, 'outcome': 'needs_assumption',
+           'scenario_family': family, 'tag': MISSING_TAGS[start], 'label': 'opening basis',
+           'question': 'Which starting basis?', 'type': 'user_stipulation'}
+    families = SemanticFamilyRegistry()
+    context = QuestionContext(question=question, prior_turns=(('prior', clause),))
+    if basis == 'absent':
+        assert families.parse(raw, context).kind == 'needs_assumption'
+    else:
+        with pytest.raises(ContractError, match='starting basis'):
+            families.parse(raw, context)

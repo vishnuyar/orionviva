@@ -452,7 +452,7 @@ def test_runtime_compiler_requires_a_profile_but_admission_is_explicit(
     measured = speak.compiler_factory(spec, purpose="admission")
     assert measured.admission_identity == {
         "provider": "openai-compatible", "requested_model": "provider/model",
-        "endpoint": "https://model.invalid", "modality": "native-structured"}
+        "endpoint": spec.endpoint_identity(), "modality": "native-structured"}
 
 
 def _executable_program(manifest, *, duplicate=False):
@@ -606,7 +606,8 @@ def test_session_carries_text_context_but_reestablishes_current_evidence():
     assert first.result.text in second_context
 
 
-def test_session_capture_records_program_validation_execution_and_outcome():
+@pytest.mark.parametrize('claims', [('balance', 'measurement_date'), ('measurement_date',)])
+def test_session_capture_records_program_validation_execution_and_outcome(claims):
     registry = _registry()
     manifest = CapabilityManifest.from_registry(registry)
 
@@ -614,7 +615,7 @@ def test_session_capture_records_program_validation_execution_and_outcome():
         def converse(self, messages, tools):
             return _turn({
                 "parameters": {"account_phrase": "checking"},
-                "requested_claims": ["balance", "measurement_date"]},
+                "requested_claims": list(claims)},
                 "select_named_account_balance")
 
     class Log:
@@ -639,7 +640,18 @@ def test_session_capture_records_program_validation_execution_and_outcome():
     assert payload["validation"]["defects"] == []
     assert payload["execution"]["nodes"][0]["status"] == "completed"
     assert payload["verdict"]["status"] == "answered"
-    assert payload["verdict"]["figures"]
+    if claims == ('measurement_date',):
+        verdict = payload['verdict']
+        assert verdict['figures'] == []
+        assert set(verdict['written']) == {'date'}
+        fid = verdict['bindings']['date']['measurement_date_of']
+        support = next(fig for read in verdict['transcript'] for fig in read['figures'] if fig['id'] == fid)
+        assert support['record_ids'] and support['dated'] == verdict['written']['date']
+        assert support['grade'] == verdict['grade']
+        assert support['boundary']['cut'] == [{'kind': 'account', 'value': 'chk'}]
+        assert payload['program']['bindings'][0]['source'] == payload['execution']['nodes'][0]['node_id']
+    else:
+        assert payload["verdict"]["figures"]
     assert payload["prior_context_digest"]
     assert payload["semantic_request"]["family"] == "named_account_balance"
     assert payload["semantic_request_digest"]
@@ -1679,9 +1691,9 @@ def test_promoted_semantic_prompt_invalidates_old_profiles(monkeypatch):
                         lambda _measured: report)
     profile = admitted_profile(object(), manifest=manifest)
 
-    assert versions.active(PACKAGE, "semantic_request") == "semantic-request-v14"
+    assert versions.active(PACKAGE, "semantic_request") == "semantic-request-v17"
     assert versions.active(PACKAGE, "semantic_request_retry") == \
-        "semantic-request-retry-v12"
+        "semantic-request-retry-v15"
     assert profile.prompt_digest == current_contract_digests(
         manifest, AnswerResourcePolicy())["compiler_prompt"]
     assert profile.prompt_digest != promptstore.digest(
@@ -1716,7 +1728,7 @@ def test_fixture_and_oracle_contracts_bind_report_profile_build_and_bundle(
     monkeypatch.setattr(admission_module, "_report_from_measured_run",
                         lambda _measured: report)
     profile = admitted_profile(object(), manifest=manifest)
-    assert profile.profile_version == "semantic-request-admission-v8"
+    assert profile.profile_version == "semantic-request-admission-v9"
     assert profile.admission_fixture_digest == contracts["admission_fixture"]
     assert profile.oracle_set_digest == contracts["oracle_set"]
     assert check_profile(profile, manifest, report).passed
@@ -1936,6 +1948,11 @@ def test_runtime_loads_current_and_legacy_identity_bundles(
     from viva.speak import compiler_factory
 
     profile, manifest, report = _identity_test_profile(monkeypatch)
+    spec = ModelSpec(name="test", adapter=profile.provider,
+                     model=profile.requested_model, base_url="https://model.invalid")
+    profile = replace(profile, endpoint=spec.endpoint_identity())
+    report = replace(report, identity={**report.identity, "endpoint": spec.endpoint_identity()})
+    profile = replace(profile, admission_report_digest=admission_report_digest(report))
     raw = profile.to_dict()
     if legacy:
         raw["model_version"] = raw["resolved_model"]
@@ -1945,8 +1962,6 @@ def test_runtime_loads_current_and_legacy_identity_bundles(
     monkeypatch.delenv("VIVA_SPEAK_PROTOCOL", raising=False)
     monkeypatch.setattr("vivacore.models.adapter_for",
                         lambda spec: SimpleNamespace(converse=lambda: None))
-    spec = ModelSpec(name="test", adapter=profile.provider,
-                     model=profile.requested_model, base_url=profile.endpoint)
     factory = compiler_factory(spec, locale="en-US")
     compiler = factory(ProgramValidator(manifest, AnswerResourcePolicy()),
                        manifest, AnswerResourcePolicy())
@@ -2055,3 +2070,216 @@ def test_semantic_replay_catalog_changes_refuse_before_reads(change):
     registry.call = lambda *args, **kwargs: pytest.fail('catalog changes must not read finances')
     assert replay_capture(payload, registry) == {
         'replayed': False, 'defects': [{'tag': 'entity_catalog_digest_mismatch'}]}
+
+
+@pytest.mark.parametrize('claims', [('measurement_date',), ('balance',), ('balance', 'measurement_date')])
+def test_named_account_amount_entails_date_and_date_only_states_no_amount(claims):
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry(registry.semantic_entities())
+    request = SemanticRequest('named_account_balance', {'account_phrase': 'chk'}, claims,
+                              families.catalog_digest)
+    program = families.lower(SemanticOutcome('request', request), manifest)
+    assert ProgramValidator(manifest, AnswerResourcePolicy()).validate(program).ok
+    execution = ProgramExecutor(registry, AnswerResourcePolicy()).execute(program, 'checking date?')
+    result = DeterministicBinder(registry, 'en-US').bind(program, execution).result
+    assert result.answered
+    if claims == ('measurement_date',):
+        assert result.figures == []
+        assert all(slot.type == 'date' for clause in program.shape.clauses for slot in clause.slots)
+        assert [b.reference_kind for b in program.bindings] == ['measurement_date_of']
+        assert result.figures == []
+        assert set(result.written) == {'date'}
+        assert '$' not in result.text and 'accounts' not in result.text
+        assert execution.graph.to_dict()['figures']
+    else:
+        assert result.figures
+        assert set(result.written) == {'balance', 'date'}
+        assert result.written['date'] == '2026-01-31'
+        assert result.bindings['date'] == {'date_of': result.figures[0]['id']}
+
+
+def test_recorded_current_start_contradicts_missing_principal_before_reads():
+    from viva.answer_program.eval import load_supplement_cases
+    case = next(c for c in load_supplement_cases() if c.id == 'fc-v1:loan_measured_owed_partial_final')
+    families = SemanticFamilyRegistry()
+    raw = {'request_version': SEMANTIC_REQUEST_VERSION, 'outcome': 'needs_assumption',
+           'scenario_family': 'loan_payoff_scenario', 'tag': 'scenario_principal_required',
+           'label': 'starting basis', 'question': 'Which starting basis?', 'type': 'user_stipulation'}
+    with pytest.raises(ContractError, match='starting basis'):
+        families.parse(raw, QuestionContext(question=case.question))
+
+
+@pytest.mark.parametrize('modality', ['native-structured', 'text-json'])
+@pytest.mark.parametrize('exhausted', [False, True])
+def test_false_missing_start_uses_existing_bounded_repair_before_financial_reads(modality, exhausted):
+    from viva.answer_program.eval import load_supplement_cases
+    case = next(c for c in load_supplement_cases() if c.id == 'fc-v1:loan_measured_owed_partial_final')
+    from viva.answer_program.eval import resolve_case_fixture
+    registry = resolve_case_fixture(case)[0]()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry(registry.semantic_entities())
+    invalid = {'tag': 'scenario_principal_required', 'scenario_family': case.expected_family,
+               'label': 'starting basis', 'question': 'Which starting basis?', 'type': 'user_stipulation'}
+    valid = {'parameters': {**case.expected_parameters, 'account_phrase': 'cap-loan'}, 'parameter_sources': case.parameter_sources,
+             'requested_claims': list(case.expected_claims)}
+    registry.call = lambda *args, **kwargs: pytest.fail('compilation must not read finances')
+
+    class Adapter:
+        calls = 0
+        def output(self):
+            self.calls += 1
+            bad = exhausted or self.calls == 1
+            return (invalid if bad else valid), ('semantic_assumption' if bad else 'select_' + case.expected_family)
+        def converse(self, messages, tools):
+            raw, tool = self.output()
+            return _turn(raw, tool)
+        def extract(self, pages, prompt):
+            raw, tool = self.output()
+            raw = dict(raw, request_version=SEMANTIC_REQUEST_VERSION,
+                       outcome='needs_assumption' if tool == 'semantic_assumption' else 'request')
+            if tool != 'semantic_assumption':
+                raw['parameters'] = {**raw['parameters'], 'account_phrase': {'catalog_id': raw['parameters']['account_phrase']}}
+                raw.update(family=case.expected_family, catalog_digest=families.catalog_digest,
+                           entity_catalog_digest=families.entity_catalog_digest)
+            return SimpleNamespace(text=json.dumps(raw), request={}, response={}, input_tokens=0,
+                                   output_tokens=0, cost_usd=0, latency_s=0, resolved_model='synthetic')
+    policy = AnswerResourcePolicy()
+    compiler = AnswerProgramCompiler(Adapter(), ProgramValidator(manifest, policy), manifest, policy,
+                                     modality=modality)
+    compiler.set_entity_catalog(registry.semantic_entities())
+    result = compiler.compile(QuestionContext(question=case.question, capability_manifest_digest=manifest.digest))
+    assert result.ok is not exhausted
+    assert len(result.exchanges) == policy.max_model_attempts if exhausted else len(result.exchanges) == 2
+    assert result.exchanges[0].defect['tag'] == 'invalid_semantic_contract'
+    if not exhausted:
+        assert result.semantic_outcome.request.family == case.expected_family
+
+
+@pytest.mark.parametrize('source', ['wrong_tool', 'wrong_entity', 'wrong_account', 'multiple', 'ordered', 'wrong_quantity', 'wrong_slot'])
+def test_supporting_measurement_date_has_a_closed_pre_read_source(source):
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry(registry.semantic_entities())
+    program = families.lower(SemanticOutcome('request', SemanticRequest(
+        'named_account_balance', {'account_phrase': 'chk'}, ('measurement_date',), families.catalog_digest)), manifest)
+    raw = program.to_dict()
+    if source == 'wrong_tool': raw['nodes'][0]['tool'] = 'check_completeness'
+    elif source == 'wrong_entity': raw['nodes'][0]['args']['entity'] = 'spending'
+    elif source == 'wrong_account': raw['nodes'][0]['args']['filters']['account'] = {'ref': 'forged'}
+    elif source == 'multiple': raw['bindings'][0]['selector']['cardinality'] = 'all'
+    elif source == 'ordered': raw['bindings'][0]['selector'].update(order='newest', limit=1)
+    elif source == 'wrong_quantity': raw['bindings'][0]['selector']['quantity'] = 'spending'
+    elif source == 'wrong_slot': raw['shape']['clauses'][0]['slots'][0].update(type='money', quantity='balance', scope=['account'])
+    checked = ProgramValidator(manifest, AnswerResourcePolicy()).validate(AnswerProgram.from_dict(raw))
+    assert not checked.ok
+
+
+@pytest.mark.parametrize('mutation', ['unknown', 'forged', 'undated', 'duplicate', 'wrong_account', 'uncited', 'ungraded'])
+def test_runtime_measurement_date_rejects_incompatible_support(mutation):
+    from viva.tools.runner_binding import _bound
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry(registry.semantic_entities())
+    program = families.lower(SemanticOutcome('request', SemanticRequest(
+        'named_account_balance', {'account_phrase': 'chk'}, ('measurement_date',), families.catalog_digest)), manifest)
+    execution = ProgramExecutor(registry, AnswerResourcePolicy()).execute(program, 'checking date?')
+    result = DeterministicBinder(registry).bind(program, execution)
+    assert result.result.answered
+    ground = execution.graph.ground
+    fid = result.bindings['date']['measurement_date_of']
+    if mutation == 'unknown': fid = 'unknown'
+    elif mutation == 'forged': ground.measurement_dates.clear()
+    elif mutation == 'undated': ground.book[fid]['dated'] = ''
+    elif mutation == 'duplicate': ground.readings[ground.measurement_dates[fid]['read']].append(fid)
+    elif mutation == 'wrong_account': ground.measurement_dates[fid]['account'] = 'another'
+    elif mutation == 'uncited': ground.book[fid]['record_ids'] = []
+    elif mutation == 'ungraded': ground.book[fid]['grade'] = ''
+    written, tag, _ = _bound(program.shape.clauses[0].slots[0], {'measurement_date_of': fid}, ground, '')
+    assert written is None and tag == 'unfounded_date'
+
+
+def test_legacy_schema_does_not_admit_supporting_measurement_reference():
+    from viva.tools.registry import _validate
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry(registry.semantic_entities())
+    raw = families.lower(SemanticOutcome('request', SemanticRequest(
+        'named_account_balance', {'account_phrase': 'chk'}, ('measurement_date',), families.catalog_digest)), manifest).to_dict()
+    raw['program_version'] = 'answer-program-schema-v3'
+    old = json.loads(versions.path_of(PACKAGE, 'answer-program-schema-v3').read_text())
+    assert _validate(old['properties']['bindings']['items'], raw['bindings'][0])
+
+
+@pytest.mark.parametrize('filters', [None, [], 'account', {}, {'account': 'chk', 'unknown': True}])
+def test_measurement_date_filters_are_closed_objects(filters):
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    families = SemanticFamilyRegistry(registry.semantic_entities())
+    raw = families.lower(SemanticOutcome('request', SemanticRequest(
+        'named_account_balance', {'account_phrase': 'chk'}, ('measurement_date',), families.catalog_digest)), manifest).to_dict()
+    raw['nodes'][0]['args']['filters'] = filters
+    assert not ProgramValidator(manifest, AnswerResourcePolicy()).validate(AnswerProgram.from_dict(raw)).ok
+
+
+@pytest.mark.parametrize('account', ['chk', 'card'])
+def test_date_only_delivery_retains_measurement_evidence_without_asserting_money(account):
+    events = _events()
+    if account == 'card':
+        events.append(closing_balance_observed('card', '350.00', '2026-01-31', Provenance('synthetic-card-doc', 1, 'balance')))
+    registry = default_registry(LedgerProjection(events), today='2026-03-01')
+    families = SemanticFamilyRegistry(registry.semantic_entities())
+    manifest = CapabilityManifest.from_registry(registry)
+    program = families.lower(SemanticOutcome('request', SemanticRequest(
+        'named_account_balance', {'account_phrase': account}, ('measurement_date',), families.catalog_digest)), manifest)
+    execution = ProgramExecutor(registry, AnswerResourcePolicy()).execute(program, 'measurement date?')
+    result = DeterministicBinder(registry, 'en-US').bind(program, execution).result
+    assert result.answered and not result.figures
+    fid = result.bindings['date']['measurement_date_of']
+    support = execution.graph.ground.book[fid]
+    assert support['record_ids'] and support['dated'] == result.written['date']
+    assert support['grade'] == result.grade
+    assert result.disclosures == ['evidence_grade:' + support['grade']]
+    assert support['quantity'] == ('owed' if account == 'card' else 'balance')
+    assert support['value'] not in result.text
+    assert set(result.written) == {'date'}
+
+
+def test_measurement_date_requires_declared_capability_emission():
+    registry = _registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    capabilities = tuple(replace(cap, emits={**cap.emits, 'reference_kinds': [
+        kind for kind in cap.emits['reference_kinds'] if kind != 'measurement_date_of']})
+        if cap.name == 'query_ledger' else cap for cap in manifest.capabilities)
+    manifest = replace(manifest, capabilities=capabilities)
+    families = SemanticFamilyRegistry(registry.semantic_entities())
+    program = families.lower(SemanticOutcome('request', SemanticRequest(
+        'named_account_balance', {'account_phrase': 'chk'}, ('measurement_date',), families.catalog_digest)), manifest)
+    checked = ProgramValidator(manifest, AnswerResourcePolicy()).validate(program)
+    assert 'unreachable_binding' in {defect.tag for defect in checked.defects}
+
+
+@pytest.mark.parametrize("module_name", ["vivacore.models.spec", "viva.speak"])
+def test_endpoint_configuration_source_changes_invalidate_admission(monkeypatch, tmp_path, module_name):
+    import importlib
+    import inspect
+    from pathlib import Path
+    module = importlib.import_module(module_name)
+    original = inspect.getsourcefile
+    source = tmp_path / 'admitted-source.py'
+    source.write_bytes(Path(original(module)).read_bytes())
+    monkeypatch.setattr(inspect, 'getsourcefile',
+                        lambda held: str(source) if held is module else original(held))
+    profile, manifest, report = _identity_test_profile(monkeypatch)
+    assert check_profile(profile, manifest, report).passed
+    source.write_bytes(source.read_bytes() + b'\n# synthetic counterfactual\n')
+    assert 'deterministic_builders_digest_mismatch' in check_profile(profile, manifest, report).failures
+
+
+def test_old_transport_identity_profiles_are_rejected(monkeypatch):
+    from viva.answer_program import AdmissionProfile
+    profile, _manifest, _report = _identity_test_profile(monkeypatch)
+    raw = profile.to_dict()
+    raw['profile_version'] = 'semantic-request-admission-v8'
+    with pytest.raises(ValueError, match='unsupported admission profile version'):
+        AdmissionProfile.from_dict(raw)

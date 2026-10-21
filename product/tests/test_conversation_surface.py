@@ -47,7 +47,7 @@ class _Turn:
 # Nothing here reaches it: every test that uses it replaces the session builder.
 _SPEC = ModelSpec(name="viva-speak", adapter="anthropic", model="a-pinned-1")
 
-FIGURE = {"id": "f1", "grade": "verified", "what": "the balance on one account",
+FIGURE = {"id": "f1", "kind": "financial", "grade": "verified", "what": "the balance on one account",
           "record_ids": ["doc-1", "doc-2"]}
 SHOWN = {"f1": "USD 1,200.00"}
 
@@ -339,3 +339,58 @@ def test_the_words_a_figure_was_written_as_come_from_the_engines_own_mapping(
     answered = ConversationActions(vault).ask({"question": "what?"})
 
     assert answered["state"]["figures"][0]["written"] == "about USD 1,200"
+
+
+def test_live_figure_receipt_preserves_selected_measurement_date():
+    said = conversation(_Turn("Balance?", _Result(text="USD 1,200.00.",
+        figures=[{**FIGURE, "dated": "2026-01-31"}])), SHOWN,
+        projection=_Projection(), turn_id="dated-turn")
+    assert said["figures"][0]["dated"] == "2026-01-31"
+    assert said["figures"][0]["evidence_id"] == "conversation:dated-turn:f1"
+    assert said["figures"][0]["evidence_links"][0]["document_id"] == "doc-1"
+
+
+@pytest.mark.parametrize('change', [
+    {'kind': 'hypothetical', 'grade': ''},
+    {'kind': 'computed'}, {'kind': 'activity'}, {'kind': 'unknown'},
+    {'grade': ''}, {'grade': 'unknown'}, {'record_ids': []},
+])
+def test_only_supported_financial_dates_become_live_measurement_receipts(change):
+    from copy import deepcopy
+    selected = {**FIGURE, 'dated': '2027-01-31', **change}
+    before = deepcopy(selected)
+    text = 'Hypothetical final balance at 2027-01-31 is USD 1,200.00.'
+    said = conversation(_Turn('Scenario?', _Result(text=text, figures=[selected])),
+                        SHOWN, projection=_Projection(), turn_id='scenario')
+    assert not said['figures'][0].get('dated')
+    assert said['text'] == text
+    assert said['figures'][0]['written'] == 'USD 1,200.00'
+    assert said['figures'][0]['record_ids'] == selected['record_ids']
+    assert said['figures'][0]['evidence_id'] == 'conversation:scenario:f1'
+    assert selected == before
+
+
+def test_actual_scenario_endpoint_keeps_modeled_date_out_of_measured_receipt():
+    from copy import deepcopy
+    from viva.answer_program.eval import load_supplement_cases
+    from viva.tools.scenarios import simulate_scenario
+
+    case = next(case for case in load_supplement_cases()
+                if case.id == 'fc-v1:savings_monthly_one_percent')
+    simulated = simulate_scenario({
+        'view': case.expected_family,
+        'parameters': deepcopy(case.expected_parameters),
+        'parameter_sources': deepcopy(case.parameter_sources)}, {}, case.question)
+    assert simulated.ok
+    selected = {**simulated.figures[0], 'id': 'endpoint'}
+    before = deepcopy(selected)
+    assert selected['kind'] == 'hypothetical' and selected['dated']
+    from viva.render import money
+    written = str(money(selected['value'], selected['currency']))
+    text = f"Hypothetical final balance at {selected['dated']} is {written}."
+    said = conversation(_Turn(case.question, _Result(text=text, figures=[selected])),
+                        {'endpoint': written}, turn_id='scenario')
+    assert not said['figures'][0].get('dated')
+    assert said['text'] == text
+    assert said['figures'][0]['written'] == written
+    assert selected == before

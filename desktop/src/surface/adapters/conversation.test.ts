@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { conversationEvidenceFigure } from "../evidence";
 import { adaptTurn } from "./conversation";
 
 const reply = {
@@ -105,5 +106,44 @@ describe("one turn, read", () => {
         { id: "net_worth", label: "net worth and exclusions", example: "net worth by currency" },
         { id: "named_account_balance", label: "one account's balance", example: "one account balance and date" },
       ] }]);
+  });
+});
+
+
+describe("conversation measurement date", () => {
+  it("preserves the selected date in the existing evidence row without inventing evidence dates", () => {
+    const selected = adaptTurn({ ...reply, as_of: "2026-03-01", figures: [{ ...reply.figures[0], dated: "2026-01-31" }] })!.figures[0];
+    const evidence = conversationEvidenceFigure(selected);
+    expect(evidence.asOf).toEqual({ state: "supplied", value: "2026-01-31" });
+    expect(evidence.evidenceDates).toEqual({ state: "unavailable" });
+    expect(evidence.evidenceLinks[0].targetDocumentId).toBe("doc-1");
+    expect(evidence.id).toBe("conversation:turn-1:f1");
+  });
+  it.each([undefined, null, "", "2026-02-30", "2026-13-01", "not-a-date", "20260131", "0000-01-01", 20260131])("leaves absent or invalid date unavailable: %s", (dated) => {
+    const selected = adaptTurn({ ...reply, as_of: "2026-03-01", figures: [{ ...reply.figures[0], dated }] })!.figures[0];
+    expect(conversationEvidenceFigure(selected).asOf).toEqual({ state: "unavailable" });
+  });
+});
+
+
+describe("historical conversation measurement support", () => {
+  it.each(["hypothetical", "unknown", "", "not_applicable"])("keeps %s endpoint dates out of Measured without rewriting the receipt", (grade) => {
+    const raw = { ...reply, text: "Hypothetical final balance at 2027-01-31 is USD 1,200.00.", figures: [{ ...reply.figures[0], dated: "2027-01-31", grade }] };
+    const before = JSON.stringify(raw);
+    const selected = adaptTurn(raw)!.figures[0];
+    expect(selected.dated).toBe("2027-01-31");
+    expect(conversationEvidenceFigure(selected).asOf).toEqual({ state: "unavailable" });
+    expect(selected.recordIds).toEqual(["doc-1"]);
+    expect(selected.evidenceLinks[0].targetDocumentId).toBe("doc-1");
+    expect(selected.written).toBe("about USD 1,200");
+    expect(JSON.stringify(raw)).toBe(before);
+  });
+  it.each(["verified", "corroborated", "unverified", "conflicted"])("preserves supported %s legacy date and requires a source identity", (grade) => {
+    const raw = { ...reply, figures: [{ ...reply.figures[0], dated: "2026-01-31", grade }] };
+    expect(conversationEvidenceFigure(adaptTurn(raw)!.figures[0]).asOf).toEqual({ state: "supplied", value: "2026-01-31" });
+    const uncited = { ...raw, figures: [{ ...raw.figures[0], record_ids: [] }] };
+    expect(conversationEvidenceFigure(adaptTurn(uncited)!.figures[0]).asOf).toEqual({ state: "unavailable" });
+    const absent = { ...raw, figures: [{ ...raw.figures[0], dated: undefined }] };
+    expect(conversationEvidenceFigure(adaptTurn(absent)!.figures[0]).asOf).toEqual({ state: "unavailable" });
   });
 });

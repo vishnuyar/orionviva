@@ -265,6 +265,7 @@ def test_real_admission_byte_reader_and_compiler_gate(frozen, monkeypatch):
     monkeypatch.setattr(release, 'current_contract_digests', lambda *args: {'deterministic_builders': deterministic()})
     policy = AnswerResourcePolicy()
     manifest = SimpleNamespace(digest='synthetic-manifest', manifest_version='synthetic-version')
+    spec = ModelSpec(name='synthetic', adapter='synthetic', model='synthetic', base_url='synthetic')
     profile = SimpleNamespace(
         profile_version=release.ADMISSION_PROFILE_VERSION,
         capability_manifest_digest=manifest.digest, capability_manifest_version=manifest.manifest_version,
@@ -276,14 +277,14 @@ def test_real_admission_byte_reader_and_compiler_gate(frozen, monkeypatch):
         deterministic_builder_digest=expected, keyed_corpus_digest='', adversarial_corpus_digest='',
         persona_pack_digest='', admission_fixture_digest='', oracle_set_digest='',
         admission_report_digest=facade.admission_report_digest({}), provider='synthetic',
-        requested_model='synthetic', endpoint='synthetic', modality='native-structured',
+        requested_model='synthetic', endpoint=spec.endpoint_identity(), modality='native-structured',
         locale_family='en', resolved_model='synthetic')
     monkeypatch.setattr(facade, 'validate_admission_report', lambda *args: ())
     monkeypatch.setattr(release, 'validate_admission_report', lambda *args: ())
     monkeypatch.setattr('vivacore.models.adapter_for', lambda spec: SimpleNamespace(converse=lambda: pytest.fail('provider call')))
     created = []
     monkeypatch.setattr(speak, 'AnswerProgramCompiler', lambda *args, **kwargs: created.append(True))
-    factory = speak.compiler_factory(ModelSpec(name='synthetic', adapter='synthetic', model='synthetic', base_url='synthetic'),
+    factory = speak.compiler_factory(spec,
                                      profile=profile, report={}, locale='en-US')
     factory(None, manifest, policy)
     assert created == [True]
@@ -295,6 +296,13 @@ def test_real_admission_byte_reader_and_compiler_gate(frozen, monkeypatch):
     assert not created
     overview_source.write_bytes(source_bytes['viva.surface.overview'])
     assert 'viva.surface.overview' not in sys.modules
+    for name in ('vivacore.models.spec', 'viva.speak'):
+        source = paths[name]
+        source.write_bytes(source_bytes[name] + b'\n')
+        with pytest.raises(ValueError, match='deterministic_builders_digest_mismatch'):
+            factory(None, manifest, policy)
+        assert not created
+        source.write_bytes(source_bytes[name])
     source = paths['viva.answer_program.intents']
     source.write_bytes(source.read_bytes() + b'\n')
     with pytest.raises(ValueError, match='deterministic_builders_digest_mismatch'):
@@ -310,7 +318,7 @@ def test_real_admission_byte_reader_and_compiler_gate(frozen, monkeypatch):
     assert not created
 
 
-@pytest.mark.parametrize('defect', ['manifest_missing', 'manifest_mapping', 'manifest_entry_missing', 'surface_entry_missing', 'host', 'root'])
+@pytest.mark.parametrize('defect', ['manifest_missing', 'manifest_mapping', 'manifest_entry_missing', 'surface_entry_missing', 'replacement_entry', 'host', 'root'])
 def test_startup_rejects_invalid_context(frozen, monkeypatch, defect):
     manifest = Path(sys._MEIPASS) / 'admission-source-map.json'
     if defect == 'manifest_missing':
@@ -326,6 +334,11 @@ def test_startup_rejects_invalid_context(frozen, monkeypatch, defect):
     elif defect == 'surface_entry_missing':
         mapping = json.loads(manifest.read_bytes())
         mapping.pop('viva.surface.overview')
+        manifest.write_text(json.dumps(mapping))
+    elif defect == 'replacement_entry':
+        mapping = json.loads(manifest.read_bytes())
+        mapping.pop('vivacore.models.spec')
+        mapping['viva.synthetic'] = 'viva/synthetic.py'
         manifest.write_text(json.dumps(mapping))
     elif defect == 'host':
         monkeypatch.setattr(sys, 'frozen', False)

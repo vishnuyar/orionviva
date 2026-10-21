@@ -52,7 +52,7 @@ class EvidenceGraph:
 
     def references(self, node_id: str, kind: str) -> tuple[str, ...]:
         plural = {"figure": "figures", "entity": "entities", "period": "periods",
-                  "date": "dates", "date_of": "figures", "read": "readings",
+                  "date": "dates", "date_of": "figures", "measurement_date_of": "figures", "read": "readings",
                   "read_figures": "readings", "read_labels": "readings"}.get(
                       kind, kind)
         return tuple(self.by_node.get(node_id, {}).get(plural, ()))
@@ -60,6 +60,7 @@ class EvidenceGraph:
     def to_dict(self) -> dict:
         return {
             "figures": list(self.ground.book.values()),
+            "measurement_dates": dict(self.ground.measurement_dates),
             "entities": list(self.ground.entities.values()),
             "periods": list(self.ground.periods.values()),
             "readings": dict(self.ground.readings),

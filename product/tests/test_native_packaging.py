@@ -87,6 +87,8 @@ def test_sidecar_delivers_exact_sources_authenticated_by_runtime_admission(monke
         for source, destination in data if Path(source).suffix == ".py"
     }
     expected = {
+        "viva/speak.py": ROOT / "product/viva/speak.py",
+        "vivacore/models/spec.py": ROOT / "core/vivacore/models/spec.py",
         **{f"viva/{name}.py": ROOT / f"product/viva/{name}.py"
            for name in ("ledger/scenarios", "tools/scenarios", "answer_program/capability_fixture",
                         "answer_program/admission_fixture", "answer_program/admission", "answer_program/eval",
@@ -148,7 +150,7 @@ def test_sidecar_build_refuses_a_missing_admission_source(monkeypatch, tmp_path)
     clone.mkdir(parents=True)
     spec = clone / SIDECAR_SPEC.name
     shutil.copyfile(SIDECAR_SPEC, spec)
-    with pytest.raises(SystemExit, match="missing admission source scenarios.py"):
+    with pytest.raises(SystemExit, match="missing admission source speak.py"):
         _sidecar_analysis_data(monkeypatch, tmp_path, spec)
 
 

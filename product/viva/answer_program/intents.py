@@ -147,17 +147,22 @@ def _required(request, claim_clauses):
 def _named_account(request, manifest, account_kind):
     quantity = "owed" if account_kind == "liability" else "balance"
     label = "amount owed" if quantity == "owed" else "balance"
-    wants_date = "measurement_date" in request.requested_claims
+    if "balance" not in request.requested_claims:
+        return _program(manifest, request.family, [{
+            "id": "measurement_date", "text": "The account measurement is dated {date}.",
+            "slots": [{"name": "date", "type": "date"}]}],
+            [_read("account_balance", "query_ledger", {"entity": "balances",
+                "filters": {"account": request.parameters["account_phrase"]}})],
+            [{"hole": "date", "source": "account_balance",
+              "reference_kind": "measurement_date_of",
+              "selector": {"quantity": quantity, "scope": ["account"],
+                           "cardinality": "one"}}], required=["measurement_date"])
     clauses = [{
-        "id": "balance_and_date" if wants_date else "balance",
-        "text": (f"The supported {label} is {{balance}}, measured on {{date}}."
-                 if wants_date else f"The supported {label} is {{balance}}."),
-        "slots": ([{"name": "balance", "type": "money",
-                    "quantity": quantity, "scope": ["account"]},
-                   {"name": "date", "type": "date"}]
-                  if wants_date else
-                  [{"name": "balance", "type": "money",
-                    "quantity": quantity, "scope": ["account"]}])}]
+        "id": "balance_and_date",
+        "text": f"The supported {label} is {{balance}}, measured on {{date}}.",
+        "slots": [{"name": "balance", "type": "money",
+                   "quantity": quantity, "scope": ["account"]},
+                  {"name": "date", "type": "date"}]}]
     node = _read("account_balance", "query_ledger", {
         "entity": "balances",
         "filters": {"account": request.parameters["account_phrase"]}})
@@ -165,9 +170,8 @@ def _named_account(request, manifest, account_kind):
                 "cardinality": "one"}
     bindings = [{"hole": "balance", "source": "account_balance",
                  "reference_kind": "figure", "selector": selector}]
-    if wants_date:
-        bindings.append({"hole": "date", "source": "account_balance",
-                         "reference_kind": "date_of", "selector": selector})
+    bindings.append({"hole": "date", "source": "account_balance",
+                     "reference_kind": "date_of", "selector": selector})
     return _program(manifest, request.family, clauses, [node], bindings,
                     required=[clauses[0]["id"]])
 
@@ -399,7 +403,7 @@ class SemanticFamilyRegistry:
             {"name": "semantic_clarification", "description": "clarify",
              "parameters": _object({"tag": {"type": "string",
                                                "enum": list(CLARIFICATION_TAGS)},
-                 "question": _STRING, "scenario_family": _SCENARIO_FAMILY,
+                 "question": _STRING,
                  "options": {"type": "array", "items": _object(
                      {"id": _STRING, "label": _STRING}, ("id", "label"))}},
                  ("tag", "question", "options"))},
@@ -468,7 +472,7 @@ class SemanticFamilyRegistry:
         for outcome, fields, required in (
                 ("clarify", {"tag": {"type": "string",
                                        "enum": list(CLARIFICATION_TAGS)},
-                             "question": _STRING, "scenario_family": _SCENARIO_FAMILY,
+                             "question": _STRING,
                              "options": {"type": "array", "items": _object(
                                  {"id": _STRING, "label": _STRING},
                                  ("id", "label"))}},
@@ -525,6 +529,9 @@ class SemanticFamilyRegistry:
                         "phrase without verbatim grounding")
                 quote = str(proof.get("quote") or "")
                 candidates = self._catalog_candidates(name, quote)
+                if (name == "account_phrase"
+                        and held.get("family") in _SCENARIO_FAMILY["enum"]):
+                    candidates = self._account_role_candidates(quote)
                 coverage = self.entity_catalog.get("coverage", {}).get("accounts", {})
                 if (held.get("family") == "named_account_balance"
                         and name == "account_phrase"
@@ -641,11 +648,11 @@ class SemanticFamilyRegistry:
             "outside_domain": {"request_version", "outcome"},
             "unsupported": {"request_version", "outcome", "requested_family"},
         }[kind]
-        allowed = required | ({"scenario_family"} if kind in {"clarify","needs_assumption"} else set())
+        allowed = required | ({"scenario_family"} if kind == "needs_assumption" else set())
         self._fields(raw, allowed, required, "semantic outcome")
         detail = {key: raw[key] for key in raw
                   if key not in {"request_version", "outcome"}}
-        self._validate_non_answer(kind, detail)
+        self._validate_non_answer(kind, detail, context)
         return SemanticOutcome(kind, detail=detail)
 
     def lower(self, outcome: SemanticOutcome, manifest) -> AnswerProgram:
@@ -851,7 +858,7 @@ class SemanticFamilyRegistry:
     @staticmethod
     def _admitted_implementation_digests():
         """Bind executable selection, materialization and disclosure code."""
-        from vivacore.models import openai_compat
+        from vivacore.models import openai_compat, spec as model_spec
         from . import compiler, runtime, replay, bind, execute, evidence, validate, schema
         from . import capabilities, admission, eval as evaluation, admission_fixture, capability_fixture
         from ..tools import (ledger_aggregates, ledger_common,
@@ -861,7 +868,7 @@ class SemanticFamilyRegistry:
         from ..tools import envelope, boundary, shape, runner_binding, runner_delivery, runner
         from ..tools.compute import compute as compute_function
         compute = inspect.getmodule(compute_function)
-        from .. import quantity, render
+        from .. import quantity, render, speak
         from ..ledger.projection import (movements, categories, merchants,
                                         core, accounts, balances, rhythm, measurements,
                                         positions, current_period, obligations, goals)
@@ -880,6 +887,7 @@ class SemanticFamilyRegistry:
             "runtime": runtime,
             "replay": replay,
             "openai_compat": openai_compat,
+            "model_spec": model_spec, "speak": speak,
             "capabilities": capabilities,
             "scenario_calculators": scenario_calculators, "scenario_tools": scenario_tools,
             "capability_fixture": capability_fixture, "admission_fixture": admission_fixture,
@@ -947,7 +955,7 @@ class SemanticFamilyRegistry:
             if manifest.resolve(strict=True) != manifest or not manifest.is_file():
                 raise RuntimeError("admission source artifact: invalid source map resource")
             mapping = json.loads(manifest.read_bytes())
-            if not isinstance(mapping, dict) or len(mapping) != 60:
+            if not isinstance(mapping, dict) or len(mapping) != 62:
                 raise RuntimeError("admission source artifact: incomplete source map")
             for name, relative in mapping.items():
                 if (not isinstance(name, str) or not isinstance(relative, str)
@@ -989,12 +997,17 @@ class SemanticFamilyRegistry:
                             "referent, including an indirect description that "
                             "shares no words with its label.")}},
                     ("catalog_id",)))
+            phrase_description = (
+                "Use only when no catalog entry semantically fits; do "
+                "not echo an indirect description of a listed entry.")
+            if name == "account_phrase" and family.id in _SCENARIO_FAMILY["enum"]:
+                phrase_description = (
+                    "Preserve the verbatim account reference when no unique "
+                    "catalog entry resolves it, including ambiguous matches.")
             choices.append(_object({
                 "grounded_phrase": {
                     "type": "boolean", "enum": [True],
-                    "description": (
-                        "Use only when no catalog entry semantically fits; do "
-                        "not echo an indirect description of a listed entry.")}},
+                    "description": phrase_description}},
                 ("grounded_phrase",)))
             properties[name] = {
                 "oneOf": choices,
@@ -1202,17 +1215,24 @@ class SemanticFamilyRegistry:
         return held
 
     @staticmethod
-    def _validate_non_answer(kind, detail):
-        from ..tools.scenarios import SCENARIO_REQUESTS, FAMILIES
+    def _validate_non_answer(kind, detail, context=None):
+        from ..tools.scenarios import SCENARIO_REQUESTS
         family=detail.get("scenario_family")
         tag=detail.get("tag")
         scoped=kind=="needs_assumption" and tag in SCENARIO_REQUESTS
         if scoped:
             if family not in SCENARIO_REQUESTS[tag]:
                 raise ContractError("scenario assumption needs a compatible explicitly selected family")
+            from ..tools.scenarios import INPUTS, MISSING_TAGS, inspect_starting_basis, ScenarioError
+            if tag == MISSING_TAGS[INPUTS[family][0]]:
+                try:
+                    parsed = inspect_starting_basis(family, context.question if context else "")
+                except ScenarioError as exc:
+                    raise ContractError("missing starting basis has unsupported current source context") from exc
+                if INPUTS[family][0] in parsed or "account_phrase" in parsed:
+                    raise ContractError("current starting basis contradicts missing-start assumption")
         elif "scenario_family" in detail:
-            if kind!="clarify" or tag!="ambiguous_account" or family not in FAMILIES:
-                raise ContractError("scenario context is not valid for this ordinary outcome")
+            raise ContractError("scenario context is not valid for this ordinary outcome")
         if kind == "clarify":
             options = detail.get("options")
             if (detail.get("tag") not in CLARIFICATION_TAGS

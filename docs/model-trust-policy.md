@@ -123,20 +123,37 @@ passing to keep its autonomy. Today's models merely happen to be the first
 candidates to sit it. That is why the harness is designed before any statement
 is gathered — it will outlive every model it ever grades.
 
+The answer model's endpoint identity is a `model-endpoint-v1` SHA256 digest of
+the versioned tuple containing transport kind, exact socket path or absence,
+exact base URL or absence, and adapter. Measurement and ordinary runtime share
+`ModelSpec.endpoint_identity()` through the normal factory. Admission profile
+`semantic-request-admission-v9` rejects v8 profiles; changing transport, socket
+path, URL or adapter requires fresh admission. Raw-source binding includes
+`vivacore.models.spec` and `viva.speak` alongside the adapter, with an exact
+62-module packaged source map. This binds configuration and implementation; it
+does not authenticate an upstream provider or prove live socket custody.
+[ADR-018](decisions/ADR-018-exact-path-local-model-transport.md) records that
+separate parent responsibility and the accepted same-inode alias limitation.
+Synthetic transport checks cannot establish model admission.
+
 The answer model has a separate exact-profile admission role. Its exam is not
 executable-program authorship: it selects one compact reviewed semantic family,
 typed parameters and requested claims, while deterministic code authors and
 validates the AnswerProgram. Publication binds the exact provider route,
 requested and resolved model, modality, locale family, semantic prompt and
 schema, catalog, builder digest, retained runtime contracts, persona, frozen
-corpus, canonical synthetic fixture and its derived oracle set. Before a
+corpus, canonical synthetic fixture and its independently checked oracle set. Before a
 compiler or provider is constructed, the product loads its own corpus and
-derives every oracle from a fresh fixture; caller-supplied full-corpus cases or
+derives fixture-backed oracles and loads pinned literal expectations for the
+date-only case; caller-supplied full-corpus cases or
 registries cannot become admission evidence. Each frozen case is keyed to an
 independent deterministic oracle for financial value, currency, subject and
 date, and publication retains complete per-attempt request, response, route,
 model and usage evidence. Provider doubles and reports assembled from fabricated
-passing scores are never publishable.
+passing scores are never publishable. The date-only expectation resource is
+part of the corpus identity; its source consistency checks and the serialized
+facade's run-identity limit are recorded in
+[the answer-program admission contract](answer-program-and-financial-query-engine.md#10-model-admission).
 The serialized report remains verifiable evidence, while the authority to mint
 a profile is a non-serializable capability held only by the live suite run that
 produced it. That capability is immutable and checks its bound canonical report

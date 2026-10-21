@@ -563,6 +563,23 @@ class ProgramValidator:
 
             node = program.nodes[positions[binding.source]]
             tool = node.tool or ("compute" if node.kind == "compute" else "")
+            if binding.reference_kind == "measurement_date_of":
+                args = node.args
+                filters = args.get("filters", {})
+                if (node.kind != "tool_read" or tool != "query_ledger"
+                        or set(args) != {"entity", "filters"}
+                        or args.get("entity") != "balances"
+                        or not isinstance(filters, dict)
+                        or set(filters) != {"account"}
+                        or not isinstance(filters.get("account"), str)
+                        or not filters["account"]
+                        or selector.quantity not in ("balance", "owed")
+                        or set(selector.scope) != {"account"}
+                        or selector.cardinality != "one"
+                        or selector.order or selector.limit is not None
+                        or selector.entity_kind or selector.entity_ref or selector.currency):
+                    add("invalid_measurement_date_source", path,
+                        "measurement date requires one selected account measurement")
             capability = self.manifest.get(tool) if tool else None
             if capability and binding.reference_kind not in capability.emits.get(
                     "reference_kinds", []):
@@ -586,7 +603,7 @@ class ProgramValidator:
         if slot_type in ENTITY_SLOTS:
             return ("entity",)
         if slot_type == render.DATE:
-            return ("date", "date_of")
+            return ("date", "date_of", "measurement_date_of")
         if slot_type == render.PERIOD:
             return ("period",)
         if slot_type == render.ROWS:

@@ -34,6 +34,7 @@ function figure(raw: unknown): TurnFigure | null {
     id,
     evidenceId: textValue(raw.evidence_id),
     written: textValue(raw.written),
+    dated: textValue(raw.dated),
     grade: textValue(raw.grade),
     what: textValue(raw.what),
     recordIds: Array.isArray(raw.record_ids) ? raw.record_ids.map(textValue).filter((record) => record) : [],

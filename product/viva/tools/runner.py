@@ -254,6 +254,8 @@ class _Ground:
     # number has to state what the number does not cover.
     owed: dict = field(default_factory=dict)      # figure id -> (caveat id, ...)
 
+    measurement_dates: dict = field(default_factory=dict)
+
     def accounts(self) -> dict:
         """The accounts this run established, by ledger path.
 

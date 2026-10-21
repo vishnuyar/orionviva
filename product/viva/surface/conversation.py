@@ -45,6 +45,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..persona import STOOD_BEHIND_MOMENT, moment
+from ..tools.envelope import FINANCIAL, STRENGTH
 from .models import PanelState
 
 # What a spoken answer may carry. Each is a decision this module makes rather
@@ -215,6 +216,10 @@ def _figure(figure: dict, shown: dict[str, str], projection: Any = None,
         "written": shown.get(identity, ""),
         "grade": figure.get("grade", "") or figure.get("kind", ""),
         "what": figure.get("what", ""),
+        "dated": (figure.get("dated", "")
+                  if figure.get("kind") == FINANCIAL
+                  and figure.get("grade") in STRENGTH
+                  and figure.get("record_ids") else ""),
         "record_ids": [str(record) for record in figure.get("record_ids", [])],
     }, projection, turn_id)
 

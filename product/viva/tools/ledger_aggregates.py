@@ -1012,6 +1012,9 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "", *,
     # across currencies, so on a vault of several nothing here is whole.
     by_currency = data.get("by_currency", {})
     for currency, row in sorted(by_currency.items()):
+        net_records = sorted(set(record_ids) | {
+            line["proves"] for line in lines
+            if line.get("currency") == currency and line.get("proves")})
         for part in PARTS:
             # What is held less what is owed is net worth; each side of it on
             # its own is a total of balances, and saying so keeps a hole that
@@ -1021,7 +1024,8 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "", *,
                                   quantity=_PART_MEASURES[part],
                                   grade=weakest(_grades_in(data)),
                                   dated=as_of, currency=currency,
-                                  record_ids=record_ids,
+                                  record_ids=(net_records if part == "net"
+                                              else record_ids),
                                   boundary=bounded(
                                       whole=(placed and len(by_currency) == 1),
                                       unmeasured=missing,

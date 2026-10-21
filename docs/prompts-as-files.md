@@ -55,7 +55,7 @@
 
 ### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
 **State:** enforced
-**Code:** product/viva/prompts/semantic-request-v14.txt, product/viva/prompts/semantic-request-retry-v12.txt
+**Code:** product/viva/prompts/semantic-request-v17.txt, product/viva/prompts/semantic-request-retry-v15.txt
 **Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
 1. The repair prompt receives every compact-contract defect and asks for one complete replacement semantic request.
@@ -156,8 +156,8 @@ has since been bumped.
 - `FROZEN_SPEAK_PROMPTS` is the one frozen map still kept by hand; it is one comprehension away from deriving from `released` like the other four.
 - User-editable prompts, as content-addressed new versions rather than edits.
 
-The active semantic selection prompt is `semantic-request-v14` with retry
-`semantic-request-retry-v12`; all earlier released bytes remain retained. The
+The active semantic selection prompt is `semantic-request-v17` with retry
+`semantic-request-retry-v15`; all earlier released bytes remain retained. The
 catalog includes eight everyday analysis meanings, six measurement/projection
 meanings and three scenario meanings alongside the original six. Retained v12
 and retry v10 align scenario numerical, date, currency and account proof
@@ -173,7 +173,7 @@ prohibited. Code owns calculations, closed read arguments and answer binding.
 Program schema v3 adds the closed repayment quantity while v2 remains unchanged.
 
 The active tool descriptions are `tools-v25`, and the selection schema is
-`semantic-request-schema-v11`. Qualification002 remains failed; diagnostic003
+`semantic-request-schema-v14`. Qualification002 remains failed; diagnostic003
 did not admit a model. Qualification004 was not admitted: 116 of 123 graded
 cases and 49 of 50 supplemental cases passed. Qualification005 admitted all
 123 cases on their first attempts for its original frozen v13 candidate. Retained
@@ -185,10 +185,55 @@ exact-candidate qualification. Complete host/sidecar binding and retained-vault
 browser Witness remain pending. The original qualification record remains immutable. Changed guidance
 alone does not prove that live questions select the intended family.
 
-Active v14 and retry v12 clarify contiguous source quotes and ordinary period
+Retained v14 and retry v12 clarify contiguous source quotes and ordinary period
 month/year expressions, excluding surrounding clauses and invented ellipses.
 Explicit ISO period edges keep verbatim date quotes. Scenario date proofs retain
-complete opening-date or first-payment-date role clauses. Active schema v11
+complete opening-date or first-payment-date role clauses. Retained schema v11
 changes only the 27 request-version labels from v13 to v14; all predecessor
-artifacts remain immutable. This candidate has no successful qualification;
+artifacts remain immutable. That candidate has no successful qualification;
 model-free compatibility checks do not establish live model compliance.
+
+Selection v15 and retry v13 clarify the existing scenario representation: numeric
+parameter values contain the exact numeric token with grouped commas removed,
+without currency, percent signs or unit words. Signs and percentage scale remain
+unchanged; source quotes retain complete role clauses and units. Currency and
+dates retain their separate verbatim/calendar forms. Schema v12 changes only the
+27 request-version labels. Validator and calculation boundaries are unchanged;
+these synthetic checks do not establish model compliance or admission.
+
+Selection v16, retry v14 and schema v13 remove model-authored scenario context
+from raw clarifications. Only a scenario request grounded in the complete
+current question may derive a scenario starting-account clarification. Its
+account proof may retain an exact verbatim ambiguous reference; the existing
+whole-word catalog matcher resolves candidates before any financial read.
+Unique references materialize normally, exact IDs stay selected, and unknown
+references or incomplete catalog coverage retain their refusals. Numerical,
+date and currency premises and scenario assumption handling remain unchanged.
+The v15, retry v13 and schema v12 resources remain immutable; their candidate
+evidence is historical and does not qualify this changed source.
+
+Selection v17, retry v15 and semantic schema v14 select only current requested
+claims while retaining a grounded follow-up subject. Scalar and recorded account
+starts remain alternatives. Missing-start assumptions are checked against the
+existing whole current-question scenario grammar for the explicitly selected
+family; contradictory or unsupported source contexts enter bounded before-read
+repair without reconstructing a request or reading financial data.
+
+AnswerProgram schema v4 adds the closed `measurement_date_of` path for a named
+account date-only claim. Its account read, unique selector and date clause exist
+before execution. The supporting measurement retains its identity, provenance,
+date and grade in execution evidence; delivery has no amount or asserted money
+figure, retains necessary evidence limitations and omits account-total coverage.
+Ordinary `date`/`date_of` same-clause rules remain unchanged. Previous resources
+remain immutable. Claim-aware delivery changes current-candidate figure snapshots and contract
+digests while preserving frozen cases. The subsequent date-only evaluator repair
+replaces execution-derived truth for that one case with independently pinned
+literal source and delivery expectations; fresh actual-program execution checks
+behavior against them before provider entry. The other 122 oracle structures
+remain unchanged, and historical oracle artifacts remain valid only for their
+original source identities.
+
+Qualification037 was NOT_ADMITTED. These source changes have no current ordinary
+admission and establish no retained-vault answer or installed-host delivery. No
+paid run is authorized here; the existing conditional retained-vault plan remains
+conditional on ordinary current-candidate admission and artifact/profile binding.

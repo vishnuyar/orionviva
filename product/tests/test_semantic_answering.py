@@ -124,7 +124,7 @@ def test_named_account_scope_and_date_survive_lowering_and_delivery():
     assert "Brokerage" not in delivered.result.text
 
 
-def test_requested_claim_subset_controls_required_clauses():
+def test_balance_claim_requires_amount_and_date_clause_before_reads():
     registry = _registry()
     families = SemanticFamilyRegistry(registry.semantic_entities())
     definition = families.get("named_account_balance")
@@ -134,9 +134,9 @@ def test_requested_claim_subset_controls_required_clauses():
     program = families.lower(SemanticOutcome("request", request),
                              CapabilityManifest.from_registry(registry))
 
-    assert [clause.id for clause in program.shape.clauses] == ["balance"]
-    assert program.result_policy["required_clauses"] == ["balance"]
-    assert {binding.hole for binding in program.bindings} == {"balance"}
+    assert [clause.id for clause in program.shape.clauses] == ["balance_and_date"]
+    assert program.result_policy["required_clauses"] == ["balance_and_date"]
+    assert {binding.hole for binding in program.bindings} == {"balance", "date"}
 
 
 def test_compiler_rejects_a_subject_not_grounded_in_the_question_before_reads():
@@ -801,7 +801,8 @@ def test_named_liability_uses_owed_slot_and_same_measurement_date(claims):
     assert 'owed' in delivery.result.text
     assert program.shape.clauses[0].slots[0].quantity == 'owed'
     assert all(binding.selector.quantity == 'owed' for binding in program.bindings)
-    assert ('2026-01-31' in delivery.result.text) == ('measurement_date' in claims)
+    assert '2026-01-31' in delivery.result.text
+    assert delivery.result.bindings['date'] == {'date_of': figure['id']}
 
 
 def _named_runtime(registry, catalog, phrase, *, question=None, prior_turns=(),
@@ -950,7 +951,7 @@ def test_broader_named_phrasings_keep_subject_and_amount_effect(question):
                             question=question)
     assert result.result.answered
     assert result.compilation.program.nodes[0].args['filters']['account'] == 'chk'
-    assert {binding.hole for binding in result.compilation.program.bindings} == {'balance'}
+    assert {binding.hole for binding in result.compilation.program.bindings} == {'balance', 'date'}
 
 
 def test_short_date_follow_up_keeps_grounded_named_subject():
@@ -962,7 +963,12 @@ def test_short_date_follow_up_keeps_grounded_named_subject():
     assert result.result.answered
     assert result.compilation.semantic_outcome.request.parameter_sources['account_phrase']['source'] == 'prior_turn'
     assert result.compilation.program.nodes[0].args['filters']['account'] == 'chk'
-    assert result.result.figures[0]['dated'] == '2026-01-31'
+    assert result.result.figures == []
+    assert result.result.written == {'date': '2026-01-31'}
+    assert result.result.bindings['date'] == {'measurement_date_of': 'f1'}
+    assert result.result.transcript[0]['figures'][0]['dated'] == '2026-01-31'
+    assert result.result.transcript[0]['figures'][0]['record_ids']
+    assert result.result.transcript[0]['figures'][0]['grade'] == result.result.grade
 
 
 def test_named_shape_and_selectors_are_authored_before_financial_read():
@@ -1166,3 +1172,46 @@ def test_compiler_prompt_matches_advertised_measurement_projection_scenarios():
     prose = ' '.join(prompt.split())
     assert 'projections and scenarios are not yet in this active catalog' not in prose
     assert 'Payment terms, minimum payments and contractual due dates remain unsupported.' in prose
+
+
+@pytest.mark.parametrize('kind,quantity', [('depository', 'balance'), ('liability', 'owed')])
+@pytest.mark.parametrize('claims', [('balance',), ('balance', 'measurement_date')])
+@pytest.mark.parametrize('amount', ['0.00', '75.00'])
+def test_named_amount_requires_own_date_even_for_zero(kind, quantity, claims, amount):
+    account, registry = _measurement_registry(kind, 'issued', amount)
+    result = _named_runtime(registry, registry.semantic_entities(), account, claims=claims)
+    assert result.result.answered
+    assert '2026-01-31' in result.result.text
+    assert result.result.figures[0]['quantity'] == quantity
+    assert result.result.figures[0]['record_ids'] == [account, 'example-measured-doc']
+    assert result.result.bindings['date'] == {'date_of': result.result.figures[0]['id']}
+
+
+@pytest.mark.parametrize('mutation', ['missing', 'invalid_format', 'invalid_calendar', 'incompatible', 'ambiguous'])
+@pytest.mark.parametrize('claims', [('balance',), ('balance', 'measurement_date')])
+def test_named_amount_cannot_borrow_another_figures_date(mutation, claims):
+    import copy
+    registry = _registry()
+    original = registry.call
+
+    def read(*args, **kwargs):
+        result = original(*args, **kwargs)
+        if args[0] == 'query_ledger' and result.figures:
+            selected = next(figure for figure in result.figures if figure.get('quantity') == 'balance')
+            other = copy.deepcopy(selected)
+            other['id'] = 'unrelated-measurement'
+            other['dated'] = '2026-02-28'
+            other['quantity'] = 'owed'
+            result.figures.append(other)
+            if mutation == 'missing': selected['dated'] = ''
+            elif mutation == 'invalid_format': selected['dated'] = 'not-a-date'
+            elif mutation == 'invalid_calendar': selected['dated'] = '2026-02-30'
+            elif mutation == 'incompatible': selected['quantity'] = 'movement'
+            elif mutation == 'ambiguous': other['quantity'] = 'balance'
+        return result
+
+    registry.call = read
+    result = _named_runtime(registry, registry.semantic_entities(), 'chk', claims=claims)
+    assert not result.result.answered
+    assert result.result.figures == []
+    assert '2026-02-28' not in result.result.text

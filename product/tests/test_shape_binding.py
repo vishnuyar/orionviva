@@ -987,3 +987,38 @@ def test_the_shape_prompt_teaches_every_quantity_a_hole_can_ask_for():
 def _named(results, what):
     return next(f["id"] for r in results for f in (r.get("figures") or [])
                 if what in f["what"])
+
+
+@pytest.mark.parametrize('dated', [
+    '2026-02-30', '2026-02-29', '2026-13-01', '2026-04-31',
+    '2026-00-01', '2026-01-00', '0000-01-01', '', None, 'not-a-date',
+])
+def test_date_of_requires_a_real_calendar_day_from_the_stated_figure(dated):
+    from types import SimpleNamespace
+    from viva.tools.runner import _Ground
+    from viva.tools.runner_binding import _bound
+
+    selected = {'id': 'selected', 'dated': dated}
+    ground = _Ground(book={'selected': selected})
+    written, tag, _ = _bound(SimpleNamespace(name='when', type=render.DATE),
+                              {'date_of': 'selected'}, ground, '',
+                              alongside=[selected])
+    assert written is None and tag == 'unfounded_date'
+
+
+@pytest.mark.parametrize('dated', ['2024-02-29', '٢٠٢٤-٠٢-٢٩'])
+@pytest.mark.parametrize('alongside', [True, False])
+def test_date_of_keeps_a_genuine_leap_day_and_same_clause_requirement(alongside, dated):
+    from types import SimpleNamespace
+    from viva.tools.runner import _Ground
+    from viva.tools.runner_binding import _bound
+
+    selected = {'id': 'selected', 'dated': dated}
+    ground = _Ground(book={'selected': selected})
+    written, tag, _ = _bound(SimpleNamespace(name='when', type=render.DATE),
+                              {'date_of': 'selected'}, ground, '',
+                              alongside=[selected] if alongside else [])
+    if alongside:
+        assert str(written) == dated and tag == ''
+    else:
+        assert written is None and tag == 'unfounded_date'

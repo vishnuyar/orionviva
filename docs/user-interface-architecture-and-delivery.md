@@ -497,3 +497,19 @@ External references supporting feasibility, not product decisions: Tauri
 [Qt for Python deployment](https://doc.qt.io/qtforpython-6/deployment/deployment-pyside6-deploy.html) ·
 [Electron security checklist](https://www.electronjs.org/docs/latest/tutorial/security),
 relevant to the discarded option.
+
+Conversation figure receipts carry the selected supported financial figure's
+`dated` measurement value through live delivery and durable normal reopen.
+The raw figure must have financial kind, a recognized evidence grade and
+source record identities. Hypothetical scenario/projection endpoints, computed
+values and other unsupported figure dates do not become Measured dates; their
+raw dates, date-labeled answer text, amounts and source identities stay intact. The adapter retains it
+on `TurnFigure`; the existing evidence drawer's Measured row displays a valid
+ISO calendar date. Missing or invalid metadata remains unavailable, including
+legacy receipts without `dated`. Historical receipts must also supply a
+recognized financial evidence grade and source record identities before their
+date can occupy Measured; hypothetical/unknown/ungraded/uncited receipt dates
+remain unavailable without rewriting that receipt. History is never backfilled from account rows,
+document labels or later reads. This measurement date does not populate the
+separate evidence-date list. Figure and source navigation identities stay the
+same.

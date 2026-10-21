@@ -107,9 +107,9 @@
 1. A figure's scope, its caveats and its grade are placed by the runner and are never asked for through a hole.
 2. A statement drawn from one figure's boundary is placed under the clause that bound that figure, and again under the next clause that makes it.
 3. The order is scope, then strength, then what the claim does not cover.
-4. The answer's grade is the weakest among every money figure it stated, block lines included (PROJ-65), and is said only where at least one of them was stated as a number in a sentence.
+4. The answer's grade is the weakest among its stated money figures, block lines included (PROJ-65), and any account measurement supporting a `measurement_date_of` binding. The grade sentence is placed when a money figure is stated as a number in a sentence or a supporting measurement date is stated; a row-only block retains its own grade placement.
 5. An answer states how many of the accounts a person holds it covers only where every stated figure declares, as data, exactly which accounts it covers.
-6. A day carried by a figure may be stated only in the same clause as that figure. The binding names the figure and the machine renders its date; a copied or free-floating day does not fill the hole.
+6. Ordinary date bindings state a figure's day only in the same clause as that figure. The closed `measurement_date_of` binding may instead state the actual date of one selected account measurement in the same run, retaining its source identity, provenance and grade without asserting its amount. Its clause and unique selector precede the read; missing, multiple, undated or incompatible support refuses. A copied or free-floating day does not fill the hole. See ADR-013 rule 13.
 
 ### PROJ-6 — `compute` takes figure ids and stipulations, never a typed number
 **State:** enforced

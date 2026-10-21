@@ -757,11 +757,9 @@ def _fail(tag='scenario_premise_source_mismatch'):
     raise ScenarioError(tag)
 
 
-def validate_premises(family, parameters, proofs, question):
-    """Validate an explicit current-question source scope after family selection."""
-    if family not in FAMILIES or not isinstance(parameters,dict) or not isinstance(proofs,dict):
-        _fail()
-    if set(parameters)-set(INPUTS[family])-{'account_phrase'}:
+def inspect_starting_basis(family, question):
+    """Parse current source clauses for one explicitly selected scenario family."""
+    if family not in FAMILIES:
         _fail()
     if not isinstance(question,str):
         _fail('scenario_source_context_unavailable')
@@ -814,6 +812,18 @@ def validate_premises(family, parameters, proofs, question):
     parsed['currency'] = (currency,currency,'verbatim')
     if start_name in parsed and 'account_phrase' in parsed:
         _fail('scenario_starting_basis_ambiguous')
+    return parsed
+
+
+def validate_premises(family, parameters, proofs, question):
+    """Validate an explicit current-question source scope after family selection."""
+    if family not in FAMILIES or not isinstance(parameters,dict) or not isinstance(proofs,dict):
+        _fail()
+    if set(parameters)-set(INPUTS[family])-{'account_phrase'}:
+        _fail()
+    parsed = inspect_starting_basis(family, question)
+    currency = parsed['currency'][0]
+    start_name = INPUTS[family][0]
     required = set(INPUTS[family]) - ({start_name} if 'account_phrase' in parsed else set())
     for name in INPUTS[family]:
         if name in required and name not in parsed:
@@ -822,11 +832,15 @@ def validate_premises(family, parameters, proofs, question):
         _fail()
     for name, (raw,clause,derivation) in parsed.items():
         proof = proofs.get(name)
-        if not isinstance(proof,dict) or set(proof)!={'source','quote','derivation'} or proof['source']!='question' or proof['derivation']!=derivation:
+        if not isinstance(proof,dict) or set(proof)!={'source','quote','derivation'} or proof['source']!='question':
             _fail()
         if name=='account_phrase':
+            if proof['derivation'] not in {'catalog_selection','verbatim'}: _fail()
             if proof['quote'] != raw or not parameters[name]: _fail()
-        elif proof['quote'] != clause or parameters[name] != raw.replace(',',''):
+            if proof['derivation']=='verbatim' and parameters[name] != raw: _fail()
+        elif proof['derivation'] != derivation:
+            _fail()
+        if name!='account_phrase' and (proof['quote'] != clause or parameters[name] != raw.replace(',','')):
             _fail()
         if name in MONEY_ROLES or name=='nominal_annual_rate_percent':
             value = decimal(raw.replace(',',''))

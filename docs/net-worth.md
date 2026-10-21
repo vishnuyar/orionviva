@@ -156,7 +156,12 @@ figure's counted population. Unresolved generic activity does not add a phantom
 held account to Overview coverage; independently recorded accounts retain their
 place. No events, treatments, or source measurements change.
 
-A separate direct named ruling into measured person-asserted cash can still
-retain both its cash-derived cost and its measured balance. That pre-existing
-path is outside this generic-counterpart repair and remains open for owner
-assessment; these controls do not establish that every cash double count is fixed.
+A direct named ruling into a person-asserted depository account does not add
+cash-derived cost beside that account's measured balance in the same currency.
+The latest observed balance on or before the requested date contributes once,
+including a measured zero, with its own grade, date and provenance. Later
+movements do not extrapolate an older observation. Before a matching measurement
+exists, or for a different currency, the existing asserted contribution remains.
+This rule does not change valuation of other asserted asset kinds or stated-cost
+replacement. Synthetic regressions live in
+`product/tests/test_unresolved_counterpart_networth.py`.

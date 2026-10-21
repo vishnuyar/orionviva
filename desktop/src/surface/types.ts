@@ -313,7 +313,7 @@ export type OverviewActions = {
 };
 // An answer figure carries its source route and the exact `written` rendering
 // used in the answer sentence.
-export type TurnFigure = { id: string; evidenceId: string; written: string; grade: string; what: string; recordIds: readonly string[]; evidenceLinks: readonly EvidenceLink[] };
+export type TurnFigure = { dated?: string; id: string; evidenceId: string; written: string; grade: string; what: string; recordIds: readonly string[]; evidenceLinks: readonly EvidenceLink[] };
 // Voice output carries complete read-supplied sentences for the turn.
 export type SpokenTurn = { maySpeak: boolean; withheld: string; parts: readonly string[]; text: string; gradeSentence: string; citationSentence: string; localOnly: string };
 export type AnswerStatus = "answered" | "partial" | "needs_clarification" | "needs_assumption" | "missing_data" | "capability_gap" | "outside_domain" | "failed";

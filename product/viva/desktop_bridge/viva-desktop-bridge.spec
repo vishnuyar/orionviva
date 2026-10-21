@@ -15,6 +15,8 @@ if not REVISION_SOURCE or not Path(REVISION_SOURCE).is_file():
     raise SystemExit("sidecar build: VIVA_BUILD_REVISION_FILE does not name a revision file")
 
 ADMISSION_SOURCES = [
+    (PRODUCT_ROOT / "viva/speak.py", "viva"),
+    (REPOSITORY_ROOT / "core/vivacore/models/spec.py", "vivacore/models"),
     (PRODUCT_ROOT / "viva/ledger/scenarios.py", "viva/ledger"),
     (PRODUCT_ROOT / "viva/ledger/networth.py", "viva/ledger"),
     (PRODUCT_ROOT / "viva/ledger/accounting.py", "viva/ledger"),

@@ -28,7 +28,7 @@ NODE_KINDS = ("tool_read", "resolve_entity", "compute", "financial_query",
               "conditional")
 IMPORTANCE = ("required", "supporting", "optional")
 CARDINALITIES = ("one", "all")
-REFERENCE_KINDS = ("figure", "entity", "period", "date", "date_of", "read",
+REFERENCE_KINDS = ("figure", "entity", "period", "date", "date_of", "measurement_date_of", "read",
                    "read_figures", "read_labels", "supposed")
 
 

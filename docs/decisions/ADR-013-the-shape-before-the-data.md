@@ -27,7 +27,7 @@ _This records reasoning, not current behaviour._
 10. A binding fails where the hole asks for a quantity that asserts a direction by its own name and the figure's value denies it. Which quantities assert a direction is a closed declaration in the module that owns the vocabulary.
 11. The axes a figure declares it is the intersection of and the axes a hole declares its sentence narrows on are equal, both ways, or the figure is not what the sentence is about. A figure declaring no set fills no such hole.
 12. Where a clause states a figure and names, through a hole, a thing of a kind that figure was cut by, the figure's own boundary names what the clause names, on every axis. An entity belongs to a figure when the figure's own boundary names it.
-13. A `date` hole is filled from the `dated` of a figure its own clause states, and a `period` hole from a span such a figure declares — never from the days or spans the turn as a whole happens to carry.
+13. Ordinary `date` and `date_of` bindings fill a date hole only from a figure its own clause states; a `period` hole uses a span such a figure declares. The owner-approved narrow `measurement_date_of` binding may instead state only the actual date of one selected account measurement in the same run. Its clause and unique account selector precede the read; the closed capability, validator and binders retain source identity, date, grade and provenance without asserting an amount. Missing, multiple, undated or incompatible support refuses. Supporting evidence does not trigger account-total coverage disclosures. Arbitrary unstated figures remain ineligible for ordinary date bindings.
 14. Arithmetic composes a boundary by agreement or by nothing: identical operand boundaries are inherited, differing ones produce a number over neither set that fills no hole, and a literal contributes none and removes none.
 15. A hole nothing can fill costs its clause and not the turn; a pack phrase says what could not be established.
 16. A clause comes into being only if it places at least one hole, refused where every clause is built.
@@ -106,3 +106,10 @@ Promise 1 is served by this mechanism, and the residuals are where it is short; 
 - `prompt_version` is load-bearing in a new place: a recorded shape is interpretable only against the prompt that taught the model to author it, so the release rule — a new version file, never an edit — binds harder after this than before.
 - Which grouping a list over a read that cuts several ways should enumerate is undecided; the guard that refuses such a block is where that decision lands.
 - Nothing stops a model typing a strength word into its own clause text, though it is now betting against a machine-placed sentence in the same answer.
+
+Named latest whole-account amounts require their own measurement date in the
+same clause even when semantic selection requested balance alone. Deterministic
+lowering commits this amount-and-date shape before the read, using identical
+unique figure selectors for amount and ordinary `date_of`. Missing, ambiguous,
+undated or incompatible support fails the required clause. Date-only requests
+retain `measurement_date_of`, supporting evidence and no stated amount.

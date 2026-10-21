@@ -45,7 +45,8 @@ def test_schema_successor_has_exactly_27_version_label_changes():
         assert version['enum'] == ['semantic-request-v13']
         version['enum'] = ['semantic-request-v14']
     assert current == previous
-    assert current == SemanticFamilyRegistry().output_schema()
+    assert json.loads(versions.path_of(PACKAGE, versions.active(PACKAGE,
+        'semantic_request_schema')).read_text()) == SemanticFamilyRegistry().output_schema()
 
 
 def _request(parameters, proofs, comparison=False):

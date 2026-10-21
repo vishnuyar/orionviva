@@ -262,7 +262,10 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         per_clause.append([(ground.book[fid], as_rows)
                            for fid, as_rows in here.items()])
 
-    for fig in cited:
+    supported = [ground.book[references[name]["measurement_date_of"]]
+                 for name in said if "measurement_date_of" in references[name]]
+    evidence = cited + supported
+    for fig in evidence:
         # A money figure with no record behind it is refused. The other kinds
         # rest on ledger events or on the person's own premise, and are not
         # checked for records here.
@@ -272,12 +275,10 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
                             "every figure about your money must stand on one.",
                             dicts, len(transcript), shape)
 
-    # What the results said their own numbers do not cover, for every figure
-    # the answer stated and did not already place a caveat for. In the order
-    # the figures were stated, once each however many results wrote them, and
-    # verbatim — a caveat re-worded is a caveat weakened.
+    # Collect caveats for stated figures and supporting account measurements,
+    # once per caveat in evidence order, retaining each caveat verbatim.
     owed: list = []
-    for fig in cited:
+    for fig in evidence:
         for cid in ground.owed.get(fig["id"], ()):
             if cid not in owed:
                 owed.append(cid)
@@ -296,24 +297,13 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     # is about, and what the claim does not cover is read against that.
     covered, held = _covered(cited) or (0, 0)
 
-    # How well what the answer stated is stood behind: the weakest grade among
-    # every money figure it stated, lines of a block included, said in the
-    # pack's one whole sentence for that word. It is the answer's own grade, so
-    # what a person hears and what the result carries are one word.
-    #
-    # Whether it is said turns on whether any of those figures was stated as a
-    # number in a sentence. Where every one of them is a line of a block, the
-    # block has already stated this grade above itself. Where one was, the
-    # block's figures are inside the set this speaks for, so this sentence can
-    # only be weaker than or equal to the line above the block and the two can
-    # never disagree.
-    #
-    # It lands after the boundaries and before the limits: a word about strength
-    # heard before the extent of the claim has been stated invites reading it as
-    # covering more than it does.
-    graded = [f for f in cited if f["kind"] in MONEY_KINDS]
+    # Grade stated money figures and supporting account measurements together.
+    # Place the grade after account coverage and before evidence limitations
+    # when a sentence states an amount or a supporting measurement date.
+    # Row-only blocks retain their own grade placement.
+    graded = [f for f in evidence if f["kind"] in MONEY_KINDS]
     stood_behind = weakest(f["grade"] for f in graded)
-    stated_in_a_sentence = any(f["id"] in as_numbers for f in graded)
+    stated_in_a_sentence = bool(supported) or any(f["id"] in as_numbers for f in graded)
 
     parts: list = []
     for clause, figures in zip(spoken, per_clause):

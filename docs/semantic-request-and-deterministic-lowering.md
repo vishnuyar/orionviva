@@ -17,10 +17,12 @@ complete AnswerProgram. The already-built runtime then validates the whole
 program before any financial read and executes, binds, and renders it through
 the same one grounded path.
 
-The active compact artifacts are `semantic-request-v14`,
-`semantic-request-retry-v12`, and `semantic-request-schema-v11`; exact-model
-publication uses `semantic-request-admission-v8`. The profile version changed
-because the admission policy changed; its availability thresholds remain unchanged.
+The active compact artifacts are `semantic-request-v17`,
+`semantic-request-retry-v15`, and `semantic-request-schema-v14`; exact-model
+publication uses `semantic-request-admission-v9`. This version binds the exact
+transport, socket path, logical URL and adapter through the shared endpoint
+identity; it rejects v8 profiles without conversion. Availability thresholds
+remain unchanged.
 The active selection catalog adds eight everyday analysis meanings and six
 measurement/projection meanings and three scenario meanings to the original six. Fixed code-owned reads and arithmetic implement those meanings;
 the active descriptions are `tools-v25`. The prior admission profile does not
@@ -120,12 +122,19 @@ implemented, including savings, loan-payoff and cash-flow scenarios; repaired-ar
    The financial quantity stays `balance` for depository/investment accounts and
    `owed` for liabilities. Existing canonical id wins; otherwise complete
    requested whole-word tokens must occur contiguously in a visible account name
-   or institution. Unique known major kind authors the wording, money slot and
-   amount/date selectors together before reads. Unknown/missing kind refuses,
-   never defaults to held. Grounding remains the original person's quote.
-   A requested date stays attached to that same figure; a balance-only request
-   does not acquire a date clause. Negative owed preserves the existing direction
-   refusal. The balance read requires an existing dated composed measurement for
+   or institution. Unique known major kind authors the requested wording and
+   selectors before reads. Amount claims include money and date slots binding
+   the date to that same stated figure. A date-only
+   claim uses the closed `measurement_date_of` path and states no amount.
+   Unknown/missing kind refuses, never defaults to held. Grounding remains the
+   original person's quote. Every named amount request, including balance-only
+   selection, commits one required amount-and-date clause before the read. Both bindings select the same
+   unique supported figure; missing, invalid or incompatible dates fail that
+   required clause. Ordinary `date_of` checks calendar validity locally after
+   its existing lexical and same-clause checks; it never normalizes an invalid
+   day. The shared lexical helper and date-only binding remain unchanged. Date-only requests retain their separate no-amount contract.
+   Negative owed preserves the existing direction refusal. The balance read
+   requires an existing dated composed measurement for
    every liability regardless of origin; opened-only or movement-only debt
    remains missing rather than zero. Asserted held-account suppression and
    issued held-account policies remain unchanged. An opening-backed unverified
@@ -188,7 +197,8 @@ implemented, including savings, loan-payoff and cash-flow scenarios; repaired-ar
 1. Admission binds one exact provider route, requested and resolved model,
    modality, locale family, semantic prompt, compact schema, catalog, builder
    digest, retained runtime contracts, persona, frozen corpus, canonical
-   admission-only synthetic fixture, and the oracle set derived from it.
+   admission-only synthetic fixture, and its independently checked oracle set,
+   including the pinned literal date-only expectation resource.
 2. The corpus contains seven exact questions repeated exactly five times,
    thirty-five varied paraphrases, and follow-up, ambiguity, and
    forbidden-result cases.
@@ -337,7 +347,9 @@ reader validation and page/region viewing remain separate campaign gaps.
 ## Evaluating a replacement model
 
 Run `python -m viva.answer_program.candidate` in the installed product environment
-for the offline deterministic preflight. It derives all frozen-case oracles without
+for the offline deterministic preflight. It prepares all frozen-case oracles,
+deriving fixture-backed expectations and loading the pinned literal date-only
+contract, without
 constructing a provider or reading a personal vault. This is an engine readiness
 check, not evidence that a model understands the questions.
 
@@ -370,10 +382,55 @@ its criteria have not changed. Older application readers require the legacy fiel
 and cannot read newly serialized bundles; keep their original bundle when rolling
 back the application. Prompt, schema, and engine versions remain separate contracts.
 
-Active v14 and retry v12 clarify contiguous source quotes and ordinary period
+Retained v14 and retry v12 clarify contiguous source quotes and ordinary period
 month/year expressions, excluding surrounding clauses and invented ellipses.
 Explicit ISO period edges keep verbatim date quotes. Scenario date proofs retain
-complete opening-date or first-payment-date role clauses. Active schema v11
+complete opening-date or first-payment-date role clauses. Retained schema v11
 changes only the 27 request-version labels from v13 to v14; all predecessor
-artifacts remain immutable. This candidate has no successful qualification;
+artifacts remain immutable. That candidate has no successful qualification;
 model-free compatibility checks do not establish live model compliance.
+
+Selection v15 and retry v13 clarify the existing scenario representation: numeric
+parameter values contain the exact numeric token with grouped commas removed,
+without currency, percent signs or unit words. Signs and percentage scale remain
+unchanged; source quotes retain complete role clauses and units. Currency and
+dates retain their separate verbatim/calendar forms. Schema v12 changes only the
+27 request-version labels. Validator and calculation boundaries are unchanged;
+these synthetic checks do not establish model compliance or admission.
+
+Selection v16, retry v14 and schema v13 remove model-authored scenario context
+from raw clarifications. Only a scenario request grounded in the complete
+current question may derive a scenario starting-account clarification. Its
+account proof may retain an exact verbatim ambiguous reference; the existing
+whole-word catalog matcher resolves candidates before any financial read.
+Unique references materialize normally, exact IDs stay selected, and unknown
+references or incomplete catalog coverage retain their refusals. Numerical,
+date and currency premises and scenario assumption handling remain unchanged.
+The v15, retry v13 and schema v12 resources remain immutable; their candidate
+evidence is historical and does not qualify this changed source.
+
+Selection v17, retry v15 and semantic schema v14 select only current requested
+claims while retaining a grounded follow-up subject. Scalar and recorded account
+starts remain alternatives. Missing-start assumptions are checked against the
+existing whole current-question scenario grammar for the explicitly selected
+family; contradictory or unsupported source contexts enter bounded before-read
+repair without reconstructing a request or reading financial data.
+
+AnswerProgram schema v4 adds the closed `measurement_date_of` path for a named
+account date-only claim. Its account read, unique selector and date clause exist
+before execution. The supporting measurement retains its identity, provenance,
+date and grade in execution evidence; delivery has no amount or asserted money
+figure, retains necessary evidence limitations and omits account-total coverage.
+Ordinary `date`/`date_of` same-clause rules remain unchanged. Previous resources
+remain immutable. Claim-aware delivery changes current-candidate figure snapshots and contract
+digests while preserving frozen cases. The subsequent date-only evaluator repair
+replaces execution-derived truth for that one case with independently pinned
+literal source and delivery expectations; fresh actual-program execution checks
+behavior against them before provider entry. The other 122 oracle structures
+remain unchanged, and historical oracle artifacts remain valid only for their
+original source identities.
+
+Qualification037 was NOT_ADMITTED. These source changes have no current ordinary
+admission and establish no retained-vault answer or installed-host delivery. No
+paid run is authorized here; the existing conditional retained-vault plan remains
+conditional on ordinary current-candidate admission and artifact/profile binding.

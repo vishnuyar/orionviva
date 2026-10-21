@@ -79,7 +79,8 @@ class AnswerProgramRuntime:
         binding = self.binder.bind(program, execution)
         result = binding.result
         from .capabilities import analysis_families, measurement_projection_families, scenario_families
-        if program.question_kind in {*analysis_families(),*measurement_projection_families(),*scenario_families()}:
+        if (program.question_kind in {*analysis_families(), *measurement_projection_families(), *scenario_families()}
+                or any(item.reference_kind == "measurement_date_of" for item in program.bindings)):
             result.transcript=[{**item.to_dict(),"figures":copy.deepcopy(item.figures),
                                 "identifiers":copy.deepcopy(item.identifiers),
                                 "record_ids":list(item.record_ids)} for item in execution.transcript]

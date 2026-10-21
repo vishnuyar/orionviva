@@ -132,7 +132,7 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     registry.register(ToolSpec(
         name="query_ledger", params=ledger_tools.QUERY_LEDGER_PARAMS,
         fn=lambda args: ledger_tools.query_ledger(proj, args, locale, today),
-        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "date_of", "period"],
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "date_of", "measurement_date_of", "period"],
                "figure_types": ["money", "count", "rate"],
                "quantities": list(MEASURES),
                "entity_kinds": ["account", "merchant", "category", "document"]},

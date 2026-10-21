@@ -311,3 +311,81 @@ def test_independently_recorded_unmeasured_generic_account_keeps_inventory_place
     assert view["picture"]["coverage"] == moment("picture_accounts_some", counted=render.count(2), held=render.count(3))
     assert view["account_count"] == 3
     assert view["picture"]["unplaced"] or any(f["unmeasured"] for f in view["picture"]["figures"])
+
+
+@pytest.mark.parametrize("actor", ["human", "model", "merchant_prior"])
+@pytest.mark.parametrize("balance", ["25", "0", "-5"])
+def test_direct_named_measured_cash_contributes_only_its_balance(actor, balance):
+    name = "Assets:Cash:Reserve"
+    events = treated(actor=actor, counterpart=name) + [
+        account_opened(name, "depository", "Reserve", "USD", "2026-01-01", origin="asserted"),
+        closing_balance_observed(name, balance, DATE, confirmed_by="human")]
+    projection = LedgerProjection(events)
+    (measured,) = projection.composed_values(name, DATE)
+    point = net_worth(projection, DATE)
+    assert point.by_currency()["USD"]["net"] == Decimal("300") + Decimal(balance)
+    (line,) = [line for line in point.lines if line.account == name]
+    assert line.kind == "depository" and line.amount == Decimal(balance)
+    assert line.as_of == measured.as_of == DATE
+    assert line.grade == measured.grade == "verified"
+    assert line.proves == measured.proves
+    assert line.origin == "asserted" and line.currency == measured.currency
+    assert point.complete
+
+
+def test_direct_named_cash_uses_only_same_currency_measurements_available_at_query():
+    name = "Assets:Cash:Reserve"
+    events = treated(counterpart=name) + [
+        account_opened(name, "depository", "Reserve", "USD", "2026-01-01", origin="asserted"),
+        closing_balance_observed(name, "25", "2026-02-01", confirmed_by="human")]
+    projection = LedgerProjection(events)
+    earlier = net_worth(projection, DATE)
+    assert next(line for line in earlier.lines if line.account == name).amount == Decimal("150")
+    later = net_worth(projection, "2026-02-01")
+    assert [line.amount for line in later.lines if line.account == name] == [Decimal("25")]
+    assert net_worth(projection, DATE).to_dict() == earlier.to_dict()
+    foreign = treated(counterpart=name) + [
+        account_opened(name, "depository", "Reserve", "EUR", "2026-01-01", origin="asserted"),
+        closing_balance_observed(name, "25", DATE, confirmed_by="human")]
+    point = net_worth(LedgerProjection(foreign), DATE)
+    assert point.by_currency()["USD"]["net"] == Decimal("450")
+    assert point.by_currency()["EUR"]["net"] == Decimal("25")
+
+
+def test_direct_named_cash_keeps_last_measured_balance_without_extrapolating_flow():
+    name = "Assets:Cash:Reserve"
+    events = treated(counterpart=name) + [
+        account_opened(name, "depository", "Reserve", "USD", "2026-01-01", origin="asserted"),
+        closing_balance_observed(name, "25", "2026-01-05", confirmed_by="human")]
+    point = net_worth(LedgerProjection(events), DATE)
+    (line,) = [line for line in point.lines if line.account == name]
+    assert line.amount == Decimal("25") and line.as_of == "2026-01-05"
+    assert point.by_currency()["USD"]["net"] == Decimal("325")
+
+
+def test_direct_named_measured_cash_canonical_and_sql_reads_agree(tmp_path):
+    from viva.ledger import EventStore
+    from viva.ledger.accounting import financial_statements
+    from viva.read_store import ReadStore
+    from viva.surface.overview import overview
+    from viva.tools.ledger_aggregates import _aggregate_net_worth
+    name = "Assets:Cash:Reserve"
+    events = treated(counterpart=name) + [
+        account_opened(name, "depository", "Reserve", "USD", "2026-01-01", origin="asserted"),
+        closing_balance_observed(name, "25", DATE, confirmed_by="human")]
+    canonical = LedgerProjection(events)
+    expected = net_worth(canonical, DATE)
+    assert expected.by_currency()["USD"]["net"] == Decimal("325")
+    assert len([line for line in expected.lines if line.account == name]) == 1
+    assert financial_statements(canonical, as_of=DATE)["balance_sheet"]["by_currency"]["USD"]["net"] == "325"
+    source = EventStore.open(tmp_path / "events.jsonl", "synthetic-passphrase")
+    source.append_atomically(lambda _existing: tuple(events))
+    with ReadStore.create(tmp_path / "reads", "synthetic-passphrase") as reads:
+        reads.synchronize(source)
+        with reads.open_reader() as revision:
+            sql = revision.overview_projection(today=DATE)
+            assert net_worth(sql, DATE).to_dict() == expected.to_dict()
+            assert overview(sql, "en-US", DATE) == overview(canonical, "en-US", DATE)
+            actual = _aggregate_net_worth(sql, DATE, view="net_by_currency")
+            assert actual.to_dict() == _aggregate_net_worth(canonical, DATE, view="net_by_currency").to_dict()
+            assert actual.figures[0]["value"] == "325"

@@ -16,7 +16,7 @@ from .compiler import COMPILER_VERSION
 from .schema import (ANSWER_PROGRAM_VERSION, CAPABILITY_MANIFEST_VERSION,
                      AnswerProgram)
 
-ADMISSION_PROFILE_VERSION = "semantic-request-admission-v8"
+ADMISSION_PROFILE_VERSION = "semantic-request-admission-v9"
 
 
 def _semantic_observation(raw) -> dict:

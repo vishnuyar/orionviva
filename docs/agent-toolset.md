@@ -68,7 +68,7 @@
 **Test:** product/tests/test_answer_program_contracts.py::test_question_context_round_trips_without_financial_results
 
 1. The versioned `QuestionContext` carries today's date to the compiler.
-2. Being told the date does not license stating it: a date reaches a person only through a hole bound to a figure the same clause states.
+2. Being told the date does not license stating it. Ordinary date bindings require a figure the same clause states. The closed `measurement_date_of` exception may state only the actual date of one selected account measurement, retaining supporting evidence without asserting its amount; see ADR-013 rule 13.
 
 Registry membership, the structured filter contract, the modality-neutral
 invocation contract and the result envelope are PROJ-61, PROJ-62, PROJ-63 and PROJ-64 in

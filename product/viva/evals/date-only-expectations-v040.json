@@ -1,0 +1,40 @@
+{
+  "version": "date-only-expectations-v040",
+  "cases": {
+    "follow-up-account-date": {
+      "account": "Assets:Admission:Investment",
+      "date": "2026-01-31",
+      "quantity": "balance",
+      "kind": "financial",
+      "grade": "verified",
+      "value": "2400.00",
+      "currency": "USD",
+      "record_ids": [
+        "Assets:Admission:Investment",
+        "admission-investment-2026-01"
+      ],
+      "provenance": {
+        "doc_id": "admission-investment-2026-01",
+        "page": 2,
+        "region": "synthetic-admission",
+        "note": ""
+      },
+      "clause": {
+        "id": "measurement_date",
+        "text": "The account measurement is dated {date}.",
+        "slots": [
+          {
+            "name": "date",
+            "type": "date"
+          }
+        ]
+      },
+      "support_cardinality": 1,
+      "delivered_figures": [],
+      "disclosures": [
+        "evidence_grade:verified"
+      ],
+      "text": "The account measurement is dated 2026-01-31. Read this answer as verified: every figure in it is attested by the document it came from."
+    }
+  }
+}

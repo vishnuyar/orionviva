@@ -73,7 +73,7 @@ runtime entry. The retained lower runtime is used by the current design.
 **Code:** product/viva/answer_program/admission.py, product/viva/answer_program/admission_fixture.py, product/viva/answer_program/release.py, product/viva/speak.py
 **Test:** product/tests/test_answer_program_contracts.py::test_all_73_frozen_cases_derive_real_oracles_before_scoring_a_bad_result, product/tests/test_answer_program_contracts.py::test_late_broken_oracles_are_all_reported_before_compiler_or_provider_use, product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
 
-1. The keyed and adversarial suites measure one provider route, requested model, provider-resolved model, modality, locale family, prompt, schema, capability manifest, canonical admission fixture, and fully derived oracle set.
+1. The keyed and adversarial suites measure one provider route, requested model, provider-resolved model, modality, locale family, prompt, schema, capability manifest, canonical admission fixture, and independently checked oracle set, including the pinned literal date-only contract below.
 2. Runtime refuses a different build or model identity before reading the vault.
 3. All keyed oracles preflight from fresh synthetic fixtures before the compiler
    or provider is constructed; a late broken case therefore spends no calls.
@@ -632,7 +632,7 @@ For each hole it must:
 4. apply the declared stable selector;
 5. require the declared cardinality;
 6. emit the existing reference form, such as `figure`, `entity`, `read`,
-   `date_of`, or `period`;
+   `date_of`, `measurement_date_of`, or `period`;
 7. record why no binding was possible.
 
 The binder never chooses a semantically convenient alternative. A selector that
@@ -657,7 +657,9 @@ Delivery must continue to guarantee:
 - every hole and binding type agrees;
 - quantity and scope agree both ways;
 - subjects belong to the figures stated beside them;
-- dates and periods belong to figures in their clauses;
+- ordinary dates and periods belong to figures in their clauses; the closed
+  `measurement_date_of` exception retains same-run account-measurement support
+  without asserting its amount;
 - mixed currencies are not combined;
 - caveats, boundaries, account coverage, and weakest grade are placed by code;
 - a missing hole drops its clause and is disclosed;
@@ -915,25 +917,65 @@ belongs in compilation; financial meaning belongs in the intent.
 
 ## 10. Model admission
 
+The normal factory uses `ModelSpec.endpoint_identity()` for both measurement
+and runtime. Its `model-endpoint-v1` digest binds transport kind, exact socket
+path or absence, exact base URL or absence, and adapter. UNIX transport is an
+ordinary optional configuration, with TCP still the default. A different path,
+URL, adapter or transport rejects profile reuse before dispatch. Admission
+profile `semantic-request-admission-v9` rejects v8 profiles without migration.
+The implementation digest and exact 62-module packaged source map include
+`vivacore.models.spec` and `viva.speak` as well as the adapter. Live directory
+and listener custody remains a separate parent gate; a profile does not carry
+a reusable inode identity. See
+[ADR-018](decisions/ADR-018-exact-path-local-model-transport.md).
+
 An answer compiler model is admitted for one exact combination of:
 
-- provider and resolved model id;
+- exact endpoint identity, provider and resolved model id;
 - the provider-resolved model identifier (also the canonical version identity);
 - modality;
 - compiler prompt version;
 - `AnswerProgram` schema version;
 - capability manifest version;
 - locale family where relevant.
-- canonical synthetic admission fixture and its fully derived oracle set.
+- canonical synthetic admission fixture and its independently checked oracle set, including pinned literal expectations.
 
-The runner derives every oracle before constructing the compiler or contacting
-the provider. Preflight collects all failures in a serializable blocked result;
+The runner prepares every oracle before constructing the compiler or contacting
+the provider. It derives fixture-backed expectations and loads the independently
+pinned literal date-only contract. Preflight collects all failures in a serializable blocked result;
 the measured phase uses immutable oracle snapshots. A canonical full-corpus run
 constructs its fixture internally and rejects caller-supplied registry factories.
 It also loads the frozen corpus internally; a supplied same-id copy is not an
 admission corpus and cannot reach the provider. An empty monetary period is zero
 only when posted statement documents cover the full requested interval for every
 eligible account. Otherwise the read refuses as unsupported or partial.
+
+The frozen `follow-up-account-date` case requires and allows exactly
+`measurement_date`. Its scorer admits no delivered money: figures are empty,
+and the only written claim and binding state the expected date through
+`measurement_date_of`. The separate versioned
+`date-only-expectations-v040.json` resource pins the synthetic account, date,
+supporting balance value/currency/kind, grade, document/page/region provenance,
+cardinality, disclosures and exact delivery. Empty figures alone cannot pass.
+Amount-only and balance-plus-date named-account cases still require one
+correctly dated balance and their existing keyed amount/source expectations.
+
+The scorer validates the actual pre-read program, independently executes it
+against a fresh frozen synthetic fixture without Binder, and compares its
+originating read and evidence structure with the candidate transcript and
+literal expectations. This checks source consistency, lineage and identifiable
+foreign or orphan support. The serialized facade has no cryptographic run
+identity: a perfectly byte-identical correct deterministic transcript clone
+cannot be distinguished from its original. Runtime capture remains the
+operational execution evidence; this is not a universal forgery guarantee.
+
+The expectation resource is fingerprinted and included in the combined corpus
+digest, so this evaluator requires fresh exact-candidate qualification. All
+123 questions, claims, fixture facts and thresholds remain unchanged. Independent
+comparison found only this date oracle changed; the other 122 oracle structures
+are identical. Qualification039 remains NOT_ADMITTED. Product verification
+does not supply ordinary admission, retained-vault Witness or formal browser
+acceptance.
 
 Admission measures:
 
@@ -1341,7 +1383,8 @@ output never does. The thresholds are stored with the admission profile.
 ### Release checks
 
 1. run all unit, property, mutation, keyed, and recorded-turn evaluations;
-2. derive all keyed oracles from fresh canonical synthetic fixtures and stop
+2. prepare all keyed oracles from fresh canonical synthetic fixtures and pinned
+   literal expectations, and stop
    before provider construction if any fail; canonical runs load both corpus
    and fixture internally rather than accepting caller substitutes;
 3. run controlled real-model evaluation against those immutable oracles;
@@ -1591,3 +1634,9 @@ operations; it is not evidence that the underlying data is missing.
 
 **Static repair** — the one correction allowed after invalid compilation and before
 any program node executes.
+
+Schema v4 adds `measurement_date_of` for date-only named-account delivery. Only
+a declared account measurement read with a unique account/quantity selector may
+supply it. Both binders verify the same-run measurement and its date/evidence;
+its amount stays supporting execution evidence and is absent from delivered
+figures and written values. Ordinary date bindings retain same-clause grounding.

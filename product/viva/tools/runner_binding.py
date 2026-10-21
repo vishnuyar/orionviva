@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+
 from .. import quantity, render
 from ..persona import moment
 from .boundary import SELECTED_TERMS, accounts_written, named_slice
@@ -9,7 +11,7 @@ from .boundary import said as _said
 from .boundary import statements as _boundary
 from .compute import numbers_said
 from .envelope import (BY_ACCOUNT, BY_PERIOD, EXACT, HYPOTHETICAL,
-                       MONEY_KINDS, weakest)
+                       MONEY_KINDS, STRENGTH, weakest)
 from .runner import _Ground, _decimal, _is_iso_date
 from .shape import WHOLE
 
@@ -19,7 +21,7 @@ from .shape import WHOLE
 # these and nothing else, so there is no field a value could arrive in. A
 # caveat is not among them: this module places what a stated figure owes, so
 # there is no hole for one to fill and nothing to refer to it by.
-BINDING_KEYS = ("figure", "entity", "period", "date", "date_of", "supposed",
+BINDING_KEYS = ("figure", "entity", "period", "date", "date_of", "measurement_date_of", "supposed",
                 "read", "read_figures", "read_labels")
 
 # The one kind of reference a hole of each type can hold. Where a type admits
@@ -182,6 +184,22 @@ def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
                 f"holding {slot.name!r} states carries that day.")
         return render.date(str(value)), "", ""
 
+    if key == "measurement_date_of":
+        if slot.type != render.DATE:
+            return None, "wrong_kind", "A measurement date requires a date hole."
+        fig = ground.book.get(str(value))
+        support = ground.measurement_dates.get(str(value), {})
+        account = support.get("account")
+        rows = [ground.book[fid] for fid in ground.readings.get(support.get("read"), ())
+                if fid in ground.book and ground.book[fid].get("quantity") == support.get("quantity")]
+        if (fig is None or not account or rows != [fig]
+                or fig.get("kind") != "financial" or not fig.get("record_ids")
+                or fig.get("grade") not in STRENGTH or not _is_iso_date(fig.get("dated"))
+                or fig.get("quantity") not in ("balance", "owed")
+                or (fig.get("boundary") or {}).get("cut") != [{"kind": BY_ACCOUNT, "value": account}]):
+            return None, "unfounded_date", "The selected account measurement has no supported date."
+        return render.date(str(fig["dated"])), "", ""
+
     if key == "date_of":
         if slot.type != render.DATE:
             return None, "wrong_kind", (
@@ -197,6 +215,11 @@ def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
                 f"The answer asks for the date of {str(value)!r}, and that "
                 f"dated figure is not stated by the clause holding "
                 f"{slot.name!r}.")
+        try:
+            year, month, day = str(fig["dated"]).split("-")
+            datetime.date(int(year), int(month), int(day))
+        except ValueError:
+            return None, "unfounded_date", "The stated figure has no valid measurement day."
         return render.date(str(fig["dated"])), "", ""
 
     # supposed

@@ -194,7 +194,10 @@ def resolve_case_fixture(case, *, registry_factory=None, today=""):
 
 
 def combined_corpus_digest():
-    return hashlib.sha256((corpus_digest(CASES)+corpus_digest(SUPPLEMENT_CASES)).encode()).hexdigest()[:16]
+    date_expectations = versions.path_of(
+        PACKAGE, versions.active(PACKAGE, "date_only_expectations"))
+    return hashlib.sha256((corpus_digest(CASES) + corpus_digest(SUPPLEMENT_CASES)
+                           + corpus_digest(date_expectations)).encode()).hexdigest()[:16]
 
 
 def corpus_digest(path) -> str:
@@ -321,6 +324,7 @@ class CaseScore:
 
 
 FINANCIAL_INTEGRITY_DEFECTS = frozenset({
+    "invalid_date_only_contract",
     "wrong_family", "wrong_period_parameters", "unrequested_answer_effect",
     "wrong_lowered_family", "wrong_named_account_result",
     "wrong_attention_result", "wrong_period_or_quantity",
@@ -365,6 +369,33 @@ def derive_semantic_oracle(case: SemanticEvalCase, registry, manifest, policy,
     if not checked.ok:
         raise ValueError(
             f"oracle {case.oracle_key!r} did not lower to a valid program")
+    from .date_contract import (date_only_case, date_contract_defects,
+                                independent_expectation)
+    if date_only_case(case):
+        from dataclasses import replace
+        from types import SimpleNamespace
+        from .runtime import AnswerProgramRuntime
+        from .schema import QuestionContext
+
+        oracle = {"oracle_key": case.oracle_key, "figures": [],
+                  "exact_figures": True,
+                  "date_contract": independent_expectation(case)}
+        semantic = SemanticOutcome("request", request)
+        compilation = SimpleNamespace(ok=True, program=program,
+                                      semantic_outcome=semantic, exchanges=())
+        compiler = SimpleNamespace(compile=lambda context: compilation)
+        actual = AnswerProgramRuntime(
+            compiler, ProgramExecutor(
+                registry, policy,
+                query_executor=getattr(registry, "query_executor", None)),
+            DeterministicBinder(registry, locale)).answer(
+                QuestionContext(question=case.question, locale=locale,
+                                prior_turns=case.prior_turns))
+        if date_contract_defects(replace(case, oracle=oracle), actual):
+            raise ValueError(
+                f"oracle {case.oracle_key!r} violates its independent date contract")
+        return oracle
+
     execution = ProgramExecutor(
         registry, policy,
         query_executor=getattr(registry, "query_executor", None)).execute(
@@ -503,9 +534,13 @@ def _score_semantic(case: SemanticEvalCase, runtime_result) -> CaseScore:
     if wrong:
         defects.append("wrong_keyed_figure")
     family = case.expected_family
+    from .date_contract import date_only_case, date_contract_defects
+    date_only = date_only_case(case)
+    if date_only:
+        defects.extend(date_contract_defects(case, runtime_result))
     if result.status == "answered":
         quantities = {str(figure.get("quantity") or "") for figure in figures}
-        if family == "named_account_balance":
+        if family == "named_account_balance" and not date_only:
             if (len(figures) != 1 or quantities != {"balance"}
                     or not figures[0].get("dated")):
                 defects.append("wrong_named_account_result")
@@ -560,6 +595,7 @@ def _score_semantic(case: SemanticEvalCase, runtime_result) -> CaseScore:
         "execution_deadline", "evidence_limit", "figure_limit",
         "program_too_large"})
     semantic_tags = {
+        "invalid_date_only_contract",
         "wrong_family", "wrong_period_parameters", "missing_answer_effect",
         "unrequested_answer_effect",
         "wrong_lowered_family", "wrong_named_account_result",

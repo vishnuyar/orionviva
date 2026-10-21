@@ -219,3 +219,77 @@ def test_an_unreadable_confirmation_turn_leaves_the_exact_proposal_open(
         "proposal-1")["status"] == "open"
     assert vault.ledger.projection().conversation_turns()[-1][
         "outcome"] == "refused"
+
+
+def test_selected_measurement_date_survives_normal_reopen_without_legacy_backfill(tmp_path):
+    from viva.ledger.events import document_captured
+    from viva.surface.conversation import conversation
+    directory = tmp_path / 'synthetic-vault'
+    vault = Vault.open(directory, 'pw')
+    vault.ledger.append(document_captured('synthetic-doc', 'statement.pdf', 1,
+                                        'statement', 1.0, '2026-03-01'))
+    selected = {'id': 'selected', 'kind': 'financial', 'dated': '2026-01-31', 'grade': 'verified',
+                'what': 'balance', 'record_ids': ['synthetic-doc']}
+    result = SimpleNamespace(text='Supported USD 75.00.', answered=True,
+                             figures=[selected], grade='verified')
+    answer = conversation(SimpleNamespace(question='Balance?', result=result),
+                          {'selected': 'USD 75.00'},
+                          projection=vault.ledger.projection(), turn_id='dated')
+    legacy = {**answer, 'figures': [{k: v for k, v in answer['figures'][0].items()
+                                   if k != 'dated'}]}
+    for identity, receipt in [('dated', answer), ('legacy', legacy)]:
+        vault.ledger.append(conversation_turn_opened(identity, 'ask', 'Balance?', '2026-03-01'))
+        vault.ledger.append(conversation_turn_settled(identity, 'completed', receipt['text'],
+                                                     '2026-03-01', answer=receipt))
+    reopened = Vault.open(directory, 'pw')
+    reopened.synchronize_read_store()
+    turns = OpenedVaultSurfaceProvider(reopened).read_surface('conversation', {})['turns']
+    dated, old = [turn['answer']['figures'][0] for turn in turns]
+    assert dated['dated'] == '2026-01-31'
+    assert dated['evidence_id'] == 'conversation:dated:selected'
+    assert dated['evidence_links'][0]['document_id'] == 'synthetic-doc'
+    assert not old.get('dated')
+    assert old['evidence_id'] == 'conversation:legacy:selected'
+
+
+def test_modeled_and_unsupported_dates_do_not_become_measurements_after_reopen(tmp_path):
+    from copy import deepcopy
+    from viva.ledger.events import document_captured
+    from viva.surface.conversation import conversation
+    directory = tmp_path / 'synthetic-scenarios'
+    vault = Vault.open(directory, 'pw')
+    vault.ledger.append(document_captured('synthetic-doc', 'statement.pdf', 1,
+                                        'statement', 1.0, '2026-03-01'))
+    changes = [dict(kind='hypothetical', grade=''), dict(grade=''),
+               dict(record_ids=[]), dict(kind='unknown')]
+    originals = []
+    text = 'Hypothetical final balance at 2027-01-31 is USD 75.00.'
+    for index, change in enumerate(changes):
+        selected = {'id': 'endpoint', 'kind': 'financial', 'dated': '2027-01-31',
+                    'grade': 'verified', 'what': 'hypothetical final balance — 2027-01-31',
+                    'record_ids': ['synthetic-doc'], **change}
+        before = deepcopy(selected)
+        identity = f'scenario-{index}'
+        result = SimpleNamespace(text=text, answered=True, figures=[selected], grade='')
+        answer = conversation(SimpleNamespace(question='Scenario?', result=result),
+                              {'endpoint': 'USD 75.00'},
+                              projection=vault.ledger.projection(), turn_id=identity)
+        assert not answer['figures'][0].get('dated')
+        assert selected == before
+        originals.append(selected)
+        vault.ledger.append(conversation_turn_opened(identity, 'ask', 'Scenario?', '2026-03-01'))
+        vault.ledger.append(conversation_turn_settled(identity, 'completed', text,
+                                                     '2026-03-01', answer=answer))
+    reopened = Vault.open(directory, 'pw')
+    reopened.synchronize_read_store()
+    turns = OpenedVaultSurfaceProvider(reopened).read_surface('conversation', {})['turns']
+    for index, turn in enumerate(turns):
+        assert turn['answer']['text'] == text
+        figure = turn['answer']['figures'][0]
+        assert not figure.get('dated')
+        assert figure['written'] == 'USD 75.00'
+        assert figure['record_ids'] == originals[index]['record_ids']
+        assert figure['evidence_id'] == f'conversation:scenario-{index}:endpoint'
+        assert figure['evidence_links'] == ([{'document_id': 'synthetic-doc',
+            'label': 'statement.pdf', 'relation': 'attests', 'page': ''}]
+            if originals[index]['record_ids'] else [])

@@ -41,6 +41,7 @@ def speak_spec():
     return ModelSpec(
         name="viva-speak", adapter=cfg("ADAPTER", "openai-compatible"),
         model=model, base_url=cfg("BASE_URL"),
+        unix_socket_path=cfg("UNIX_SOCKET_PATH"),
         api_key_env=None if (key_env or "").lower() in ("", "none") else key_env)
 
 
@@ -61,7 +62,7 @@ def compiler_factory(spec, *, purpose="runtime", profile=None, report=None,
     modality = ("native-structured"
                 if hasattr(adapter, "converse") and not forced_text
                 else "text-json")
-    endpoint = str(getattr(spec, "base_url", "") or "provider-default")
+    endpoint = spec.endpoint_identity()
     configured = {
         "provider": str(getattr(spec, "adapter", "") or ""),
         "requested_model": str(getattr(spec, "model", "") or ""),

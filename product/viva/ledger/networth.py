@@ -195,8 +195,8 @@ def _asserted_lines(proj, as_of: str):
     inactive = _inactive_accounts(proj)
     rulings = {(row["scope"], row["subject"]): row for row in proj.rulings()}
 
-    issued = {info.account for info in proj.account_infos()
-              if info.origin == ISSUED}
+    infos = {info.account: info for info in proj.account_infos()}
+    issued = {info.account for info in infos.values() if info.origin == ISSUED}
     for m in proj.movements():
         if not m.ruling_account or m.date > as_of or m.ruling_account in inactive:
             continue
@@ -226,6 +226,12 @@ def _asserted_lines(proj, as_of: str):
                     component_groups.add(group)
                 continue
             if not account or account in issued or account in inactive:
+                continue
+            info = infos.get(account)
+            if (info is not None and info.origin == ASSERTED
+                    and info.kind == "depository"
+                    and any(value.currency == m.currency
+                            for value in proj.composed_values(account, as_of))):
                 continue
             # A resolved clearing destination already measured contributes its
             # observation, never a second cash-derived holding.

@@ -2,7 +2,7 @@
   "in_force": {
     "answer_program_schema": {
       "in": "schemas",
-      "active": "answer-program-schema-v3"
+      "active": "answer-program-schema-v4"
     },
     "financial_query_schema": {
       "in": "schemas",
@@ -10,15 +10,15 @@
     },
     "semantic_request_schema": {
       "in": "schemas",
-      "active": "semantic-request-schema-v11"
+      "active": "semantic-request-schema-v14"
     },
     "semantic_request": {
       "in": "prompts",
-      "active": "semantic-request-v14"
+      "active": "semantic-request-v17"
     },
     "semantic_request_retry": {
       "in": "prompts",
-      "active": "semantic-request-retry-v12"
+      "active": "semantic-request-retry-v15"
     },
     "tools": {
       "in": "prompts",
@@ -83,6 +83,10 @@
     "answer_program_adversarial": {
       "in": "evals",
       "active": "answer-program-adversarial-v1"
+    },
+    "date_only_expectations": {
+      "in": "evals",
+      "active": "date-only-expectations-v040"
     }
   },
   "released": {
@@ -303,6 +307,17 @@
     "semantic-request-schema-v10": "950b9d05a85bbd88",
     "semantic-request-v14": "a3f33ea3486ad3a9",
     "semantic-request-retry-v12": "48fe3dc619c33c37",
-    "semantic-request-schema-v11": "ba07c67a43845903"
+    "semantic-request-schema-v11": "ba07c67a43845903",
+    "semantic-request-v15": "190a44e59f160d62",
+    "semantic-request-retry-v13": "8d72f904c9d71385",
+    "semantic-request-schema-v12": "606d3d1712548b7d",
+    "semantic-request-v16": "b6fe405650527fa8",
+    "semantic-request-retry-v14": "dd26143585500530",
+    "semantic-request-schema-v13": "80c32547b4163030",
+    "answer-program-schema-v4": "6a7e2c08017d1cd9",
+    "semantic-request-v17": "ffba2fc1dfc4ef0a",
+    "semantic-request-retry-v15": "c3769a0134b4e3d6",
+    "semantic-request-schema-v14": "36655a64d7556473",
+    "date-only-expectations-v040": "c5255b1ff2daf8b0"
   }
 }
