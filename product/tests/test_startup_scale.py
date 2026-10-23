@@ -7,6 +7,7 @@ terminal record, but it may not enter the committed-record iterator at 1k,
 """
 from __future__ import annotations
 
+import shutil
 import time
 
 import pytest
@@ -38,9 +39,11 @@ def _synthetic_log(path, count: int) -> None:
 
 
 @pytest.mark.parametrize("count", [1_000, 10_000, 50_000])
-def test_warm_open_complexity_is_independent_of_committed_event_count(
+def test_warm_open_and_unusable_read_models_do_not_replay_committed_events(
         tmp_path, monkeypatch, count):
-    path = tmp_path / f"events-{count}.jsonl"
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    path = seed / "events.jsonl"
     _synthetic_log(path, count)
     traversals = 0
 
@@ -55,31 +58,26 @@ def test_warm_open_complexity_is_independent_of_committed_event_count(
     elapsed = time.perf_counter() - started
     assert opened._cached_identity()[:2] == (count, opened._last_hash)
     assert traversals == 0
-    assert elapsed < MAX_SYNTHETIC_OPEN_SECONDS, (count, elapsed)
+    assert elapsed < MAX_SYNTHETIC_OPEN_SECONDS, (count, "warm", elapsed)
 
+    # Clone the authenticated log and its sibling head for each independent
+    # scenario. Building and auditing the same encrypted prefix three times
+    # adds no coverage of the open operation whose traversal is forbidden.
+    for read_model in ("missing", "corrupt"):
+        directory = tmp_path / f"vault-{count}-{read_model}"
+        shutil.copytree(seed, directory)
+        RawStore.open(directory / "raw", PASSPHRASE)
+        if read_model == "corrupt":
+            reads = ReadStore.create(directory / "read-model", PASSPHRASE)
+            reads.close()
+            (directory / "read-model" / "current.json").write_text("not-a-generation")
 
-@pytest.mark.parametrize("count", [1_000, 10_000, 50_000])
-@pytest.mark.parametrize("read_model", ["missing", "corrupt"])
-def test_missing_or_corrupt_read_model_ack_does_not_replay_events(
-        tmp_path, monkeypatch, count, read_model):
-    directory = tmp_path / f"vault-{count}-{read_model}"
-    directory.mkdir()
-    _synthetic_log(directory / "events.jsonl", count)
-    RawStore.open(directory / "raw", PASSPHRASE)
-    if read_model == "corrupt":
-        reads = ReadStore.create(directory / "read-model", PASSPHRASE)
-        reads.close()
-        (directory / "read-model" / "current.json").write_text("not-a-generation")
-
-    monkeypatch.setattr(
-        EventStore, "_iter_raw",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("open replayed canonical events")))
-    started = time.perf_counter()
-    vault = Vault.open(directory, PASSPHRASE, create=False)
-    elapsed = time.perf_counter() - started
-    try:
-        assert vault.read_store_lifecycle in {"rebuilding", "stale"}
-        assert elapsed < MAX_SYNTHETIC_OPEN_SECONDS, (count, read_model, elapsed)
-    finally:
-        vault.close()
+        started = time.perf_counter()
+        vault = Vault.open(directory, PASSPHRASE, create=False)
+        elapsed = time.perf_counter() - started
+        try:
+            assert vault.read_store_lifecycle in {"rebuilding", "stale"}, read_model
+            assert elapsed < MAX_SYNTHETIC_OPEN_SECONDS, (count, read_model, elapsed)
+        finally:
+            vault.close()
+    assert traversals == 0

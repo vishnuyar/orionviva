@@ -53,6 +53,7 @@ Read in this order if arriving fresh. Each entry: what it is, and when you would
 - [`../STYLE-COMMENT-PASS.md`](../STYLE-COMMENT-PASS.md) (repo root) — what a comment may say: behaviour, never provenance, argument or incident. A rule that must not be undone is a named test, not a paragraph.
 - [`../SECURITY.md`](../SECURITY.md) (repo root) — the private vulnerability-reporting route, supported-code policy, and the security boundaries a reporter must not overclaim.
 - [`../RELEASING.md`](../RELEASING.md) (repo root) — the desktop tag, signing environment, draft-release checks, clean-target smoke pass, and manual rollback procedure.
+- [testing.md](testing.md) — affected-test commands for local feedback, complete-suite verification, coverage ownership, and test-cost measurement.
 
 **3 · Design stances — how the core works**
 

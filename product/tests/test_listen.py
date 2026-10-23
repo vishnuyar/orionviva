@@ -398,43 +398,7 @@ def _nature_questions(vault):
             if q["kind"] == NATURE]
 
 
-def test_an_answer_settles_the_payments_its_question_counted(tmp_path, monkeypatch):
-    """An explicit group correction applies immediately and leaves unselected activity alone."""
-    from viva.accounting_intelligence import correct_accounting
-    vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
-    _implies_a_membership(vault)
-    held = vault.ledger.projection().movements()
-    selected = [m.key for m in held if m.amount < 0]
-    result = correct_accounting(vault, "These selected purchases were my membership", selected,
-        interpret_fn=_reply({"legs": [{"major": "asset", "account_hint": "Supper Club"}],
-                            "future_scope": "one"}))
-    assert result["ok"] and not result["confirm"]
-    assert result["changed"] == len(selected)
-    rulings = vault.ledger.projection().rulings("movement")
-    assert {r["subject"] for r in rulings} == set(selected)
-    assert all(r["legs"][0]["account"] == "Assets:Other:Supper Club" for r in rulings)
-    assert not _nature_questions(vault)
-
-
-def test_a_proposal_states_the_payments_it_settles_that_nobody_asked_about(tmp_path, monkeypatch):
-    """An explicit group correction applies immediately and leaves unselected activity alone."""
-    from viva.accounting_intelligence import correct_accounting
-    vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
-    _implies_a_membership(vault)
-    held = vault.ledger.projection().movements()
-    selected = [m.key for m in held if m.amount < 0]
-    result = correct_accounting(vault, "These selected purchases were my membership", selected,
-        interpret_fn=_reply({"legs": [{"major": "asset", "account_hint": "Supper Club"}],
-                            "future_scope": "one"}))
-    assert result["ok"] and not result["confirm"]
-    assert result["changed"] == len(selected)
-    rulings = vault.ledger.projection().rulings("movement")
-    assert {r["subject"] for r in rulings} == set(selected)
-    assert all(r["legs"][0]["account"] == "Assets:Other:Supper Club" for r in rulings)
-    assert not _nature_questions(vault)
-
-
-def test_money_that_came_back_is_not_stated_as_a_payment_to_them(tmp_path, monkeypatch):
+def test_group_correction_settles_selected_payments_in_fallback_account(tmp_path):
     """An explicit group correction applies immediately and leaves unselected activity alone."""
     from viva.accounting_intelligence import correct_accounting
     vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
@@ -495,24 +459,6 @@ def test_a_second_currency_is_never_folded_into_the_first(tmp_path, monkeypatch)
     after = vault.ledger.projection().movements()
     assert {(m.key, m.amount, m.currency) for m in held} == {(m.key, m.amount, m.currency) for m in after}
     assert {m.currency for m in after} == {"USD", "EUR"}
-
-
-def test_a_new_account_opens_in_the_fallback_group(tmp_path, monkeypatch):
-    """An explicit group correction applies immediately and leaves unselected activity alone."""
-    from viva.accounting_intelligence import correct_accounting
-    vault = _branded(tmp_path, THREE_VISITS + [A_REFUND])
-    _implies_a_membership(vault)
-    held = vault.ledger.projection().movements()
-    selected = [m.key for m in held if m.amount < 0]
-    result = correct_accounting(vault, "These selected purchases were my membership", selected,
-        interpret_fn=_reply({"legs": [{"major": "asset", "account_hint": "Supper Club"}],
-                            "future_scope": "one"}))
-    assert result["ok"] and not result["confirm"]
-    assert result["changed"] == len(selected)
-    rulings = vault.ledger.projection().rulings("movement")
-    assert {r["subject"] for r in rulings} == set(selected)
-    assert all(r["legs"][0]["account"] == "Assets:Other:Supper Club" for r in rulings)
-    assert not _nature_questions(vault)
 
 
 def test_a_category_lands_on_the_name_the_vault_already_has(tmp_path):

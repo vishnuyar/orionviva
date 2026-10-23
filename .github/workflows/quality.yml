@@ -32,8 +32,8 @@ jobs:
         run: PYTHONPATH=.:product:core:merchant python scripts/check_surface_contract.py --check
       - name: Check surface impact gate
         run: PYTHONPATH=.:product:core:merchant python scripts/check_surface_impact.py --check
-      - name: Run surface contract and boundary tests
-        run: PYTHONPATH=.:product:core:merchant pytest product/tests/test_surface_contract.py product/tests/test_surface_capability_coverage.py product/tests/test_surface_gate_scripts.py product/tests/test_surface_import_boundaries.py product/viva/surface/test_contracts.py
+      # Surface contract and boundary tests are collected by the complete
+      # Python suite below; this job owns the generated-artifact checks.
 
   suite:
     runs-on: ubuntu-latest
@@ -106,9 +106,14 @@ jobs:
         run: python -m pytest product/tests/test_demo_read_store_open.py -q
       - run: npm ci
       - name: Check frontend architecture boundaries
+        if: runner.os == 'Linux'
         run: npm run check:architecture
-      - run: npm run check:styles
-      - run: npm test
+      - name: Check frontend style tokens
+        if: runner.os == 'Linux'
+        run: npm run check:styles
+      - name: Test shared frontend
+        if: runner.os == 'Linux'
+        run: npm test
       - run: npm run build
       - name: Build desktop sidecar
         run: |

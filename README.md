@@ -123,7 +123,24 @@ cd desktop
 npm run desktop:build
 ```
 
-Run the Python suites from the repository root with:
+For routine edits, run affected tests from the repository root:
+
+```sh
+.venv/bin/python scripts/test.py
+```
+
+This includes staged, unstaged, and untracked changes. Use `--base main` to
+include committed branch work, `--dry-run` to inspect the selection, or
+`--package product` (also `core`, `merchant`, `bench`, `desktop`) for a complete
+package suite. See [the testing guide](./docs/testing.md) for selection rules.
+
+Run all Python and UI tests at verification gates with:
+
+```sh
+.venv/bin/python scripts/test.py --all
+```
+
+The direct command for all Python suites remains:
 
 ```sh
 PYTHONPATH=.:product:core:merchant:bench .venv/bin/python -m pytest product core merchant bench -q
