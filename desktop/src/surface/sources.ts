@@ -1,3 +1,4 @@
+import { documentPreviewReader } from "./document-preview";
 import type { BridgeClient, SampleFrame } from "../bridge/contracts";
 import { loadCoherentSnapshot, privateAccountingReader, loadPrivateDestination, loadPrivateSnapshot, loadPrioritySnapshot, loadStartupSecondarySnapshot, privateAccountLedgerReader, privateActivityActions, privateConversationActions, privateDocumentActions, privateJobStream, privateOverviewActions, privatePlanActions, privateSettingsActions, privateSpendingBreakdownReader, privateTransferActions, privateTrustActions, readEngineIdentity, readJobsFeature, readSurfaceRegistry, readUpdateLifecycle } from "./load-private-snapshot";
 import type { PrioritySnapshot } from "./load-private-snapshot";
@@ -6,7 +7,7 @@ import type { AccountLedgerReader, ActivityActions, DocumentActions, EngineIdent
 // Sample and private vaults share the sidecar, read adapters and source type.
 // The engine creates the on-disk sample vault. `sample` carries the sidecar
 // identity into the shell frame; feature rendering uses the same read data.
-export type SurfaceSource = { id: "bridge-client"; label: string; description: string; sample: boolean; frame: SampleFrame | null; load: (activityLimit?: number, activityFocus?: string) => Promise<SurfaceSnapshot>; loadCoherent?: (activityLimit?: number, activityFocus?: string, start?: PrioritySnapshot, refresh?: boolean) => ReturnType<typeof loadCoherentSnapshot>; loadPriority?: (refresh?: boolean) => ReturnType<typeof loadPrioritySnapshot>; loadSecondary?: (activityLimit?: number, activityFocus?: string) => Promise<SurfaceSnapshot>; loadDestination?: (destination: "documents" | "review" | "trust" | "activity" | "plans", activityLimit?: number, activityFocus?: string) => Promise<Partial<SurfaceSnapshot>>; loadJobs?: () => Promise<FeatureResult<JobsData>>; accountingReader?: import("./types").AccountingReader | null; accountLedgerReader?: AccountLedgerReader | null; spendingBreakdownReader?: SpendingBreakdownReader | null; overviewActions?: OverviewActions | null; activityActions: ActivityActions; planActions?: PlanActions | null; documentActions: DocumentActions | null; jobStream: JobStream | null; transferActions: VaultTransferActions | null; settingsActions: SettingsActions | null; conversationActions: ConversationActions | null; trustActions: TrustActions | null; describe: () => Promise<SourceDescription> };
+export type SurfaceSource = { documentPreviewReader?: import("./types").DocumentPreviewReader; endPreview?: () => void; subscribePreviewEnd?: (clear: () => void) => () => void; id: "bridge-client"; label: string; description: string; sample: boolean; frame: SampleFrame | null; load: (activityLimit?: number, activityFocus?: string) => Promise<SurfaceSnapshot>; loadCoherent?: (activityLimit?: number, activityFocus?: string, start?: PrioritySnapshot, refresh?: boolean) => ReturnType<typeof loadCoherentSnapshot>; loadPriority?: (refresh?: boolean) => ReturnType<typeof loadPrioritySnapshot>; loadSecondary?: (activityLimit?: number, activityFocus?: string) => Promise<SurfaceSnapshot>; loadDestination?: (destination: "documents" | "review" | "trust" | "activity" | "plans", activityLimit?: number, activityFocus?: string) => Promise<Partial<SurfaceSnapshot>>; loadJobs?: () => Promise<FeatureResult<JobsData>>; accountingReader?: import("./types").AccountingReader | null; accountLedgerReader?: AccountLedgerReader | null; spendingBreakdownReader?: SpendingBreakdownReader | null; overviewActions?: OverviewActions | null; activityActions: ActivityActions; planActions?: PlanActions | null; documentActions: DocumentActions | null; jobStream: JobStream | null; transferActions: VaultTransferActions | null; settingsActions: SettingsActions | null; conversationActions: ConversationActions | null; trustActions: TrustActions | null; describe: () => Promise<SourceDescription> };
 // What a source says about the engine behind it: which build answered, and
 // which destinations its registry says a read reaches.
 export type SourceDescription = { identity: FeatureResult<EngineIdentity>; registry: FeatureResult<SurfaceRegistry>; lifecycle: FeatureResult<UpdateLifecycleView> };
@@ -18,7 +19,12 @@ export function vaultSource(client: BridgeClient, frame: SampleFrame | null): Su
   const description = sample
     ? "Every account, document, name and amount here was invented. Changes you make here do not change your own records."
     : "The surfaces below are read from this vault. Features that are not connected stay hidden or say so.";
+  const previewEnds = new Set<() => void>();
+  let previewEnded = false;
+  const preview = documentPreviewReader(client);
   return {
+    endPreview: () => { previewEnded = true; for (const clear of previewEnds) clear(); previewEnds.clear(); },
+    subscribePreviewEnd: (clear) => { if (previewEnded) clear(); else previewEnds.add(clear); return () => { previewEnds.delete(clear); }; },
     id: "bridge-client",
     sample,
     frame,
@@ -38,6 +44,11 @@ export function vaultSource(client: BridgeClient, frame: SampleFrame | null): Su
     activityActions: privateActivityActions(client),
     planActions: privatePlanActions(client),
     documentActions: privateDocumentActions(client),
+    documentPreviewReader: async (documentId, page) => {
+      if (previewEnded) return { status: "unavailable", reason: "renderer_unavailable" };
+      const result = await preview(documentId, page);
+      return previewEnded ? { status: "unavailable", reason: "renderer_unavailable" } : result;
+    },
     jobStream: privateJobStream(client),
     transferActions: privateTransferActions(client),
     settingsActions: privateSettingsActions(client),

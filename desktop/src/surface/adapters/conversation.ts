@@ -1,3 +1,4 @@
+import { attachNumericalReceipts, numericalFigure } from "./numerical-receipts";
 import type { ActionOutcome, ConversationData, ConversationGoalDraft, ConversationProposal, ConversationTurn, EvidenceLink, EvidenceRelation, PlanVerb, SpokenTurn, TurnFigure, TurnView } from "../types";
 import { booleanValue, isRecord, textValue } from "./primitives";
 import { adaptPlanDraftView } from "./plans";
@@ -32,6 +33,8 @@ function figure(raw: unknown): TurnFigure | null {
   if (!id) return null;
   return {
     id,
+    numerical: numericalFigure(raw),
+    ...(Array.isArray(raw.receipt_ids) && raw.receipt_ids.every((id) => typeof id === "string") ? { receiptIds: raw.receipt_ids as string[] } : ["receipt_ids", "value", "quantity", "kind", "boundary", "subject"].some((field) => Object.hasOwn(raw, field)) ? { receiptIds: [] } : {}),
     evidenceId: textValue(raw.evidence_id),
     written: textValue(raw.written),
     dated: textValue(raw.dated),
@@ -104,7 +107,7 @@ export function adaptTurn(raw: unknown): TurnView | null {
     refusal,
     grade: textValue(raw.grade),
     gradeSentence: textValue(raw.grade_sentence),
-    figures: (Array.isArray(raw.figures) ? raw.figures : []).map(figure).filter((row): row is TurnFigure => row !== null),
+    figures: attachNumericalReceipts((Array.isArray(raw.figures) ? raw.figures : []).map(figure).filter((row): row is TurnFigure => row !== null), raw.numerical_receipts, textValue(raw.question)),
     options,
     missing,
     spoken: spoken(raw.spoken),

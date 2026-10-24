@@ -355,14 +355,19 @@ def test_live_figure_receipt_preserves_selected_measurement_date():
     {'kind': 'computed'}, {'kind': 'activity'}, {'kind': 'unknown'},
     {'grade': ''}, {'grade': 'unknown'}, {'record_ids': []},
 ])
-def test_only_supported_financial_dates_become_live_measurement_receipts(change):
+def test_typed_dates_retain_kind_without_promoting_unavailable_measurements(change):
     from copy import deepcopy
     selected = {**FIGURE, 'dated': '2027-01-31', **change}
     before = deepcopy(selected)
     text = 'Hypothetical final balance at 2027-01-31 is USD 1,200.00.'
     said = conversation(_Turn('Scenario?', _Result(text=text, figures=[selected])),
                         SHOWN, projection=_Projection(), turn_id='scenario')
-    assert not said['figures'][0].get('dated')
+    valid = (selected['kind'] in ('financial','computed','activity','hypothetical')
+             and selected['grade'] in ('','verified','corroborated','unverified','conflicted')
+             and not (selected['kind'] in ('activity','hypothetical') and selected['grade']))
+    assert said['figures'][0].get('dated','') == (selected['dated'] if valid else '')
+    assert said['figures'][0]['receipt_ids'] == []
+    assert said['numerical_receipts'] == []
     assert said['text'] == text
     assert said['figures'][0]['written'] == 'USD 1,200.00'
     assert said['figures'][0]['record_ids'] == selected['record_ids']
@@ -370,7 +375,7 @@ def test_only_supported_financial_dates_become_live_measurement_receipts(change)
     assert selected == before
 
 
-def test_actual_scenario_endpoint_keeps_modeled_date_out_of_measured_receipt():
+def test_actual_scenario_endpoint_preserves_modeled_date_and_hypothetical_kind():
     from copy import deepcopy
     from viva.answer_program.eval import load_supplement_cases
     from viva.tools.scenarios import simulate_scenario
@@ -390,7 +395,10 @@ def test_actual_scenario_endpoint_keeps_modeled_date_out_of_measured_receipt():
     text = f"Hypothetical final balance at {selected['dated']} is {written}."
     said = conversation(_Turn(case.question, _Result(text=text, figures=[selected])),
                         {'endpoint': written}, turn_id='scenario')
-    assert not said['figures'][0].get('dated')
+    assert said['figures'][0]['dated'] == selected['dated']
+    assert said['figures'][0]['kind'] == 'hypothetical'
+    assert said['figures'][0]['grade'] == ''
+    assert said['figures'][0]['receipt_ids'] == []
     assert said['text'] == text
     assert said['figures'][0]['written'] == written
     assert selected == before

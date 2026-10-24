@@ -252,7 +252,7 @@ def test_selected_measurement_date_survives_normal_reopen_without_legacy_backfil
     assert old['evidence_id'] == 'conversation:legacy:selected'
 
 
-def test_modeled_and_unsupported_dates_do_not_become_measurements_after_reopen(tmp_path):
+def test_typed_dates_and_kind_survive_reopen_without_invented_measurement_receipts(tmp_path):
     from copy import deepcopy
     from viva.ledger.events import document_captured
     from viva.surface.conversation import conversation
@@ -274,7 +274,10 @@ def test_modeled_and_unsupported_dates_do_not_become_measurements_after_reopen(t
         answer = conversation(SimpleNamespace(question='Scenario?', result=result),
                               {'endpoint': 'USD 75.00'},
                               projection=vault.ledger.projection(), turn_id=identity)
-        assert not answer['figures'][0].get('dated')
+        assert answer['figures'][0].get('dated','') == ('' if selected['kind']=='unknown' else selected['dated'])
+        assert answer['figures'][0]['receipt_ids'] == []
+        if selected['kind']=='hypothetical':
+            assert answer['figures'][0]['kind']=='hypothetical' and answer['figures'][0]['grade']==''
         assert selected == before
         originals.append(selected)
         vault.ledger.append(conversation_turn_opened(identity, 'ask', 'Scenario?', '2026-03-01'))
@@ -286,7 +289,10 @@ def test_modeled_and_unsupported_dates_do_not_become_measurements_after_reopen(t
     for index, turn in enumerate(turns):
         assert turn['answer']['text'] == text
         figure = turn['answer']['figures'][0]
-        assert not figure.get('dated')
+        assert figure.get('dated','') == ('' if originals[index]['kind']=='unknown' else originals[index]['dated'])
+        assert figure['receipt_ids'] == []
+        if originals[index]['kind']=='hypothetical':
+            assert figure['kind']=='hypothetical' and figure['grade']==''
         assert figure['written'] == 'USD 75.00'
         assert figure['record_ids'] == originals[index]['record_ids']
         assert figure['evidence_id'] == f'conversation:scenario-{index}:endpoint'

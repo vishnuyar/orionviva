@@ -704,6 +704,7 @@ fn is_read(operation: &str) -> bool {
         operation,
         "bridge.handshake"
             | "viva.surface.read"
+            | "viva.documents.preview.read"
             | "viva.surface.capabilities"
             | "viva.lifecycle.read"
             | "viva.settings.read"
@@ -1444,6 +1445,15 @@ mod tests {
         let claimed = AtomicBool::new(false);
         assert!(claim_read_recovery(&claimed));
         assert!(!claim_read_recovery(&claimed));
+    }
+
+    #[test]
+    fn original_preview_is_read_only_and_never_reopened_or_replayed() {
+        let operation = Some("viva.documents.preview.read");
+        assert!(!operation_may_have_written(operation));
+        assert!(!operation_can_reopen_vault_and_replay(operation));
+        assert!(!can_replay_after_recovery(operation, Some(&ActiveVault::Sample)));
+        assert_eq!(deadline_policy(operation).cap, Duration::from_secs(15));
     }
 
     #[test]

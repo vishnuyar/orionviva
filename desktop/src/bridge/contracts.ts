@@ -110,6 +110,7 @@ export type BridgeClient = {
   readOverviewAccounts: (refresh?: boolean) => Promise<SurfaceReadResult>;
   readSpending?: (parameters: SurfaceParameters) => Promise<SurfaceReadResult>;
   readDocuments: () => Promise<SurfaceReadResult>;
+  readDocumentPreview?: (documentId: string, page: number) => Promise<unknown>;
   readConversation: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readReview?: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   // What the sidecar is doing, or has just done. It is a read like any other

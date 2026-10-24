@@ -101,6 +101,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
     async openVault(vaultDirectory: string, passphrase: string, create: boolean) {
       if (!hostBridge || opening.current) return false;
       opening.current = true;
+      sourceIdentity.current?.endPreview?.();
       const nextRequestId = ++requestId.current;
       activityLimit.current = 50;
       activityFocus.current = "";
@@ -140,6 +141,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
     async openSampleVault() {
       if (!hostBridge || opening.current) return false;
       opening.current = true;
+      sourceIdentity.current?.endPreview?.();
       const nextRequestId = ++requestId.current;
       activityLimit.current = 50;
       activityFocus.current = "";
@@ -183,6 +185,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
     async closeVault() {
       if (opening.current) return false;
       opening.current = true;
+      sourceIdentity.current?.endPreview?.();
       setClosingVault(true);
       try { await hostBridge?.closeVault?.(); return true; }
       catch {
@@ -191,6 +194,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
       } finally { opening.current = false; setClosingVault(false); }
     },
     resetDemo() {
+      sourceIdentity.current?.endPreview?.();
       const nextRequestId = ++requestId.current;
       sourceIdentity.current = null;
       retryingDestination.current = null;

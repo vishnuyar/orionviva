@@ -1,3 +1,4 @@
+import { OriginalPreview } from "../../components/OriginalPreview";
 import { useLayoutEffect, useRef } from "react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { ProofLinks } from "../../components/ProofLinks";
@@ -20,7 +21,7 @@ export type CaptureControls = { state: CaptureActionState; onChoose: (() => void
 // What a screen needs to send this vault back over what it already holds, and
 // to say what came of it. A source that cannot do it carries none of this.
 export type RescanControls = { state: RescanActionState; onRescan: () => void; onReviewMovement?: (movementId: string) => void };
-type DocumentsProps = { onOpenReview?: () => void; recoveryJobs?: readonly JobView[]; onRecoverDocument?: (jobId: string) => void; onOpenSettings?: () => void; rescan: RescanControls | null; result: FeatureResult<DocumentsData>; selectedDocument: string; capture: CaptureControls | null; jobStatus?: "available" | "unavailable"; jobCheck?: "idle" | "checking" | "failed" | "succeeded"; onRecheckJobs?: () => void; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void; openingSample?: boolean };
+type DocumentsProps = { previewReader?: import("../../surface/types").DocumentPreviewReader; subscribePreviewEnd?: (clear: () => void) => () => void; onOpenReview?: () => void; recoveryJobs?: readonly JobView[]; onRecoverDocument?: (jobId: string) => void; onOpenSettings?: () => void; rescan: RescanControls | null; result: FeatureResult<DocumentsData>; selectedDocument: string; capture: CaptureControls | null; jobStatus?: "available" | "unavailable"; jobCheck?: "idle" | "checking" | "failed" | "succeeded"; onRecheckJobs?: () => void; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void; openingSample?: boolean };
 
 // The one sentence this panel says, and the only place it is said. What the
 // vault answered the last capture with stands until the next capture; where
@@ -103,7 +104,7 @@ function RescanPanel({ rescan, jobUnavailable }: { rescan: RescanControls; jobUn
 }
 
 function ReadScope() {
-  return <details className="document-scope"><summary>What this page can show</summary><p>See saved statements, their reading status, and what each contributed to your books. Original pages and source regions cannot yet be opened here.</p></details>;
+  return <details className="document-scope"><summary>What this page can show</summary><p>See saved statements, their reading status, and what each contributed to your books. Choose View saved original to open a supported original locally. Source-region highlights are unavailable.</p></details>;
 }
 
 function DocumentLibrary({ documents, selectedDocument, onSelectDocument }: { documents: readonly SurfaceDocument[]; selectedDocument: string; onSelectDocument: (id: string) => void }) {
@@ -131,7 +132,7 @@ function RelatedEvidence() {
 }
 
 function Limitations() {
-  return <details className="document-limitations"><summary>Unavailable details</summary><ul><li id="document-page-review-unavailable">Page and source-region review are not connected.</li><li>Focused correction is not connected.</li><li>Ledger posting is not available from this screen.</li><li>Outbound actions and outbound history are not connected.</li><li>No control here changes a document or vault.</li></ul></details>;
+  return <details className="document-limitations"><summary>Unavailable details</summary><ul><li id="document-page-review-unavailable">Source-region highlights are unavailable.</li><li>Focused correction is not connected.</li><li>Ledger posting is not available from this screen.</li><li>Outbound actions and outbound history are not connected.</li><li>No control here changes a document or vault.</li></ul></details>;
 }
 
 function readingLabel(reading: SurfaceDocument["reading"]): string {
@@ -146,7 +147,7 @@ function DocumentDetail({ document, onOpenEvidence }: { document: SurfaceDocumen
     {document.snapshotSentence?.trim() ? <DetailField wide label="Snapshot" value={document.snapshotSentence} /> : null}
     {document.activitySentence?.trim() ? <DetailField wide label="Brokerage activity" value={document.activitySentence} /> : null}
     <DetailField wide label="Contribution" value={document.contribution?.trim() || "No contribution information is available for this document."} />
-  </div>{document.evidenceLinks.length ? <ProofLinks label="Source links" links={document.evidenceLinks} onOpen={onOpenEvidence} /> : null}<details className="document-technical-details"><summary>File and source details</summary><div className="detail-panel-grid document-detail-grid"><DetailField label="Document ID" value={document.id} help="The stable identity used inside this vault." /><DetailField label="Document name" value={document.name.trim() || "Document name unavailable"} />{!document.docType?.trim() ? <DetailField label="Type" value="Document type unavailable" /> : null}<DetailField label="Original" value={document.rawAvailable === true ? "Available" : document.rawAvailable === false ? "Unavailable" : "Original availability unavailable"} help="This status reports whether an original exists. Opening the original or reviewing its pages is not yet available here." /><DetailField label="Lifecycle" value="Lifecycle details unavailable" /><DetailField label="Pages" value="Page details unavailable" /><DetailField label="Source region" value="Source region unavailable" /><DetailField label="Provenance" value="Provenance unavailable" /></div><RelatedEvidence /><Limitations /></details></aside>;
+  </div>{document.evidenceLinks.length ? <ProofLinks label="Source links" links={document.evidenceLinks} onOpen={onOpenEvidence} /> : null}<details className="document-technical-details"><summary>File and source details</summary><div className="detail-panel-grid document-detail-grid"><DetailField label="Document ID" value={document.id} help="The stable identity used inside this vault." /><DetailField label="Document name" value={document.name.trim() || "Document name unavailable"} />{!document.docType?.trim() ? <DetailField label="Type" value="Document type unavailable" /> : null}<DetailField label="Original" value={document.rawAvailable === true ? "Available" : document.rawAvailable === false ? "Unavailable" : "Original availability unavailable"} help="This status reports whether an original exists. Choose View saved original for a local preview where supported." /><DetailField label="Lifecycle" value="Lifecycle details unavailable" /><DetailField label="Pages" value="Page details unavailable" /><DetailField label="Source region" value="Source region unavailable" /><DetailField label="Provenance" value="Provenance unavailable" /></div><RelatedEvidence /><Limitations /></details></aside>;
 }
 
 function CaptureReceipt({ capture, said, onOpenReview }: { capture: CaptureControls | null; said: ChannelPresentation; onOpenReview?: () => void }) {
@@ -181,7 +182,7 @@ function RecoveryButton({ job, working, unavailable, onRecover, removedWhileFocu
 // The region announcing it is mounted for the life of the screen and only its
 // text changes, because a live region that arrives with its words is one
 // several screen readers never announce.
-export function Documents({ onOpenReview, recoveryJobs = [], onRecoverDocument, onOpenSettings, result, selectedDocument, capture, rescan, jobStatus = "available", jobCheck = "idle", onRecheckJobs, onSelectDocument, onOpenEvidence, onExploreSample, openingSample = false }: DocumentsProps) {
+export function Documents({ previewReader, subscribePreviewEnd, onOpenReview, recoveryJobs = [], onRecoverDocument, onOpenSettings, result, selectedDocument, capture, rescan, jobStatus = "available", jobCheck = "idle", onRecheckJobs, onSelectDocument, onOpenEvidence, onExploreSample, openingSample = false }: DocumentsProps) {
   const panel = useRef<HTMLElement>(null);
   const recoveryHeading = useRef<HTMLHeadingElement>(null);
   const removedWhileFocused = useRef(false);
@@ -216,7 +217,7 @@ export function Documents({ onOpenReview, recoveryJobs = [], onRecoverDocument, 
     const selection = resolveDocumentSelection(data.documents, selectedDocument);
     const activeId = selection.state === "ready" ? selection.document.id : selectedDocument;
     return <>
-      {!data.documents.length ? <div className="empty-state"><strong>No statements or documents yet</strong><span>Add a statement to begin, or open the sample vault to see a populated document index.</span><button className="secondary-button" aria-disabled={openingSample} aria-describedby={openingSample ? "vault-opening-from-documents" : undefined} onClick={() => { if (!openingSample) onExploreSample(); }}>{openingSample ? "Opening sample vault…" : "Open the sample vault"}</button>{openingSample ? <span className="action-explanation" id="vault-opening-from-documents">The sample vault is opening and its first read is still pending.</span> : null}</div> : <><div className="document-library-layout"><DocumentLibrary documents={data.documents} selectedDocument={activeId} onSelectDocument={onSelectDocument} />{selection.state === "ready" ? <DocumentDetail document={selection.document} onOpenEvidence={onOpenEvidence} /> : selection.state === "missing" ? <div className="empty-state"><strong>Selected document unavailable</strong><span>The selected document is no longer present in the current vault read.</span></div> : selection.state === "conflicted_identity" ? <div className="empty-state"><strong>Document selection unavailable</strong><span>More than one document in this read uses the selected identity, so the interface will not choose between them.</span></div> : <div className="empty-state"><strong>Document identity unavailable</strong><span>No document with a unique stable identity can be selected from this read.</span></div>}</div></>}
+      {!data.documents.length ? <div className="empty-state"><strong>No statements or documents yet</strong><span>Add a statement to begin, or open the sample vault to see a populated document index.</span><button className="secondary-button" aria-disabled={openingSample} aria-describedby={openingSample ? "vault-opening-from-documents" : undefined} onClick={() => { if (!openingSample) onExploreSample(); }}>{openingSample ? "Opening sample vault…" : "Open the sample vault"}</button>{openingSample ? <span className="action-explanation" id="vault-opening-from-documents">The sample vault is opening and its first read is still pending.</span> : null}</div> : <><div className="document-library-layout"><DocumentLibrary documents={data.documents} selectedDocument={activeId} onSelectDocument={onSelectDocument} />{selection.state === "ready" ? <DocumentDetail document={selection.document} onOpenEvidence={onOpenEvidence} /> : selection.state === "missing" ? <div className="empty-state"><strong>Selected document unavailable</strong><span>The selected document is no longer present in the current vault read.</span></div> : selection.state === "conflicted_identity" ? <div className="empty-state"><strong>Document selection unavailable</strong><span>More than one document in this read uses the selected identity, so the interface will not choose between them.</span></div> : <div className="empty-state"><strong>Document identity unavailable</strong><span>No document with a unique stable identity can be selected from this read.</span></div>}</div>{selection.state === "ready" ? <OriginalPreview key={selection.document.id} documentId={selection.document.id} name={documentRowLabel(selection.document)} read={previewReader} subscribeEnd={subscribePreviewEnd} /> : null}</>}
       <ReadScope />
     </>;
   }}</PanelStateView>

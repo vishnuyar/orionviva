@@ -26,6 +26,17 @@ requests while the transition is pending. Rejected work is never replayed
 against the next vault. The host distinguishes current-vault contention from
 a stale vault identity; stale requests and ended browser access remain fenced.
 
+## Local source inspection
+
+A document's **View saved original** action opens a local rendition of supported
+PDF pages, PNG/JPEG or UTF-8 text. It is separate from paid document reading and
+from metadata/evidence navigation. The page has explicit close, page controls,
+zoom and a text alternative where available; vault transitions discard content.
+See [local source previews](original-source-preview.md) for limits and current
+platform support. Unit and source checks do not establish installed delivery,
+financial truth or accessibility. Actual browser/packaged evidence and remaining
+platform gaps must retain their named candidate identity.
+
 ## Evidence still required before inviting users
 
 | Journey | Required evidence |
@@ -36,7 +47,7 @@ a stale vault identity; stale requests and ended browser access remain fenced.
 | Answers | Exact-candidate model qualification, truthful source/coverage/refusal behavior and the retained-vault financial-question campaign. Deterministic calculations alone do not qualify a live model. |
 | Recovery | The synthetic production-browser roundtrip exercises wrong-phrase retry and explicit restored-vault opening; backend tests check occupied destinations and original integrity. Save-file, open-file and folder choosers are implemented, including cancellation without submission. Installed-artifact dialog behavior still requires its own evidence. |
 
-## Current verification
+## Previous verification snapshot
 
 The save-file chooser is available in the native and browser hosts. Trust offers
 backup destination, archive and restore-folder selection. Selecting a path only
@@ -64,7 +75,7 @@ The preserved qualification corpus contains 123 independent financial oracles
 and 93 expected figures. Its current-schema offline port passed all 123 cases
 and twelve controls. Those checks exercise deterministic downstream behavior;
 they do not establish live model interpretation, exact hosted-runtime admission
-or completion of the seventeen financial browser cases. Those remain unverified.
+or completion of the seventeen financial browser cases. The browser completion contract requires its own candidate-bound measured result.
 The serial provider-free browser run passed five journeys: first open, sample
 financial integrity, current period, keyboard navigation and privacy. Its seven
 oracle checks passed on the frozen runtime/dependency identity
@@ -85,14 +96,34 @@ Use [the acceptance policy](../acceptance/README.md),
 [the release procedure](../RELEASING.md) for their respective gates. This page
 changes neither the model-admission rules nor release/publication authority.
 
-## Complete local acceptance result
+## Previous complete local acceptance snapshot
 
-The provider-free complete run on `e05d3a3+worktree.b859fe7983ae` reports
-**nine passes, zero failures and nineteen gaps** across 28 declarations. The gaps
-are seventeen unmapped financial browser cases, live model quality and signed
+The earlier provider-free complete run on `e05d3a3+worktree.b859fe7983ae` reports
+**nine passes, zero failures and nineteen gaps** across 28 declarations. The gaps in that snapshot
+were seventeen unmapped financial browser cases, live model quality and signed
 clean-machine compatibility. Zero model calls were made. Catalog, performance,
 stateful learning and all five browser journeys pass. This result remains an
-acceptance gap, with insufficient evidence for invitations. The local report is
-`runs/user-readiness-2026-10-24/complete/trace.report.md`. Later status-prose edits
+acceptance gap, with insufficient evidence for invitations. The historical report’s locator is recorded in the ignored current checkpoint. Later status-prose edits
 leave the tested executable/dependency/source contract unchanged and do not
 rewrite the report identity.
+
+## Financial browser completion candidate
+
+The candidate adds typed numerical receipts, calculation-authored subject
+metadata and explicit Continue previous conversation. See
+[numerical answer receipts](numerical-answer-receipts.md) for the contract.
+The evaluator's isolated offline host stipulates independent semantic requests
+while exercising the real compiler, calculation and visible browser. This can
+measure deterministic browser delivery; it cannot qualify live model
+interpretation or grant runtime admission.
+
+Consult the ignored current checkpoint for exact candidate-bound full-corpus
+and complete-gate evidence. Prototypes and supporting tests alone do not
+establish those results.
+Historical reports above retain their source identities and are not this
+candidate's verdict. The existing qualification version's source pin does not
+match the changed product answer-program evaluation source; a new reviewed
+version is required
+before a separately authorized funded profile can be measured. Signing,
+installed-machine and unassisted-user evidence remain open. No invitation or
+release readiness follows from this implementation.

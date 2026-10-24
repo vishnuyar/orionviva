@@ -226,3 +226,16 @@ it("frames selected accounting correction, undo and period reads without widenin
   expect(frames[1].payload).toEqual({ question: "Undo accounting correction", mirrored: true, undo_correction_id: "correction-1" });
   expect(frames[2].payload).toMatchObject({ surface: "accounting", parameters: { start: "2026-09-01", end: "2026-09-30" } });
 });
+
+describe("saved original framing", () => {
+  it("sends only document identity and requested page without replaying an older-host refusal", async () => {
+    const frames: BridgeRequest[] = [];
+    const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      return { protocol: "2.1", request_id: frame.requestId, ok: false, error: { code: "unknown_operation", message: "not supported" } } as BridgeResponse<T>;
+    } });
+    await expect(client.readDocumentPreview!("a".repeat(64), 2)).rejects.toBeInstanceOf(BridgeRefusal);
+    expect(frames).toHaveLength(1);
+    expect(frames[0]).toMatchObject({ operation: "viva.documents.preview.read", payload: { document_id: "a".repeat(64), page: 2 } });
+  });
+});

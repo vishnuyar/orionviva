@@ -153,3 +153,25 @@ class SQLDocumentsProjection:
                 "message": (finding or {}).get("message", ""),
             })
         return [*primary, *other]
+
+
+def preview_capture_identity(revision, doc_id: str):
+    """One indexed, bounded captured identity; never replay document history.
+
+    Refuse excessive duplicate captures and oversized identity scalars instead
+    of allowing a single preview to scan/materialize arbitrary history.
+    """
+    import re
+    if not isinstance(doc_id, str) or re.fullmatch(r'[0-9a-f]{64}', doc_id) is None:
+        raise ReadStoreError('invalid preview identity')
+    rows = revision.connection.execute(
+        'SELECT CASE WHEN length(CAST(filename AS BLOB))<=4096 THEN filename END, '
+        'CASE WHEN length(CAST(doc_type AS BLOB))<=256 THEN doc_type END '
+        'FROM documents INDEXED BY documents_by_doc WHERE doc_id=? LIMIT 33',
+        (doc_id,)).fetchall()
+    if len(rows) > 32 or any(any(value is None for value in row) for row in rows):
+        raise ReadStoreError('preview identity exceeds its bound')
+    identities = set(rows)
+    if len(identities) > 1:
+        raise ReadStoreError('conflicting preview identity')
+    return next(iter(identities)) if identities else None

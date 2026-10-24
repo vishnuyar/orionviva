@@ -797,6 +797,7 @@ def _supplement_figure_matches(actual,expected):
     except (InvalidOperation,ValueError,TypeError): return False
     for key in ('quantity','kind','currency','dated'):
         if str(actual.get(key,''))!=str(expected.get(key,'')): return False
+    if 'expected_subject' in expected and actual.get('subject')!=expected['expected_subject']: return False
     if actual.get('what')!=expected.get('what_exact'): return False
     if actual.get('grade','')!=expected.get('required_grade',''): return False
     if sorted(actual.get('record_ids',()))!=sorted(expected['required_sources']['record_ids']): return False

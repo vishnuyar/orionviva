@@ -52,6 +52,16 @@
       "state": "ready"
     },
     {
+      "capability_id": "documents.preview",
+      "contract": "DocumentPreview.v1",
+      "id": "documents.preview.ready",
+      "payload": {
+        "capability_id": "documents.preview",
+        "contract": "DocumentPreview.v1"
+      },
+      "state": "ready"
+    },
+    {
       "capability_id": "documents.rescan",
       "contract": "RescanResult.v1",
       "id": "documents.rescan.ready",
@@ -1659,6 +1669,24 @@
       "id": "documents.jobs",
       "maturity": "stable",
       "owner": "viva.desktop_bridge.jobs",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "while the sidecar holds an open vault",
+      "contract": "DocumentPreview.v1",
+      "destination": "documents",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "documents.preview.ready"
+      ],
+      "id": "documents.preview",
+      "maturity": "stable",
+      "owner": "viva.source_preview",
       "reason": null,
       "trust_effect": [
         "reads_data"

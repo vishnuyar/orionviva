@@ -1,0 +1,1326 @@
+{
+  "schema_version": 1,
+  "kind": "actual-same-run-backend-wire-examples-not-financial-oracles",
+  "examples": [
+    {
+      "case_id": "fc-v1:savings_zero_rate",
+      "answer": {
+        "job_id": "viva.conversation.ask-1",
+        "state": "ready",
+        "question": "Simulate savings in USD: initial amount USD 1000; monthly contribution USD 100; nominal annual rate 0%; horizon 3 months; opening date 2026-01-31.",
+        "text": "Hypothetical scenario under the stated assumptions: \nhypothetical final savings balance \u2014 2026-04-30 \u2014 USD 1,300.00\nhypothetical contributed principal \u2014 2026-04-30 \u2014 USD 1,300.00\nhypothetical accumulated savings growth \u2014 USD 0.00.\nThat counts only 2026-01-31 to 2026-04-30. Bear in mind: This is a hypothetical monthly scenario, not a bank calculation or spending permission. Money is normalized once to cents; monthly interest and endpoints use half-even rounding. Dates retain the original monthly anchor and clamp to each target month end. The starting date is the opening date; contributions and cash flows occur at anchored monthly endpoints, beginning one month later. The rate is nominal annual percent divided by twelve; it is not APY or effective yield. Fees, tax, inflation and market returns are not inferred.",
+        "answered": true,
+        "status": "answered",
+        "outcome_tag": "",
+        "refusal": "",
+        "grade": "",
+        "grade_sentence": "",
+        "figures": [
+          {
+            "value": "1300.00",
+            "quantity": "balance",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "2026-04-30",
+            "grade": "",
+            "boundary": {
+              "whole": false
+            },
+            "id": "f1",
+            "written": "USD 1,300.00",
+            "what": "hypothetical final savings balance \u2014 2026-04-30",
+            "record_ids": [],
+            "evidence_id": "conversation:oQ_q7LB2vdAbtKctWXamMvI3:f1",
+            "evidence_links": [],
+            "receipt_ids": [
+              "conversation:oQ_q7LB2vdAbtKctWXamMvI3:numerical:0"
+            ]
+          },
+          {
+            "value": "1300.00",
+            "quantity": "balance",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "2026-04-30",
+            "grade": "",
+            "boundary": {
+              "whole": false
+            },
+            "id": "f2",
+            "written": "USD 1,300.00",
+            "what": "hypothetical contributed principal \u2014 2026-04-30",
+            "record_ids": [],
+            "evidence_id": "conversation:oQ_q7LB2vdAbtKctWXamMvI3:f2",
+            "evidence_links": [],
+            "receipt_ids": [
+              "conversation:oQ_q7LB2vdAbtKctWXamMvI3:numerical:0"
+            ]
+          },
+          {
+            "value": "0.00",
+            "quantity": "net_movement",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "",
+            "grade": "",
+            "boundary": {
+              "whole": false,
+              "selected": [
+                {
+                  "kind": "period",
+                  "value": "2026-01-31",
+                  "to": "2026-04-30"
+                }
+              ]
+            },
+            "id": "f3",
+            "written": "USD 0.00",
+            "what": "hypothetical accumulated savings growth",
+            "record_ids": [],
+            "evidence_id": "conversation:oQ_q7LB2vdAbtKctWXamMvI3:f3",
+            "evidence_links": [],
+            "receipt_ids": [
+              "conversation:oQ_q7LB2vdAbtKctWXamMvI3:numerical:0"
+            ]
+          }
+        ],
+        "numerical_receipts": [
+          {
+            "schema_version": 1,
+            "id": "conversation:oQ_q7LB2vdAbtKctWXamMvI3:numerical:0",
+            "figure_ids": [
+              "f1",
+              "f2",
+              "f3"
+            ],
+            "source_records": [],
+            "premises": [
+              {
+                "parameter": "currency",
+                "role": "currency convention",
+                "raw": "USD",
+                "modeled": null,
+                "unit": "currency",
+                "currency": null,
+                "source": "current_question",
+                "quote": "USD",
+                "derivation": "verbatim"
+              },
+              {
+                "parameter": "initial_amount",
+                "role": "initial amount",
+                "raw": "1000",
+                "modeled": "1000.00",
+                "unit": "money",
+                "currency": "USD",
+                "source": "current_question",
+                "quote": "initial amount USD 1000",
+                "derivation": "decimal_numeric"
+              },
+              {
+                "parameter": "monthly_contribution",
+                "role": "monthly contribution",
+                "raw": "100",
+                "modeled": "100.00",
+                "unit": "money",
+                "currency": "USD",
+                "source": "current_question",
+                "quote": "monthly contribution USD 100",
+                "derivation": "decimal_numeric"
+              },
+              {
+                "parameter": "months",
+                "role": "horizon",
+                "raw": "3",
+                "modeled": null,
+                "unit": "months",
+                "currency": null,
+                "source": "current_question",
+                "quote": "horizon 3 months",
+                "derivation": "decimal_numeric"
+              },
+              {
+                "parameter": "nominal_annual_rate_percent",
+                "role": "nominal annual rate",
+                "raw": "0",
+                "modeled": null,
+                "unit": "nominal_annual_percent",
+                "currency": null,
+                "source": "current_question",
+                "quote": "nominal annual rate 0%",
+                "derivation": "decimal_numeric"
+              },
+              {
+                "parameter": "start_date",
+                "role": "opening or first payment date",
+                "raw": "2026-01-31",
+                "modeled": null,
+                "unit": "ISO date",
+                "currency": null,
+                "source": "current_question",
+                "quote": "opening date 2026-01-31",
+                "derivation": "verbatim"
+              }
+            ],
+            "observed_inputs": [],
+            "local_inputs": [],
+            "context": [
+              {
+                "label": "Scenario horizon end",
+                "value": "2026-04-30"
+              },
+              {
+                "label": "Modeled periods",
+                "value": "3"
+              },
+              {
+                "label": "Premise source",
+                "value": "Current question only"
+              },
+              {
+                "label": "Original monthly anchor",
+                "value": "2026-01-31"
+              },
+              {
+                "label": "Horizon in months",
+                "value": "3"
+              },
+              {
+                "label": "Scenario currency",
+                "value": "USD"
+              }
+            ],
+            "caveats": [
+              "This is a hypothetical monthly scenario, not a bank calculation or spending permission. Money is normalized once to cents; monthly interest and endpoints use half-even rounding. Dates retain the original monthly anchor and clamp to each target month end.",
+              "The starting date is the opening date; contributions and cash flows occur at anchored monthly endpoints, beginning one month later.",
+              "The rate is nominal annual percent divided by twelve; it is not APY or effective yield. Fees, tax, inflation and market returns are not inferred."
+            ]
+          }
+        ],
+        "gaps": [],
+        "options": [],
+        "missing": [],
+        "spoken": {
+          "may_speak": true,
+          "withheld": "",
+          "parts": [
+            "text"
+          ],
+          "text": "Hypothetical scenario under the stated assumptions: \nhypothetical final savings balance \u2014 2026-04-30 \u2014 USD 1,300.00\nhypothetical contributed principal \u2014 2026-04-30 \u2014 USD 1,300.00\nhypothetical accumulated savings growth \u2014 USD 0.00.\nThat counts only 2026-01-31 to 2026-04-30. Bear in mind: This is a hypothetical monthly scenario, not a bank calculation or spending permission. Money is normalized once to cents; monthly interest and endpoints use half-even rounding. Dates retain the original monthly anchor and clamp to each target month end. The starting date is the opening date; contributions and cash flows occur at anchored monthly endpoints, beginning one month later. The rate is nominal annual percent divided by twelve; it is not APY or effective yield. Fees, tax, inflation and market returns are not inferred.",
+          "grade_sentence": "",
+          "citation_sentence": "",
+          "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+        }
+      }
+    },
+    {
+      "case_id": "fc-v1:checking_savings_zero_rate",
+      "answer": {
+        "job_id": "viva.conversation.ask-2",
+        "state": "ready",
+        "question": "Simulate savings in USD: monthly contribution USD 100; nominal annual rate 0%; horizon 3 months; opening date 2026-02-01; starting account Example Checking.",
+        "text": "Hypothetical scenario under the stated assumptions: \nhypothetical final savings balance \u2014 2026-05-01 \u2014 USD 1,825.00\nhypothetical contributed principal \u2014 2026-05-01 \u2014 USD 1,825.00\nhypothetical accumulated savings growth \u2014 USD 0.00.\nThat counts only 2026-02-01 to 2026-05-01. Bear in mind: This is a hypothetical monthly scenario, not a bank calculation or spending permission. Money is normalized once to cents; monthly interest and endpoints use half-even rounding. Dates retain the original monthly anchor and clamp to each target month end. The starting date is the opening date; contributions and cash flows occur at anchored monthly endpoints, beginning one month later. The rate is nominal annual percent divided by twelve; it is not APY or effective yield. Fees, tax, inflation and market returns are not inferred. Recorded starting value measured 2026-01-31 is carried to the scenario anchor hypothetically; its source grade is retained separately in the input receipt.",
+        "answered": true,
+        "status": "answered",
+        "outcome_tag": "",
+        "refusal": "",
+        "grade": "",
+        "grade_sentence": "",
+        "figures": [
+          {
+            "value": "1825.00",
+            "quantity": "balance",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "2026-05-01",
+            "grade": "",
+            "boundary": {
+              "whole": false
+            },
+            "id": "f2",
+            "written": "USD 1,825.00",
+            "what": "hypothetical final savings balance \u2014 2026-05-01",
+            "record_ids": [
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+            ],
+            "evidence_id": "conversation:YV0wLSKuygqVCewGcREUVs_o:f2",
+            "evidence_links": [
+              {
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "label": "cap-checking-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              }
+            ],
+            "receipt_ids": [
+              "conversation:YV0wLSKuygqVCewGcREUVs_o:numerical:1"
+            ]
+          },
+          {
+            "value": "1825.00",
+            "quantity": "balance",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "2026-05-01",
+            "grade": "",
+            "boundary": {
+              "whole": false
+            },
+            "id": "f3",
+            "written": "USD 1,825.00",
+            "what": "hypothetical contributed principal \u2014 2026-05-01",
+            "record_ids": [
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+            ],
+            "evidence_id": "conversation:YV0wLSKuygqVCewGcREUVs_o:f3",
+            "evidence_links": [
+              {
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "label": "cap-checking-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              }
+            ],
+            "receipt_ids": [
+              "conversation:YV0wLSKuygqVCewGcREUVs_o:numerical:1"
+            ]
+          },
+          {
+            "value": "0.00",
+            "quantity": "net_movement",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "",
+            "grade": "",
+            "boundary": {
+              "whole": false,
+              "selected": [
+                {
+                  "kind": "period",
+                  "value": "2026-02-01",
+                  "to": "2026-05-01"
+                }
+              ]
+            },
+            "id": "f4",
+            "written": "USD 0.00",
+            "what": "hypothetical accumulated savings growth",
+            "record_ids": [
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+            ],
+            "evidence_id": "conversation:YV0wLSKuygqVCewGcREUVs_o:f4",
+            "evidence_links": [
+              {
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "label": "cap-checking-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              }
+            ],
+            "receipt_ids": [
+              "conversation:YV0wLSKuygqVCewGcREUVs_o:numerical:1"
+            ]
+          }
+        ],
+        "numerical_receipts": [
+          {
+            "schema_version": 1,
+            "id": "conversation:YV0wLSKuygqVCewGcREUVs_o:numerical:1",
+            "figure_ids": [
+              "f2",
+              "f3",
+              "f4"
+            ],
+            "source_records": [
+              {
+                "record_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "kind": "document",
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+              }
+            ],
+            "premises": [
+              {
+                "parameter": "account_phrase",
+                "role": "accepted starting account",
+                "raw": "cap-checking",
+                "modeled": null,
+                "unit": "account",
+                "currency": null,
+                "source": "current_question",
+                "quote": "Example Checking",
+                "derivation": "catalog_selection"
+              },
+              {
+                "parameter": "currency",
+                "role": "currency convention",
+                "raw": "USD",
+                "modeled": null,
+                "unit": "currency",
+                "currency": null,
+                "source": "current_question",
+                "quote": "USD",
+                "derivation": "verbatim"
+              },
+              {
+                "parameter": "monthly_contribution",
+                "role": "monthly contribution",
+                "raw": "100",
+                "modeled": "100.00",
+                "unit": "money",
+                "currency": "USD",
+                "source": "current_question",
+                "quote": "monthly contribution USD 100",
+                "derivation": "decimal_numeric"
+              },
+              {
+                "parameter": "months",
+                "role": "horizon",
+                "raw": "3",
+                "modeled": null,
+                "unit": "months",
+                "currency": null,
+                "source": "current_question",
+                "quote": "horizon 3 months",
+                "derivation": "decimal_numeric"
+              },
+              {
+                "parameter": "nominal_annual_rate_percent",
+                "role": "nominal annual rate",
+                "raw": "0",
+                "modeled": null,
+                "unit": "nominal_annual_percent",
+                "currency": null,
+                "source": "current_question",
+                "quote": "nominal annual rate 0%",
+                "derivation": "decimal_numeric"
+              },
+              {
+                "parameter": "start_date",
+                "role": "opening or first payment date",
+                "raw": "2026-02-01",
+                "modeled": null,
+                "unit": "ISO date",
+                "currency": null,
+                "source": "current_question",
+                "quote": "opening date 2026-02-01",
+                "derivation": "verbatim"
+              }
+            ],
+            "observed_inputs": [
+              {
+                "account_id": "cap-checking",
+                "value": "1525",
+                "modeled_value": "1525.00",
+                "quantity": "balance",
+                "kind": "financial",
+                "currency": "USD",
+                "dated": "2026-01-31",
+                "grade": "verified",
+                "measurement_view": "recorded_cash",
+                "record_ids": [
+                  "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+                ],
+                "carry_forward_hypothetical": true
+              }
+            ],
+            "local_inputs": [],
+            "context": [
+              {
+                "label": "Scenario horizon end",
+                "value": "2026-05-01"
+              },
+              {
+                "label": "Modeled periods",
+                "value": "3"
+              },
+              {
+                "label": "Premise source",
+                "value": "Current question only"
+              },
+              {
+                "label": "Original monthly anchor",
+                "value": "2026-02-01"
+              },
+              {
+                "label": "Horizon in months",
+                "value": "3"
+              },
+              {
+                "label": "Scenario currency",
+                "value": "USD"
+              }
+            ],
+            "caveats": [
+              "This is a hypothetical monthly scenario, not a bank calculation or spending permission. Money is normalized once to cents; monthly interest and endpoints use half-even rounding. Dates retain the original monthly anchor and clamp to each target month end.",
+              "The starting date is the opening date; contributions and cash flows occur at anchored monthly endpoints, beginning one month later.",
+              "The rate is nominal annual percent divided by twelve; it is not APY or effective yield. Fees, tax, inflation and market returns are not inferred.",
+              "Recorded starting value measured 2026-01-31 is carried to the scenario anchor hypothetically; its source grade is retained separately in the input receipt."
+            ]
+          }
+        ],
+        "gaps": [],
+        "options": [],
+        "missing": [],
+        "spoken": {
+          "may_speak": true,
+          "withheld": "",
+          "parts": [
+            "text",
+            "citations"
+          ],
+          "text": "Hypothetical scenario under the stated assumptions: \nhypothetical final savings balance \u2014 2026-05-01 \u2014 USD 1,825.00\nhypothetical contributed principal \u2014 2026-05-01 \u2014 USD 1,825.00\nhypothetical accumulated savings growth \u2014 USD 0.00.\nThat counts only 2026-02-01 to 2026-05-01. Bear in mind: This is a hypothetical monthly scenario, not a bank calculation or spending permission. Money is normalized once to cents; monthly interest and endpoints use half-even rounding. Dates retain the original monthly anchor and clamp to each target month end. The starting date is the opening date; contributions and cash flows occur at anchored monthly endpoints, beginning one month later. The rate is nominal annual percent divided by twelve; it is not APY or effective yield. Fees, tax, inflation and market returns are not inferred. Recorded starting value measured 2026-01-31 is carried to the scenario anchor hypothetically; its source grade is retained separately in the input receipt.",
+          "grade_sentence": "",
+          "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+          "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+        }
+      }
+    },
+    {
+      "case_id": "fc-v1:goal-progress",
+      "answer": {
+        "job_id": "viva.conversation.ask-3",
+        "state": "ready",
+        "question": "As of 2026-02-01, show progress on my local goals in USD.",
+        "text": "Recorded local goal terms and hypothetical progress: \nrecorded local target \u2014 Example Goal \u2014 USD 500.00\nrecorded local reservation \u2014 Example Goal \u2014 USD 100.00\nremaining local goal amount \u2014 Example Goal \u2014 USD 400.00\nrecorded monthly contribution plan \u2014 Example Goal \u2014 USD 50.00\nrequired monthly contribution estimate \u2014 Example Goal \u2014 USD 100.00.\nBear in mind: Example Goal: recorded local plan and reserves, not a bank transfer; at risk of missing the recorded target. Example Goal: hypothetical completion 2026-09-20. Example Goal: next planned contribution 2026-02-20. Example Goal: recorded target date 2026-05-20. Local activity terms carry no bank evidence grade. Contribution and completion estimates are hypothetical; existing available-account exclusions and stale measurements remain in the inputs.",
+        "answered": true,
+        "status": "answered",
+        "outcome_tag": "",
+        "refusal": "",
+        "grade": "",
+        "grade_sentence": "",
+        "figures": [
+          {
+            "value": "500",
+            "quantity": "balance",
+            "kind": "activity",
+            "currency": "USD",
+            "dated": "",
+            "grade": "",
+            "boundary": {
+              "whole": false
+            },
+            "subject": {
+              "goal_id": "cap-goal"
+            },
+            "id": "f1",
+            "written": "USD 500.00",
+            "what": "recorded local target \u2014 Example Goal",
+            "record_ids": [
+              "cap-goal-created-v1",
+              "cap-goal-reserved-v1"
+            ],
+            "evidence_id": "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:f1",
+            "evidence_links": [],
+            "receipt_ids": [
+              "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:numerical:0"
+            ]
+          },
+          {
+            "value": "100",
+            "quantity": "balance",
+            "kind": "activity",
+            "currency": "USD",
+            "dated": "",
+            "grade": "",
+            "boundary": {
+              "whole": false
+            },
+            "subject": {
+              "goal_id": "cap-goal"
+            },
+            "id": "f2",
+            "written": "USD 100.00",
+            "what": "recorded local reservation \u2014 Example Goal",
+            "record_ids": [
+              "cap-goal-created-v1",
+              "cap-goal-reserved-v1"
+            ],
+            "evidence_id": "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:f2",
+            "evidence_links": [],
+            "receipt_ids": [
+              "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:numerical:0"
+            ]
+          },
+          {
+            "value": "400",
+            "quantity": "balance",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "",
+            "grade": "",
+            "boundary": {
+              "whole": false
+            },
+            "subject": {
+              "goal_id": "cap-goal"
+            },
+            "id": "f3",
+            "written": "USD 400.00",
+            "what": "remaining local goal amount \u2014 Example Goal",
+            "record_ids": [
+              "cap-goal-created-v1",
+              "cap-goal-reserved-v1"
+            ],
+            "evidence_id": "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:f3",
+            "evidence_links": [],
+            "receipt_ids": [
+              "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:numerical:0"
+            ]
+          },
+          {
+            "value": "50",
+            "quantity": "balance",
+            "kind": "activity",
+            "currency": "USD",
+            "dated": "",
+            "grade": "",
+            "boundary": {
+              "whole": false
+            },
+            "subject": {
+              "goal_id": "cap-goal"
+            },
+            "id": "f4",
+            "written": "USD 50.00",
+            "what": "recorded monthly contribution plan \u2014 Example Goal",
+            "record_ids": [
+              "cap-goal-created-v1",
+              "cap-goal-reserved-v1"
+            ],
+            "evidence_id": "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:f4",
+            "evidence_links": [],
+            "receipt_ids": [
+              "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:numerical:0"
+            ]
+          },
+          {
+            "value": "100.00",
+            "quantity": "balance",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "",
+            "grade": "",
+            "boundary": {
+              "whole": false
+            },
+            "subject": {
+              "goal_id": "cap-goal"
+            },
+            "id": "f5",
+            "written": "USD 100.00",
+            "what": "required monthly contribution estimate \u2014 Example Goal",
+            "record_ids": [
+              "cap-goal-created-v1",
+              "cap-goal-reserved-v1"
+            ],
+            "evidence_id": "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:f5",
+            "evidence_links": [],
+            "receipt_ids": [
+              "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:numerical:0"
+            ]
+          }
+        ],
+        "numerical_receipts": [
+          {
+            "schema_version": 1,
+            "id": "conversation:TbnLexMzcs9nOIh2R0Dl7ahA:numerical:0",
+            "figure_ids": [
+              "f1",
+              "f2",
+              "f3",
+              "f4",
+              "f5"
+            ],
+            "source_records": [
+              {
+                "record_id": "cap-goal-created-v1",
+                "kind": "local_activity",
+                "document_id": null
+              },
+              {
+                "record_id": "cap-goal-reserved-v1",
+                "kind": "local_activity",
+                "document_id": null
+              }
+            ],
+            "premises": [],
+            "observed_inputs": [],
+            "local_inputs": [
+              {
+                "event_id": "cap-goal-created-v1",
+                "event_type": "GoalCreated",
+                "fields": [
+                  {
+                    "label": "Goal title",
+                    "value": "Example Goal"
+                  },
+                  {
+                    "label": "Currency",
+                    "value": "USD"
+                  },
+                  {
+                    "label": "Target amount",
+                    "value": "500"
+                  },
+                  {
+                    "label": "Target date",
+                    "value": "2026-05-20"
+                  },
+                  {
+                    "label": "Monthly contribution",
+                    "value": "50"
+                  },
+                  {
+                    "label": "Contribution day",
+                    "value": "20"
+                  },
+                  {
+                    "label": "Recorded date",
+                    "value": "2026-01-31"
+                  }
+                ]
+              },
+              {
+                "event_id": "cap-goal-reserved-v1",
+                "event_type": "GoalFundsReserved",
+                "fields": [
+                  {
+                    "label": "Account",
+                    "value": "cap-reserve"
+                  },
+                  {
+                    "label": "Amount",
+                    "value": "100"
+                  },
+                  {
+                    "label": "Recorded date",
+                    "value": "2026-01-31"
+                  }
+                ]
+              }
+            ],
+            "context": [],
+            "caveats": [
+              "Example Goal: recorded local plan and reserves, not a bank transfer; at risk of missing the recorded target.",
+              "Example Goal: hypothetical completion 2026-09-20.",
+              "Example Goal: next planned contribution 2026-02-20.",
+              "Example Goal: recorded target date 2026-05-20.",
+              "Local activity terms carry no bank evidence grade. Contribution and completion estimates are hypothetical; existing available-account exclusions and stale measurements remain in the inputs."
+            ]
+          }
+        ],
+        "gaps": [],
+        "options": [],
+        "missing": [],
+        "spoken": {
+          "may_speak": true,
+          "withheld": "",
+          "parts": [
+            "text"
+          ],
+          "text": "Recorded local goal terms and hypothetical progress: \nrecorded local target \u2014 Example Goal \u2014 USD 500.00\nrecorded local reservation \u2014 Example Goal \u2014 USD 100.00\nremaining local goal amount \u2014 Example Goal \u2014 USD 400.00\nrecorded monthly contribution plan \u2014 Example Goal \u2014 USD 50.00\nrequired monthly contribution estimate \u2014 Example Goal \u2014 USD 100.00.\nBear in mind: Example Goal: recorded local plan and reserves, not a bank transfer; at risk of missing the recorded target. Example Goal: hypothetical completion 2026-09-20. Example Goal: next planned contribution 2026-02-20. Example Goal: recorded target date 2026-05-20. Local activity terms carry no bank evidence grade. Contribution and completion estimates are hypothetical; existing available-account exclusions and stale measurements remain in the inputs.",
+          "grade_sentence": "",
+          "citation_sentence": "",
+          "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+        }
+      }
+    },
+    {
+      "case_id": "fc-v1:known-remainder",
+      "answer": {
+        "job_id": "viva.conversation.ask-4",
+        "state": "ready",
+        "question": "Using records read on 2026-02-01, show the known remainder for the next 30 days in USD.",
+        "text": "Hypothetical known remainder from the recorded inputs: \nlower known remainder \u2014 hypothetical endpoint 2026-03-03 \u2014 USD 1,850.00\nupper known remainder \u2014 hypothetical endpoint 2026-03-03 \u2014 USD 2,150.00.\nThat counts only what is on Example Checking. That counts only what is on Example Reserve. Bear in mind: Historical input grade: verified; measurement dates: 2025-11-05, 2025-11-15, 2025-12-05, 2026-01-05, 2026-01-15, 2026-01-31. Historical input balances, local reserves, qualified recurring money and goal contributions retain their existing exclusions and ranges. Planned discretionary spending is missing. This remainder is not spending permission. Input limitations: Starting balances were measured before the read date; their freshness is unconfirmed. Projection horizon: 2026-02-01 to 2026-03-03. Expected incoming money is not guaranteed; future amounts and dates are hypothetical.",
+        "answered": true,
+        "status": "answered",
+        "outcome_tag": "",
+        "refusal": "",
+        "grade": "",
+        "grade_sentence": "",
+        "figures": [
+          {
+            "value": "1850",
+            "quantity": "balance",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "2026-03-03",
+            "grade": "",
+            "boundary": {
+              "whole": false,
+              "selected": [
+                {
+                  "kind": "account",
+                  "value": "cap-checking"
+                },
+                {
+                  "kind": "account",
+                  "value": "cap-reserve"
+                }
+              ]
+            },
+            "id": "f1",
+            "written": "USD 1,850.00",
+            "what": "lower known remainder \u2014 hypothetical endpoint 2026-03-03",
+            "record_ids": [
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447|cap-checking|2026-01-05|300|Example Pay|0",
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447|cap-checking|2026-01-15|-25|Example Membership|0",
+              "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc",
+              "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc|cap-checking|2025-12-05|300|Example Pay|0",
+              "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc|cap-checking|2025-12-15|-25|Example Membership|0",
+              "cap-goal-created-v1",
+              "cap-goal-reserved-v1",
+              "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a",
+              "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a|cap-checking|2025-11-05|300|Example Pay|0",
+              "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a|cap-checking|2025-11-15|-25|Example Membership|0",
+              "ec4d1752802c5bf9debe10df931f3649309dfc831f0074a8f4119163af98e999"
+            ],
+            "evidence_id": "conversation:AOAP5487XnUHScR3nTqAtz1R:f1",
+            "evidence_links": [
+              {
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "label": "cap-checking-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              },
+              {
+                "document_id": "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc",
+                "label": "cap-checking-2025-12.txt",
+                "relation": "attests",
+                "page": ""
+              },
+              {
+                "document_id": "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a",
+                "label": "cap-checking-2025-11.txt",
+                "relation": "attests",
+                "page": ""
+              },
+              {
+                "document_id": "ec4d1752802c5bf9debe10df931f3649309dfc831f0074a8f4119163af98e999",
+                "label": "cap-reserve-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              }
+            ],
+            "receipt_ids": [
+              "conversation:AOAP5487XnUHScR3nTqAtz1R:numerical:0"
+            ]
+          },
+          {
+            "value": "2150",
+            "quantity": "balance",
+            "kind": "hypothetical",
+            "currency": "USD",
+            "dated": "2026-03-03",
+            "grade": "",
+            "boundary": {
+              "whole": false,
+              "selected": [
+                {
+                  "kind": "account",
+                  "value": "cap-checking"
+                },
+                {
+                  "kind": "account",
+                  "value": "cap-reserve"
+                }
+              ]
+            },
+            "id": "f2",
+            "written": "USD 2,150.00",
+            "what": "upper known remainder \u2014 hypothetical endpoint 2026-03-03",
+            "record_ids": [
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447|cap-checking|2026-01-05|300|Example Pay|0",
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447|cap-checking|2026-01-15|-25|Example Membership|0",
+              "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc",
+              "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc|cap-checking|2025-12-05|300|Example Pay|0",
+              "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc|cap-checking|2025-12-15|-25|Example Membership|0",
+              "cap-goal-created-v1",
+              "cap-goal-reserved-v1",
+              "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a",
+              "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a|cap-checking|2025-11-05|300|Example Pay|0",
+              "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a|cap-checking|2025-11-15|-25|Example Membership|0",
+              "ec4d1752802c5bf9debe10df931f3649309dfc831f0074a8f4119163af98e999"
+            ],
+            "evidence_id": "conversation:AOAP5487XnUHScR3nTqAtz1R:f2",
+            "evidence_links": [
+              {
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "label": "cap-checking-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              },
+              {
+                "document_id": "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc",
+                "label": "cap-checking-2025-12.txt",
+                "relation": "attests",
+                "page": ""
+              },
+              {
+                "document_id": "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a",
+                "label": "cap-checking-2025-11.txt",
+                "relation": "attests",
+                "page": ""
+              },
+              {
+                "document_id": "ec4d1752802c5bf9debe10df931f3649309dfc831f0074a8f4119163af98e999",
+                "label": "cap-reserve-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              }
+            ],
+            "receipt_ids": [
+              "conversation:AOAP5487XnUHScR3nTqAtz1R:numerical:0"
+            ]
+          }
+        ],
+        "numerical_receipts": [
+          {
+            "schema_version": 1,
+            "id": "conversation:AOAP5487XnUHScR3nTqAtz1R:numerical:0",
+            "figure_ids": [
+              "f1",
+              "f2"
+            ],
+            "source_records": [
+              {
+                "record_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "kind": "document",
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+              },
+              {
+                "record_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447|cap-checking|2026-01-05|300|Example Pay|0",
+                "kind": "movement",
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+              },
+              {
+                "record_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447|cap-checking|2026-01-15|-25|Example Membership|0",
+                "kind": "movement",
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+              },
+              {
+                "record_id": "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc",
+                "kind": "document",
+                "document_id": "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc"
+              },
+              {
+                "record_id": "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc|cap-checking|2025-12-05|300|Example Pay|0",
+                "kind": "movement",
+                "document_id": "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc"
+              },
+              {
+                "record_id": "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc|cap-checking|2025-12-15|-25|Example Membership|0",
+                "kind": "movement",
+                "document_id": "a4aaa1eaf0905bdca14c47975944cced4383ecf3cfd7ea2e92b0f58d83810bdc"
+              },
+              {
+                "record_id": "cap-goal-created-v1",
+                "kind": "local_activity",
+                "document_id": null
+              },
+              {
+                "record_id": "cap-goal-reserved-v1",
+                "kind": "local_activity",
+                "document_id": null
+              },
+              {
+                "record_id": "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a",
+                "kind": "document",
+                "document_id": "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a"
+              },
+              {
+                "record_id": "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a|cap-checking|2025-11-05|300|Example Pay|0",
+                "kind": "movement",
+                "document_id": "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a"
+              },
+              {
+                "record_id": "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a|cap-checking|2025-11-15|-25|Example Membership|0",
+                "kind": "movement",
+                "document_id": "e57b09899a076acd87c928e49c2c04ebf746a9dbf24e660e24d084eefccb5d8a"
+              },
+              {
+                "record_id": "ec4d1752802c5bf9debe10df931f3649309dfc831f0074a8f4119163af98e999",
+                "kind": "document",
+                "document_id": "ec4d1752802c5bf9debe10df931f3649309dfc831f0074a8f4119163af98e999"
+              }
+            ],
+            "premises": [],
+            "observed_inputs": [],
+            "local_inputs": [
+              {
+                "event_id": "cap-goal-created-v1",
+                "event_type": "GoalCreated",
+                "fields": [
+                  {
+                    "label": "Goal title",
+                    "value": "Example Goal"
+                  },
+                  {
+                    "label": "Currency",
+                    "value": "USD"
+                  },
+                  {
+                    "label": "Target amount",
+                    "value": "500"
+                  },
+                  {
+                    "label": "Target date",
+                    "value": "2026-05-20"
+                  },
+                  {
+                    "label": "Monthly contribution",
+                    "value": "50"
+                  },
+                  {
+                    "label": "Contribution day",
+                    "value": "20"
+                  },
+                  {
+                    "label": "Recorded date",
+                    "value": "2026-01-31"
+                  }
+                ]
+              },
+              {
+                "event_id": "cap-goal-reserved-v1",
+                "event_type": "GoalFundsReserved",
+                "fields": [
+                  {
+                    "label": "Account",
+                    "value": "cap-reserve"
+                  },
+                  {
+                    "label": "Amount",
+                    "value": "100"
+                  },
+                  {
+                    "label": "Recorded date",
+                    "value": "2026-01-31"
+                  }
+                ]
+              }
+            ],
+            "context": [
+              {
+                "label": "Read day",
+                "value": "2026-02-01"
+              },
+              {
+                "label": "Projection horizon end",
+                "value": "2026-03-03"
+              }
+            ],
+            "caveats": [
+              "Historical input grade: verified; measurement dates: 2025-11-05, 2025-11-15, 2025-12-05, 2026-01-05, 2026-01-15, 2026-01-31.",
+              "Historical input balances, local reserves, qualified recurring money and goal contributions retain their existing exclusions and ranges.",
+              "Planned discretionary spending is missing. This remainder is not spending permission.",
+              "Input limitations: Starting balances were measured before the read date; their freshness is unconfirmed.",
+              "Projection horizon: 2026-02-01 to 2026-03-03. Expected incoming money is not guaranteed; future amounts and dates are hypothetical."
+            ]
+          }
+        ],
+        "gaps": [],
+        "options": [],
+        "missing": [],
+        "spoken": {
+          "may_speak": true,
+          "withheld": "",
+          "parts": [
+            "text",
+            "citations"
+          ],
+          "text": "Hypothetical known remainder from the recorded inputs: \nlower known remainder \u2014 hypothetical endpoint 2026-03-03 \u2014 USD 1,850.00\nupper known remainder \u2014 hypothetical endpoint 2026-03-03 \u2014 USD 2,150.00.\nThat counts only what is on Example Checking. That counts only what is on Example Reserve. Bear in mind: Historical input grade: verified; measurement dates: 2025-11-05, 2025-11-15, 2025-12-05, 2026-01-05, 2026-01-15, 2026-01-31. Historical input balances, local reserves, qualified recurring money and goal contributions retain their existing exclusions and ranges. Planned discretionary spending is missing. This remainder is not spending permission. Input limitations: Starting balances were measured before the read date; their freshness is unconfirmed. Projection horizon: 2026-02-01 to 2026-03-03. Expected incoming money is not guaranteed; future amounts and dates are hypothetical.",
+          "grade_sentence": "",
+          "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+          "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+        }
+      }
+    },
+    {
+      "case_id": "fc-v1:category-january",
+      "answer": {
+        "job_id": "viva.conversation.ask-5",
+        "state": "ready",
+        "question": "Show spending by category in USD from 2026-01-01 to 2026-01-31.",
+        "text": "Recorded spending by category and its total: \nRead this list as verified: every figure in it is attested by the document it came from.\nspending \u2014 category 'groceries' \u2014 USD 150.00\nspending \u2014 category 'other' \u2014 USD 25.00\ntotal spending by category \u2014 USD 175.00\nspending movements counted \u2014 2.\nThat counts only what is held in USD. That counts only 2026-01-01 to 2026-01-31. Bear in mind: This counts money that left your life. A movement recognised as settling between two of your own accounts is not counted, whatever category it carries; card purchases are counted. No statement has posted for cap-loan, so nothing here is attested for it. USD 175.00 of this rests on provisional evidence (a suggested implication, not a ruling).",
+        "answered": true,
+        "status": "answered",
+        "outcome_tag": "",
+        "refusal": "",
+        "grade": "verified",
+        "grade_sentence": "Read this answer as verified: every figure in it is attested by the document it came from.",
+        "figures": [
+          {
+            "value": "150",
+            "quantity": "spending",
+            "kind": "financial",
+            "currency": "USD",
+            "dated": "",
+            "grade": "verified",
+            "boundary": {
+              "whole": false,
+              "selected": [
+                {
+                  "kind": "currency",
+                  "value": "USD"
+                },
+                {
+                  "kind": "period",
+                  "value": "2026-01-01",
+                  "to": "2026-01-31"
+                }
+              ],
+              "cut": [
+                {
+                  "kind": "category",
+                  "value": "groceries"
+                },
+                {
+                  "kind": "currency",
+                  "value": "USD"
+                },
+                {
+                  "kind": "period",
+                  "value": "2026-01-01",
+                  "to": "2026-01-31"
+                }
+              ]
+            },
+            "subject": {
+              "kind": "category",
+              "value": "groceries"
+            },
+            "id": "f1",
+            "written": "USD 150.00",
+            "what": "spending \u2014 category 'groceries'",
+            "record_ids": [
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+            ],
+            "evidence_id": "conversation:yEHqDIK_Efwix4DdxAAViSfI:f1",
+            "evidence_links": [
+              {
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "label": "cap-checking-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              }
+            ],
+            "receipt_ids": [
+              "conversation:yEHqDIK_Efwix4DdxAAViSfI:numerical:0"
+            ]
+          },
+          {
+            "value": "25",
+            "quantity": "spending",
+            "kind": "financial",
+            "currency": "USD",
+            "dated": "",
+            "grade": "verified",
+            "boundary": {
+              "whole": false,
+              "selected": [
+                {
+                  "kind": "currency",
+                  "value": "USD"
+                },
+                {
+                  "kind": "period",
+                  "value": "2026-01-01",
+                  "to": "2026-01-31"
+                }
+              ],
+              "cut": [
+                {
+                  "kind": "category",
+                  "value": "other"
+                },
+                {
+                  "kind": "currency",
+                  "value": "USD"
+                },
+                {
+                  "kind": "period",
+                  "value": "2026-01-01",
+                  "to": "2026-01-31"
+                }
+              ]
+            },
+            "subject": {
+              "kind": "category",
+              "value": "other"
+            },
+            "id": "f2",
+            "written": "USD 25.00",
+            "what": "spending \u2014 category 'other'",
+            "record_ids": [
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+            ],
+            "evidence_id": "conversation:yEHqDIK_Efwix4DdxAAViSfI:f2",
+            "evidence_links": [
+              {
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "label": "cap-checking-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              }
+            ],
+            "receipt_ids": [
+              "conversation:yEHqDIK_Efwix4DdxAAViSfI:numerical:0"
+            ]
+          },
+          {
+            "value": "175",
+            "quantity": "spending",
+            "kind": "financial",
+            "currency": "USD",
+            "dated": "",
+            "grade": "verified",
+            "boundary": {
+              "whole": false,
+              "selected": [
+                {
+                  "kind": "currency",
+                  "value": "USD"
+                },
+                {
+                  "kind": "period",
+                  "value": "2026-01-01",
+                  "to": "2026-01-31"
+                }
+              ],
+              "cut": [
+                {
+                  "kind": "currency",
+                  "value": "USD"
+                },
+                {
+                  "kind": "period",
+                  "value": "2026-01-01",
+                  "to": "2026-01-31"
+                }
+              ]
+            },
+            "subject": {
+              "grouping": "category"
+            },
+            "id": "f3",
+            "written": "USD 175.00",
+            "what": "total spending by category",
+            "record_ids": [
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+            ],
+            "evidence_id": "conversation:yEHqDIK_Efwix4DdxAAViSfI:f3",
+            "evidence_links": [
+              {
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "label": "cap-checking-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              }
+            ],
+            "receipt_ids": [
+              "conversation:yEHqDIK_Efwix4DdxAAViSfI:numerical:0"
+            ]
+          },
+          {
+            "value": "2",
+            "quantity": "count",
+            "kind": "financial",
+            "currency": "",
+            "dated": "",
+            "grade": "verified",
+            "boundary": {
+              "whole": false,
+              "selected": [
+                {
+                  "kind": "currency",
+                  "value": "USD"
+                },
+                {
+                  "kind": "period",
+                  "value": "2026-01-01",
+                  "to": "2026-01-31"
+                }
+              ],
+              "cut": [
+                {
+                  "kind": "currency",
+                  "value": "USD"
+                },
+                {
+                  "kind": "period",
+                  "value": "2026-01-01",
+                  "to": "2026-01-31"
+                }
+              ]
+            },
+            "id": "f4",
+            "written": "2",
+            "what": "spending movements counted",
+            "record_ids": [
+              "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+            ],
+            "evidence_id": "conversation:yEHqDIK_Efwix4DdxAAViSfI:f4",
+            "evidence_links": [
+              {
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "label": "cap-checking-2026-01.txt",
+                "relation": "attests",
+                "page": ""
+              }
+            ],
+            "receipt_ids": [
+              "conversation:yEHqDIK_Efwix4DdxAAViSfI:numerical:0"
+            ]
+          }
+        ],
+        "numerical_receipts": [
+          {
+            "schema_version": 1,
+            "id": "conversation:yEHqDIK_Efwix4DdxAAViSfI:numerical:0",
+            "figure_ids": [
+              "f1",
+              "f2",
+              "f3",
+              "f4"
+            ],
+            "source_records": [
+              {
+                "record_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447",
+                "kind": "document",
+                "document_id": "31f37771c240ce5ab732e56b28cf9a40812bd7b6596aba612f954724a03d3447"
+              }
+            ],
+            "premises": [],
+            "observed_inputs": [],
+            "local_inputs": [],
+            "context": [],
+            "caveats": [
+              "This counts money that left your life. A movement recognised as settling between two of your own accounts is not counted, whatever category it carries; card purchases are counted.",
+              "No statement has posted for cap-loan, so nothing here is attested for it.",
+              "USD 175.00 of this rests on provisional evidence (a suggested implication, not a ruling)."
+            ]
+          }
+        ],
+        "gaps": [],
+        "options": [],
+        "missing": [],
+        "spoken": {
+          "may_speak": true,
+          "withheld": "",
+          "parts": [
+            "text",
+            "grade",
+            "citations"
+          ],
+          "text": "Recorded spending by category and its total: \nRead this list as verified: every figure in it is attested by the document it came from.\nspending \u2014 category 'groceries' \u2014 USD 150.00\nspending \u2014 category 'other' \u2014 USD 25.00\ntotal spending by category \u2014 USD 175.00\nspending movements counted \u2014 2.\nThat counts only what is held in USD. That counts only 2026-01-01 to 2026-01-31. Bear in mind: This counts money that left your life. A movement recognised as settling between two of your own accounts is not counted, whatever category it carries; card purchases are counted. No statement has posted for cap-loan, so nothing here is attested for it. USD 175.00 of this rests on provisional evidence (a suggested implication, not a ruling).",
+          "grade_sentence": "Read this answer as verified: every figure in it is attested by the document it came from.",
+          "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+          "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+        }
+      }
+    }
+  ]
+}

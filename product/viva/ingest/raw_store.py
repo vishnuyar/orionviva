@@ -12,6 +12,8 @@ bound into the aad.
 from __future__ import annotations
 
 import hashlib
+import base64
+import stat
 import json
 import logging
 import os
@@ -95,6 +97,59 @@ class RawStore:
         """Decrypt and return the raw bytes. Raises CryptoError on tampering."""
         sealed = json.loads(self._blob_path(doc_id).read_text())
         return open_sealed(self._key, sealed, aad=doc_id.encode("utf-8"))
+
+    def get_bounded(self, doc_id: str, *, max_plaintext: int = 8 * 1024 * 1024,
+                    max_envelope: int = 12 * 1024 * 1024) -> bytes:
+        """Authenticate a bounded regular blob without following symlinks.
+
+        Opening relative to an already opened directory avoids a pathname
+        check/read race. Content-address verification is additional to AEAD.
+        """
+        if (not isinstance(doc_id, str) or len(doc_id) != 64 or
+                any(c not in "0123456789abcdef" for c in doc_id)):
+            raise ValueError("invalid document address")
+        directory = os.open(self.dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            fd = os.open(f"{doc_id}.blob", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                         dir_fd=directory)
+        finally:
+            os.close(directory)
+        with os.fdopen(fd, "rb") as blob:
+            before = os.fstat(blob.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError("original is not regular")
+            if before.st_size > max_envelope:
+                raise OverflowError("original exceeds preview bound")
+            encoded = blob.read(max_envelope + 1)
+            after = os.fstat(blob.fileno())
+            if (len(encoded) > max_envelope or before.st_size != after.st_size or
+                    before.st_mtime_ns != after.st_mtime_ns):
+                raise ValueError("original changed during read")
+        def unique_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate original envelope field")
+                result[key] = value
+            return result
+        sealed = json.loads(encoded, object_pairs_hook=unique_object)
+        from ..crypto import VERSION
+        if (not isinstance(sealed, dict) or set(sealed) != {"v", "nonce", "ct"} or
+                sealed["v"] != VERSION or
+                not isinstance(sealed["nonce"], str) or not isinstance(sealed["ct"], str)):
+            raise ValueError("invalid original envelope")
+        if len(sealed["ct"]) > 4 * ((max_plaintext + 18) // 3):
+            raise OverflowError("original exceeds preview bound")
+        nonce = base64.b64decode(sealed["nonce"], validate=True)
+        ciphertext = base64.b64decode(sealed["ct"], validate=True)
+        if len(nonce) != 12 or len(ciphertext) < 16:
+            raise ValueError("invalid original envelope")
+        if len(ciphertext) > max_plaintext + 16:
+            raise OverflowError("original exceeds preview bound")
+        data = open_sealed(self._key, sealed, aad=doc_id.encode("ascii"))
+        if hashlib.sha256(data).hexdigest() != doc_id:
+            raise ValueError("original address mismatch")
+        return data
 
     def doc_ids(self, *, max_count: int | None = None) -> list[str]:
         ids = []

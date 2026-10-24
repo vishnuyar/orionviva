@@ -1,0 +1,9 @@
+.original-source { margin-block: var(--space-lg); min-width: 0; }
+.original-preview { padding: var(--space-lg); border: var(--stroke-width) solid var(--line); border-radius: var(--radius-md); margin-block: var(--space-md); background: var(--paper); min-width: 0; }
+.original-preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md); margin-block: var(--space-md); }
+.original-preview-toolbar h3 { overflow-wrap: anywhere; flex: 1; min-width: 0; }
+.original-preview-text { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; font-size: var(--text-body); line-height: var(--leading-loose); max-width: 100%; padding: var(--space-md); background: var(--panel); }
+.original-preview-image { overflow: auto; max-width: 100%; }
+.original-preview-image img { display: block; width: 100%; height: auto; max-width: none; }
+.original-preview-image-200 img { width: 200%; }
+.original-preview-image-400 img { width: 400%; }

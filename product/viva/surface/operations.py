@@ -67,6 +67,7 @@ DECLARED_OPERATIONS: tuple[BridgeOperation, ...] = (
                                          "JobRegistry.v1", "OutboundRecord.v1",
                                          "ActivityMovements.v3",
                                          "AccountLedger.v1", "ReviewSummary.v1")),
+    BridgeOperation("viva.documents.preview.read", serves=("DocumentPreview.v1",)),
     BridgeOperation(SETTINGS_READ, serves=("Configuration.v1",)),
     BridgeOperation(LIFECYCLE_READ, serves=("UpdateLifecycle.v1",)),
 )

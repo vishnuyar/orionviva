@@ -178,7 +178,7 @@ def read_financial_projections(proj,args,locale='',today=''):
             records.update(row.record_ids)
             for amount,label in [(-row.amount_max,'lower expected outgoing cash movement'),(-row.amount_min,'upper expected outgoing cash movement')]:
                 figures.append(figure(amount,label+' — '+row.subject+' — expected '+row.expected_date,quantity=quantity.MOVEMENT,kind=HYPOTHETICAL,
-                    currency=row.currency,dated=row.expected_date,record_ids=row.record_ids,
+                    currency=row.currency,dated=row.expected_date,record_ids=row.record_ids,subject={'merchant':row.subject},
                     boundary=bounded(whole=False,selected=[{'kind':'merchant','value':row.subject}])))
             caveats.append(row.subject+': historical basis '+_BASIS_COPY.get(row.basis,_UNKNOWN_LIMIT)+', input grade '+(row.grade or 'ungraded')+', observed '+row.dated_from+' to '+row.dated_to+'; '+_limits(row.caveats))
         caveats.append('Only each held next expectation within the horizon is shown. This is not a full payment calendar; further occurrences are not generated. Dates and amounts are hypothetical expectations, not contractual due dates.')
@@ -197,7 +197,7 @@ def read_financial_projections(proj,args,locale='',today=''):
             for amount,label,kind in values:
                 if amount is not None:
                     figures.append(figure(amount,label+' — '+row.title,quantity=quantity.BALANCE,kind=kind,
-                        currency=row.currency,record_ids=row.event_ids,boundary=bounded(whole=False)))
+                        currency=row.currency,record_ids=row.event_ids,boundary=bounded(whole=False),subject={'goal_id':row.goal_id}))
             status=_STATUS_COPY.get(row.status,_UNKNOWN_LIMIT)
             caveats.append(row.title+': recorded local plan and reserves, not a bank transfer; '+status+('' if status.endswith('.') else '.'))
             if row.projected_completion_date: caveats.append(row.title+': hypothetical completion '+row.projected_completion_date+'.')

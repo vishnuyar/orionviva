@@ -66,6 +66,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     },
     readSpending: (parameters) => read("spending", parameters),
     readDocuments: () => read("documents"),
+    readDocumentPreview: (documentId, page) => request("viva.documents.preview.read", { document_id: documentId, page }),
     readConversation: (parameters) => read("conversation", parameters),
     readReview: (parameters) => read("review", parameters),
     readJobs: () => read("jobs"),

@@ -575,6 +575,11 @@ class ReadRevision:
                  if key not in ("facts", "resolution", "occurred_at")}
                 for row in rows]
 
+    def preview_capture_identity(self, doc_id: str):
+        """A bounded indexed identity from this immutable generation."""
+        from .documents import preview_capture_identity
+        return preview_capture_identity(self, doc_id)
+
     def document_history(self, *, as_of: str, limit: int = 200,
                          before: tuple[str, int] | None = None) -> list[dict[str, Any]]:
         """Return one bounded, stable page of captured-document history.

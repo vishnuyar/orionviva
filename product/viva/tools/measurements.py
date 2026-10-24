@@ -69,7 +69,7 @@ def read_account_measurements(proj,args,locale='',today=''):
     boundary=bounded(whole=True,selected=selected,cut=selected)
     figures=[figure(row.amount,('recorded account value' if history else 'recorded amount owed' if owed else 'recorded cash')+' — '+(info.name or account)+' — measured '+row.dated,
                     quantity=quantity.OWED if row.kind == 'liability' else quantity.BALANCE,grade=row.grade,currency=row.currency,dated=row.dated,
-                    record_ids=row.component_sources,boundary=boundary) for row in rows]
+                    record_ids=row.component_sources,boundary=boundary,subject={'account_id':account}) for row in rows]
     for emitted in figures:
         emitted['measurement_view']=args['view']
     result=ToolResult(tool=tool,ok=True,data={'view':args['view'],'account':account,
@@ -112,7 +112,7 @@ def read_statement_coverage(proj,args,locale='',today=''):
     if uncovered: caveats.append('Uncovered intervals: '+'; '.join(r['from']+' to '+r['to'] for r in uncovered)+'.')
     result=ToolResult(tool=tool,ok=True,data={'account':account,'uncovered':uncovered,'statements':[{'doc_id':r.doc_id,'from':r.opening_date,'to':r.closing_date} for r in records]},
         record_ids=sources,identifiers=_identifiers(proj,[account]),covers=[{'account':account,'from':a,'to':b} for a,b in merged],
-        figures=[figure(len(records),'held statements declaring coverage',quantity=quantity.COUNT,kind=ACTIVITY,record_ids=sources,
+        figures=[figure(len(records),'held statements declaring coverage',quantity=quantity.COUNT,kind=ACTIVITY,record_ids=sources,subject={'account_id':account},
                         boundary=bounded(whole=not uncovered,selected=[{'kind':'account','value':account}],cut=[{'kind':'account','value':account}]))],
         caveats=caveats,text='Coverage declared by held statements, clipped to the requested period.')
     if len(json.dumps(result.to_dict()).encode())>5000:

@@ -15,7 +15,7 @@ export type ConversationControls = {
   onDecline: (questionId: string, reason: DeclineReason) => void;
 };
 
-export type ConversationContextControls = { mode: AskContextMode; onNewConversation: () => void };
+export type ConversationContextControls = { mode: AskContextMode; onNewConversation: () => void; canContinue?: boolean; onContinueConversation?: () => void };
 
 export type AccountingContext = { movementIds: readonly string[]; label: string };
 
@@ -59,7 +59,7 @@ function AskBox({ ask, accountingContext, onClearAccountingContext, context, sta
       <label htmlFor="conversation-ask-question">{accountingContext ? "Your explanation" : "Your question"}</label>
       <textarea ref={explanationRef} id="conversation-ask-question" value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} />
       {!accountingContext ? <div className="conversation-context-controls">
-        <div className="conversation-context-status"><strong>{contextMode === "follow_up" ? "Continuing this conversation" : "Starting a new conversation"}</strong><button className="text-button" type="button" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : "conversation-context-help"} onClick={() => { if (working) return; setSubmitted(null); setContextMode("new_question"); context?.onNewConversation(); explanationRef.current?.focus(); }}>New conversation</button></div>
+        <div className="conversation-context-status"><strong>{contextMode === "follow_up" ? "Continuing this conversation" : "Starting a new conversation"}</strong><button className="text-button" type="button" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : "conversation-context-help"} onClick={() => { if (working) return; setSubmitted(null); setContextMode("new_question"); context?.onNewConversation(); explanationRef.current?.focus(); }}>New conversation</button>{contextMode === "new_question" && context?.canContinue && context.onContinueConversation ? <button className="text-button" type="button" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : "conversation-context-help"} onClick={() => { if (working) return; setSubmitted(null); context.onContinueConversation?.(); explanationRef.current?.focus(); }}>Continue previous conversation</button> : null}</div>
         <p className="conversation-context-help" id="conversation-context-help">{contextMode === "follow_up" ? "Your next question uses questions and answers since you last started a new conversation." : "Earlier messages stay saved. Your next question will not use them."}</p>
       </div> : null}
       <button className="primary-button" type="submit" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : undefined}>{accountingContext ? "Apply explanation" : "Ask"}</button>
@@ -151,8 +151,8 @@ function AnswerDetail({ answer, onOpenFigure, onReviewPlan, onUndoCorrection }: 
     {answer.accountingCorrection && onUndoCorrection ? <CorrectionUndo id={answer.accountingCorrection.id} onUndo={onUndoCorrection} /> : null}
     {answer.gradeSentence ? <p className="conversation-answer-grade">{answer.gradeSentence}</p> : null}
     {answer.figures.length ? <dl className="conversation-answer-figures">{answer.figures.map((figure) => <div key={figure.id}>
-      <dt>{figure.evidenceId && figure.evidenceLinks.length ? <Figure figure={conversationEvidenceFigure(figure)} onOpenEvidence={onOpenFigure} className="conversation-figure-trigger" /> : figure.written || figure.what}</dt>
-      <dd>{figure.what}{figure.recordIds.length ? ` · ${figure.recordIds.length === 1 ? "1 cited record" : `${figure.recordIds.length} cited records`}` : ""}</dd>
+      <dt>{figure.evidenceId && (figure.evidenceLinks.length || figure.receiptState === "ready" || figure.receiptState === "unavailable") ? <Figure figure={conversationEvidenceFigure(figure)} onOpenEvidence={onOpenFigure} className="conversation-figure-trigger" /> : figure.written || figure.what}</dt>
+      <dd><span data-field="what">{figure.what}</span>{figure.recordIds.length ? ` · ${figure.recordIds.length === 1 ? "1 cited record" : `${figure.recordIds.length} cited records`}` : ""}{figure.receiptState === "unavailable" || figure.receiptState === "legacy" ? <span className="conversation-receipt-unavailable">Numerical receipt unavailable for this saved answer.</span> : null}</dd>
     </div>)}</dl> : null}
     {answer.options.length ? <ul className="conversation-answer-options">{answer.options.map((option) => <li key={option.id}>{option.label}</li>)}</ul> : null}
     {capability ? <CapabilityBoundary item={capability} /> : null}
@@ -184,8 +184,11 @@ function Timeline({ data, controls, onOpenFigure, onReviewPlan, onUndoCorrection
 export function ConversationDrawer({ result, selectedQueue, onSelectQueue, onOpenFigure, onReviewPlan, ask, controls, mode = "combined", accountingContext = null, onUndoCorrection, onClearAccountingContext, context, starterQuestions = [] }: { result: FeatureResult<ConversationData>; selectedQueue: string; onSelectQueue: (id: string) => void; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; ask: AskControls | null; controls: ConversationControls; mode?: "ask" | "review" | "combined"; accountingContext?: AccountingContext | null; onClearAccountingContext?: () => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult>; context?: ConversationContextControls; starterQuestions?: readonly string[] }) {
   const actionSaid = controls.state.state === "settled" ? outcomePresentation(controls.state.verb, controls.state.result) : null;
   const conversationReadable = result.state === "ready" || result.state === "partial" || result.state === "needs_input";
+  const historyTurns = result.state === "ready" ? result.data.turns : [];
+  const usableHistory = historyTurns.every((turn) => turn.id.trim() && historyTurns.filter((candidate) => candidate.id === turn.id).length === 1) && historyTurns.some((turn) => turn.kind === "ask" && turn.prompt.trim() && ["completed", "refused"].includes(turn.outcome) && (turn.answer?.text.trim() || turn.answer?.refusal.trim() || turn.message.trim()));
+  const guardedContext = context ? { ...context, canContinue: context.canContinue === true && usableHistory } : undefined;
   return <>
-    {ask && mode !== "review" ? <AskBox ask={ask} context={context} starterQuestions={starterQuestions} accountingContext={accountingContext} onClearAccountingContext={onClearAccountingContext} /> : null}
+    {ask && mode !== "review" ? <AskBox ask={ask} context={guardedContext} starterQuestions={starterQuestions} accountingContext={accountingContext} onClearAccountingContext={onClearAccountingContext} /> : null}
     <PanelStateView result={result} copy={{ partial: "Some conversation details are unavailable.", needsInput: "This conversation needs input.", unavailable: { title: "Conversation unavailable", detail: "Conversation history is unavailable for this vault." }, failed: { title: "Conversation could not be loaded", detail: "Your saved messages could not be loaded. Try opening Ask Viva again." } }}>
       {(data) => {
         const proposalIsRestored = data.turns.some((turn) => turn.proposal?.status === "open");

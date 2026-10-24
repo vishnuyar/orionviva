@@ -565,3 +565,65 @@ def test_search_and_available_family_copy_use_reviewed_plain_labels():
     assert families.get("period_surplus").user_label == "Income minus spending"
     assert families.get("recurring_spending").user_label == "Costs that repeat in the records"
     assert families.get("movement_search").user_example.startswith("Show transactions from")
+
+
+@pytest.mark.parametrize('population', ['positive', 'signed_negative', 'zero_baseline'])
+def test_comparison_reexpression_drops_only_helper_subject_without_mutating_authority(monkeypatch, population):
+    from viva.answer_program import capabilities
+    from viva.answer_program.eval import load_supplement_cases, resolve_case_fixture
+    if population == 'positive':
+        case = next(c for c in load_supplement_cases() if c.id == 'fc-v1:compare-january-december')
+        factory, _ = resolve_case_fixture(case)
+        registry = factory()
+        args = dict(view='spending_comparison', include_percentage=True,
+                    **{k: v for k, v in case.expected_parameters.items() if k in {'from', 'to', 'baseline_from', 'baseline_to'}})
+        args['filters'] = {'currency': 'USD'}
+    else:
+        registry = _registry(quiet_period=True)
+        args = _comparison(include_percentage=True)
+        if population == 'signed_negative':
+            args.update({'from': '2026-02-01', 'to': '2026-02-28',
+                         'baseline_from': '2026-01-01', 'baseline_to': '2026-01-31'})
+    raw_results = []
+    original = capabilities.ledger_tools.query_ledger
+    def capture(*args, **kwargs):
+        result = original(*args, **kwargs)
+        raw_results.append((result, copy.deepcopy(result)))
+        return result
+    monkeypatch.setattr(capabilities.ledger_tools, 'query_ledger', capture)
+    result = registry.call('read_financial_analysis', args)
+    assert result.ok
+    # Current browser identity rule: these period totals are not category groupings.
+    assert all(fig.get('subject') is None for fig in result.figures[:2])
+    for index, (raw, before) in enumerate(raw_results):
+        assert raw == before
+        total = capabilities._total(raw)
+        assert total['subject'] == {'grouping': 'category'}
+        expected = copy.deepcopy(total)
+        expected.pop('subject')
+        expected['what'] = ('recorded spending in the requested period',
+                            'recorded spending in the baseline period')[index]
+        assert result.figures[index] == expected
+        # Metadata never enters the model-facing financial figure envelope.
+        legacy = copy.deepcopy(result)
+        legacy.figures[index]['subject'] = {'grouping': 'category'}
+        assert legacy.to_dict()['figures'] == result.to_dict()['figures']
+    change = result.figures[2]['value']
+    from decimal import Decimal
+    assert (Decimal(change) < 0) is (population == 'signed_negative')
+
+
+@pytest.mark.parametrize('subject', [{'grouping': 'merchant'}, {'grouping': 'category', 'extra': 'preserve'}, {'account_id': 'chk'}])
+def test_comparison_preserves_unexpected_helper_subjects(monkeypatch, subject):
+    from viva.answer_program import capabilities
+    original = capabilities.ledger_tools.query_ledger
+    def changed(*args, **kwargs):
+        result = original(*args, **kwargs)
+        for fig in result.figures:
+            if fig['what'] == 'total spending by category':
+                fig['subject'] = copy.deepcopy(subject)
+        return result
+    monkeypatch.setattr(capabilities.ledger_tools, 'query_ledger', changed)
+    result = _registry(quiet_period=True).call('read_financial_analysis', _comparison())
+    assert result.ok
+    assert [fig['subject'] for fig in result.figures[:2]] == [subject, subject]

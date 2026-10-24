@@ -43,6 +43,8 @@ export function useSessionReads(context: Coordination) {
   } = context;
   const activityPageRequest = useRef<object | null>(null);
   const publicationRecovery = useRef<{ source: NonNullable<typeof source>; request: number; priority: number; destination: number } | null>(null);
+  // An overlay may request a lazy read while the underlying page remains selected.
+  const requestedPublicationRead = useRef<{ destination: LazyDestination; source: NonNullable<typeof source>; request: number; generation: number; revision: number; pending: boolean; active: () => boolean } | null>(null);
   const accountLedgerReader = session.source?.accountLedgerReader ?? null;
   const spendingBreakdownReader = session.source?.spendingBreakdownReader ?? null;
 
@@ -158,19 +160,20 @@ export function useSessionReads(context: Coordination) {
     return () => { gone = true; };
   }, [session.destination, source]);
 
-  async function retryDestinationRead(destination: LazyDestination) {
+  async function retryDestinationRead(destination: LazyDestination, requested?: () => boolean) {
     const activeSource = source;
     const activeRequest = requestId.current;
     const held = retryingDestination.current;
-    if (!activeSource?.loadDestination || session.destination !== destination || session.destinationReads[destination] !== "failed"
+    if (!activeSource?.loadDestination || (session.destination !== destination && !requested?.()) || session.destinationReads[destination] !== "failed"
         || (held?.destination === destination && held.source === activeSource && held.request === activeRequest && held.generation === destinationGeneration.current)) return "ignored" as const;
     const activeGeneration = ++destinationGeneration.current;
+    const activeRevision = surfaceRevision.current;
     const retryToken = { destination, source: activeSource, request: activeRequest, generation: activeGeneration };
     retryingDestination.current = retryToken;
     dispatch({ type: "destination-retrying", requestId: activeRequest, destination });
     try {
       const snapshot = await activeSource.loadDestination(destination, 50, activityFocus?.current || undefined);
-      if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration) return "ignored" as const;
+      if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration || surfaceRevision.current !== activeRevision || (requested && !requested())) return "ignored" as const;
       if (destinationReadFailed(destination, snapshot)) {
         dispatch({ type: "destination-failed", requestId: activeRequest, destination, snapshot });
         return "failed" as const;
@@ -178,7 +181,7 @@ export function useSessionReads(context: Coordination) {
       dispatch({ type: "destination-loaded", requestId: activeRequest, destination, snapshot });
       return "succeeded" as const;
     } catch {
-      if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration) return "ignored" as const;
+      if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || destinationGeneration.current !== activeGeneration || surfaceRevision.current !== activeRevision || (requested && !requested())) return "ignored" as const;
       dispatch({ type: "destination-failed", requestId: activeRequest, destination });
       return "failed" as const;
     } finally {
@@ -223,11 +226,16 @@ export function useSessionReads(context: Coordination) {
       return;
     }
     if (session.priorityFreshness !== "current") return;
-    const destination = session.destination as LazyDestination;
+    const requested = requestedPublicationRead.current;
+    const requestedActive = requested && requested.source === recovery.source && requested.request === recovery.request
+      && requested.generation === destinationGeneration.current && requested.revision === surfaceRevision.current && requested.active();
+    if (requestedActive && requested.pending) return;
+    const destination = requestedActive ? requested.destination : session.destination as LazyDestination;
     const state = session.destinationReads[destination];
     if (state === "loading") return;
     publicationRecovery.current = null;
-    if (state === "failed") void retryDestinationRead(destination);
+    requestedPublicationRead.current = null;
+    if (state === "failed") void retryDestinationRead(destination, requestedActive ? requested.active : undefined);
   }, [session.priorityFreshness, session.destination, session.destinationReads, source]);
 
   const readSpendingBreakdown = useCallback(async (request: SpendingRequest): Promise<FeatureResult<SpendingBreakdownData>> => {
@@ -329,20 +337,31 @@ export function useSessionReads(context: Coordination) {
         if (activityPageRequest.current === token) activityPageRequest.current = null;
       }
     },
-    async ensureDestination(destination: "documents" | "review" | "trust" | "activity" | "plans") {
+    async ensureDestination(destination: "documents" | "review" | "trust" | "activity" | "plans", active?: () => boolean) {
       const activeSource = source;
       const activeRequest = requestId.current;
       if (!activeSource?.loadDestination) return false;
+      const generation = destinationGeneration.current;
+      const revision = surfaceRevision.current;
+      const requested = active ? { destination, source: activeSource, request: activeRequest, generation, revision, pending: true, active } : null;
+      if (requested) requestedPublicationRead.current = requested;
       try {
         const snapshot = await activeSource.loadDestination(destination, 50, activityFocus?.current || undefined);
-        if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource) return false;
+        if (requested) requested.pending = false;
+        if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource
+            || destinationGeneration.current !== generation || surfaceRevision.current !== revision || (active && !active())) return false;
         if (destinationReadFailed(destination, snapshot)) {
           dispatch({ type: "destination-failed", requestId: activeRequest, destination, snapshot });
           return false;
         }
         dispatch({ type: "destination-loaded", requestId: activeRequest, destination, snapshot });
         return snapshot;
-      } catch { return false; }
+      } catch {
+        if (requested) requested.pending = false;
+        if (active && active() && requestId.current === activeRequest && sourceIdentity.current === activeSource
+            && destinationGeneration.current === generation && surfaceRevision.current === revision) dispatch({ type: "destination-failed", requestId: activeRequest, destination });
+        return false;
+      }
     },
     readOpenedSource, refreshAfterAction,
   };

@@ -137,7 +137,7 @@ def weakest(grades) -> str:
 
 def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
            grade: str = "", dated: str = "", currency: str = "", record_ids=(),
-           exactness: str = EXACT, boundary=None) -> dict:
+           exactness: str = EXACT, boundary=None, subject=None) -> dict:
     """One number this result asserts, ready for the runner to stamp with an id.
 
     ``what`` is a short noun phrase naming the number, so an answer or a
@@ -150,6 +150,10 @@ def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
     that gets put into a sentence claiming it means something else. Leaving it
     out is an error where the emitter is written rather than a surprise where
     the figure is spoken.
+
+    ``subject`` names the account, group, merchant or local goal this emitter
+    already selected. It is copied defensively and stays out of the model-facing
+    figure: identity metadata is never reconstructed from formatted prose.
 
     A grade outside the ladder is an error here rather than a label nobody
     checks: `weakest` ignores what it does not recognise, so an unknown grade
@@ -176,12 +180,25 @@ def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
     if quantity not in MEASURES:
         raise ValueError(f"quantity {quantity!r} is not something this measures: "
                          + ", ".join(MEASURES))
+    copied_subject = None
+    if subject is not None:
+        allowed = ({"kind", "value"}, {"grouping"}, {"account_id"}, {"merchant"}, {"goal_id"})
+        if (not isinstance(subject, dict) or set(subject) not in allowed
+                or any(not isinstance(item, str) or not item.strip()
+                       or len(item.encode("utf-8")) > 4096 for item in subject.values())):
+            raise ValueError("a figure subject must have a closed, named shape")
+        if set(subject) == {"kind", "value"} and subject["kind"] not in SELECTED_KINDS:
+            raise ValueError("a figure subject kind must use the owned vocabulary")
+        if set(subject) == {"grouping"} and subject["grouping"] not in ("category", "merchant", "account"):
+            raise ValueError("a figure subject grouping must use the owned vocabulary")
+        copied_subject = dict(subject)
     return {"id": "", "value": str(value), "currency": currency,
             "quantity": quantity, "kind": kind,
             "grade": grade if kind in GRADED_KINDS else "",
             "dated": dated, "record_ids": [str(r) for r in record_ids],
             "exactness": exactness, "boundary": dict(boundary or {}),
-            "what": what}
+            "what": what,
+            **({"subject": copied_subject} if copied_subject is not None else {})}
 
 
 # The kinds of thing a read can put on the record besides a number. Each is a

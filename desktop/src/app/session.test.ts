@@ -2233,6 +2233,103 @@ describe("publication recovery safeguards", () => {
     expect(calls).not.toContain("documents");
     unmount();
   });
+  it.each(["before", "after"])("recovers explicitly requested overlay Review after failure %s publication", async (order) => {
+    vi.useFakeTimers();
+    const initial = deferred<unknown>();
+    const calls = install(["stale", "equal"], async (surface, count) => {
+      if (surface === "conversation" && count === 1) return initial.promise;
+    });
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    let read!: ReturnType<typeof result.current.ensureDestination>;
+    act(() => { read = result.current.ensureDestination("review", () => true); });
+    if (order === "after") await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    await act(async () => { initial.resolve({ state: "failed", reason: "read_store_unavailable" }); await read; });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(result.current.session.destination).toBe("overview");
+    expect(result.current.session.destinationReads.review).toBe("ready");
+    expect(calls.filter((surface) => surface === "conversation")).toHaveLength(2);
+    unmount();
+  });
+
+  it.each(["dismiss", "navigate", "close", "replace"])("discards explicitly requested overlay recovery after %s", async (action) => {
+    vi.useFakeTimers();
+    const recovery = deferred<unknown>();
+    const calls = install(["stale", "equal"], async (surface, count) => {
+      if (surface === "conversation" && count === 1) return { state: "failed", reason: "read_store_unavailable" };
+      if (surface === "conversation" && count === 2) return recovery.promise;
+    });
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    let active = true;
+    await act(async () => { await result.current.ensureDestination("review", () => active); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(calls.filter((surface) => surface === "conversation")).toHaveLength(2);
+    if (action === "dismiss") active = false;
+    else if (action === "navigate") await act(async () => { result.current.navigate("accounts"); });
+    else {
+      await act(async () => { result.current.resetDemo(); });
+      if (action === "replace") await act(async () => { await result.current.openVault("/replacement", "synthetic", false); });
+    }
+    const snapshot = result.current.session.snapshot;
+    await act(async () => { recovery.resolve(completeSurfacePayload("conversation")); });
+    expect(result.current.session.snapshot).toBe(snapshot);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(calls.filter((surface) => surface === "conversation")).toHaveLength(2);
+    unmount();
+  });
+
+  it.each(["initial", "retry"])("keeps a newer authoritative Ask answer when an older overlay %s read finishes", async (phase) => {
+    vi.useFakeTimers();
+    const oldRead = deferred<unknown>();
+    let asked = false;
+    const savedHistory = (prompt: string) => ({ turns: [{ id: prompt, kind: "ask", context_mode: "new_question", prompt,
+      outcome: "completed", message: `${prompt} answer` }], questions: [], total: 0 });
+    const calls = install(["stale", "equal"], async (surface, count) => {
+      if (surface !== "conversation") return undefined;
+      if (asked) return savedHistory("Newest question");
+      if (phase === "retry" && count === 1) return { state: "failed", reason: "read_store_unavailable" };
+      return oldRead.promise;
+    });
+    const read = window.orionVivaBridge!.request;
+    window.orionVivaBridge!.request = async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "viva.conversation.ask") {
+        asked = true;
+        return ok(frame.requestId, { kind: "completed", message: "Newest question answer", state: null, reason: null } as T);
+      }
+      return read<T>(frame);
+    };
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    let initial!: ReturnType<typeof result.current.ensureDestination>;
+    act(() => { initial = result.current.ensureDestination("review", () => true); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(calls.filter((surface) => surface === "conversation")).toHaveLength(phase === "retry" ? 2 : 1);
+    await act(async () => { await result.current.askViva("Newest question", true); });
+    expect(result.current.session.askAction).toMatchObject({ state: "settled", authoritative: true });
+    const latest = result.current.session.snapshot;
+    expect(latest.conversation).toMatchObject({ state: "ready", data: { turns: [{ prompt: "Newest question" }] } });
+    await act(async () => { oldRead.resolve(savedHistory("Older question")); await initial; });
+    expect(result.current.session.snapshot).toBe(latest);
+    expect(result.current.session.snapshot.conversation).toMatchObject({ state: "ready", data: { turns: [{ prompt: "Newest question" }] } });
+    unmount();
+  });
+
+  it("retries an explicitly requested overlay at most once after current publication", async () => {
+    vi.useFakeTimers();
+    const calls = install(["stale", "equal"], async (surface) => surface === "conversation"
+      ? { state: "failed", reason: "read_store_unavailable" } : undefined);
+    const { result, unmount } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/synthetic", "synthetic", false); });
+    await act(async () => { await result.current.ensureDestination("review", () => true); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(result.current.session.destinationReads.review).toBe("failed");
+    expect(calls.filter((surface) => surface === "conversation")).toHaveLength(2);
+    expect(calls).not.toContain("documents");
+    expect(calls).not.toContain("trust");
+    unmount();
+  });
+
   it.each(["close", "replace", "retry"])("ignores an obsolete observation after %s", async (action) => {
     vi.useFakeTimers();
     const observation = deferred<unknown>();
@@ -2294,4 +2391,29 @@ describe("publication recovery safeguards", () => {
     unmount();
   });
 
+});
+
+describe("local preview vault boundary", () => {
+  afterEach(() => { delete window.orionVivaBridge; });
+  it("revokes previews at the beginning of an attempted switch before its open settles", async () => {
+    const switched = deferred<BridgeResponse<unknown>>(); let opens = 0;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") {
+        if (++opens === 2) return switched.promise as Promise<BridgeResponse<T>>;
+        return ok(frame.requestId, { state: "opened" } as T);
+      }
+      const surface = frame.payload.surface as SurfaceName;
+      return ok(frame.requestId, { surface, job_id: "job", data: completeSurfacePayload(surface) } as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault-one", "synthetic", false); });
+    await waitFor(() => expect(result.current.session.source).not.toBeNull());
+    const source = result.current.session.source!; const clear = vi.fn();
+    source.subscribePreviewEnd!(clear);
+    let switching!: Promise<boolean>;
+    act(() => { switching = result.current.openVault("/vault-two", "synthetic", false); });
+    expect(clear).toHaveBeenCalledTimes(1);
+    await expect(source.documentPreviewReader!("a".repeat(64), 1)).resolves.toEqual({ status: "unavailable", reason: "renderer_unavailable" });
+    await act(async () => { switched.resolve(ok("switched", { state: "opened" })); await switching; });
+  });
 });

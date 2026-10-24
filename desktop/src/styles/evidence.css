@@ -40,3 +40,9 @@
 .evidence-target-state { display: grid; gap: 4px; padding: 10px; border-radius: 9px; background: #f4efe7; }
 .evidence-target-state strong { color: #765e4c; font-size: var(--text-fine); }
 .evidence-drawer, .evidence-drawer *, .figure-trigger, .record-identity-list li, .evidence-source-row, .evidence-source-action { overflow-wrap: anywhere; word-break: break-word; }
+
+.numerical-receipt { border-block-start: var(--stroke-width) solid var(--line); padding-block-start: var(--space-lg); }
+.numerical-receipt [data-receipt-section] { margin-block: var(--space-md); }
+.evidence-drawer [data-receipt-section] .evidence-detail-grid dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.conversation-receipt-unavailable { display: block; color: var(--muted); font-size: var(--text-fine); }
+@media (max-width: 600px) { .evidence-drawer .evidence-detail-grid { grid-template-columns: minmax(0, 1fr); } }

@@ -411,6 +411,7 @@ def list_movements(proj, args: dict, today: str = "") -> ToolResult:
     # declares whole and names no slice. Declaring whole is not the same as an
     # absent boundary, which means no read has said.
     figures = [figure(r["effect"], f"{r['description']} on {r['date']}",
+                      subject={"account_id": r["account"]},
                       quantity=quantity.MOVEMENT,
                       grade=r["grade"], dated=r["date"], currency=r["currency"],
                       record_ids=[r["record_id"]]
@@ -429,6 +430,7 @@ def list_movements(proj, args: dict, today: str = "") -> ToolResult:
         # which are what make the zero attested rather than unobserved.
         counted_on = sorted(i.account for i in _scope(proj, filters))
     figures.append(figure(total, "movements matching the filters",
+                          subject=({"account_id": filters["account"]} if filters.get("account") in proj.accounts() else None),
                           quantity=quantity.COUNT,
                           grade=weakest(r["grade"] for r in rows),
                           record_ids=counted_on,

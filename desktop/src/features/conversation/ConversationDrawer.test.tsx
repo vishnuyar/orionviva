@@ -248,3 +248,38 @@ it("keeps correction context out of planning and allows a deliberate return to o
   fireEvent.click(view.getByRole("button", { name: "Ask" }));
   expect(onAsk).toHaveBeenCalledWith("What is my net worth?", true, false, "new_question");
 });
+
+it("opens a supported numerical receipt without fabricating a document evidence link", () => {
+  const answer: TurnView = { question: "Suppose 10 dollars", text: "A hypothetical result", answered: true, status: "answered", outcomeTag: "", refusal: "", grade: "", gradeSentence: "", options: [], missing: [], spoken: { maySpeak: false, withheld: "", parts: [], text: "", gradeSentence: "", citationSentence: "", localOnly: "" }, figures: [{ id: "f1", evidenceId: "conversation:turn-1:f1", written: "USD 10.00", what: "Future balance", grade: "", recordIds: [], evidenceLinks: [], receiptState: "ready", numericalReceipts: [], numerical: { value: "10.00", quantity: "balance", kind: "hypothetical", currency: "USD", dated: "2027-01-01", grade: "", boundary: {}, subject: null } }] };
+  const onOpenFigure = vi.fn(); const view = render(<ConversationDrawer result={ready({ turns: [turn({ answer })], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={onOpenFigure} ask={null} controls={controls} />);
+  const button = view.getByRole("button", { name: "USD 10.00 Future balance" });
+  fireEvent.click(button); expect(onOpenFigure).toHaveBeenCalledWith("conversation:turn-1:f1");
+  expect(view.container).not.toHaveTextContent("Verified");
+});
+
+it("continues saved Ask history only on explicit choice, preserving the typed draft and focus until Ask", () => {
+  const onAsk = vi.fn(); const onContinueConversation = vi.fn(); const onNewConversation = vi.fn();
+  const props = { result: ready({ turns: [turn({ prompt: "Earlier question", message: "Earlier readable answer" })], questions }), selectedQueue: "", onSelectQueue: vi.fn(), onOpenFigure: openFigure, ask: { state: { state: "idle" } as const, onAsk }, controls };
+  const view = render(<ConversationDrawer {...props} context={{ mode: "new_question", canContinue: true, onContinueConversation, onNewConversation }} />);
+  const input = view.getByRole("textbox", { name: "Your question" }); fireEvent.change(input, { target: { value: "My draft question" } });
+  expect(view.getByText("Starting a new conversation")).toBeVisible();
+  fireEvent.click(view.getByRole("button", { name: "Continue previous conversation" }));
+  expect(onContinueConversation).toHaveBeenCalledOnce(); expect(onAsk).not.toHaveBeenCalled(); expect(input).toHaveValue("My draft question"); expect(input).toHaveFocus();
+  view.rerender(<ConversationDrawer {...props} context={{ mode: "follow_up", canContinue: true, onContinueConversation, onNewConversation }} />);
+  fireEvent.click(view.getByRole("button", { name: "Ask" })); expect(onAsk).toHaveBeenCalledWith("My draft question", true, false, "follow_up");
+});
+
+it("blocks continuing while busy and hides it for missing, failed, conflicted, accounting or older context capabilities", () => {
+  const onContinueConversation = vi.fn(); const onNewConversation = vi.fn();
+  const saved = turn({ prompt: "Earlier question", message: "Earlier answer" });
+  const context = { mode: "new_question" as const, canContinue: true, onContinueConversation, onNewConversation };
+  const props = { result: ready({ turns: [saved], questions }), selectedQueue: "", onSelectQueue: vi.fn(), onOpenFigure: openFigure, ask: { state: { state: "working", question: "Pending question" } as const, onAsk: vi.fn() }, controls, context };
+  const view = render(<ConversationDrawer {...props} />);
+  const busyContinue = view.getByRole("button", { name: "Continue previous conversation" }); expect(busyContinue).toHaveAttribute("aria-disabled", "true"); fireEvent.click(busyContinue); expect(onContinueConversation).not.toHaveBeenCalled();
+  const ask = { ...props.ask, state: { state: "idle" } as const };
+  view.rerender(<ConversationDrawer {...props} ask={ask} result={ready({ turns: [], questions })} />); expect(view.queryByRole("button", { name: "Continue previous conversation" })).toBeNull();
+  view.rerender(<ConversationDrawer {...props} ask={ask} result={{ state: "failed", reason: "read_failed" }} />); expect(view.queryByRole("button", { name: "Continue previous conversation" })).toBeNull();
+  view.rerender(<ConversationDrawer {...props} ask={ask} result={ready({ turns: [saved, { ...saved }], questions })} />); expect(view.queryByRole("button", { name: "Continue previous conversation" })).toBeNull();
+  view.rerender(<ConversationDrawer {...props} ask={ask} accountingContext={{ movementIds: ["movement"], label: "Example movement" }} />); expect(view.queryByRole("button", { name: "Continue previous conversation" })).toBeNull();
+  view.rerender(<ConversationDrawer {...props} ask={ask} context={{ mode: "new_question", canContinue: true, onNewConversation }} />); expect(view.queryByRole("button", { name: "Continue previous conversation" })).toBeNull();
+});

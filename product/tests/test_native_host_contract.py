@@ -58,6 +58,7 @@ REFUSAL_DECLARATION = re.compile(r'export const REQUEST_REFUSED = "([^"]+)"')
 
 # The reviewed payload contract: what each operation accepts from a caller.
 PAYLOAD_FIELDS: dict[str, set[str]] = {
+    "viva.documents.preview.read": {"document_id", "page"},
     BRIDGE_HANDSHAKE: set(),
     # `create` is the person's own word for making a vault where they said to.
     # It defaults to false, so a path typed with a letter wrong is refused

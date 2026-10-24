@@ -292,12 +292,14 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
         # boundary to state, not whether the figure knows what it is of.
         cut = cut_set(narrowed, {"kind": _GROUP_NAMES[group_by], "value": k})
         figures.append(figure(v, f"spending — {group_by} '{k}'",
+                              subject={"kind": group_by, "value": k},
                               quantity=quantity.SPENDING, grade=grade,
                               currency=currency, record_ids=record_ids,
                               boundary=bounded(whole=covers_all,
                                                selected=narrowed, cut=cut)))
     over = cut_set(narrowed)
     figures.append(figure(extras["total"], f"total spending by {group_by}",
+                          subject=({"grouping": group_by} if group_by in ("category", "merchant", "account") else None),
                           quantity=quantity.SPENDING,
                           grade=grade, currency=currency,
                           record_ids=record_ids,

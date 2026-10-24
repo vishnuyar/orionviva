@@ -411,7 +411,8 @@ describe("dialogs", () => {
     await user.click(getByRole("button", { name: "Statements" }));
     expect(getByRole("heading", { name: "growth-portfolio-2026-06.pdf" })).toBeInTheDocument();
     expect(queryByRole("button", { name: /open page review/i })).not.toBeInTheDocument();
-    expect(getByText("Page and source-region review are not connected.")).toBeInTheDocument();
+    expect(getByText("Source-region highlights are unavailable.")).toBeInTheDocument();
+    expect(getByRole("button", { name: "View saved original" })).toBeInTheDocument();
   });
 
   it("keeps the selected account when navigation moves away and back", async () => {

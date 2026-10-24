@@ -45,8 +45,8 @@ from __future__ import annotations
 from typing import Any
 
 from ..persona import STOOD_BEHIND_MOMENT, moment
-from ..tools.envelope import FINANCIAL, STRENGTH
 from .models import PanelState
+from .numerical_receipts import numerical_receipts, typed_figure
 
 # What a spoken answer may carry. Each is a decision this module makes rather
 # than a setting: a surface that could turn the grade line off would be able to
@@ -149,6 +149,9 @@ def conversation(turn: Any, shown: dict[str, str],
         return {"state": PanelState.ABSENT.value, "reason": "no_turn"}
     figures = [_figure(figure, shown, projection, turn_id)
                for figure in getattr(result, "figures", [])]
+    receipts, references = numerical_receipts(turn, projection, turn_id)
+    for figure in figures:
+        figure["receipt_ids"] = references.get(figure["id"], [])
     grade = getattr(result, "grade", "") or ""
     return {
         "state": PanelState.READY.value,
@@ -166,6 +169,7 @@ def conversation(turn: Any, shown: dict[str, str],
         # dropped into it. Empty when the answer stated no graded figure.
         "grade_sentence": moment(STOOD_BEHIND_MOMENT + grade) if grade else "",
         "figures": figures,
+        "numerical_receipts": receipts,
         "gaps": [dict(gap) for gap in getattr(result, "gaps", [])],
         "options": [dict(option) for option in getattr(result, "options", [])],
         "missing": [dict(item) for item in getattr(result, "missing", [])],
@@ -209,17 +213,19 @@ def _figure(figure: dict, shown: dict[str, str], projection: Any = None,
     sentence a person hears and the sentence they can open are the same
     sentence."""
     identity = str(figure.get("id", ""))
+    try:
+        typed = typed_figure(figure)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        typed = {}
     return _figure_receipt({
+        **typed,
         "id": identity,
         # The words this figure was written as in the sentence, so the figure
         # under the sentence is the figure in it.
         "written": shown.get(identity, ""),
-        "grade": figure.get("grade", "") or figure.get("kind", ""),
+        "grade": typed.get("grade", ""),
         "what": figure.get("what", ""),
-        "dated": (figure.get("dated", "")
-                  if figure.get("kind") == FINANCIAL
-                  and figure.get("grade") in STRENGTH
-                  and figure.get("record_ids") else ""),
+        "dated": typed.get("dated", ""),
         "record_ids": [str(record) for record in figure.get("record_ids", [])],
     }, projection, turn_id)
 

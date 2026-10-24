@@ -11,6 +11,7 @@ const expectedSkips = [];
 // The backend's own generated output, read from where the backend writes it.
 // Both halves of the parity test read these same bytes; the adapter tests are
 // the one place on this side permitted to import it.
+const receiptWireFixture = "../../../../product/tests/fixtures/numerical_receipts/actual-backend-wire-v1.json";
 const backendParityFixture = "../../../../product/viva/surface/fixtures/overview-parity-v1.json";
 // The same artifact, one directory nearer: the shell's own test opens the
 // sample vault, and what the sidecar answers for it is these bytes. A shell
@@ -96,6 +97,7 @@ function ownerTestImportAllowed(name, specifier) {
   if (name === "features/plans/Plans.test.tsx") return isTestLibrary(specifier) || specifier === "./Plans" || specifier === "../../surface/types" || specifier === "../../surface/adapters/plans" || specifier === plansContractFixture;
   if (name.startsWith("bridge/")) return specifier.startsWith("./");
   if (name.startsWith("components/")) return specifier.startsWith("./") || specifier === "../surface/types" || specifier === "../surface/evidence";
+  if (name === "surface/adapters/numerical-receipts.test.ts" && specifier === receiptWireFixture) return true;
   if (name.startsWith("surface/adapters/")) return specifier.startsWith("./") || specifier === "../types" || specifier === "../evidence" || specifier === backendParityFixture;
   if (name.startsWith("features/")) return specifier.startsWith("./") || specifier.includes("/components/") || specifier.endsWith("/surface/types") || specifier.endsWith("/surface/evidence") || specifier.endsWith("/app/navigation") || specifier.endsWith("/app/selection");
   if (name.startsWith("surface/fixtures/")) return specifier.startsWith("./") || specifier === "../types" || specifier === "../evidence";
@@ -488,7 +490,7 @@ export function collectViolations(inputFiles, sentences = []) {
       }
     }
     if (name.startsWith("components/")) for (const specifier of specs) {
-      const allowedEvidenceBoundary = name === "components/EvidenceDrawer.tsx" && specifier === "./FeatureBoundary";
+      const allowedEvidenceBoundary = name === "components/EvidenceDrawer.tsx" && ["./FeatureBoundary", "./NumericalReceipt"].includes(specifier);
       if (!(specifier === "react" || specifier.endsWith("/surface/types") || specifier.endsWith("/surface/evidence") || allowedEvidenceBoundary)) violations.push(`component import forbidden: ${name} -> ${specifier}`);
     }
     if (name.startsWith("surface/adapters/")) for (const specifier of specs) if (!(specifier.startsWith("./") || specifier === "../types" || specifier === "../evidence")) violations.push(`adapter import forbidden: ${name} -> ${specifier}`);
@@ -635,8 +637,13 @@ function runSelfChecks() {
   assertViolation("bridge test to upper layers", (files) => files.set("bridge/client.test.ts", "import '../surface/types'; import '../app/session'; import '../surface/fixtures/demo-snapshot';"), "owner test import forbidden");
   assertViolation("component test to sources", (files) => files.set("components/Thing.test.tsx", "import '../surface/sources';"), "owner test import forbidden");
   assertValid("Evidence drawer owns its exact FeatureBoundary sibling", (files) => files.set("components/EvidenceDrawer.tsx", "import { Thing } from './FeatureBoundary'; export { Thing };"));
+  assertValid("Evidence drawer owns its exact numerical receipt presenter", (files) => files.set("components/EvidenceDrawer.tsx", "import { Thing } from './NumericalReceipt'; export { Thing };"));
+  assertViolation("numerical receipt presenter cannot import bridge IO", (files) => files.set("components/NumericalReceipt.tsx", "import '../bridge/client';"), "component import forbidden");
+  assertViolation("other component cannot import numerical receipt presenter", (files) => files.set("components/Thing.tsx", "import './NumericalReceipt';"), "component import forbidden");
   assertViolation("other component cannot import FeatureBoundary", (files) => files.set("components/Thing.tsx", "import './FeatureBoundary';"), "component import forbidden");
   assertViolation("Evidence drawer cannot import other component helpers", (files) => files.set("components/EvidenceDrawer.tsx", "import './Thing';"), "component import forbidden");
+  assertValid("receipt adapter test owns its exact genuine backend wire fixture", (files) => files.set("surface/adapters/numerical-receipts.test.ts", `import fixture from '${receiptWireFixture}'; export { fixture };`));
+  assertViolation("other adapter tests cannot import receipt wire fixture", (files) => files.set("surface/adapters/primitives.test.ts", `import fixture from '${receiptWireFixture}'; export { fixture };`), "owner test import forbidden");
   assertViolation("adapter test to app", (files) => files.set("surface/adapters/primitives.test.ts", "import '../../app/session';"), "owner test import forbidden");
   assertViolation("feature test to bridge and fixture", (files) => files.set("features/overview/Overview.test.tsx", "import '../../bridge/client'; import '../../surface/fixtures/demo-snapshot';"), "owner test import forbidden");
   assertViolation("fixture test to app", (files) => files.set("surface/fixtures/demo-snapshot.test.ts", "import '../../app/session';"), "owner test import forbidden");

@@ -109,3 +109,10 @@ describe("the host shim", () => {
       .rejects.toMatchObject({ name: "BridgeTimeout", operation: "viva.documents.upload", mayHaveWritten: true });
   });
 });
+
+it("classifies saved original preview timeout as read-only and does not replay it", async () => {
+  invoked.mockRejectedValueOnce(new Error("timed out"));
+  const bridge = install();
+  await expect(bridge.request({ requestId: "preview", operation: "viva.documents.preview.read", payload: { document_id: "a".repeat(64), page: 1 } })).rejects.toMatchObject({ name: "BridgeTimeout", mayHaveWritten: false });
+  expect(invoked).toHaveBeenCalledTimes(1);
+});

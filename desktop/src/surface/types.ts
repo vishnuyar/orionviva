@@ -313,7 +313,7 @@ export type OverviewActions = {
 };
 // An answer figure carries its source route and the exact `written` rendering
 // used in the answer sentence.
-export type TurnFigure = { dated?: string; id: string; evidenceId: string; written: string; grade: string; what: string; recordIds: readonly string[]; evidenceLinks: readonly EvidenceLink[] };
+export type TurnFigure = { numericalQuestion?: string; numerical?: NumericalFigure; receiptIds?: readonly string[]; numericalReceipts?: readonly NumericalReceipt[]; receiptState?: "ready" | "unavailable" | "legacy"; dated?: string; id: string; evidenceId: string; written: string; grade: string; what: string; recordIds: readonly string[]; evidenceLinks: readonly EvidenceLink[] };
 // Voice output carries complete read-supplied sentences for the turn.
 export type SpokenTurn = { maySpeak: boolean; withheld: string; parts: readonly string[]; text: string; gradeSentence: string; citationSentence: string; localOnly: string };
 export type AnswerStatus = "answered" | "partial" | "needs_clarification" | "needs_assumption" | "missing_data" | "capability_gap" | "outside_domain" | "failed";
@@ -388,3 +388,15 @@ export type DocumentActions = {
 export type SurfaceSnapshot = { disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; review?: FeatureResult<ReviewData>; plans?: FeatureResult<PlansData>; trust: FeatureResult<TrustData> };
 
 export type AccountingReportsView = AccountingView;
+
+export type DocumentPreviewReason = "invalid_request" | "original_unavailable" | "identity_unverifiable" | "unsupported_type" | "unsupported_encoding" | "over_limit" | "encrypted_pdf" | "damaged_original" | "page_unavailable" | "timed_out" | "renderer_unavailable";
+export type DocumentPreview = { status: "unavailable"; reason: DocumentPreviewReason } | { status: "ready"; sourceKind: "text" | "pdf" | "image"; page: number; pageCount: number; text: string | null; image: string | null; width: number | null; height: number | null };
+export type DocumentPreviewReader = (documentId: string, page: number) => Promise<DocumentPreview>;
+
+export type NumericalAxis = { kind: string; value: string; to?: string };
+export type NumericalBoundary = { whole?: boolean; accounts?: { counted: number; held: number }; selected?: readonly NumericalAxis[]; cut?: readonly NumericalAxis[]; unmeasured?: readonly { account: string; reason: string; settled_by: string }[]; unposted?: number };
+export type NumericalSubject = { kind: string; value: string } | { grouping: "category" | "merchant" | "account" } | { account_id: string } | { merchant: string } | { goal_id: string };
+export type NumericalFigure = { value: string; quantity: string; kind: "financial" | "computed" | "activity" | "hypothetical"; currency: string; dated: string; grade: string; boundary: NumericalBoundary; subject: NumericalSubject | null };
+export type NumericalPremise = { parameter: string | null; role: string | null; raw: string | null; modeled: string | null; unit: string | null; currency: string | null; source: "current_question"; quote: string | null; derivation: string | null };
+export type NumericalObservedInput = { account_id: string; value: string; modeled_value: string; quantity: string; kind: string; currency: string; dated: string; grade: string; measurement_view: string; record_ids: readonly string[]; carry_forward_hypothetical: boolean };
+export type NumericalReceipt = { id: string; figureIds: readonly string[]; sourceRecords: readonly { recordId: string; kind: "document" | "movement" | "local_activity" | "unavailable"; documentId: string | null }[]; premises: readonly NumericalPremise[]; observedInputs: readonly NumericalObservedInput[]; localInputs: readonly { eventId: string; eventType: string; fields: readonly { label: string; value: string }[] }[]; context: readonly { label: string; value: string }[]; caveats: readonly string[] };

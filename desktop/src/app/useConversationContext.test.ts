@@ -38,3 +38,18 @@ describe("vault session conversation context", () => {
     expect(view.result.current.contextMode).toBe("new_question");
   });
 });
+
+it("requires an explicit current-vault opt-in to resume readable saved Ask history", () => {
+  const history = { state: "ready" as const, data: { turns: [{ id: "saved-ask", kind: "ask" as const, contextMode: "new_question" as const, occurredAt: "", prompt: "Earlier question", said: "", questionId: "", outcome: "refused" as const, message: "I need a starting amount.", reason: "", answer: null, proposal: null }], questions: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } } };
+  const view = renderHook(({ requestId, state, blocked }: { requestId: number; state: AskActionState; blocked: boolean }) => useConversationContext(requestId, state, history, blocked), { initialProps: { requestId: 1, state: idle as AskActionState, blocked: false } });
+  expect(view.result.current.contextMode).toBe("new_question");
+  act(() => view.result.current.continuePreviousConversation()); expect(view.result.current.contextMode).toBe("follow_up");
+  act(() => view.result.current.startNewConversation()); expect(view.result.current.contextMode).toBe("new_question");
+  const staleContinue = view.result.current.continuePreviousConversation;
+  view.rerender({ requestId: 2, state: idle, blocked: false });
+  act(() => staleContinue()); expect(view.result.current.contextMode).toBe("new_question");
+  view.rerender({ requestId: 2, state: working, blocked: false });
+  act(() => view.result.current.continuePreviousConversation()); expect(view.result.current.contextMode).toBe("new_question");
+  view.rerender({ requestId: 2, state: idle, blocked: true });
+  act(() => view.result.current.continuePreviousConversation()); expect(view.result.current.contextMode).toBe("new_question");
+});

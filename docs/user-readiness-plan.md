@@ -39,7 +39,9 @@ Institution-facing verification remains outside this release.
    financial browser journeys and independently calculated source expectations.
    Preserve the distinction between provider-free downstream checks and actual
    model interpretation. Do not mark seventeen declarations passed from direct
-   IPC or a scripted compiler. Verify exact runtime admission and retain all
+   IPC or a scripted compiler alone. The authorized offline completion uses
+   real browser interactions and genuine compilation with a separately labelled
+   evaluator-only semantic adapter; it cannot qualify live interpretation. Verify exact runtime admission and retain all
    prior spending/holds before funded runs. Restore the missing reviewed
    campaign execution code before resuming the retained nineteen-document
    campaign; an older vault or newly guessed runner is not a replacement for
@@ -59,11 +61,12 @@ maintenance, product implementation, financial coverage and fresh verification.
 Fresh Verifier and Interface Designer review builder changes; Steward checks
 privacy, docs impact and unresolved claims. Evaluator HANDOFF is single-writer.
 
-Existing uncommitted recovery work and unrelated workflow/skill/Pipfile edits
-remain preserved. Historical evaluator edits remain preserved separately from
-new maintenance. On 2026-10-24 the owner explicitly authorized fresh Verifier
-and Steward reviews followed by local commits of both repositories to main,
-then continuation of this plan with multiple agents. This grant does not
+Prior recovery and evaluator maintenance were committed to local main after
+the owner-authorized Verifier and Steward reviews. Unrelated primary
+workflow/skill/Pipfile edits remain preserved. The owner also authorized fresh
+Verifier and Steward reviews followed by local main integration of the financial
+browser continuation in both repositories. The recorded working-tree financial
+pass and the subsequent committed-revision measurement retain separate identities. This grant does not
 authorize a push, release, extra funding, automatic paid retry, truth-oracle
 weakening, historical prompt edit, document re-ingestion or accounting reset.
 
@@ -75,7 +78,7 @@ scenarios, 28 evaluator declarations and 123 qualification cases remain separate
 scopes. A supporting repair does not constitute a financial-question pass.
 
 
-## Current execution record
+## Previous execution snapshot
 
 The backup chooser work is implemented. Native and browser hosts offer the
 save-file picker; Trust exposes archive and folder selection. Picking fills a
@@ -101,13 +104,27 @@ financial browser cases, live model quality and signed/clean-machine
 compatibility. Its classification is `acceptance_gap`; all 28 declarations
 were reported, with zero model calls. Independent budget review caught and
 closed nonfinite ceiling and invalid-receipt bypasses; all 44 affected Python
-tests pass. Final status prose is a documentation-only follow-up; executable
-source, dependency locks and UI-packet source files are unchanged. The report
-continues to identify its exact tested snapshot. See the ignored local record
-`runs/user-readiness-2026-10-24/complete/trace.report.md`.
+tests pass. At that snapshot, final status prose was a documentation-only follow-up;
+executable source, dependency locks and UI-packet source files were unchanged. The report
+continues to identify its exact tested snapshot. The ignored current checkpoint retains the historical report locator.
 
 The retained campaign budget remains unchanged. The reviewed campaign runner is
-missing; restore and authenticate it before resuming the existing nineteen
-uploads. No paid call occurred in this cycle. Signed clean-machine delivery,
+missing; restore and authenticate it before resuming the existing nineteen-document
+campaign. No paid call occurred in this cycle. Signed clean-machine delivery,
 an unassisted first-user journey, assistive-technology checks and live financial
 acceptance remain blocking. The personal beta is not ready for invitations.
+
+## Financial browser completion contract
+
+The candidate exposes typed numerical receipts and calculation-authored subjects,
+and lets a person explicitly continue readable saved Ask history. See
+[numerical answer receipts](numerical-answer-receipts.md) for the product
+contract. Consult the ignored current checkpoint for exact candidate-bound
+full-corpus and complete-gate evidence. The final working-tree measurement passed
+all 65 mandatory financial cases and 17 declarations; whole-product acceptance
+remained incomplete with 26 pass, zero fail and two gaps. Prototypes and supporting tests alone
+do not establish those results. The previous snapshot is not this candidate's
+verdict. Changed product answer-program evaluation source invalidates the
+existing qualification version's source pin; review a
+successor before any separately authorized funded profile. Existing budget,
+retained-document, native installation and invitation gates remain unchanged.

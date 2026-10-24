@@ -17,6 +17,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Parser mode must dispatch before any configuration, settings or vault import.
+if sys.argv[1:] == ["--source-preview-worker"]:
+    from viva.source_preview_worker import main as preview_worker_main
+    raise SystemExit(preview_worker_main())
+
 from viva.configuration import put_stored_in_force
 from viva.vault import Vault
 from viva.desktop_bridge.handlers import (

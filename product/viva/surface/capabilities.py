@@ -237,6 +237,15 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         entrypoint="viva.speak",
     ),
     _surface(
+        "documents.preview",
+        "viva.source_preview",
+        CapabilityDestination.DOCUMENTS,
+        "while the sidecar holds an open vault",
+        "DocumentPreview.v1",
+        (),
+        (TrustEffect.READS_DATA,),
+    ),
+    _surface(
         "documents.ingest",
         "viva.ingest",
         CapabilityDestination.DOCUMENTS,

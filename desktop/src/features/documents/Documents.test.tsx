@@ -488,3 +488,13 @@ describe("import journey and result", () => {
     expect(view.getByRole("button", { name: "Check records" })).toBeVisible();
   });
 });
+
+it("opens saved originals outside the narrow library and metadata columns", async () => {
+  const read = vi.fn(async () => ({ status: "ready" as const, sourceKind: "text" as const, page: 1, pageCount: 1, text: "saved source marker", image: null, width: null, height: null }));
+  const view = render(<Documents previewReader={read} rescan={null} capture={null} result={ready([document("a".repeat(64), "source.pdf")])} selectedDocument={"a".repeat(64)} onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
+  const trigger = view.getByRole("button", { name: "View saved original" });
+  expect(trigger.closest(".document-library-layout")).toBeNull();
+  expect(read).not.toHaveBeenCalled(); fireEvent.click(trigger);
+  expect(await view.findByText("saved source marker")).toBeInTheDocument();
+  expect(view.getByRole("heading", { name: "Saved original: source.pdf" })).toHaveFocus();
+});

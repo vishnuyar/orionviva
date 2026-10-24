@@ -1,3 +1,4 @@
+import { NumericalReceipt, NumericalFigureDetails } from "./NumericalReceipt";
 import type { ReactNode, RefObject } from "react";
 import { resolveEvidenceFigure, resolveEvidenceTarget, type EvidenceFigureView, type FieldAvailability, type GradePresentation } from "../surface/evidence";
 import type { EvidenceLink, SurfaceSnapshot } from "../surface/types";
@@ -37,18 +38,30 @@ export function EvidenceDrawer({ snapshot, selection, onDismiss, onOpenDocument,
   </aside></>;
 }
 
-function EvidenceContents({ figure, snapshot, onOpenDocument, renderEvidenceBadge }: { figure: EvidenceFigureView; snapshot: SurfaceSnapshot; onOpenDocument: (link: EvidenceLink) => void; renderEvidenceBadge: (grade: GradePresentation) => ReactNode }) {
-  return <div className="evidence-sections">
-    <section><h3>Evidence status</h3>{renderEvidenceBadge(figure.grade)}<p>{figure.grade.description}</p><div className={`precision-state ${figure.precision.state}`}><strong>{figure.precision.label}</strong><span>{figure.precision.detail}</span></div></section>
-    <section><h3>Figure details</h3><dl className="evidence-detail-grid"><div><dt>Displayed figure</dt><dd>{figure.display || unavailableAmount}</dd></div><div><dt>Measure</dt><dd>{measureLabel(figure)}</dd></div><div><dt>Currency</dt><dd>{supplied(figure.currency, "Currency was not supplied by this read.")}</dd></div><div><dt>{figure.variant === "current-period" ? "Through" : "Measured"}</dt><dd>{supplied(figure.asOf, figure.variant === "conversation" ? "Measurement date unavailable for this figure." : "Measurement date was not supplied by this read.")}</dd></div><div><dt>Evidence dates</dt><dd>{figure.evidenceDates.state === "supplied" ? figure.evidenceDates.value.join(", ") : "Evidence dates were not supplied by this read."}</dd></div><div><dt>Coverage</dt><dd>{figure.coverage.state === "supplied" ? figure.coverage.value.map((sentence) => <span className="evidence-coverage-line" key={sentence}>{sentence}</span>) : "Coverage was not supplied by this read."}</dd></div></dl></section>
-    <section><h3>Records behind this figure</h3><p>These are record identities, not document links.</p>{figure.recordIds.state === "supplied" ? <ul className="record-identity-list">{figure.recordIds.value.map((recordId) => <li key={recordId}>{recordId}</li>)}</ul> : <p>Record identities were not supplied by this read.</p>}{figure.accountIds.state === "supplied" ? <><h4>Accounts behind this figure</h4><ul className="record-identity-list">{figure.accountIds.value.map((accountId) => <li key={accountId}>{accountId}</li>)}</ul></> : null}</section>
-    <section><h3>Source trail</h3><p>{supplied(figure.provenance, "Provenance details were not supplied by this read.")}</p>{figure.evidenceLinks.length ? <div className="evidence-source-list">{figure.evidenceLinks.map((link) => // A row says what it has. Where the read gave no label and no page, the
+
+function DocumentSourceActions({ links, snapshot, onOpenDocument }: { links: readonly EvidenceLink[]; snapshot: SurfaceSnapshot; onOpenDocument: (link: EvidenceLink) => void }) {
+  return <div className="evidence-source-list">{links.map((link) => // A row says what it has. Where the read gave no label and no page, the
     // row still names the document it points at and how it stands to the
     // figure — and it does not print the word unavailable in place of the two
     // it was not given. Six rows repeating one absence disclose nothing that
     // one of them had not already said, which is the same defect as six
     // controls whose name is that word.
-    <div className="evidence-source-row" key={`${link.targetDocumentId}-${link.label}-${link.relation}-${link.page}`}>{link.label.trim() ? <strong>{link.label}</strong> : null}<span>{relationLabel(link.relation)}</span>{link.page.trim() ? <span>{link.page}</span> : null}<TargetState link={link} snapshot={snapshot} onOpenDocument={onOpenDocument} /></div>)}</div> : <p>No document target was supplied for this figure.</p>}</section>
+    <div className="evidence-source-row" key={`${link.targetDocumentId}-${link.label}-${link.relation}-${link.page}`}>{link.label.trim() ? <strong>{link.label}</strong> : null}<span>{relationLabel(link.relation)}</span>{link.page.trim() ? <span>{link.page}</span> : null}<TargetState link={link} snapshot={snapshot} onOpenDocument={onOpenDocument} /></div>)}</div>;
+}
+
+function EvidenceContents({ figure, snapshot, onOpenDocument, renderEvidenceBadge }: { figure: EvidenceFigureView; snapshot: SurfaceSnapshot; onOpenDocument: (link: EvidenceLink) => void; renderEvidenceBadge: (grade: GradePresentation) => ReactNode }) {
+  if (figure.numerical) return <div className="evidence-sections">
+    <section><h3>Evidence status</h3>{renderEvidenceBadge(figure.grade)}<p>{figure.grade.description}</p></section>
+    {figure.evidenceLinks.length ? <section><h3>Source documents</h3><DocumentSourceActions links={figure.evidenceLinks} snapshot={snapshot} onOpenDocument={onOpenDocument} /></section> : null}
+    <NumericalFigureDetails figure={figure.numerical} />
+    {figure.receiptState === "ready" ? figure.numericalReceipts?.map((receipt) => <NumericalReceipt key={receipt.id} receipt={receipt} question={figure.numericalQuestion} />) : <section><h3>Numerical receipt unavailable</h3><p>This saved answer does not include a supported numerical receipt.</p></section>}
+  </div>;
+  return <div className="evidence-sections">
+    {figure.variant === "conversation" ? figure.receiptState === "ready" ? figure.numericalReceipts?.map((receipt) => <NumericalReceipt key={receipt.id} receipt={receipt} question={figure.numericalQuestion} />) : <section><h3>Numerical receipt unavailable</h3><p>This saved answer does not include a supported numerical receipt. Existing document links remain available below.</p></section> : null}
+    <section><h3>Evidence status</h3>{renderEvidenceBadge(figure.grade)}<p>{figure.grade.description}</p><div className={`precision-state ${figure.precision.state}`}><strong>{figure.precision.label}</strong><span>{figure.precision.detail}</span></div></section>
+    <section><h3>Figure details</h3><dl className="evidence-detail-grid"><div><dt>Displayed figure</dt><dd>{figure.display || unavailableAmount}</dd></div><div><dt>Measure</dt><dd>{measureLabel(figure)}</dd></div><div><dt>Currency</dt><dd>{supplied(figure.currency, "Currency was not supplied by this read.")}</dd></div><div><dt>{figure.variant === "current-period" ? "Through" : "Measured"}</dt><dd>{supplied(figure.asOf, figure.variant === "conversation" ? "Measurement date unavailable for this figure." : "Measurement date was not supplied by this read.")}</dd></div><div><dt>Evidence dates</dt><dd>{figure.evidenceDates.state === "supplied" ? figure.evidenceDates.value.join(", ") : "Evidence dates were not supplied by this read."}</dd></div><div><dt>Coverage</dt><dd>{figure.coverage.state === "supplied" ? figure.coverage.value.map((sentence) => <span className="evidence-coverage-line" key={sentence}>{sentence}</span>) : "Coverage was not supplied by this read."}</dd></div></dl></section>
+    <section><h3>Records behind this figure</h3><p>These are record identities, not document links.</p>{figure.recordIds.state === "supplied" ? <ul className="record-identity-list">{figure.recordIds.value.map((recordId) => <li key={recordId}>{recordId}</li>)}</ul> : <p>Record identities were not supplied by this read.</p>}{figure.accountIds.state === "supplied" ? <><h4>Accounts behind this figure</h4><ul className="record-identity-list">{figure.accountIds.value.map((accountId) => <li key={accountId}>{accountId}</li>)}</ul></> : null}</section>
+    <section><h3>Source trail</h3><p>{supplied(figure.provenance, "Provenance details were not supplied by this read.")}</p>{figure.evidenceLinks.length ? <DocumentSourceActions links={figure.evidenceLinks} snapshot={snapshot} onOpenDocument={onOpenDocument} /> : <p>No document target was supplied for this figure.</p>}</section>
     <section><h3>Limits and omissions</h3>{figure.caveats.length || figure.unmeasured.length
       ? <ul>{[...figure.caveats.map((caveat) => <li key={caveat}>{caveat}</li>),
         // The accounts the read could not value, each named and each carrying

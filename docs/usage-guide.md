@@ -159,8 +159,12 @@ details. Optional file metadata is under **File and source details**. Import
 receipts distinguish saving, reading, and financial contribution; an unknown
 progress total is shown without a percentage. The upload reply does not identify
 a resulting document, so the receipt does not guess a document to open.
-Original document pages and highlighted source regions cannot be opened in this
-interface. Full inspection limits are listed in **Trust & settings**.
+Choose **View saved original** to open a supported saved source locally. PDF
+previews show one page at a time; PNG/JPEG images and plain UTF-8 text are also
+supported. Use Previous/Next page, the text alternative when available, zoom and
+Close original. This does not invoke your document reader or verify the figures.
+Highlighted source regions remain unavailable. Preview limits and current
+platform support are described in [local source previews](original-source-preview.md).
 
 ### Review
 
@@ -185,7 +189,9 @@ explicit confirmation of the exact proposal shown.
 
 Use a figure's evidence action to see the source records supporting it. Check
 that the drawer names the intended figure, currency, document, and page or
-source region when supplied.
+source region when supplied. Follow a document link, then explicitly choose
+**View saved original** to inspect supported saved content. The drawer and
+document metadata alone do not display the original.
 
 Evidence can establish where OrionViva obtained a claim. It does not make an
 old, incomplete, or conflicting source current, so also read the figure's date,
@@ -212,13 +218,27 @@ shows which mode will be used. Choose **New conversation** to keep earlier Ask
 text out of the next request. Earlier turns remain saved in the timeline; this
 is not deletion. Closing and reopening Ask Viva preserves the selected context,
 including when an answer arrives while the drawer is closed. Opening another
-vault starts with a new conversation boundary on its next question.
+vault, or reopening the current vault, starts with a new conversation boundary
+on its next question. If readable saved Ask history is available, choose
+**Continue previous conversation** to use it for the next question. This action
+keeps your draft and focuses the question field; it submits nothing. It is
+unavailable while a question is running or when explaining an accounting entry.
+**New conversation** returns to a fresh question without deleting history.
 The ledger and cited evidence are freshly read for each answer; conversation
 text is not evidence. Question ideas fill the editable composer without sending
 anything. Expand **Plan a savings goal** for the separate save-up plan draft action.
 
 When a configured model is required, relevant question or document data may
 leave the machine. Trust & settings records the observed outbound activity.
+
+Numerical answers can expose a **Numerical receipt** through their figure's
+evidence control. It shows exact values, quantities, currencies, dates, subjects
+and population boundaries. Where supplied, it shows numerical sources,
+recorded starting measurements, local goal activity, current-question premises
+and calculation limitations. Local reservations are not bank transfers, and
+hypothetical results carry no bank evidence grade. Older saved answers can lack
+receipts; unavailable receipts are not reconstructed from answer text. See
+[numerical answer receipts](numerical-answer-receipts.md).
 
 ## Trust, privacy, and settings
 

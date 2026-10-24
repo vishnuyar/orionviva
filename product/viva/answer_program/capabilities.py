@@ -158,6 +158,11 @@ def read_financial_analysis(proj, args, locale="", today=""):
         return refusal(TOOL, "inconsistent_spending_authority", "The period totals could not be matched to their numerical authority.")
     if not current["currency"] or current["currency"] != baseline["currency"]:
         return refusal(TOOL, "mixed_currencies", "The compared totals need the same known currency.")
+    # The copied helper total is re-expressed as a period total, not a category
+    # grouping. Keep unknown metadata and the original helper results intact.
+    for item in (current, baseline):
+        if item.get("subject") == {"grouping": "category"}:
+            item.pop("subject")
     current["what"] = "recorded spending in the requested period"
     baseline["what"] = "recorded spending in the baseline period"
     records = sorted(set(current["record_ids"]) | set(baseline["record_ids"]))

@@ -1,4 +1,4 @@
-import type { AccountView, CurrentPeriodSliceView, DocumentsData, EvidenceLink, FeatureResult, FigureGrade, FigureMeasure, FigureView, ProofPresentation, SurfaceDocument, SurfaceSnapshot, TurnFigure, UnmeasuredAccount } from "./types";
+import type { AccountView, CurrentPeriodSliceView, DocumentsData, EvidenceLink, FeatureResult, FigureGrade, FigureMeasure, FigureView, ProofPresentation, SurfaceDocument, SurfaceSnapshot, TurnFigure, UnmeasuredAccount, NumericalFigure, NumericalReceipt } from "./types";
 
 export type GradePresentation = { grade: FigureGrade; label: string; description: string };
 
@@ -31,7 +31,7 @@ export type FigurePrecision =
 // and what the control's own name continues with after the amount. Both are
 // whole reviewed sentences where the read supplied them, and empty where it
 // did not, in which case the composed forms below stand in.
-export type EvidenceFigureView = Readonly<{ id: string; label: string; actionLabel: string; heading: string; variant: "net-worth" | "account-balance" | "account-liability" | "account-unknown" | "activity-income" | "activity-spending" | "current-period" | "conversation"; display: string; measure: FigureMeasure | null; currency: FieldAvailability<string>; grade: GradePresentation; precision: FigurePrecision; asOf: FieldAvailability<string>; coverage: FieldAvailability<readonly string[]>; unmeasured: readonly UnmeasuredAccount[]; evidenceDates: FieldAvailability<readonly string[]>; recordIds: FieldAvailability<readonly string[]>; accountIds: FieldAvailability<readonly string[]>; provenance: FieldAvailability<string>; caveats: readonly string[]; evidenceLinks: readonly EvidenceLink[] }>;
+export type EvidenceFigureView = Readonly<{ numericalQuestion?: string; numerical?: NumericalFigure; numericalReceipts?: readonly NumericalReceipt[]; receiptState?: "ready" | "unavailable" | "legacy"; id: string; label: string; actionLabel: string; heading: string; variant: "net-worth" | "account-balance" | "account-liability" | "account-unknown" | "activity-income" | "activity-spending" | "current-period" | "conversation"; display: string; measure: FigureMeasure | null; currency: FieldAvailability<string>; grade: GradePresentation; precision: FigurePrecision; asOf: FieldAvailability<string>; coverage: FieldAvailability<readonly string[]>; unmeasured: readonly UnmeasuredAccount[]; evidenceDates: FieldAvailability<readonly string[]>; recordIds: FieldAvailability<readonly string[]>; accountIds: FieldAvailability<readonly string[]>; provenance: FieldAvailability<string>; caveats: readonly string[]; evidenceLinks: readonly EvidenceLink[] }>;
 export type EvidenceFigureResolution = { state: "ready"; figure: EvidenceFigureView } | { state: "missing" } | { state: "conflicted" };
 export type EvidenceTargetResolution = { state: "ready"; document: SurfaceDocument } | { state: "missing_identity" } | { state: "documents_unavailable" } | { state: "missing_document" } | { state: "conflicted_identity" };
 
@@ -67,7 +67,15 @@ function measurementDate(figure: TurnFigure): FieldAvailability<string> {
     ? { state: "supplied", value } : { state: "unavailable" };
 }
 
-export function conversationEvidenceFigure(figure: TurnFigure): EvidenceFigureView { return { id: figure.evidenceId, label: figure.what.trim() || "Conversation figure", actionLabel: "", heading: "", variant: "conversation", display: figure.written || missingAmount, measure: null, currency: { state: "unavailable" }, grade: gradePresentation(figure.grade), precision: figurePrecision(undefined), asOf: measurementDate(figure), coverage: { state: "unavailable" }, unmeasured: [], evidenceDates: { state: "unavailable" }, recordIds: { state: "unavailable" }, accountIds: { state: "unavailable" }, provenance: { state: "unavailable" }, caveats: [], evidenceLinks: figure.evidenceLinks }; }
+function receiptDocumentLinks(figure: TurnFigure): EvidenceLink[] {
+  const links = [...figure.evidenceLinks];
+  if (figure.receiptState !== "ready") return links;
+  for (const receipt of figure.numericalReceipts ?? []) for (const source of receipt.sourceRecords) {
+    if (source.documentId && !links.some((link) => link.targetDocumentId === source.documentId)) links.push({ targetDocumentId: source.documentId, label: "Saved original", relation: "attests", page: "" });
+  }
+  return links;
+}
+export function conversationEvidenceFigure(figure: TurnFigure): EvidenceFigureView { return { numericalQuestion: figure.numericalQuestion, numerical: figure.numerical, numericalReceipts: figure.numericalReceipts, receiptState: figure.receiptState, id: figure.evidenceId, label: figure.what.trim() || "Conversation figure", actionLabel: "", heading: "", variant: "conversation", display: figure.written || missingAmount, measure: null, currency: field(figure.numerical?.currency), grade: figure.receiptState === "unavailable" && !figure.numerical ? gradePresentation(undefined) : figure.numerical && ["activity", "hypothetical"].includes(figure.numerical.kind) ? { grade: "not_applicable", label: "No bank evidence grade", description: figure.numerical.kind === "hypothetical" ? "This is hypothetical. It rests on the stated assumptions, not a bank evidence grade." : "This is local activity. It carries no bank evidence grade." } : gradePresentation(figure.grade), precision: figurePrecision(undefined), asOf: figure.numerical ? field(figure.numerical.dated) : measurementDate(figure), coverage: { state: "unavailable" }, unmeasured: [], evidenceDates: { state: "unavailable" }, recordIds: figure.numerical ? records(figure.recordIds) : { state: "unavailable" }, accountIds: { state: "unavailable" }, provenance: { state: "unavailable" }, caveats: figure.numericalReceipts?.flatMap((receipt) => receipt.caveats) ?? [], evidenceLinks: receiptDocumentLinks(figure) }; }
 function dataOf<T>(result: FeatureResult<T>): T | null { return result.state === "ready" || result.state === "partial" || result.state === "needs_input" ? result.data : null; }
 export function resolveEvidenceFigure(snapshot: SurfaceSnapshot, figureId: string): EvidenceFigureResolution {
   // Two kinds of figure open a drawer: the picture's own, and an account's.

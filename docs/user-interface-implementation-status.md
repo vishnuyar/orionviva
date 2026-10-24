@@ -133,13 +133,21 @@ a discoverable account of inspection and reversal limits.
 
 Ask automatically continues after an authoritative settlement, preserves context
 across drawer dismissal and offers New conversation for the next context
-boundary. Historical turns remain saved. Question ideas only populate the draft;
+boundary. Continue previous conversation explicitly opts into eligible saved
+Ask history without submitting or changing the draft. Vault open/reopen defaults
+to a new question; busy and accounting-explanation modes cannot activate it.
+Historical turns remain saved. Question ideas only populate the draft;
 planning is expandable. Review can mark/open the next recorded item after a
 confirmed resolution and a ready queue. No urgency field or generic answer undo
-is invented. Original/page viewing and document-specific post-import navigation
-remain absent: the bridge exposes neither authenticated original bytes/pages nor
-a resulting document identity in the upload receipt. These UI changes do not
-implement either engine contract.
+is invented. Document-specific post-import navigation remains absent because
+the upload receipt does not expose a resulting document identity. Local saved-original
+viewing now has a separate bounded read operation; its supported formats and
+platform limits are described in [Local saved-original previews](original-source-preview.md).
+
+Numerical figure evidence renders typed exact values, subjects, boundaries,
+numerical sources, observed starts, local activity and hypothetical premises.
+Legacy and malformed receipts remain distinct from ready receipts. See
+[numerical answer receipts](numerical-answer-receipts.md) for the contract.
 
 ## Backup and recovery usability
 
@@ -208,6 +216,7 @@ name. The destination shown to people is **Transactions**.
 | `viva.conversation.confirm` | yes | opened vault | yes |
 | `viva.conversation.decline` | yes | opened vault | yes |
 | `viva.documents.cancel` | yes | opened vault | yes |
+| `viva.documents.preview.read` | yes | opened vault | yes |
 | `viva.documents.recover` | yes | opened vault | yes |
 | `viva.documents.rescan` | yes | opened vault | yes |
 | `viva.documents.upload` | yes | opened vault | yes |
@@ -232,7 +241,7 @@ name. The destination shown to people is **Transactions**.
 | Anchor | Gap |
 | --- | --- |
 | `has-name product/viva/desktop_bridge/jobs.py#JobRegistry` | Bounded operational receipts survive restart. Work interrupted by exit is restored as failed and is not resumed, so the person must start it again. |
-| `has-file desktop/src/features/documents/Documents.tsx` | Page and source-region review, focused correction, and document-level outbound history are not connected in the Statements & documents destination. Current capture, read status, resolution, and contribution remain primary; technical identity, lifecycle, pages, source regions, and provenance are available through disclosure rather than dominating the index. |
+| `has-file desktop/src/features/documents/Documents.tsx` | Explicit local saved-original viewing is implemented for supported PDF pages, PNG/JPEG and UTF-8 text; source-region highlights, focused correction and document-level outbound history remain unavailable. The preview clears at vault transition start and on source/navigation changes; parser and output limits can refuse a source without altering its saved bytes. Windows preview remains unavailable pending a secure portable backend; release targets are unchanged. Current capture, read status, resolution, and contribution remain primary; technical identity, lifecycle, pages, source regions, and provenance are available through disclosure rather than dominating the index. |
 | `has-file desktop/src/features/activity/Activity.tsx` | Transactions (internal `activity`) reaches movement-scoped existing-choice category correction; treatment correction for spending, a named loan lent, or a named loan repayment chosen from receivables open on the movement date with enough remaining principal; complete-set tag replacement that may introduce a bounded local tag where the backend advertises it; and backend-qualified transfer confirmation, rejection and unlinking. Search and authored filters cover loaded rows, while source statements are disclosed per transaction. [Version-one bounded Activity continuation](activity-pagination.md) keeps 50-row reads, validates and appends same-revision pages, preserves rows and retry on continuation failure, and resets after scope/revision changes. Older-reader initial prefixes remain usable with an explicit continuation limitation. Final exhaustion still removes the focused continuation control and has no explicit completion status; actual screen-reader speech and the next keyboard position remain unverified. The desktop neither infers transfer candidates nor offers merchant-wide changes, new category labels, or bulk editing. |
 | `has-file product/viva/surface/account_ledger.py` | AccountLedger.v1 supplies an exact account-scoped, session-authenticated and revision-bound, month-grouped read with normalized attested coverage, gaps, overlap state and account-bound source evidence. Exact economic postings from overlapping statement periods collapse authoritatively before pagination, with canonical/member identities and unioned evidence; probable or conflicting candidates remain separate and disclosed. A transaction-only account remains readable with an explicitly absent balance. The account’s `number_masked` display field accepts exactly an empty string or four bullets followed by four digits; an empty display renders “Account number not shown” without implying that the supplied account identifier is absent. Exact account identity, name, supported kind, currency, ownership, cursor binding and Review transaction targeting remain required. The read carries no write actions. The desktop bridge, strict adapter, stale-safe account-detail route, shell hierarchy, and minimum-type audit now render and edit against it. |
 | `has-file desktop/src/features/conversation/ConversationDrawer.tsx` | Conversation is durable across process and interface sessions, includes the deterministic question queue, records proposal identity and exact proposed data separately, and restores confirmation controls after reopening. There is no microphone, speech recognition, or audio playback path; the reply shape remains voice-ready. Because the product is unreleased, this contract intentionally starts clean and performs no migration or backfill from earlier technical read records or prior vault shapes. |
