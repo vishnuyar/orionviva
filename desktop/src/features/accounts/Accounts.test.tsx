@@ -19,19 +19,19 @@ describe("Accounts stable identity presentation", () => {
     expect(view.getAllByRole("button", { name: /Unique/i }).filter((button) => button.classList.contains("detail-row-button"))).toHaveLength(1);
     expect(view.container.querySelectorAll(".figure-trigger")).toHaveLength(2);
     expect(view.queryByRole("button", { name: /Blank|Duplicate/i })).not.toBeInTheDocument();
-    expect(view.getByRole("heading", { name: "Accounts in this read" })).toHaveAttribute("tabindex", "-1");
+    expect(view.getByRole("heading", { name: "Your accounts" })).toHaveAttribute("tabindex", "-1");
   });
 
   it("renders missing, conflicted, and no-selectable detail refusal headings with requested IDs", () => {
     const view = render(<Accounts {...baseProps} selectedAccount="missing" result={ready([account("present")])} />);
     expect(view.getByRole("heading", { name: "Selected account unavailable" })).toHaveAttribute("tabindex", "-1");
-    expect(view.getByText("The selected account is no longer present in this accounts read.")).toBeInTheDocument();
+    expect(view.getByText("This account is no longer available.")).toBeInTheDocument();
     expect(view.getByText("missing")).toBeInTheDocument();
     view.rerender(<Accounts {...baseProps} selectedAccount="same" result={ready([account("same"), account("same")])} />);
     expect(view.getByRole("heading", { name: "Account selection unavailable" })).toHaveAttribute("tabindex", "-1");
     expect(view.getByText("More than one account uses the selected identity, so the interface will not choose between them.")).toBeInTheDocument();
     view.rerender(<Accounts {...baseProps} result={ready([account(""), account(" ")])} />);
-    expect(view.getByText("This accounts read contains rows, but none has a unique nonblank account ID.")).toBeInTheDocument();
+    expect(view.getByText("These accounts cannot be opened because their identities could not be resolved.")).toBeInTheDocument();
   });
 
   it("keeps duplicate labels with distinct IDs selectable and ordinary selection does not move focus", () => {

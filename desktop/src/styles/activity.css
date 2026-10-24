@@ -97,3 +97,8 @@
   border-radius: 6px;
 }
 .proof-link:hover { border-color: #9db3a3; }
+
+.activity-movement-amount,
+.activity-movement-when {
+  font-variant-numeric: tabular-nums;
+}

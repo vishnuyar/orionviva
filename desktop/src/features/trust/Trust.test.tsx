@@ -30,14 +30,14 @@ describe("Trust surface", () => {
     const { getByText, queryByText, rerender } = render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "absent", reason: "not_read" }} />);
     expect(queryByText("Trust details unavailable")).not.toBeInTheDocument();
     rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "unavailable", reason: "not_connected" }} />);
-    expect(getByText("Trust and maintenance details are not connected to this vault read.")).toBeInTheDocument();
+    expect(getByText("Privacy and maintenance details are unavailable for this vault.")).toBeInTheDocument();
     rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "failed", reason: "read_failed" }} />);
     expect(getByText("Trust details could not be read", { selector: "strong" })).toBeInTheDocument();
     expect(getByText("Trust and maintenance details could not be read. The vault is still open.")).toBeInTheDocument();
     rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "partial", data: { notes: [note("partial")] }, issues: [{ code: "partial", message: "bounded" }] }} />);
-    expect(getByText("Some Trust details are unavailable. Supplied notes are shown below.")).toBeInTheDocument();
+    expect(getByText("Some privacy details could not be loaded. Available details are shown below.")).toBeInTheDocument();
     rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "needs_input", data: { notes: [note("needs")] }, issues: [{ code: "needs", message: "bounded" }] }} />);
-    expect(getByText("Some Trust details need more information. Supplied notes are shown below.")).toBeInTheDocument();
+    expect(getByText("Some privacy details need more information. Available details are shown below.")).toBeInTheDocument();
     rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [] })} />);
     expect(getByText("No Trust notes supplied")).toBeInTheDocument();
     expect(getByText("The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status.")).toBeInTheDocument();

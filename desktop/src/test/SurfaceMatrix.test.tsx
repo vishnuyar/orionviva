@@ -40,11 +40,11 @@ describe("Overview and Accounts state matrix", () => {
     expect(view.getByText("The accounts section could not be read. The private vault is still open.")).toBeInTheDocument();
     view.rerender(<Accounts {...actions} result={partial(data)} selectedAccount="" />);
     const partialCallout = view.getByText("Some account details are unavailable. Available accounts are shown below.");
-    const partialHeading = view.getByRole("heading", { name: "Accounts in this read" });
+    const partialHeading = view.getByRole("heading", { name: "Your accounts" });
     expect(partialCallout.compareDocumentPosition(partialHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     view.rerender(<Accounts {...actions} result={needsInput(data)} selectedAccount="" />);
     const needsCallout = view.getByText("Some accounts need more information. Available account details are shown below.");
-    expect(needsCallout.compareDocumentPosition(view.getByRole("heading", { name: "Accounts in this read" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(needsCallout.compareDocumentPosition(view.getByRole("heading", { name: "Your accounts" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     view.rerender(<Accounts {...actions} result={ready(makeOverview())} selectedAccount="" />);
     expect(view.getByText("No accounts yet")).toBeInTheDocument();
   });

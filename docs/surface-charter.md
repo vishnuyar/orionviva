@@ -83,7 +83,7 @@ it is the first work the gate needs. **The owner is the registry cycle.**
 
 ### VOICE-137 — one absence sentence per panel; the full account lives in Trust
 **State:** contradicted
-**Code:** Multiple field-level absence sentences remain across `desktop/src/features/conversation/Questions.tsx`, `desktop/src/features/documents/Documents.tsx` and `desktop/src/components/EvidenceDrawer.tsx`. Documents also renders an enumeration headed *"Unavailable in this preview"*, and the sidebar carries a standing admission on every destination at once.
+**Code:** Multiple field-level absence sentences remain across `desktop/src/features/conversation/Questions.tsx`, `desktop/src/features/documents/Documents.tsx` and `desktop/src/components/EvidenceDrawer.tsx`. Documents renders an *Unavailable details* enumeration inside its *File and source details* disclosure. Trust now carries the general inspection and reversal limits, and the sidebar standing admission is absent.
 **Test:** none — the subject is rendered copy and its tests are TypeScript. A count of absence sentences per panel is checkable against a rendered component, and that check has no owner until the craft slice.
 
 1. A panel states at most one absence, in one plain sentence, and only when the absence changes what the person should do next.

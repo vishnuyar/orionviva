@@ -39,7 +39,9 @@ try {
   browser = await remote({ hostname: "127.0.0.1", port, logLevel: "error", capabilities: { browserName: "chrome", "goog:chromeOptions": { args: ["--headless=new", "--no-first-run", "--window-size=1440,1100"] } } });
   await browser.url(url);
   const text = () => browser.$("body").getText();
-  await browser.waitUntil(async () => (await text()).includes("Open local vault"), { timeout: 30_000 });
+  await browser.waitUntil(async () => (await text()).includes("Set up my vault"), { timeout: 30_000 });
+  await browser.saveScreenshot(join(root, "welcome.png"));
+  await browser.$("aria/Set up my vault").click();
   assert.equal(new URL(await browser.getUrl()).hash, "");
   const observeErrors = () => browser.execute(() => {
     const originalFetch = globalThis.fetch;
@@ -66,11 +68,23 @@ try {
   }, { timeout: 30_000, interval: 1000 });
   await browser.$(".document-list").scrollIntoView();
   await browser.saveScreenshot(join(root, "browser-import.png"));
+  for (const width of [836, 390]) {
+    await browser.setWindowSize(width, 1000);
+    await browser.$(".document-library").scrollIntoView();
+    const library = await browser.$(".document-library").getSize();
+    assert.ok(library.width >= 160, `Statement list is squeezed at ${width}px`);
+    const fields = await browser.$$(".document-status-grid .document-detail-field:not(.document-detail-field-wide)");
+    for (const field of fields) assert.ok((await field.getSize()).width >= 100, `Statement status field is squeezed at ${width}px`);
+    assert.equal(await browser.execute(() => document.documentElement.scrollWidth <= window.innerWidth), true, `Statements overflow at ${width}px`);
+    await browser.saveScreenshot(join(root, `statements-${width}.png`));
+  }
+  await browser.setWindowSize(1440, 1100);
   assert.equal(await readFile(join(root, "synthetic.txt"), "utf8"), "Synthetic browser import fixture. No personal financial data.\n");
   await browser.$('aria/Close this vault').click();
-  await browser.waitUntil(async () => (await text()).includes("No vault open"), { timeout: 10_000 });
+  await browser.waitUntil(async () => (await text()).includes("Set up my vault"), { timeout: 10_000 });
   await browser.refresh();
-  await browser.waitUntil(async () => (await text()).includes("Open local vault"), { timeout: 10_000 });
+  await browser.waitUntil(async () => (await text()).includes("Open existing vault"), { timeout: 10_000 });
+  await browser.$("aria/Open existing vault").click();
   assert(!(await text()).includes("Vault open"), "Reload must not reopen an explicitly closed vault");
   await observeErrors();
   await browser.$('aria/Open an existing vault').click();
@@ -99,7 +113,7 @@ try {
   await writeFile(join(root, "revoke"), "revoke\n");
   await browser.waitUntil(async () => (await text()).includes("Browser access has ended"), { timeout: 10_000 });
   await browser.saveScreenshot(join(root, "browser-revoked.png"));
-  console.log(JSON.stringify({ status: "pass", evidence: root, cases: ["production-assets", "create-real-vault", "synthetic-file-import", "original-unchanged", "closed-vault-stays-closed-after-reload", "wrong-phrase-refused", "reopen-vault", "encrypted-original-roundtrip", "duplicate-tab-reload-refused", "authorized-reload", "revocation"] }));
+  console.log(JSON.stringify({ status: "pass", evidence: root, cases: ["production-assets", "responsive-statements", "create-real-vault", "synthetic-file-import", "original-unchanged", "closed-vault-stays-closed-after-reload", "wrong-phrase-refused", "reopen-vault", "encrypted-original-roundtrip", "duplicate-tab-reload-refused", "authorized-reload", "revocation"] }));
 } catch (error) {
   if (browser) {
     await browser.saveScreenshot(join(root, "failure.png")).catch(() => {});

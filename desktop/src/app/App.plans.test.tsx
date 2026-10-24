@@ -46,7 +46,7 @@ describe("live Plans handoffs", () => {
       expect(view.getAllByLabelText("Plan name")[0]).toHaveValue("Trip");
 
       await user.click(view.getAllByRole("button", { name: moments.sample_frame_leave })[0]);
-      await user.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+      await user.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
       await waitFor(() => expect(view.getByText(moments.sample_frame)).toBeInTheDocument());
       await user.click(await view.findByRole("button", { name: "Plans" }));
 

@@ -5,11 +5,15 @@ beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("Review and Ask Viva separation", () => {
-  it("keeps the Overview compact and Ask Viva free of backend questions", async () => {
+  it("makes Review reachable from Overview and keeps Ask Viva free of backend questions", async () => {
     const user = userEvent.setup();
     const view = await openSample();
     expect(view.queryByText("Questions in your conversation")).not.toBeInTheDocument();
-    expect(view.queryByRole("button", { name: /open review/i })).not.toBeInTheDocument();
+    // Overview exposes a summary only once the authoritative queue has been read.
+    await user.click(view.getByRole("button", { name: /^Review,/ }));
+    await view.findByRole("heading", { name: "Review", level: 2 });
+    await user.click(view.getByRole("button", { name: "Overview" }));
+    expect(view.getByRole("button", { name: /open review/i })).toBeInTheDocument();
     expect(view.getByRole("button", { name: /see statement status/i })).toBeInTheDocument();
 
     await user.click(view.getByRole("button", { name: "Ask Viva" }));

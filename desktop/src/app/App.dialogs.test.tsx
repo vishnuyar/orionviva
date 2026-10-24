@@ -124,7 +124,7 @@ describe("dialogs", () => {
     expect(queryByRole("dialog", { name: "Ask Viva" })).not.toBeInTheDocument();
     expect(opener).not.toHaveFocus();
     expect(document.querySelector("main")).not.toHaveAttribute("inert");
-    expect(document.getElementById("primary-navigation-drawer")).not.toHaveAttribute("inert");
+    expect(document.getElementById("primary-navigation-drawer")).toBeNull();
   });
 
   it("keeps the Viva shell dismissible when its body throws and recovers on reset", async () => {
@@ -167,14 +167,15 @@ describe("dialogs", () => {
     await user.click(getByRole("button", { name: "Statements" }));
     expect(getByRole("heading", { name: "Add a statement" })).toBeInTheDocument();
     expect(getByText("What this page can show")).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Documents in this vault read" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Your statements" })).toBeInTheDocument();
     await user.click(getByRole("button", { name: /growth-portfolio-2026-06\.pdf/i }));
     // The read supplies identity, filename, kind, resolution and what the
     // document put on the books. Pages, source regions and provenance are not
     // supplied by any vault read, and this screen says so rather than showing
     // a field it filled in itself.
-    expect(getAllByText("Page details are not supplied by this vault read.").length).toBeGreaterThan(0);
-    expect(getByText("Related evidence is not supplied by this vault read.")).toBeInTheDocument();
+    await user.click(getByText("File and source details"));
+    expect(getAllByText("Page details unavailable").length).toBeGreaterThan(0);
+    expect(getByText("Related-document links are not available here.")).toBeInTheDocument();
   });
 
 
@@ -216,7 +217,7 @@ describe("dialogs", () => {
       pendingFrames.forEach((callback) => callback(performance.now()));
       pendingFrames.clear();
 
-      fireEvent.click(getAllByRole("button", { name: "Statements" })[0]);
+      expect(queryByRole("button", { name: "Statements" })).not.toBeInTheDocument();
       expect(document.querySelector("#selected-document-title")).toBeNull();
     } finally {
       globalThis.requestAnimationFrame = originalRequestAnimationFrame;
@@ -239,7 +240,7 @@ describe("dialogs", () => {
       fireEvent.click(getAllByRole("button", { name: moments.sample_frame_leave })[0]);
       pendingFrames.forEach((callback) => callback(performance.now()));
       pendingFrames.clear();
-      fireEvent.click(getAllByRole("button", { name: "Statements" })[0]);
+      expect(queryByRole("button", { name: "Statements" })).not.toBeInTheDocument();
       expect(document.getElementById("document-capture-status")).toBeNull();
     } finally {
       globalThis.requestAnimationFrame = originalRequestAnimationFrame;
@@ -376,6 +377,7 @@ describe("dialogs", () => {
     try {
       const user = userEvent.setup();
       const { getAllByRole, getByLabelText, getByRole } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -421,7 +423,7 @@ describe("dialogs", () => {
     await user.click(getByRole("button", { name: "Back to Overview" }));
     expect(getByText("Dormant Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
     await user.click(getByRole("button", { name: "Accounts" }));
-    expect(getByRole("heading", { name: "Accounts in this read" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Your accounts" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Dormant Savings" })).toBeInTheDocument();
   });
 
@@ -444,7 +446,7 @@ describe("dialogs", () => {
     const { getByRole, getByText, container } = await openSample();
 
     await user.click(getByRole("button", { name: "Accounts" }));
-    expect(getByRole("heading", { name: "Accounts in this read" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Your accounts" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Abroad Current" })).toBeInTheDocument();
     expect(getByText("Grade")).toBeInTheDocument();
 
@@ -490,14 +492,14 @@ describe("dialogs", () => {
   it("says a vault cannot be opened here when no host bridge is injected", async () => {
     const { getByText, queryByPlaceholderText } = render(<App />);
 
-    expect(getByText(/Preview mode. A desktop host bridge will enable local vault opening/i)).toBeInTheDocument();
+    expect(getByText(/To use sample data or your own vault, open the desktop app or use its Open in browser action/i)).toBeInTheDocument();
     expect(queryByPlaceholderText("/path/to/vault")).not.toBeInTheDocument();
   });
 
   it("keeps manual directory entry as the browser fallback", async () => {
     const { getByText, queryByLabelText, queryByRole } = render(<App />);
 
-    expect(getByText(/Preview mode. A desktop host bridge will enable local vault opening/i)).toBeInTheDocument();
+    expect(getByText(/To use sample data or your own vault, open the desktop app or use its Open in browser action/i)).toBeInTheDocument();
     expect(queryByRole("button", { name: /choose folder/i })).not.toBeInTheDocument();
     expect(queryByLabelText("Vault directory")).not.toBeInTheDocument();
   });

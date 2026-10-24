@@ -24,8 +24,13 @@
 .review-center-row-heading { display: grid; gap: var(--space-xs); }
 .review-center-row-heading > span { color: var(--ink); font-size: var(--text-fine); font-weight: var(--weight-strong); }
 .review-center-row-heading strong { color: var(--ink); font-size: var(--text-body); line-height: var(--leading-body); }
-.review-center-context { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-md); }
-.review-center-context span + span::before { content: "·"; margin-right: var(--space-md); color: var(--ink); }
+.review-center-context { display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-xl); margin: var(--space-sm) 0; }
+.review-center-context > div { display: grid; gap: var(--space-hair); }
+.review-center-context dt { color: var(--ink); font-size: var(--text-caption); }
+.review-center-context dd { margin: 0; color: var(--ink); font-size: var(--text-fine); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; }
+.review-center-reason { display: grid; gap: var(--space-xs); }
+.review-center-next { border-color: var(--ink); }
+.review-center-count strong { font-variant-numeric: tabular-nums; }
 .review-center-row .secondary-button { justify-content: center; white-space: nowrap; color: var(--ink); background: var(--panel); font-size: var(--text-fine); }
 .review-badge, .review-topbar-button b { display: inline-grid; place-items: center; min-width: 22px; min-height: 22px; padding: 0 var(--space-sm); border-radius: var(--radius-pill); color: var(--paper); background: var(--moss); font-size: var(--text-fine); line-height: var(--leading-tight); }
 .review-topbar-button { display: inline-flex; align-items: center; gap: var(--space-sm); min-height: var(--control-min-height); padding: var(--space-sm) var(--space-md); border: 1px solid var(--moss); border-radius: var(--radius-md); color: var(--ink); background: var(--panel); font: inherit; font-size: var(--text-fine); font-weight: var(--weight-strong); }

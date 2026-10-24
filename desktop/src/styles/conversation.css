@@ -84,3 +84,12 @@
 .conversation-drawer .review-inspection-layout, .conversation-drawer .review-detail-grid, .conversation-drawer .review-more-grid, .conversation-drawer .review-guidance { grid-template-columns: 1fr; }
 .conversation-drawer .feature-panel { padding: var(--space-lg); }
 .state-pill { padding: 5px 8px; border-radius: 999px; font-size: var(--text-fine); font-weight: 700; }
+.conversation-context-controls, .conversation-planning, .conversation-starters { display: grid; gap: var(--space-sm); margin-block: var(--space-md); }
+.conversation-context-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-sm); }
+.conversation-context-status strong { color: var(--moss); font-size: var(--text-body); }
+.conversation-context-status .text-button, .conversation-planning summary { min-height: var(--control-min-height); display: inline-flex; align-items: center; }
+.conversation-planning { padding-top: var(--space-sm); border-top: var(--space-hair) solid var(--line); }
+.conversation-planning summary { cursor: pointer; color: var(--moss); font-size: var(--text-body); }
+.conversation-planning summary:focus-visible { outline: var(--space-hair) solid var(--moss); outline-offset: var(--space-xs); }
+.conversation-planning p, .conversation-starters p { color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.conversation-starters .secondary-button { text-align: left; justify-content: flex-start; }

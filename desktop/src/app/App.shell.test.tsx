@@ -27,7 +27,7 @@ describe("shell", () => {
         : { state: "degraded", freshness: "unavailable", lifecycle: "degraded", revision: "", overview: null, accounts: null, error: "read_failed" } } as T };
     };
     const view = render(<App />);
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
     await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
     if (destination === "Accounts") fireEvent.click(view.getByRole("button", { name: "Accounts" }));
     const retry = await view.findByRole("button", { name: "Retry" });
@@ -61,7 +61,7 @@ describe("shell", () => {
       } } as T };
     };
     const view = render(<App />);
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
     let retry = await view.findByRole("button", { name: "Retry" });
     if (destination === "Accounts") fireEvent.click(view.getByRole("button", { name: "Accounts" }));
     retry = await view.findByRole("button", { name: "Retry" });
@@ -80,7 +80,7 @@ describe("shell", () => {
     const raw = sampleReads.overview?.result.data as Record<string, unknown>;
     const restore = installSampleBridge({ overview: { ...raw, state, issues: [{ code: "named_issue", message: "A named part needs attention." }] } });
     const view = render(<App />);
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
     await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
     const expected = state === "partial" ? "Some" : "need";
     expect(view.getByRole("heading", { name: "Your financial picture", level: 1 })).toBeInTheDocument();
@@ -104,8 +104,7 @@ describe("shell", () => {
       } } as T };
     };
     const view = render(<App />);
-    fireEvent.click(view.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
     const retry = await view.findByRole("button", { name: "Retry" });
     expect(retry.closest(".content-wrap")).not.toBeNull();
     expect(retry.closest(".sidebar")).toBeNull();
@@ -133,12 +132,12 @@ describe("shell", () => {
       return originalRequest(frame);
     };
     const view = render(<App />);
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
     await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
     fail = true;
     fireEvent.click(await view.findByRole("button", { name: navLabel }));
     const retry = await view.findByRole("button", { name: "Retry this screen" });
-    expect(retry.closest(".feature-panel")?.querySelector('[role="status"][aria-live="polite"]')).toHaveTextContent("No previous view is available");
+    expect(retry.closest(".feature-panel")?.querySelector('[role="status"][aria-live="polite"]')).toHaveTextContent("Try loading this screen again.");
     retry.focus();
     await user.keyboard("{Enter}");
     await waitFor(() => expect(retry).not.toBeInTheDocument());
@@ -160,12 +159,12 @@ describe("shell", () => {
       return originalRequest(frame);
     };
     const view = render(<App />);
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
     await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
     failActivity = true;
     fireEvent.click(view.getByRole("button", { name: "Transactions" }));
     const retry = await view.findByRole("button", { name: "Retry this screen" });
-    expect(retry.closest(".feature-panel")?.querySelector('[role="status"]')).toHaveTextContent("No previous view is available");
+    expect(retry.closest(".feature-panel")?.querySelector('[role="status"]')).toHaveTextContent("Try loading this screen again.");
     retry.focus();
     await user.keyboard("{Enter}");
     await waitFor(() => expect(retry).not.toBeInTheDocument());
@@ -188,7 +187,7 @@ describe("shell", () => {
       return originalRequest(frame);
     };
     const view = render(<App />);
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
     await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
     fireEvent.click(view.getByRole("button", { name: "Transactions" }));
     await waitFor(() => expect(view.getByRole("heading", { name: "Transactions", level: 1 })).toBeInTheDocument());
@@ -226,7 +225,7 @@ describe("shell", () => {
       return originalRequest(frame);
     };
     const view = render(<App />);
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
     await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
     failActivity = true;
     fireEvent.click(view.getByRole("button", { name: "Transactions" }));
@@ -255,8 +254,7 @@ describe("shell", () => {
       return originalRequest(frame);
     };
     const view = render(<App />);
-    fireEvent.click(view.getByRole("button", { name: "Open navigation" }));
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
     await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
     failActivity = true;
     fireEvent.click(view.getByRole("button", { name: "Open navigation" }));
@@ -272,7 +270,7 @@ describe("shell", () => {
     const user = userEvent.setup();
     installSampleBridge();
     const view = render(<App />);
-    const action = view.getAllByRole("button", { name: "Open the sample vault" })[0];
+    const action = view.getAllByRole("button", { name: "Try sample data" })[0];
 
     for (let step = 0; step < 20 && document.activeElement !== action; step += 1) {
       await user.tab();
@@ -285,7 +283,7 @@ describe("shell", () => {
 
   it("returns focus to the Accounts heading when the originating account disappeared", () => {
     const host = document.createElement("section");
-    host.innerHTML = '<h2 id="accounts-index-heading" tabindex="-1">Accounts in this read</h2>';
+    host.innerHTML = '<h2 id="accounts-index-heading" tabindex="-1">Your accounts</h2>';
     document.body.append(host);
     restoreAccountIndexFocus("account-that-is-no-longer-present", null);
     expect(host.querySelector("h2")).toHaveFocus();
@@ -368,7 +366,7 @@ describe("shell", () => {
     await user.click(getByRole("button", { name: "Statements" }));
     expect(getByRole("heading", { name: "Statements & documents" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Add a statement" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Documents in this vault read" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Your statements" })).toBeInTheDocument();
   });
 
   it("runs an advertised Activity correction through the installed shell and focuses the reread row", async () => {
@@ -385,7 +383,7 @@ describe("shell", () => {
     await user.click(view.getByRole("button", { name: /Save category for/ }));
 
     await waitFor(() => expect(view.getByText("Correction recorded")).toBeInTheDocument());
-    expect(view.getByText("The full picture was read again.")).toBeInTheDocument();
+    expect(view.getByText("Your financial picture has been updated.")).toBeInTheDocument();
     expect(view.getByText("Corner shop").closest("li")).toHaveFocus();
     // The action receipt never patches financial data. This stub's full read
     // still says Food, so the screen still says Food after a completed reply.
@@ -525,14 +523,14 @@ describe("shell", () => {
     expect(view.queryByText(moments.sample_frame)).not.toBeInTheDocument();
     expect(view.getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
     expect(view.container.querySelectorAll("h1")).toHaveLength(1);
-    expect(view.container.querySelectorAll('#primary-navigation [aria-current="page"]')).toHaveLength(1);
-    expect(view.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+    expect(view.container.querySelector('#primary-navigation')).toBeNull();
+    expect(view.queryByRole("button", { name: "Overview" })).not.toBeInTheDocument();
     expect(view.queryByText("USD 17,486.45")).not.toBeInTheDocument();
     expect(view.getAllByRole("status")[0]).toHaveTextContent("Closed. Nothing from that vault is on this screen.");
     expect(view.queryAllByRole("dialog")).toHaveLength(0);
     expect(document.documentElement.style.overflow).toBe("");
     expect(document.body.style.overflow).toBe("");
-    expect(view.getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
+    expect(view.getAllByRole("button", { name: "Try sample data" })[0]).toBeInTheDocument();
   });
 
   it.each(["Evidence", "Viva"] as const)("does not resurrect explicitly closed %s after a sample reset", async (overlay) => {
@@ -578,7 +576,7 @@ describe("shell", () => {
       expect(view.queryByRole("dialog")).not.toBeInTheDocument();
       expect(view.getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
       expect(view.queryByText(moments.sample_frame)).not.toBeInTheDocument();
-      expect(view.getByRole("button", { name: "Ask Viva" })).not.toHaveFocus();
+      expect(view.queryByRole("button", { name: "Ask Viva" })).not.toBeInTheDocument();
       expect(document.documentElement.style.overflow).toBe("");
       expect(document.body.style.overflow).toBe("");
     } finally {

@@ -72,18 +72,28 @@ describe("the picture on the overview", () => {
     expect(rendered.queryByRole("heading", { name: "Questions for you" })).not.toBeInTheDocument();
   });
 
-  it("keeps classification review counts out of Overview and document recovery reachable", async () => {
+  it("shows the served Review summary with direct review and statement actions", async () => {
     const user = userEvent.setup();
     for (const count of [0, 125]) {
       const rendered = viewReview({ state: "ready", data: { ...emptyReview, summary: `${count} items waiting`, actionableCount: count } });
-      expect(rendered.queryByText(/actionable|items waiting/)).not.toBeInTheDocument();
-      expect(rendered.queryByRole("button", { name: "Open Review" })).not.toBeInTheDocument();
+      expect(rendered.getByText(`${count} items waiting`)).toBeInTheDocument();
+      await user.click(rendered.getByRole("button", { name: "Open Review" }));
+      expect(actions.onNavigate).toHaveBeenLastCalledWith("review");
       await user.click(rendered.getByRole("button", { name: "See statement status" }));
       expect(actions.onNavigate).toHaveBeenLastCalledWith("documents");
       rendered.unmount();
     }
   });
 
+
+  it("keeps incomplete Review visible without claiming the queue is complete", () => {
+    const rendered = viewReview({ state: "partial", data: emptyReview, issues: [{ code: "partial", message: "Queue limited." }] });
+    expect(rendered.getByText(/Some review items could not be loaded/)).toBeInTheDocument();
+    const hero = rendered.container.querySelector(".hero-grid");
+    const review = rendered.container.querySelector(".overview-review-summary");
+    expect(hero?.nextElementSibling).toBe(review);
+    expect(rendered.getByRole("button", { name: "Open Review" })).toBeInTheDocument();
+  });
   it("shows the sentence the read supplied, byte for byte", () => {
     const supplied = "A distinctive sentence the backend composed and this side did not.";
     expect(view(overview({ coverage: supplied })).getByText(supplied)).toBeInTheDocument();
@@ -435,8 +445,17 @@ describe("the picture on the overview", () => {
     const ask = vi.fn();
     const setAside = vi.fn();
     const result: FeatureResult<OverviewData> = { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [], utility: { state: "ready", findingCount: 1, obligations: [{ id: "ob-1", subject: "Rent", cadence: "monthly", expectedDate: "2026-09-01", status: "due", basis: "measured", amountDisplay: "$1,200.00", amountMin: "1200", amountMax: "1200", currency: "USD", grade: "corroborated", headline: "Rent is due September 1.", explanation: "The measured amount is $1,200.00.", coverage: "Measured from three records.", recordIds: ["m1"], evidenceIds: ["doc-1"], accountIds: ["checking"], caveats: [], requiredVisibility: false, actions: ["inspect", "ask_viva"] }], findings: [{ id: "find-1", kind: "fee_observed", subject: "Fee", importance: 50, amountDisplay: "$12.00", exactValue: "12", currency: "USD", dated: "2026-08-27", headline: "A fee was observed.", explanation: "The ledger categorized it as a fee.", coverage: "Seen once.", recordIds: ["m2"], evidenceIds: [], accountIds: ["checking"], requiredVisibility: true, actions: ["ask_viva", "set_aside"] }] } } };
-    const rendered = render(<Overview {...actions} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" onInspectDocument={inspect} onAskViva={ask} onSetAsideFinding={setAside} findingReceipt={{ findingId: "find-1", result: { state: "interrupted", message: "Inspect Review before trying again. OrionViva did not retry it." } }} />);
+    result.data.accounting = { asOf: "2026-09-01", start: "2026-08-01", end: "2026-08-31", balanceComplete: false, profitComplete: false, balanceTotals: [], profitTotals: [], balances: [], lines: [], unresolved: [], missing: [], heldCount: 0, hierarchy: [] };
+    const rendered = render(<Overview {...actions} result={result} reviewResult={{ state: "ready", data: emptyReview }} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" onInspectDocument={inspect} onAskViva={ask} onSetAsideFinding={setAside} findingReceipt={{ findingId: "find-1", result: { state: "interrupted", message: "Inspect Review before trying again. OrionViva did not retry it." } }} />);
     expect(rendered.getByText("Rent is due September 1.")).toBeInTheDocument();
+    const hero = rendered.container.querySelector(".hero-grid");
+    const review = rendered.container.querySelector(".overview-review-summary");
+    const upcoming = rendered.getByRole("heading", { name: "Coming up" }).closest("section");
+    const accounting = rendered.getByRole("heading", { name: "Balance sheet" });
+    expect(hero?.nextElementSibling).toBe(review);
+    expect(review?.nextElementSibling).toBe(upcoming);
+    expect(upcoming?.compareDocumentPosition(accounting)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
     expect(rendered.getByText("A fee was observed.")).toBeInTheDocument();
     expect(rendered.getByText("Inspect Review before trying again. OrionViva did not retry it.")).toBeInTheDocument();
     await user.click(rendered.getByRole("button", { name: "Inspect" }));

@@ -8,11 +8,11 @@ import type { AccountView, EvidenceLink, FeatureResult, OverviewData } from "../
 import { useRef } from "react";
 
 function accountName(account: AccountView) {
-  return account.name.trim() ? account.name : "Account name was not supplied by this overview read.";
+  return account.name.trim() ? account.name : "Unnamed account";
 }
 
 function accountKind(account: AccountView) {
-  return account.kind.trim() ? account.kind : "Account kind was not supplied by this overview read.";
+  return account.kind.trim() ? account.kind : "Account type unavailable";
 }
 
 function AccountDetail({ selection, showVerificationDetails, onOpenEvidence, onOpenFigure }: { selection: StableSelection<AccountView>; showVerificationDetails: boolean; onOpenEvidence: (link: EvidenceLink) => void; onOpenFigure: (figureId: string) => void }) {
@@ -20,12 +20,12 @@ function AccountDetail({ selection, showVerificationDetails, onOpenEvidence, onO
     const account = selection.item;
     const figure = accountEvidenceFigure(account);
     const showProof = showCompactProof(account.proofPresentation, showVerificationDetails);
-    return <aside className="detail-panel" aria-labelledby="selected-account-title"><div className="detail-panel-label">Selected account</div><h3 id="selected-account-title" tabIndex={-1}>{accountName(account)}</h3><Figure figure={figure} onOpenEvidence={onOpenFigure} className="selected-account-figure" />{account.coverage && <p>{account.coverage}</p>}<ProofCaveats caveats={account.caveats ?? []} /><div className="detail-panel-grid"><div><span>Kind</span><strong>{accountKind(account)}</strong></div>{showProof ? <div className="compact-proof"><span>Grade</span><strong>{figure.grade.label}: {figure.grade.description}</strong></div> : null}<div><span>Measured</span><strong>{account.asOf || "Not supplied"}</strong></div>{showProof ? <div className="compact-proof"><span>Note</span><strong>{account.note || "Not supplied"}</strong></div> : null}</div><ProofQualifications proof={account.proofPresentation} alreadyRendered={[figure.grade.label, figure.grade.description, account.note ?? "", account.coverage ?? "", ...(account.caveats ?? [])]} /><ProofLinks label="Supporting documents" links={account.evidenceLinks} onOpen={onOpenEvidence} /></aside>;
+    return <aside className="detail-panel" aria-labelledby="selected-account-title"><div className="detail-panel-label">Selected account</div><h3 id="selected-account-title" tabIndex={-1}>{accountName(account)}</h3><Figure figure={figure} onOpenEvidence={onOpenFigure} className="selected-account-figure" />{account.coverage && <p>{account.coverage}</p>}<ProofCaveats caveats={account.caveats ?? []} /><div className="detail-panel-grid"><div><span>Account type</span><strong>{accountKind(account)}</strong></div>{showProof ? <div className="compact-proof"><span>Grade</span><strong>{figure.grade.label}: {figure.grade.description}</strong></div> : null}<div><span>As of</span><strong>{account.asOf || "Not supplied"}</strong></div>{showProof ? <div className="compact-proof"><span>Note</span><strong>{account.note || "Not supplied"}</strong></div> : null}</div><ProofQualifications proof={account.proofPresentation} alreadyRendered={[figure.grade.label, figure.grade.description, account.note ?? "", account.coverage ?? "", ...(account.caveats ?? [])]} /><ProofLinks label="Supporting documents" links={account.evidenceLinks} onOpen={onOpenEvidence} /></aside>;
   }
   const title = selection.state === "missing" ? "Selected account unavailable" : "Account selection unavailable";
-  const detail = selection.state === "missing" ? "The selected account is no longer present in this accounts read."
+  const detail = selection.state === "missing" ? "This account is no longer available."
     : selection.state === "conflicted_identity" ? "More than one account uses the selected identity, so the interface will not choose between them."
-      : "This accounts read contains rows, but none has a unique nonblank account ID.";
+      : "These accounts cannot be opened because their identities could not be resolved.";
   const requestedId = selection.state === "missing" || selection.state === "conflicted_identity" ? selection.requestedId : "";
   return <aside className="detail-panel" aria-labelledby="selected-account-title"><div className="detail-panel-label">Selected account</div><h3 id="selected-account-title" tabIndex={-1}>{title}</h3><p>{detail}</p>{requestedId && <dl><div><dt>Requested account ID</dt><dd>{requestedId}</dd></div></dl>}</aside>;
 }
@@ -34,9 +34,9 @@ export function Accounts({ result, selectedAccount, showVerificationDetails, onS
   const accountButtons = useRef(new Map<string, HTMLButtonElement>());
   const openerRef = useRef<HTMLButtonElement | null>(null);
   return <PanelStateView result={result} copy={{ partial: "Some account details are unavailable. Available accounts are shown below.", needsInput: "Some accounts need more information. Available account details are shown below.", unavailable: { title: "Accounts unavailable", detail: "Account details are not available in this build." }, failed: { title: "Accounts could not be read", detail: "The accounts section could not be read. The private vault is still open." } }}>{(data) => {
-    if (!data.accounts.length) return <section className="feature-panel"><div className="empty-state"><strong>No accounts yet</strong><span>No accounts are visible in this vault yet. Add a statement, or open the sample vault to see what one looks like when it is full.</span><button type="button" className="secondary-button" aria-disabled={openingSample} aria-describedby={openingSample ? "vault-opening-from-accounts" : undefined} onClick={() => { if (!openingSample) onExploreSample(); }}>{openingSample ? "Opening sample vault…" : "Open the sample vault"}</button>{openingSample ? <span className="action-explanation" id="vault-opening-from-accounts">The sample vault is opening and its first read is still pending.</span> : null}</div></section>;
+    if (!data.accounts.length) return <section className="feature-panel"><div className="empty-state"><strong>No accounts yet</strong><span>No accounts are visible in this vault yet. Add a statement, or open the sample vault to see what one looks like when it is full.</span><button type="button" className="secondary-button" aria-disabled={openingSample} aria-describedby={openingSample ? "vault-opening-from-accounts" : undefined} onClick={() => { if (!openingSample) onExploreSample(); }}>{openingSample ? "Opening sample vault…" : "Open the sample vault"}</button>{openingSample ? <span className="action-explanation" id="vault-opening-from-accounts">Opening sample data. Your financial picture will appear when it is ready.</span> : null}</div></section>;
     const selection = resolveStableSelection(data.accounts, selectedAccount);
-    return <section className="feature-panel"><div className="feature-icon">◎</div><h2 id="accounts-index-heading" tabIndex={-1}>Accounts in this read</h2><p>Each account is shown independently with the fields supplied to this view.</p>
+    return <section className="feature-panel"><div className="feature-icon">◎</div><h2 id="accounts-index-heading" tabIndex={-1}>Your accounts</h2><p>Choose an account to see its balance, coverage, and supporting statements.</p>
       <div className="account-detail-list">{identifiedRows(data.accounts, "accounts-list").map((row) => {
         if (row.state === "missing_identity") return <div className="detail-row identity-state" key={row.key}><div><strong>Account identity unavailable</strong><span>One or more accounts have no stable account ID. They cannot be selected or opened as evidence.</span></div></div>;
         if (row.state === "conflicted_identity") return <div className="detail-row identity-state" key={row.key}><div><strong>Account identity conflicted</strong><span>More than one account uses this account ID. The interface will not choose between them or open their evidence.</span><dl><div><dt>Account ID</dt><dd>{row.id}</dd></div></dl></div></div>;

@@ -50,7 +50,7 @@ describe("Transactions surface", () => {
     const { getByText, queryByText, rerender } = render(<Activity {...props} result={{ state: "absent", reason: "none" }} />);
     expect(queryByText("Transactions unavailable")).not.toBeInTheDocument();
     rerender(<Activity {...props} result={{ state: "unavailable", reason: "not_connected" }} />);
-    expect(getByText("Transactions are not connected to this vault read.")).toBeInTheDocument();
+    expect(getByText("Transactions are unavailable for this vault.")).toBeInTheDocument();
     rerender(<Activity {...props} result={{ state: "failed", reason: "read_failed" }} />);
     expect(getByText("Transactions could not be read. The vault is still open.")).toBeInTheDocument();
     rerender(<Activity {...props} result={{ state: "partial", data: read([]), issues: [{ code: "partial", message: "bounded" }] }} />);
@@ -285,7 +285,7 @@ describe("Transactions surface", () => {
     render(<Activity result={ready(read([movement()]))} correction={controls(state)} onOpenEvidence={noAction} />);
     expect(screen.getByText(title)).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveFocus();
-    if (state.state === "settled" && state.refresh === "failed") expect(screen.getByText(/old picture is still on screen and is stale/i)).toBeInTheDocument();
+    if (state.state === "settled" && state.refresh === "failed") expect(screen.getByText(/details shown are out of date/i)).toBeInTheDocument();
   });
 
   it.each([
@@ -347,8 +347,8 @@ describe("Transactions surface", () => {
 
   it("does not turn malformed current classification into an absence claim or a control", () => {
     render(<Activity result={ready(read([movement({ category: { id: null, label: "", valid: false }, tags: [], tagsValid: false, actions: [] })]))} correction={controls({ state: "idle" })} onOpenEvidence={noAction} />);
-    expect(screen.getByText("Category unavailable from this read")).toBeInTheDocument();
-    expect(screen.getByText("Tags unavailable from this read")).toBeInTheDocument();
+    expect(screen.getByText("Category unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Tags unavailable")).toBeInTheDocument();
     expect(screen.queryByText(/Correct category, treatment, or tags/)).not.toBeInTheDocument();
   });
 });

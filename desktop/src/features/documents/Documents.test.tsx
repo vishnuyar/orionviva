@@ -69,7 +69,7 @@ describe("Documents surface", () => {
 
     expect(queryByText("Document capture unavailable")).not.toBeInTheDocument();
     expect(getByText("What this page can show")).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Documents in this vault read" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Your statements" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "quarter-close.pdf" })).toBeInTheDocument();
     expect(getAllByText(/live-document-identity/).length).toBeGreaterThan(0);
     expect(getByText("Resolved", { selector: ".document-detail strong" })).toBeInTheDocument();
@@ -89,9 +89,9 @@ describe("Documents surface", () => {
     expect(getByText("Unresolved", { selector: ".document-detail strong" })).toBeInTheDocument();
     expect(getByText("Unavailable", { selector: ".document-detail strong" })).toBeInTheDocument();
     rerender(<Documents rescan={null} capture={null} result={ready(documents)} selectedDocument="missing" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
-    expect(getByText("Document type was not supplied by this read.")).toBeInTheDocument();
-    expect(getByText("Resolution status was not supplied by this read.")).toBeInTheDocument();
-    expect(getByText("Original availability was not supplied by this read.")).toBeInTheDocument();
+    expect(getByText("Document type unavailable", { selector: ".document-detail strong" })).toBeInTheDocument();
+    expect(getByText("Resolution status unavailable")).toBeInTheDocument();
+    expect(getByText("Original availability unavailable")).toBeInTheDocument();
   });
 
 
@@ -152,8 +152,8 @@ describe("adding a document", () => {
     expect(control).not.toHaveAttribute("disabled");
     expect(control).toHaveAttribute("aria-disabled", "true");
     expect([...container.querySelectorAll("button:not([disabled])")]).toContain(control);
-    expect(getByText("Your vault is answering the last request. Pressing again does nothing until it has.")).toBeInTheDocument();
-    expect(control).toHaveAccessibleDescription("Your vault is answering the last request. Pressing again does nothing until it has.");
+    expect(getByText("Your previous request is still running. Wait for its result before starting another.")).toBeInTheDocument();
+    expect(control).toHaveAccessibleDescription("Your previous request is still running. Wait for its result before starting another.");
 
     fireEvent.click(control);
     expect(choose).toHaveBeenCalledTimes(1);
@@ -270,7 +270,7 @@ describe("what the sidecar says it is doing", () => {
     const rescan = { state: { state: "idle" as const }, onRescan: () => asked.push("rescan") };
     const { getByRole, queryByText } = render(<Documents {...props} capture={capture} rescan={rescan} jobStatus="unavailable" onRecheckJobs={() => asked.push("recheck")} result={ready([document("kept")])} />);
     const choose = getByRole("button", { name: "Choose statement file" });
-    const look = getByRole("button", { name: "Look again" });
+    const look = getByRole("button", { name: "Check records", hidden: true });
     expect(choose).toHaveAttribute("aria-disabled", "true");
     expect(look).toHaveAttribute("aria-disabled", "true");
     expect(choose).toHaveAccessibleDescription(expect.stringContaining("Job status unavailable"));
@@ -339,19 +339,19 @@ describe("going back over what is already here", () => {
 
   it("offers no control where the source cannot do it", () => {
     const { queryByRole } = render(<Documents {...props} rescan={null} result={ready([])} />);
-    expect(queryByRole("button", { name: "Look again" })).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "Check records", hidden: true })).not.toBeInTheDocument();
   });
 
   it("asks the vault once when the control is pressed", () => {
     const asked: number[] = [];
     const { getByRole } = render(<Documents {...props} rescan={controls({ state: "idle" }, () => asked.push(1))} result={ready([])} />);
-    fireEvent.click(getByRole("button", { name: "Look again" }));
+    fireEvent.click(getByRole("button", { name: "Check records", hidden: true }));
     expect(asked).toEqual([1]);
   });
 
   it("keeps the control in the tab order while the vault is answering", () => {
     const { getByRole } = render(<Documents {...props} rescan={controls({ state: "working" })} result={ready([])} />);
-    expect(getByRole("button", { name: "Look again" })).toHaveAttribute("aria-disabled", "true");
+    expect(getByRole("button", { name: "Check records", hidden: true })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("says the backend's own sentence for a pass that changed nothing", () => {
@@ -415,7 +415,7 @@ it("distinguishes interrupted imports visibly and accessibly and explains blocke
   view.rerender(<Documents {...props} capture={{ ...working(), onChoose: null }} />);
   const waiting = view.getByRole("button", { name: secondName });
   expect(waiting).toHaveAttribute("aria-disabled", "true");
-  expect(waiting).toHaveAccessibleDescription(/Your vault is answering the last request/);
+  expect(waiting).toHaveAccessibleDescription(/Your previous request is still running/);
   fireEvent.click(waiting);
   expect(onRecoverDocument).toHaveBeenCalledTimes(1);
   view.rerender(<Documents {...props} jobStatus="unavailable" />);
@@ -444,4 +444,47 @@ it("does not steal focus when the user leaves a recovery action before its outco
   elsewhere.focus();
   view.rerender(<Documents {...props} recoveryJobs={[]} />);
   expect(elsewhere).toHaveFocus();
+});
+
+
+describe("import journey and result", () => {
+  const props = { rescan: null, selectedDocument: "", onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+
+  it("uses indeterminate progress when no total is supplied", () => {
+    const view = render(<Documents {...props} capture={{ ...idle(), job: runningJob({ total: 0, completed: 0, step: "" }) }} result={ready([])} />);
+    expect(view.getByRole("progressbar")).not.toHaveAttribute("value");
+    expect(view.queryByText(/Step 0 of 0/)).not.toBeInTheDocument();
+    expect(view.getByText("Waiting for progress from your vault…")).toBeVisible();
+  });
+
+  it("offers Review only for a reported held result without guessing a document link", () => {
+    const onOpenReview = vi.fn();
+    const onSelectDocument = vi.fn();
+    const capture = reply({ state: "settled", outcome: { kind: "completed", message: "Saved for review.", reason: "", terminalState: "held", reading: "read" } });
+    const view = render(<Documents {...props} capture={capture} result={ready([document("unrelated")])} onOpenReview={onOpenReview} onSelectDocument={onSelectDocument} />);
+    expect(view.getByRole("region", { name: "Import result" })).toHaveTextContent("Held for resolution");
+    fireEvent.click(view.getByRole("button", { name: "Open Review" }));
+    expect(onOpenReview).toHaveBeenCalledOnce();
+    expect(onSelectDocument).not.toHaveBeenCalled();
+    view.rerender(<Documents {...props} capture={settled("Saved original.")} result={ready([])} onOpenReview={onOpenReview} />);
+    expect(view.queryByRole("button", { name: "Open Review" })).not.toBeInTheDocument();
+  });
+
+  it("keeps contribution and posting caveats visible while optional file metadata is collapsed", () => {
+    const view = render(<Documents {...props} capture={null} result={ready([{ ...document("statement"), contribution: "No entries posted.", snapshotSentence: "Snapshot held until identity is resolved." }])} />);
+    expect(view.getByText("No entries posted.")).toBeVisible();
+    expect(view.getByText("Snapshot held until identity is resolved.")).toBeVisible();
+    const fileDetails = view.getByText("File and source details").closest("details");
+    expect(fileDetails).not.toHaveAttribute("open");
+    expect(view.getByText("Original availability unavailable")).not.toBeVisible();
+  });
+
+  it("places record matching after the library behind an expandable control", () => {
+    const view = render(<Documents {...props} capture={null} rescan={{ state: { state: "idle" }, onRescan: noAction }} result={ready([document("statement")])} />);
+    const matching = view.getByText("Check for matching records").closest("details");
+    expect(matching).not.toHaveAttribute("open");
+    expect(view.getByRole("heading", { name: "Your statements" }).compareDocumentPosition(matching!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    fireEvent.click(view.getByText("Check for matching records"));
+    expect(view.getByRole("button", { name: "Check records" })).toBeVisible();
+  });
 });

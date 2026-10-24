@@ -40,6 +40,7 @@ describe("conversation questions and corrections", () => {
 
     try {
       const { getAllByRole, getByLabelText, getByRole } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -56,6 +57,11 @@ describe("conversation questions and corrections", () => {
       await waitFor(() => expect(document.getElementById("selected-question-title")).toHaveFocus());
       expect(getAllByRole("status").some((status) => status.textContent?.includes("Set aside until something changes."))).toBe(true);
       expect(within(getByRole("dialog", { name: "Review question" })).queryByText(/no longer knows what is still open/)).not.toBeInTheDocument();
+      expect(getByRole("button", { name: "Next item" })).toBeVisible();
+      await user.click(getByRole("button", { name: "Next item" }));
+      expect(getByRole("heading", { name: "What is this payment for?" })).toBeInTheDocument();
+      expect(within(getByRole("dialog", { name: "Review question" })).queryByRole("button", { name: "Next item" })).not.toBeInTheDocument();
+      expect(within(getByRole("dialog", { name: "Review question" })).queryByText("The item was set aside.")).not.toBeInTheDocument();
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -88,6 +94,7 @@ describe("conversation questions and corrections", () => {
 
     try {
       const { getAllByRole, getByLabelText, getByRole } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -149,6 +156,7 @@ describe("conversation questions and corrections", () => {
 
     try {
       const { getAllByRole, getByLabelText, getByRole } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -191,7 +199,7 @@ it("opens a selected transaction correction and preserves a reachable undo after
     return original<T>(frame);
   };
   await user.click(view.getByRole("button", { name: "Transactions" }));
-  const explain = await view.findAllByRole("button", { name: "Explain this transaction to Viva" });
+  const explain = await view.findAllByRole("button", { name: "Explain or correct accounting" });
   await user.click(explain[0]);
   expect(view.getByText(/Selected transaction:/)).toBeInTheDocument();
   await user.type(view.getByLabelText("Your explanation"), "This was a refundable deposit");
@@ -200,4 +208,49 @@ it("opens a selected transaction correction and preserves a reachable undo after
   const undo = await view.findByRole("button", { name: "Undo accounting correction" });
   await user.click(undo);
   await waitFor(() => expect(actions[1].undo_correction_id).toBe("correction-1"));
+});
+
+it("retains conversation boundaries when Ask closes during an answer and when a new conversation is reopened", async () => {
+  const user = userEvent.setup();
+  const view = await openSample();
+  const original = window.orionVivaBridge!.request;
+  const requests: Record<string, unknown>[] = [];
+  let release: () => void = () => {};
+  const firstAnswer = new Promise<void>((resolve) => { release = resolve; });
+  let completed = false;
+  window.orionVivaBridge!.request = async <T,>(frame: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+    if (frame.operation === "viva.conversation.ask") {
+      requests.push(frame.payload);
+      if (requests.length === 1) await firstAnswer;
+      completed = true;
+      return { protocol: "1.0", request_id: frame.requestId, ok: true, result: { kind: "completed", message: "The records support this answer.", state: { text: "The records support this answer.", answered: true, status: "answered", figures: [] } } as T };
+    }
+    if (completed && frame.payload.surface === "review") return { protocol: "1.0", request_id: frame.requestId, ok: true, result: { surface: "review", data: reviewQuestionPayload([]) } as T };
+    if (completed && frame.payload.surface === "conversation") return { protocol: "1.0", request_id: frame.requestId, ok: true, result: { surface: "conversation", data: { turns: requests.map((request, index) => ({ id: `turn-${index}`, kind: "ask", context_mode: request.context_mode, prompt: request.question, outcome: "completed", message: "The records support this answer." })), questions: [], total: 0 } } as T };
+    return original<T>(frame);
+  };
+  try {
+    await user.click(view.getByRole("button", { name: "Ask Viva" }));
+    await user.type(view.getByLabelText("Your question"), "What changed?");
+    await user.click(view.getByRole("button", { name: /^Ask$/ }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0].context_mode).toBe("new_question");
+    await user.click(view.getByRole("button", { name: "Close Ask Viva" }));
+    await act(async () => { release(); await firstAnswer; });
+    await user.click(view.getByRole("button", { name: "Ask Viva" }));
+    await view.findByText("Continuing this conversation");
+    await user.type(view.getByLabelText("Your question"), "And then?");
+    await user.click(view.getByRole("button", { name: /^Ask$/ }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1].context_mode).toBe("follow_up");
+    await waitFor(() => expect(view.getByRole("button", { name: "New conversation" })).toHaveAttribute("aria-disabled", "false"));
+    await user.click(view.getByRole("button", { name: "New conversation" }));
+    await user.click(view.getByRole("button", { name: "Close Ask Viva" }));
+    await user.click(view.getByRole("button", { name: "Ask Viva" }));
+    expect(view.getByText("Earlier messages stay saved. Your next question will not use them.")).toBeInTheDocument();
+    await user.type(view.getByLabelText("Your question"), "What is included?");
+    await user.click(view.getByRole("button", { name: /^Ask$/ }));
+    await waitFor(() => expect(requests).toHaveLength(3));
+    expect(requests[2].context_mode).toBe("new_question");
+  } finally { release(); }
 });

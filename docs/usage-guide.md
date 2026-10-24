@@ -6,12 +6,12 @@ and exposes uncertainty rather than filling gaps silently.
 
 ## Open in browser
 
-In a build containing this feature, choose **Open in browser** in OrionViva.
+In a build containing this feature, expand **Browser access** and choose **Open in browser** in OrionViva.
 Keep the installed app running while you use the browser on the same computer.
 The browser uses the same vault format and financial engine as the desktop.
 If a private vault is already open, it remains active in the browser. You can
 also create or open another vault using the controls below. A sample session
-can be re-entered with **Open the sample vault**; it never opens a private default.
+can be re-entered with **Try sample data**; it never opens a private default.
 
 **Choose folder** and **Choose statement file** open operating-system dialogs supplied
 by OrionViva. They may appear beside the app rather than inside the browser.
@@ -43,7 +43,7 @@ interruption.
 
 ## Explore safely with the sample vault
 
-Choose **Open the sample vault** from the first screen. Everything inside it is
+Choose **Try sample data** from the welcome screen. Everything inside it is
 invented. A visible frame identifies the sample until it is closed.
 
 Use the sample to explore Overview, Accounts, Transactions, Statements, Review,
@@ -56,12 +56,12 @@ A vault is an encrypted local folder containing the financial record.
 
 To create one:
 
-1. Choose or enter an empty folder.
+1. Choose **Set up my vault** on the welcome screen, then choose or enter an empty folder.
 2. Enter a strong vaultphrase.
 3. Select **Make a new vault in that folder**.
 4. Choose **Make and open vault**.
 
-To open an existing vault, select **Open an existing vault**, choose its folder,
+To open an existing vault, choose **Open existing vault** on the welcome screen, then choose its folder,
 enter its vaultphrase, and choose **Open local vault**.
 
 After a successful open on macOS or Windows, OrionViva protects the folder and
@@ -92,7 +92,7 @@ OrionViva takes one document per capture. A saved document can remain waiting
 when no reader is configured; saved and fully interpreted are different states.
 A failed read does not mean the encrypted source was deleted.
 
-Use **Look again** when the interface offers it to reconcile information already in
+Expand **Check for matching records** and choose **Check records** to reconcile information already in
 the vault, including matching transfers and resolving gaps. Rescan does not send
 documents to a model or read their contents again, and should not create a
 second financial effect for the same source.
@@ -114,8 +114,10 @@ not appear here.
 
 ### Overview
 
-Overview presents net worth, accounts, current-period information, findings,
-coverage, and exclusions supplied by the vault. Amounts from different
+Overview leads with net worth and its coverage. Review status appears when the
+queue has been loaded, followed by upcoming obligations, spending,
+current-period information, accounts, and findings. Detailed accounting reports appear
+after the summary sections. Amounts from different
 currencies remain separate; OrionViva does not invent an exchange rate or a
 converted grand total.
 
@@ -153,7 +155,12 @@ last valid picture remains visible with a stale or reopen warning.
 Statements is the document index and capture workspace. It distinguishes files
 that were saved, read, resolved, contributed to the financial picture, left
 waiting, or failed. Select a row to inspect only that document's supplied
-details.
+details. Optional file metadata is under **File and source details**. Import
+receipts distinguish saving, reading, and financial contribution; an unknown
+progress total is shown without a percentage. The upload reply does not identify
+a resulting document, so the receipt does not guess a document to open.
+Original document pages and highlighted source regions cannot be opened in this
+interface. Full inspection limits are listed in **Trust & settings**.
 
 ### Review
 
@@ -162,7 +169,11 @@ person. Its navigation count describes actionable work supplied by the vault.
 Opening an item should lead to the exact question or transaction it represents.
 
 Answer only what is known. Deferring or declining is preferable to guessing.
-Completed actions update the queue after an authoritative reread.
+Completed actions update the queue after an authoritative reread. After a
+confirmed resolution, **Next item** opens the next available question or
+transaction in the recorded order. A partial or failed refresh does not claim
+that review is complete. Review answers have no general undo; supported
+accounting corrections and transfer links have their own reversal controls.
 
 ### Plans
 
@@ -195,13 +206,16 @@ Answers should cite vault evidence and refuse unsupported combinations. Ask
 Viva should not silently convert currencies, invent missing dates, or change
 financial records merely because a question was asked.
 
-The Ask box starts on **New question**. This keeps earlier Ask text out of
-the next model request while leaving every turn visible in the vault's
-timeline. Choose **Follow-up** when your question depends on the current
-conversation. A new question starts a durable boundary, so closing and
-reopening the vault does not bring older question text back into a follow-up.
+The Ask box starts a new conversation. After an authoritative answer or refusal,
+the next question continues that conversation automatically. The context indicator
+shows which mode will be used. Choose **New conversation** to keep earlier Ask
+text out of the next request. Earlier turns remain saved in the timeline; this
+is not deletion. Closing and reopening Ask Viva preserves the selected context,
+including when an answer arrives while the drawer is closed. Opening another
+vault starts with a new conversation boundary on its next question.
 The ledger and cited evidence are freshly read for each answer; conversation
-text is not evidence. A save-up plan draft remains a separate action.
+text is not evidence. Question ideas fill the editable composer without sending
+anything. Expand **Plan a savings goal** for the separate save-up plan draft action.
 
 When a configured model is required, relevant question or document data may
 leave the machine. Trust & settings records the observed outbound activity.

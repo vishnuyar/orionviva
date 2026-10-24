@@ -130,7 +130,7 @@ function installSampleBridge(overrides: Record<string, unknown> = {}) {
 async function openSample(overrides: Record<string, unknown> = {}) {
   const restore = installSampleBridge(overrides);
   const view = render(<App />);
-  fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+  fireEvent.click(view.getAllByRole("button", { name: "Try sample data" })[0]);
   await waitFor(() => expect(view.getByText(moments.sample_frame)).toBeInTheDocument());
   await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
   return { ...view, restore };

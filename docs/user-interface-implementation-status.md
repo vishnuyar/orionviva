@@ -88,7 +88,7 @@ backend-supplied assumptions, exclusions, evidence and balance series,
 save-up Plans with pure drafts, explicit local reservations, exact persisted
 proposal confirmation, account evidence and durable conversational entry,
 bounded durable job receipts with live progress and cancellation,
-one durable visible conversation for questions, answers, corrections, proposal confirmation and decline, with an explicit New question / Follow-up model-context boundary for Ask, capability-derived navigation,
+one durable visible conversation for questions, answers, corrections, proposal confirmation and decline, with a visible conversation-context indicator and explicit New conversation boundary for Ask, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle
 identity, vault export and restore, maintenance, and privacy-filtered diagnostic
 export. Trust refreshes after each Ask Viva turn, separates configured routes
@@ -114,6 +114,32 @@ hit area at desktop and narrow widths, and the two-card financial picture
 stacks before the fixed navigation rail can crowd its authored currency totals.
 Source/provenance internals are progressively disclosed while
 conflicts, coverage gaps, requests, errors, and pending work remain visible.
+
+## UI workflow improvements
+
+The welcome screen separates Try sample data, Set up my vault and Open existing
+vault before showing folder/passphrase fields. The desktop browser handoff is
+inside Browser access. Automatic unlock, explicit creation, protected-credential
+handling and existing source boundaries are unchanged.
+
+Overview leads with net worth and canonical coverage; loaded Review status and
+upcoming obligations precede detailed accounting. Static narration on Accounts,
+Transactions, Statements and Review uses task language. Figure qualifications,
+per-currency subtotals and evidence remain adjacent to affected figures.
+Statements has an import guide, authoritative outcome receipt, indeterminate
+progress when no denominator is known, and progressively disclosed optional
+metadata. Record matching is a secondary action after the library. Trust keeps
+a discoverable account of inspection and reversal limits.
+
+Ask automatically continues after an authoritative settlement, preserves context
+across drawer dismissal and offers New conversation for the next context
+boundary. Historical turns remain saved. Question ideas only populate the draft;
+planning is expandable. Review can mark/open the next recorded item after a
+confirmed resolution and a ready queue. No urgency field or generic answer undo
+is invented. Original/page viewing and document-specific post-import navigation
+remain absent: the bridge exposes neither authenticated original bytes/pages nor
+a resulting document identity in the upload receipt. These UI changes do not
+implement either engine contract.
 
 ## Coverage tables
 

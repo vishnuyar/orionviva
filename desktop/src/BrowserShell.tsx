@@ -11,12 +11,19 @@ type Controls = {
 
 export function DesktopShell({ controls }: { controls: Controls | null }) {
   const [active, setActive] = useState(false);
+  const [browserOptionsOpen, setBrowserOptionsOpen] = useState(false);
   const [ready, setReady] = useState(!controls);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   const previousActive = useRef(false);
-  useEffect(() => { if (previousActive.current !== active) heading.current?.focus(); previousActive.current = active; }, [active]);
+  useEffect(() => {
+    if (previousActive.current === active) return;
+    previousActive.current = active;
+    setBrowserOptionsOpen(true);
+    const frame = requestAnimationFrame(() => heading.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [active]);
   useEffect(() => {
     if (!controls) return;
     let gone = false;
@@ -49,12 +56,13 @@ export function DesktopShell({ controls }: { controls: Controls | null }) {
   }
   if (!controls) return <App />;
   return <>
+    <details className="browser-options" open={browserOptionsOpen || active} onToggle={(event) => setBrowserOptionsOpen(event.currentTarget.open)}><summary>{active ? "Browser session active" : "Browser access"}</summary>
     <section className="browser-controls" aria-label="Browser access">
       <div><h2 ref={heading} tabIndex={-1}>{active ? "OrionViva is open in your browser" : "Use OrionViva in your browser"}</h2><p>{active ? "Keep this app running. Your vault stays on this computer. Returning here ends browser access." : "Create or open your vault and add files in your browser on this computer."}</p></div>
       {ready && <div className="browser-actions">{active ? <><button className="secondary-button" aria-disabled={busy} aria-describedby={busy ? "browser-waiting" : undefined} onClick={() => { void change(false); }}>Return to desktop</button><button className="text-button" aria-disabled={busy} aria-describedby={busy ? "browser-waiting" : undefined} onClick={() => { void revoke(); }}>Stop browser access</button></> : <button className="secondary-button" aria-disabled={busy} aria-describedby={busy ? "browser-waiting" : undefined} onClick={() => { void change(true); }}>{busy ? "Opening browser…" : "Open in browser"}</button>}</div>}
       {busy && <p id="browser-waiting" role="status">{active ? "Ending browser access. Wait for OrionViva to finish this request." : "Opening your browser. Keep OrionViva running."}</p>}
       {notice && <p role="alert">{notice}</p>}
-    </section>
+    </section></details>
     {ready && !active && <App />}
   </>;
 }

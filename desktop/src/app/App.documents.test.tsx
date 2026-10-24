@@ -43,6 +43,7 @@ describe("documents", () => {
 
     try {
       const { container, getAllByText, getByLabelText, getByRole, getByText } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -85,10 +86,13 @@ describe("documents", () => {
   it("explains device-protected default-vault storage to the field and control", async () => {
     const previousBridge = window.orionVivaBridge;
     window.orionVivaBridge = { rememberVault: async () => undefined, request: async <T,>(frame: { requestId: string }) => ({ protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }) };
-    const consequence = "Keep your passphrase somewhere safe: it is needed to unlock a copy on another device. Opening an existing vault never creates one. After a successful open, this device protects the vaultphrase in macOS Keychain or Windows Credential Manager and opens this vault by default. Choosing another vault replaces that default. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there.";
+    const consequence = "Keep your passphrase somewhere safe. You need it to open a copy of this vault on another device.";
     try {
       const { container, getByLabelText, getByRole, getByText } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       expect(getByText(consequence)).toBeInTheDocument();
+      fireEvent.click(getByText("How your vault is protected"));
+      expect(getByText(/this device protects the vaultphrase in macOS Keychain or Windows Credential Manager/)).toBeVisible();
       expect(getByLabelText("Passphrase")).toHaveAccessibleDescription(consequence);
       expect(getByRole("button", { name: "Open local vault" })).toHaveAccessibleDescription(consequence);
       // The nesting the capture stylesheet is written against.
@@ -115,6 +119,7 @@ describe("documents", () => {
 
     try {
       const { getByLabelText, getByRole, getByText, queryByText } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -152,6 +157,7 @@ describe("documents", () => {
 
     try {
       const { getAllByText, getByLabelText, getByRole } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -194,6 +200,7 @@ describe("documents", () => {
 
     try {
       const { container, getByLabelText, getByRole } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -227,6 +234,7 @@ describe("documents", () => {
 
     try {
       const { getByLabelText, getByRole } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
 
@@ -262,6 +270,7 @@ describe("documents", () => {
 
     try {
       const { container, getByLabelText, getByRole } = render(<App />);
+      await user.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));

@@ -17,6 +17,7 @@ import plans from "./plans.css?raw";
 import accountLedger from "./account-ledger.css?raw";
 import reviewCenter from "./review-center.css?raw";
 import spending from "./spending-breakdown.css?raw";
+import welcome from "./welcome.css?raw";
 import surfaceImports from "./surfaces.css?raw";
 
 const surfaces = [surfaceBase, documents, surfacePrimitives, review,
@@ -32,7 +33,7 @@ const productionStyles = new Map([
   ["trust.css", trust], ["evidence.css", evidence],
   ["surface-responsive.css", surfaceResponsive], ["capture.css", capture],
   ["picture.css", picture], ["plans.css", plans],
-  ["spending-breakdown.css", spending],
+  ["spending-breakdown.css", spending], ["welcome.css", welcome],
 ]);
 
 // What a person can actually read, measured rather than judged. The colours
@@ -204,7 +205,7 @@ describe("what a person can read on the screens this cycle authored", () => {
       "documents.css", "evidence.css", "picture.css", "plans.css", "questions.css",
       "review-center.css", "shell.css", "spending-breakdown.css", "surface-base.css",
       "surface-details.css", "surface-primitives.css", "surface-responsive.css",
-      "tokens.css", "trust.css",
+      "tokens.css", "trust.css", "welcome.css",
     ]);
   });
 

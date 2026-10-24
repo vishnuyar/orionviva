@@ -10,16 +10,35 @@ const controls = { state: { state: "idle" } as const, onAnswer: vi.fn(), onConfi
 const openFigure = vi.fn();
 
 describe("durable Viva conversation", () => {
-  it("defaults to an independent question and sends an explicit follow-up choice", () => {
+  it("shows a conversation boundary and starts the next question independently", () => {
     const onAsk = vi.fn();
-    const view = render(<ConversationDrawer result={ready({ turns: [turn({ contextMode: "new_question" })], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={{ state: { state: "idle" }, onAsk }} controls={controls} />);
-    expect(view.getByRole("radio", { name: "New question" })).toBeChecked();
+    const onNewConversation = vi.fn();
+    const props = { result: ready({ turns: [turn({ contextMode: "new_question" })], questions }), selectedQueue: "", onSelectQueue: vi.fn(), onOpenFigure: openFigure, ask: { state: { state: "idle" } as const, onAsk }, controls };
+    const view = render(<ConversationDrawer {...props} context={{ mode: "follow_up", onNewConversation }} />);
+    expect(view.getByText("Continuing this conversation")).toBeInTheDocument();
     expect(view.getByText("New question", { selector: ".conversation-turn-meta span" })).toBeInTheDocument();
-    fireEvent.click(view.getByRole("radio", { name: "Follow-up" }));
     fireEvent.change(view.getByLabelText("Your question"), { target: { value: "And then?" } });
     fireEvent.click(view.getByRole("button", { name: "Ask" }));
     expect(onAsk).toHaveBeenCalledWith("And then?", true, false, "follow_up");
-    expect(view.getByRole("radio", { name: "Follow-up" })).toBeChecked();
+    fireEvent.click(view.getByRole("button", { name: "New conversation" }));
+    expect(onNewConversation).toHaveBeenCalledOnce();
+    view.rerender(<ConversationDrawer {...props} context={{ mode: "new_question", onNewConversation }} />);
+    expect(view.getByText("Earlier messages stay saved. Your next question will not use them.")).toBeInTheDocument();
+    fireEvent.click(view.getByRole("button", { name: "Ask" }));
+    expect(onAsk).toHaveBeenLastCalledWith("And then?", true, false, "new_question");
+  });
+
+  it("fills an editable starter without submitting and guards New conversation during a request", () => {
+    const onAsk = vi.fn(), onNewConversation = vi.fn();
+    const props = { result: ready({ turns: [], questions }), selectedQueue: "", onSelectQueue: vi.fn(), onOpenFigure: openFigure, controls, starterQuestions: ["What is excluded from my net worth?"], context: { mode: "new_question" as const, onNewConversation } };
+    const view = render(<ConversationDrawer {...props} ask={{ state: { state: "idle" }, onAsk }} />);
+    fireEvent.click(view.getByRole("button", { name: "What is excluded from my net worth?" }));
+    expect(view.getByLabelText("Your question")).toHaveValue("What is excluded from my net worth?");
+    expect(view.getByLabelText("Your question")).toHaveFocus();
+    expect(onAsk).not.toHaveBeenCalled();
+    view.rerender(<ConversationDrawer {...props} ask={{ state: { state: "working", question: "A question" }, onAsk }} />);
+    fireEvent.click(view.getByRole("button", { name: "New conversation" }));
+    expect(onNewConversation).not.toHaveBeenCalled();
   });
   it("renders the persisted timeline and the deterministic question queue together", () => {
     const data: ConversationData = { turns: [turn({ message: "The records changed." })], questions: { ...questions, queue: [{ id: "q-1", label: "What was this payment?", detail: "It is not classified.", status: "", action: "", type: "nature", evidence: "", state: "needs_input", outcome: null, disposition: null }] } };
@@ -87,7 +106,7 @@ describe("durable Viva conversation", () => {
     const state: QuestionActionState = { state: "settled", questionId: "q-1", verb: "decline", result: { state: "settled", outcome: { kind: "set_aside", message: "Set aside until the subject changes.", reason: "" } } };
     const view = render(<ConversationDrawer result={{ state: "failed", reason: "read_failed" }} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={null} controls={{ ...controls, state }} />);
 
-    expect(view.getByText("Conversation could not be read")).toBeInTheDocument();
+    expect(view.getByText("Conversation could not be loaded")).toBeInTheDocument();
     expect(view.getAllByText("Question set aside")).toHaveLength(1);
     expect(view.getByText("Set aside until the subject changes.")).toBeInTheDocument();
   });
@@ -96,6 +115,12 @@ describe("durable Viva conversation", () => {
     const view = render(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={null} controls={controls} />);
     expect(view.getByText("No conversation yet")).toBeInTheDocument();
     expect(view.queryByText(/supplied conversation/i)).not.toBeInTheDocument();
+  });
+
+  it("invites only Ask when Review questions are outside this view", () => {
+    const view = render(<ConversationDrawer mode="ask" result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={{ state: { state: "idle" }, onAsk: vi.fn() }} controls={controls} />);
+    expect(view.getByText("Ask Viva about your money. Your questions and answers stay saved in this vault.")).toBeVisible();
+    expect(view.queryByText(/questions below/)).not.toBeInTheDocument();
   });
 
   it("routes the same conversational draft to Plans for review", () => {
@@ -126,6 +151,7 @@ describe("durable Viva conversation", () => {
     const view = render(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={{ state: { state: "idle" }, onAsk }} controls={controls} />);
 
     fireEvent.change(view.getByLabelText("Your question"), { target: { value: "Build a rainy-day fund" } });
+    fireEvent.click(view.getByText("Plan a savings goal"));
     fireEvent.click(view.getByRole("button", { name: "Draft a save-up plan" }));
 
     expect(onAsk).toHaveBeenCalledWith("Build a rainy-day fund", true, true, "new_question");
@@ -217,7 +243,7 @@ it("keeps correction context out of planning and allows a deliberate return to o
   expect(onClear).toHaveBeenCalledOnce();
   view.rerender(<ConversationDrawer {...props} accountingContext={null} />);
   expect(view.getByLabelText("Your question")).toHaveValue("");
-  expect(view.getByRole("button", { name: "Draft a save-up plan" })).toBeInTheDocument();
+  expect(view.getByText("Plan a savings goal")).toBeInTheDocument();
   fireEvent.change(view.getByLabelText("Your question"), { target: { value: "What is my net worth?" } });
   fireEvent.click(view.getByRole("button", { name: "Ask" }));
   expect(onAsk).toHaveBeenCalledWith("What is my net worth?", true, false, "new_question");

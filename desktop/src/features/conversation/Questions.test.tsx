@@ -38,22 +38,24 @@ describe("Questions inside the conversation", () => {
   it("renders live fields exactly and never combines supplied amount and currency", () => {
     const live = question("live-question");
     const { container, getByRole, getByText, queryByText, queryByRole } = render(<Questions result={ready(data([live]))} selectedQueue="live-question" onSelectQueue={noAction} actions={inert} />);
-    expect(getByText("Current conversation")).toBeInTheDocument();
+    expect(getByText("Your input")).toBeInTheDocument();
     expect(getByRole("heading", { name: "Questions for you" })).toBeInTheDocument();
     expect(getByText("42", { selector: ".review-summary > strong" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Returned question" })).toHaveAttribute("id", "selected-question-title");
     expect(getByRole("heading", { name: "Returned question" })).toHaveAttribute("tabindex", "-1");
     expect(container.querySelectorAll("#selected-question-title")).toHaveLength(1);
-    for (const value of ["Returned reason", "identity", "account", "7", "101.25", "USD"]) expect(getByText(value, { selector: ".review-detail-grid strong" })).toBeInTheDocument();
+    for (const value of ["Returned reason", "101.25", "USD"]) expect(getByText(value, { selector: ".review-detail-grid strong" })).toBeVisible();
+    expect(getByText("identity", { selector: ".review-detail-grid strong" })).not.toBeVisible();
+    fireEvent.click(getByText("Question details"));
+    for (const value of ["identity", "account", "7"]) expect(getByText(value, { selector: ".review-detail-grid strong" })).toBeVisible();
     expect(queryByText("101.25 USD")).not.toBeInTheDocument();
     expect(queryByText("What this screen cannot do")).not.toBeInTheDocument();
     // A live row is a row a person can act on, so nothing on it says otherwise.
     expect(queryByText("Read only")).not.toBeInTheDocument();
     // Said once, in the panel holding the controls it is about, rather than
     // three times over one screen.
-    expect(container.querySelectorAll(".review-set-aside p")).toHaveLength(2);
-    expect(getByText("Setting a question aside, answering in your own words, and confirming or declining a resulting proposal are connected. Correcting a document is not.")).toBeInTheDocument();
-    expect(getByText("Source document unavailable")).toBeInTheDocument();
+    expect(container.querySelectorAll(".review-set-aside p")).toHaveLength(1);
+    expect(getByText("Open Statements for document details; source documents cannot be opened from this question.")).toBeVisible();
     // This question declares no slots, so nothing said in words settles it and
     // there is no box to write in.
     expect(queryByRole("textbox")).not.toBeInTheDocument();
@@ -61,14 +63,18 @@ describe("Questions inside the conversation", () => {
     expect(queryByText("Static fictional anatomy")).not.toBeInTheDocument();
   });
 
-  it("renders every missing live field explicitly", () => {
-    const missing = question("missing-fields", { label: "", detail: "", type: "", scope: "", count: undefined, amount: "", currency: "" });
-    const { getAllByText, getByText } = render(<Questions result={ready(data([missing]))} selectedQueue="missing-fields" onSelectQueue={noAction} actions={inert} />);
-    expect(getAllByText("Question text was not supplied by this conversation.").length).toBeGreaterThan(0);
-    for (const copy of ["Why this question was asked was not supplied by this conversation.", "Question kind was not supplied by this conversation.", "Question scope was not supplied by this conversation.", "Question count was not supplied by this conversation.", "Question amount was not supplied by this conversation.", "Question currency was not supplied by this conversation."]) expect(getByText(copy)).toBeInTheDocument();
+  it("keeps missing optional metadata behind details and makes the next action clear", () => {
+    const missing = question("missing-fields", { label: "", detail: "", type: "", scope: "", count: undefined, amount: "", currency: "", evidence: "Recorded source context" });
+    const view = render(<Questions result={ready(data([missing]))} selectedQueue="missing-fields" onSelectQueue={noAction} actions={inert} />);
+    expect(view.getAllByText("Question text unavailable.").length).toBeGreaterThan(0);
+    expect(view.getByText("The reason for this question is unavailable.")).toBeVisible();
+    expect(view.getByText("Recorded source context")).toBeVisible();
+    expect(view.getByText("Open Statements for document details; source documents cannot be opened from this question.")).toBeVisible();
+    expect(view.getByText("Type unavailable")).not.toBeVisible();
+    expect(view.getByText("Not available for this question")).not.toBeVisible();
+    fireEvent.click(view.getByText("Question details"));
+    for (const copy of ["Type unavailable", "Scope unavailable", "Count unavailable", "Not available for this question"]) expect(view.getByText(copy)).toBeVisible();
   });
-
-
 
   it("keeps blank, duplicate, missing, and no-selectable identities bounded", () => {
     const duplicate = [question("duplicate"), question("duplicate")];
@@ -108,7 +114,7 @@ describe("Questions inside the conversation", () => {
     rerender(<Questions {...props} result={{ state: "unavailable", reason: "internal" }} />);
     expect(getByText("Questions are not available in this build.")).toBeInTheDocument();
     rerender(<Questions {...props} result={{ state: "failed", reason: "read_failed" }} />);
-    expect(getByText("The conversation could not be read. The private vault is still open.")).toBeInTheDocument();
+    expect(getByText("Your questions could not be loaded. Your vault is still open.")).toBeInTheDocument();
     rerender(<Questions {...props} result={{ state: "partial", data: data([]), issues: [{ code: "partial", message: "bounded" }] }} />);
     expect(getByText("Some conversation details are unavailable. Available questions are shown below.")).toBeInTheDocument();
     rerender(<Questions {...props} result={{ state: "needs_input", data: data([]), issues: [{ code: "input", message: "bounded" }] }} />);
@@ -117,32 +123,29 @@ describe("Questions inside the conversation", () => {
     expect(getByText("Nothing needs you right now")).toBeInTheDocument();
   });
 
-  it("renders pending, tail, and guidance independently without association", () => {
+  it("keeps supplemental summaries independent and reveals them on request", () => {
     const review = data([], { total: 1, tail: { count: 3, amount: "tail-amount-exact" }, pending: { count: 1 }, invite: "General invitation", answeredByDocument: "General document guidance" });
-    const { getByText, queryByRole, queryByText, rerender } = render(<Questions result={ready(review)} selectedQueue="" onSelectQueue={noAction} actions={inert} />);
-    expect(getByText("These summaries are shown separately. The interface does not add them together or create question rows from them.")).toBeInTheDocument();
-    expect(getByText("1 set-aside item is reported. It returns on its own when what it is about changes. Opening its detail is not available in this preview.")).toBeInTheDocument();
-    expect(getByText("3", { selector: ".review-more-grid strong" })).toBeInTheDocument();
-    expect(getByText("tail-amount-exact")).toBeInTheDocument();
-    expect(getByText("Tail amount supplied")).toBeInTheDocument();
-    expect(getByText("No question rows are created from this summary.")).toBeInTheDocument();
-    // The read supplies an invitation to answer in a sentence and nothing in
-    // this build can take one, so the words are not repeated at a person under
-    // a heading that reads as an ask. The boundary is stated instead.
-    expect(queryByText("General invitation")).not.toBeInTheDocument();
-    expect(queryByRole("textbox")).not.toBeInTheDocument();
-    expect(queryByText(/invites an answer in a sentence/)).not.toBeInTheDocument();
-    expect(getByText("General document guidance")).toBeInTheDocument();
-    expect(getByText("This guidance is general and is not attached to a particular question. Add a statement from Statements when a document is the answer.")).toBeInTheDocument();
-    rerender(<Questions result={ready(data([], { tail: { count: 0, amount: "" }, pending: { count: 4 } }))} selectedQueue="" onSelectQueue={noAction} actions={inert} />);
-    expect(getByText("4 set-aside items are reported. Each returns on its own when what it is about changes. Opening their detail is not available in this preview.")).toBeInTheDocument();
-    expect(getByText("0", { selector: ".review-more-grid strong" })).toBeInTheDocument();
-    expect(getByText("Tail amount was not supplied by this conversation.")).toBeInTheDocument();
-    rerender(<Questions result={ready(data([], { tail: null, pending: { count: 0 } }))} selectedQueue="" onSelectQueue={noAction} actions={inert} />);
-    expect(getByText("Tail summary was not supplied by this conversation.")).toBeInTheDocument();
-    expect(getByText("Set-aside items reported: 0.")).toBeInTheDocument();
-    rerender(<Questions result={ready(data([], { tail: null, pending: null }))} selectedQueue="" onSelectQueue={noAction} actions={inert} />);
-    expect(getByText("Set-aside summary was not supplied by this conversation.")).toBeInTheDocument();
+    const view = render(<Questions result={ready(review)} selectedQueue="" onSelectQueue={noAction} actions={inert} />);
+    expect(view.getByText("tail-amount-exact")).not.toBeVisible();
+    expect(view.getByText("General document guidance")).not.toBeVisible();
+    fireEvent.click(view.getByText("More about your questions"));
+    expect(view.getByText("These summaries cover questions outside the list above.")).toBeVisible();
+    expect(view.getByText("1 set-aside question. These return when what they concern changes; their details cannot be opened here.")).toBeVisible();
+    expect(view.getByText("3", { selector: ".review-more-grid strong" })).toBeVisible();
+    expect(view.getByText("tail-amount-exact")).toBeVisible();
+    expect(view.queryByText("General invitation")).not.toBeInTheDocument();
+    expect(view.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(view.getByText("General document guidance")).toBeVisible();
+    expect(view.getByText("This guidance applies generally. Add a statement from Statements when a document is the answer.")).toBeVisible();
+    view.rerender(<Questions result={ready(data([], { tail: { count: 0, amount: "" }, pending: { count: 4 } }))} selectedQueue="" onSelectQueue={noAction} actions={inert} />);
+    expect(view.getByText("4 set-aside questions. These return when what they concern changes; their details cannot be opened here.")).toBeVisible();
+    expect(view.getByText("0", { selector: ".review-more-grid strong" })).toBeVisible();
+    expect(view.getByText("Amount unavailable")).toBeVisible();
+    view.rerender(<Questions result={ready(data([], { tail: null, pending: { count: 0 } }))} selectedQueue="" onSelectQueue={noAction} actions={inert} />);
+    expect(view.getByText("Summary unavailable")).toBeVisible();
+    expect(view.getByText("No set-aside questions reported.")).toBeVisible();
+    view.rerender(<Questions result={ready(data([], { tail: null, pending: null }))} selectedQueue="" onSelectQueue={noAction} actions={inert} />);
+    expect(view.getByText("Set-aside summary unavailable.")).toBeVisible();
   });
 
   it("offers both reasons a question may be set aside, and both say it is set aside", () => {
@@ -179,7 +182,7 @@ describe("Questions inside the conversation", () => {
     // itself: a read that failed leaves the write's own account standing, or a
     // person sets the same question aside twice.
     rerender(<Questions {...props} result={{ state: "failed", reason: "read_failed" }} actions={settled} />);
-    expect(getByText("Questions could not be read")).toBeInTheDocument();
+    expect(getByText("Questions could not be loaded")).toBeInTheDocument();
     expect(getByText("Question set aside")).toBeInTheDocument();
     expect(getByText("Set aside until something changes.")).toBeInTheDocument();
   });

@@ -202,7 +202,7 @@ it('loads later rows and their source links through the actual bridge client and
   }};
   try{
     const app=render(<App/>);
-    fireEvent.click(app.getByRole('button',{name:'Open the sample vault'}));
+    fireEvent.click(app.getByRole('button',{name:'Try sample data'}));
     await waitFor(()=>expect(app.getByRole('note',{name:'Invented vault'})).toBeInTheDocument());
     fireEvent.click(app.getByRole('button',{name:'Transactions'}));
     await waitFor(()=>expect(app.container.querySelectorAll('.activity-movement')).toHaveLength(50));
@@ -213,7 +213,7 @@ it('loads later rows and their source links through the actual bridge client and
     expect(activityRequests.map(p=>p.limit)).toEqual([50,50,50,50]);
     expect(app.queryByRole('button',{name:'Load 50 more'})).toBeNull();
     const later=app.container.querySelectorAll('.activity-movement').item(159);
-    expect(later.querySelector('button')?.textContent).toContain('Explain');
+    expect(later.querySelector('button')?.textContent).toContain('Explain or correct accounting');
     expect(later.querySelector('.activity-source')?.textContent).toContain('invented.pdf');
     const sourceButton=later.querySelector('.activity-source button') as HTMLButtonElement;
     fireEvent.click(sourceButton);

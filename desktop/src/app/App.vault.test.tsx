@@ -14,13 +14,31 @@ const priorityEnvelope = (overview: unknown, revision = "vault-fixture") => ({
 });
 
 describe("vault", () => {
+  it("starts with welcome choices and reveals creation fields only after an explicit choice", () => {
+    const request = vi.fn();
+    window.orionVivaBridge = { request: async <T,>() => { request(); return { protocol: "2.0", request_id: "req", ok: true, result: {} as T }; } };
+    const view = render(<App />);
+    expect(view.getByRole("heading", { name: "Your financial picture", level: 1 })).toBeVisible();
+    expect(view.getByRole("button", { name: "Try sample data" })).toBeVisible();
+    expect(view.getByRole("button", { name: "Open existing vault" })).toBeVisible();
+    expect(view.queryByLabelText("Vault directory")).not.toBeInTheDocument();
+    expect(view.queryByLabelText("Passphrase")).not.toBeInTheDocument();
+    expect(view.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "Ask Viva" })).not.toBeInTheDocument();
+    fireEvent.click(view.getByRole("button", { name: "Set up my vault" }));
+    expect(view.getByRole("radio", { name: "Make a new vault in that folder" })).toBeChecked();
+    expect(view.getByLabelText("Passphrase")).toHaveAttribute("autocomplete", "new-password");
+    expect(view.getByRole("button", { name: "Make and open vault" })).toBeVisible();
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("announces pending host close and focuses the heading after access ends", async () => {
     installSampleBridge();
     let finish!: () => void;
     const close = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
     window.orionVivaBridge!.closeVault = close;
     const view = render(<App />);
-    fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+    fireEvent.click(view.getByRole("button", { name: "Try sample data" }));
     await waitFor(() => expect(view.getByText(moments.sample_frame)).toBeInTheDocument());
     await waitFor(() => expect(view.container.querySelector('[data-read-revision="sample-fixture"]')).not.toBeNull());
     fireEvent.click(view.getAllByRole("button", { name: moments.sample_frame_leave })[0]);
@@ -39,6 +57,7 @@ describe("vault", () => {
     const request = vi.fn();
     window.orionVivaBridge = { request: async <T,>() => { request(); return { protocol: "2.0", request_id: "req", ok: true, result: {} as T }; } };
     const view = render(<App />);
+    fireEvent.click(view.getByRole("button", { name: "Open existing vault" }));
     const existing = view.getByRole("radio", { name: "Open an existing vault" });
     expect(existing).toBeChecked();
     existing.focus();
@@ -59,13 +78,17 @@ describe("vault", () => {
       request: async () => { throw new Error("not reached"); },
     };
     const view = render(<App />);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_001); });
-    expect(view.getByRole("status")).toHaveTextContent("Automatic opening stopped answering");
-    const manual = view.getByRole("button", { name: "Open local vault" });
-    expect(manual).not.toHaveAttribute("aria-disabled", "true");
-    expect(view.getByLabelText("Passphrase")).toBeEnabled();
-    expect(view.getByLabelText("Passphrase")).toHaveFocus();
-    vi.useRealTimers();
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_001); });
+      expect(view.getByRole("status")).toHaveTextContent("Automatic opening stopped answering");
+      const manual = view.getByRole("button", { name: "Open local vault" });
+      expect(manual).not.toHaveAttribute("aria-disabled", "true");
+      expect(view.getByLabelText("Passphrase")).toBeEnabled();
+      expect(view.getByLabelText("Passphrase")).toHaveFocus();
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
   });
   it("keeps local and remembered vault opens mutually exclusive", async () => {
     const user = userEvent.setup();
@@ -94,14 +117,15 @@ describe("vault", () => {
       },
     };
 
-    const { getByLabelText, getByRole } = render(<App />);
+    const { getByLabelText, getByRole, queryByLabelText } = render(<App />);
+    const existingChoice = getByRole("button", { name: "Open existing vault" });
+    expect(existingChoice).toHaveAttribute("aria-disabled", "true");
+    await user.click(existingChoice);
+    expect(queryByLabelText("Vault directory")).not.toBeInTheDocument();
+    await act(async () => { finishRememberedCheck({ state: "absent" }); });
+    await user.click(existingChoice);
     await user.type(getByLabelText("Vault directory"), "/explicit/vault");
     await user.type(getByLabelText("Passphrase"), "secret");
-    const opening = getByRole("button", { name: "Opening vault..." });
-    expect(opening).toHaveAttribute("aria-disabled", "true");
-    await user.click(opening);
-    expect(getByRole("button", { name: "Opening vault..." })).toBeVisible();
-    await act(async () => { finishRememberedCheck({ state: "absent" }); });
     await user.click(getByRole("button", { name: "Open local vault" }));
     await waitFor(() => expect(getByRole("button", { name: "Close this vault" })).toBeVisible());
     expect(getByRole("button", { name: "Close this vault" })).toBeVisible();
@@ -131,6 +155,7 @@ describe("vault", () => {
 
     try {
       const { getByLabelText, getByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
 
       await user.click(getByRole("button", { name: /choose folder/i }));
 
@@ -152,6 +177,7 @@ describe("vault", () => {
 
     try {
       const { getByLabelText, getByRole, queryByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/manual/vault");
 
       await user.click(getByRole("button", { name: /choose folder/i }));
@@ -175,6 +201,7 @@ describe("vault", () => {
 
     try {
       const { getAllByRole, getByLabelText, getByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/manual/vault");
 
       await user.click(getByRole("button", { name: /choose folder/i }));
@@ -203,6 +230,7 @@ describe("vault", () => {
 
     try {
       const { getAllByText, getByLabelText, getByRole, getByText, queryByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -249,6 +277,7 @@ describe("vault", () => {
 
     try {
       const { getByLabelText, getByRole, getByText, queryByText } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -292,7 +321,8 @@ describe("vault", () => {
     };
 
     try {
-      const { getAllByText, getAllByRole, getByLabelText, getByRole, getByText, queryByText } = render(<App />);
+      const { getAllByText, getAllByRole, getByLabelText, getByRole, getByText, queryByRole, queryByText } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -304,7 +334,8 @@ describe("vault", () => {
       await user.click(getByRole("button", { name: "Overview" }));
       await waitFor(() => expect(getAllByText("Late private account").length).toBeGreaterThan(0));
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
-      expect(getAllByText("No vault open")[0]).toBeInTheDocument();
+      expect(getByRole("heading", { name: "Your financial picture", level: 1 })).toBeInTheDocument();
+      expect(queryByRole("button", { name: "Overview" })).not.toBeInTheDocument();
       expect(queryByText("late-private-document")).not.toBeInTheDocument();
     } finally {
       releaseReads();
@@ -338,6 +369,7 @@ describe("vault", () => {
 
     try {
       const { getAllByRole, getByLabelText, getByRole, getByText, getAllByText, queryByRole, queryByText } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -382,7 +414,7 @@ describe("vault", () => {
       expect(getByRole("heading", { name: "Is this your account?" })).toBeInTheDocument();
       expect(queryByRole("textbox", { name: "Your answer" })).not.toBeInTheDocument();
       expect(getByRole("button", { name: "Set aside for now" })).toBeInTheDocument();
-      expect(getByText("Setting a question aside, answering in your own words, and confirming or declining a resulting proposal are connected. Correcting a document is not.")).toBeInTheDocument();
+      expect(getByText("Open Statements for document details; source documents cannot be opened from this question.")).toBeInTheDocument();
       // The read supplies an invitation to answer in a sentence. Nothing here
       // can take one, so a real vault's invitation is never put to a person.
       expect(queryByText("Write an answer")).not.toBeInTheDocument();
@@ -390,7 +422,8 @@ describe("vault", () => {
       await user.click(getByRole("button", { name: /close review question/i }));
 
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
-      expect(getAllByText("No vault open")[0]).toBeInTheDocument();
+      expect(getByRole("heading", { name: "Your financial picture", level: 1 })).toBeInTheDocument();
+      expect(queryByRole("button", { name: "Overview" })).not.toBeInTheDocument();
       expect(queryByText("Private checking")).not.toBeInTheDocument();
       expect(queryByText("live-document")).not.toBeInTheDocument();
       expect(queryByText("Is this your account?")).not.toBeInTheDocument();
@@ -420,6 +453,7 @@ describe("vault", () => {
 
     try {
       const { getByLabelText, getByRole, getAllByText, queryByText } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -462,6 +496,7 @@ describe("vault", () => {
 
     try {
       const { getAllByRole, getAllByText, getByLabelText, getByRole, getByText, queryByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -492,7 +527,8 @@ describe("vault", () => {
       expect(getAllByText(moments.outbound_none).length).toBeGreaterThan(0);
       await user.click(getByRole("button", { name: "Accounts" }));
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
-      expect(getAllByText("No vault open")[0]).toBeInTheDocument();
+      expect(getByRole("heading", { name: "Your financial picture", level: 1 })).toBeInTheDocument();
+      expect(queryByRole("button", { name: "Overview" })).not.toBeInTheDocument();
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -521,6 +557,7 @@ describe("vault", () => {
 
     try {
       const { getAllByRole, getByLabelText, getByRole, getByText, getAllByText } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -546,6 +583,7 @@ describe("vault", () => {
 
     try {
       const { getByRole, getByText } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.click(getByRole("button", { name: "Open local vault" }));
 
       expect(getByText("Enter a vault directory and passphrase to open a local vault.")).toBeInTheDocument();
@@ -572,6 +610,7 @@ describe("vault", () => {
 
     try {
       const { getByLabelText, getByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -579,9 +618,9 @@ describe("vault", () => {
       const control = getByRole("button", { name: "Opening vault..." });
       expect(control).not.toHaveAttribute("disabled");
       expect(control).toHaveAttribute("aria-disabled", "true");
-      // Both sentences reach the control: how the default is protected and
-      // why pressing again does nothing.
-      expect(control).toHaveAccessibleDescription("Keep your passphrase somewhere safe: it is needed to unlock a copy on another device. Opening an existing vault never creates one. Keep your vaultphrase available. This session does not save it for automatic opening after restarting OrionViva. The vault itself never stores the vaultphrase, and moving it to another device still requires the vaultphrase there. Your vault is answering the last request. Pressing again does nothing until it has.");
+      // The submit control references the passphrase consequence and pending explanation.
+      // Fuller protection details remain expandable.
+      expect(control).toHaveAccessibleDescription("Keep your passphrase somewhere safe. You need it to open a copy of this vault on another device. Your vault is answering the last request. Pressing again does nothing until it has.");
       resolveRequest?.();
       // Destination reads begin only after authentication completes and do not lock the
       // shell or the vault controls while they settle.
@@ -606,6 +645,7 @@ describe("vault", () => {
 
     try {
       const { getAllByRole, getByLabelText, getByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), secret);
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -632,6 +672,7 @@ describe("vault", () => {
       },
     };
     const view = render(<App />);
+    fireEvent.click(view.getByRole("button", { name: "Open existing vault" }));
     await user.type(view.getByLabelText("Vault directory"), "/vault");
     await user.type(view.getByLabelText("Passphrase"), "secret");
     await user.click(view.getByRole("button", { name: "Open local vault" }));
@@ -663,6 +704,7 @@ describe("vault", () => {
       },
     };
     const view = render(<App />);
+    fireEvent.click(view.getByRole("button", { name: "Open existing vault" }));
     await user.type(view.getByLabelText("Vault directory"), "/vault");
     await user.type(view.getByLabelText("Passphrase"), "secret");
     await user.click(view.getByRole("button", { name: "Open local vault" }));
@@ -707,7 +749,7 @@ describe("vault", () => {
       },
     };
     const view = render(<App />);
-    if (layout === "narrow") await user.click(view.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(view.getByRole("button", { name: "Open existing vault" }));
     await user.type(view.getByLabelText("Vault directory"), "/vault");
     await user.type(view.getByLabelText("Passphrase"), "secret");
     await user.click(view.getByRole("button", { name: "Open local vault" }));
@@ -741,7 +783,7 @@ describe("vault", () => {
       },
     };
     const view = render(<App />);
-    await user.click(view.getByRole("button", { name: "Open navigation" }));
+    fireEvent.click(view.getByRole("button", { name: "Open existing vault" }));
     await user.type(view.getByLabelText("Vault directory"), "/vault");
     await user.type(view.getByLabelText("Passphrase"), "secret");
     await user.click(view.getByRole("button", { name: "Open local vault" }));
@@ -775,6 +817,7 @@ describe("automatic publication recovery", () => {
     };
     const view = render(<App />);
     try {
+      fireEvent.click(view.getByRole("button", { name: "Open existing vault" }));
       fireEvent.change(view.getByLabelText("Vault directory"), { target: { value: "/synthetic" } });
       fireEvent.change(view.getByLabelText("Passphrase"), { target: { value: "synthetic" } });
       await act(async () => { fireEvent.click(view.getByRole("button", { name: "Open local vault" })); });
@@ -819,6 +862,7 @@ describe("focused automatic publication recovery", () => {
     };
     const view = render(<App />);
     try {
+      fireEvent.click(view.getByRole("button", { name: "Open existing vault" }));
       fireEvent.change(view.getByLabelText("Vault directory"), { target: { value: "/synthetic" } });
       fireEvent.change(view.getByLabelText("Passphrase"), { target: { value: "synthetic" } });
       await act(async () => { fireEvent.click(view.getByRole("button", { name: "Open local vault" })); });
@@ -881,7 +925,7 @@ describe("guarded destination recovery focus", () => {
       if (width === 600) await act(async () => { fireEvent.click(view.getByRole("button", { name: "Open navigation" })); });
     };
     try {
-      await openNavigation();
+      fireEvent.click(view.getByRole("button", { name: "Open existing vault" }));
       fireEvent.change(view.getByLabelText("Vault directory"), { target: { value: "/synthetic" } });
       fireEvent.change(view.getByLabelText("Passphrase"), { target: { value: "synthetic" } });
       await act(async () => { fireEvent.click(view.getByRole("button", { name: "Open local vault" })); });

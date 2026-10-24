@@ -233,3 +233,17 @@
   font-size: var(--text-caption);
   line-height: var(--leading-body);
 }
+
+.hero-card .hero-amount,
+.account-card .account-amount,
+.current-period-amount,
+.current-period-series li > span,
+.utility-card-topline > span,
+.signal-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.utility-card-topline > span,
+.signal-value {
+  text-align: right;
+}

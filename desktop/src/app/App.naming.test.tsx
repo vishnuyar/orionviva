@@ -23,6 +23,7 @@ describe("naming a folder", () => {
     };
     try {
       const { getAllByRole, getByLabelText, getByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/typo");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -47,6 +48,7 @@ describe("naming a folder", () => {
     };
     try {
       const { getByLabelText, getByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/new");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByLabelText("Make a new vault in that folder"));
@@ -67,6 +69,7 @@ describe("naming a folder", () => {
     };
     try {
       const { getAllByRole, getByLabelText, getByRole } = render(<App />);
+      fireEvent.click(getByRole("button", { name: "Open existing vault" }));
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));

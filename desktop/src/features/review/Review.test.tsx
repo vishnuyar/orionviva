@@ -18,6 +18,23 @@ describe("Review center", () => {
     expect(open).toHaveBeenCalledWith(data.groups[0].items[0].target, "question:q-1");
   });
 
+  it("offers the supplied next item without changing its exact target or backend order", () => {
+    const open = vi.fn();
+    const view = render(<Review result={{ state: "ready", data }} nextItemId="question:q-1" onOpenQuestion={vi.fn()} onOpenTransaction={open} />);
+    expect(view.getByText("Why this needs review")).toBeInTheDocument();
+    expect(view.getByText("Amount").nextElementSibling).toHaveTextContent("USD 275.00");
+    fireEvent.click(view.getByRole("button", { name: "Next item: Review transaction" }));
+    expect(open).toHaveBeenCalledWith(target, "question:q-1");
+  });
+
+  it("does not call an incomplete or bounded empty queue complete", () => {
+    const empty = { ...data, shownCount: 0, groups: [], remainingCount: 1 };
+    const view = render(<Review result={{ state: "partial", data: empty, issues: [{ code: "partial", message: "Some items unavailable." }] }} onOpenQuestion={vi.fn()} onOpenTransaction={vi.fn()} />);
+    expect(view.getByText("No review items loaded")).toBeInTheDocument();
+    expect(view.queryByText("Nothing to review")).not.toBeInTheDocument();
+    expect(view.getByText("1 more review item is not shown here.")).toBeInTheDocument();
+  });
+
   it("keeps locked/error reads honest and caps only the visual badge", () => {
     const unavailable = render(<Review result={{ state: "unavailable", reason: "locked" }} onOpenQuestion={vi.fn()} onOpenTransaction={vi.fn()} />);
     expect(unavailable.getByText("Review unavailable")).toBeInTheDocument();

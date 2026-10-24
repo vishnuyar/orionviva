@@ -58,12 +58,15 @@ app if a second launch reports that OrionViva is already running.
 
 ## First launch
 
-The first screen offers two paths:
+The welcome screen offers three entry points:
 
-- Open the sample vault to explore invented data without adding personal
-  records.
-- Choose a folder, enter a vaultphrase, and either open an existing private
-  vault or explicitly create a new one.
+- **Try sample data** to explore invented records before adding your own.
+- **Set up my vault** to choose a folder and vaultphrase for a new encrypted vault.
+- **Open existing vault** to select a vault folder and enter its vaultphrase.
+
+Folder and vaultphrase fields appear after a private-vault choice. The setup
+form retains an explicit creation choice; choosing a folder alone never creates
+a vault. Protection and device-credential details are expandable beside it.
 
 Creating a vault is never inferred from a missing folder. Select **Make a new
 vault in that folder** before using **Make and open vault**.

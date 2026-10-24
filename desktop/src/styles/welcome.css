@@ -1,0 +1,58 @@
+.welcome-screen {
+  min-height: 100vh;
+  padding: var(--space-xl);
+  color: var(--ink);
+}
+.welcome-brand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
+  max-width: var(--measure-welcome);
+  margin: 0 auto var(--space-2xl);
+}
+.welcome-brand > span:last-child { color: var(--muted); font-size: var(--text-body); }
+.welcome-card {
+  max-width: var(--measure-welcome);
+  margin: 0 auto;
+  padding: var(--space-3xl);
+  border: var(--stroke-width) solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--paper);
+}
+.welcome-intro { max-width: var(--measure-readable); }
+.welcome-intro h1 { font-size: var(--text-display); line-height: var(--leading-tight); }
+.welcome-intro > p:last-child { font-size: var(--text-lead); line-height: var(--leading-loose); }
+.welcome-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xl); margin-top: var(--space-2xl); }
+.welcome-choices article { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: var(--space-xl); border: var(--stroke-width) solid var(--line); border-radius: var(--radius-lg); background: var(--panel); }
+.welcome-choices h2 { font-size: var(--text-section); }
+.welcome-choices p { flex: 1; line-height: var(--leading-body); }
+.welcome-choices button { margin-top: var(--space-md); }
+.welcome-existing { margin-top: var(--space-xl); }
+.welcome-privacy { margin: var(--space-2xl) 0 0; padding-top: var(--space-xl); border-top: var(--stroke-width) solid var(--line); font-size: var(--text-body); line-height: var(--leading-body); }
+.welcome-setup { max-width: var(--measure-form); margin-top: var(--space-2xl); }
+.welcome-setup h2 { margin-top: var(--space-lg); font-size: var(--text-section); }
+.welcome-setup .vault-open-form { border: 0; padding: 0; gap: var(--space-lg); }
+.welcome-setup .vault-open-form label, .welcome-setup .vault-open-form input:not([type="radio"]) { font-size: var(--text-body); }
+.welcome-setup .vault-open-button { background: var(--moss); color: var(--paper); }
+.welcome-setup .vault-passphrase-consequence { margin: 0; font-size: var(--text-body); line-height: var(--leading-body); }
+.vault-protection-details { font-size: var(--text-body); line-height: var(--leading-body); }
+.vault-protection-details summary { cursor: pointer; display: flex; align-items: center; text-decoration: underline; }
+.welcome-status { max-width: var(--measure-welcome); margin: 0 auto var(--space-lg); padding: var(--space-lg); border: var(--stroke-width) solid var(--line); border-radius: var(--radius-md); background: var(--panel); }
+.welcome-screen > .notice { max-width: var(--measure-welcome); margin: 0 auto var(--space-lg); }
+.welcome-screen button[aria-disabled="true"] { cursor: not-allowed; opacity: .6; }
+.hero-amount, .account-amount, .selected-account-figure, .detail-figure, .signal-value, .current-period-amount, .activity-list-figure, .activity-detail-figure, .ledger-amount, .figure-value { font-variant-numeric: tabular-nums lining-nums; }
+.page-heading .kicker { max-width: var(--measure-readable); }
+.trust-limitations { margin: var(--space-xl) 0; padding: var(--space-xl); border: var(--stroke-width) solid var(--line); border-radius: var(--radius-lg); background: var(--panel); }
+.trust-limitations summary { display: flex; align-items: center; cursor: pointer; font-weight: var(--weight-medium); }
+.trust-limitations li { margin-top: var(--space-md); line-height: var(--leading-body); }
+.review-next-step { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-md); margin-bottom: var(--space-lg); padding: var(--space-lg); background: var(--panel); border: var(--stroke-width) solid var(--line); border-radius: var(--radius-md); }
+.browser-options { border-bottom: var(--stroke-width) solid var(--line); background: var(--paper); }
+.browser-options > summary { display: flex; align-items: center; padding: var(--space-sm) var(--space-xl); color: var(--ink); cursor: pointer; font-size: var(--text-body); }
+@media (max-width: 760px) {
+  .welcome-screen { padding: var(--space-lg); }
+  .welcome-card { padding: var(--space-xl); }
+  .welcome-choices { grid-template-columns: minmax(0, 1fr); }
+  .welcome-brand > span:last-child { flex-basis: 100%; }
+  .welcome-setup .vault-directory-control { grid-template-columns: minmax(0, 1fr); }
+}
