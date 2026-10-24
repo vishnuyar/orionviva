@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CircleSlash, FileQuestion, Info } from "lucide-react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
@@ -21,7 +21,7 @@ export type SettingsControls = {
   onConfirm: (kind: "presentation" | "model", fields: Record<string, string>, digest: string, key: string) => void;
 };
 export type DisplayPreferenceControls = { showVerificationDetails: boolean; onChange: (value: boolean) => void };
-export type TransferControls = { state: TransferActionState; onExport: (archive: string) => void; onRestore: (archive: string, directory: string, passphrase: string) => void };
+export type TransferControls = { state: TransferActionState; onExport: (archive: string) => void; onRestore: (archive: string, directory: string, passphrase: string) => void; onPickExport?: () => Promise<string | null>; onPickArchive?: () => Promise<string | null>; onPickDirectory?: () => Promise<string | null> };
 
 // The one sentence this panel says about the last copy. What the vault
 // answered stands until the next one is asked for; a reply that never reached
@@ -116,16 +116,29 @@ function VaultCopy({ transfer }: { transfer: TransferControls }) {
   const [restoreArchive, setRestoreArchive] = useState("");
   const [directory, setDirectory] = useState("");
   const [passphrase, setPassphrase] = useState("");
+  const choosingRef = useRef(false);
+  const [choosing, setChoosing] = useState(false);
+  const [pickerError, setPickerError] = useState("");
   const working = transfer.state.state === "working";
+  const busy = working || choosing;
+  async function choose(picker: () => Promise<string | null>, set: (path: string) => void) {
+    if (working || choosingRef.current) return;
+    choosingRef.current = true; setChoosing(true); setPickerError("");
+    try { const path = await picker(); if (path !== null) set(path); }
+    catch { setPickerError("The chooser could not select one path. Try again or enter the path below."); }
+    finally { choosingRef.current = false; setChoosing(false); }
+  }
   const said = transferSentence(transfer.state);
   function takeCopy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (working) return;
+    if (working || choosingRef.current) return;
+    setPickerError("");
     transfer.onExport(archive);
   }
   function bringBack(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (working) return;
+    if (working || choosingRef.current) return;
+    setPickerError("");
     transfer.onRestore(restoreArchive, directory, passphrase);
     setPassphrase("");
   }
@@ -133,16 +146,20 @@ function VaultCopy({ transfer }: { transfer: TransferControls }) {
     <h3 id="trust-transfer-title">A copy of this whole vault</h3>
     <p>A copy is written without decrypting anything, so the file is exactly as private as this vault — and exactly as lost as this vault if you lose the passphrase. It carries no model configuration and no key. Bringing one back writes into an empty folder and never over a vault in use.</p>
     <form className="trust-transfer-form" onSubmit={takeCopy}>
-      <label>Write the copy to<input value={archive} onChange={(event) => setArchive(event.target.value)} placeholder="/path/to/copy.orionvault" autoComplete="off" /></label>
-      <button className="secondary-button" type="submit" aria-disabled={working} aria-describedby={working ? "trust-transfer-waiting" : undefined}>Take a copy</button>
+      <label>Write the copy to<input readOnly={busy} value={archive} onChange={(event) => setArchive(event.target.value)} placeholder="/path/to/copy.orionvault" autoComplete="off" /></label>
+      {transfer.onPickExport ? <button className="secondary-button" type="button" aria-disabled={busy} aria-describedby={busy ? "trust-transfer-waiting" : undefined} onClick={() => void choose(transfer.onPickExport!, setArchive)}>Choose backup location</button> : null}
+      <button className="secondary-button" type="submit" aria-disabled={busy} aria-describedby={busy ? "trust-transfer-waiting" : undefined}>Take a copy</button>
     </form>
     <form className="trust-transfer-form" onSubmit={bringBack}>
-      <label>Bring back the copy at<input value={restoreArchive} onChange={(event) => setRestoreArchive(event.target.value)} placeholder="/path/to/copy.orionvault" autoComplete="off" /></label>
-      <label>Into the empty folder<input value={directory} onChange={(event) => setDirectory(event.target.value)} placeholder="/path/to/new-folder" autoComplete="off" /></label>
-      <label>Its passphrase<input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="off" /></label>
-      <button className="secondary-button" type="submit" aria-disabled={working} aria-describedby={working ? "trust-transfer-waiting" : undefined}>Bring it back</button>
+      <label>Bring back the copy at<input readOnly={busy} value={restoreArchive} onChange={(event) => setRestoreArchive(event.target.value)} placeholder="/path/to/copy.orionvault" autoComplete="off" /></label>
+      {transfer.onPickArchive ? <button className="secondary-button" type="button" aria-disabled={busy} aria-describedby={busy ? "trust-transfer-waiting" : undefined} onClick={() => void choose(transfer.onPickArchive!, setRestoreArchive)}>Choose backup file</button> : null}
+      <label>Into the empty folder<input readOnly={busy} value={directory} onChange={(event) => setDirectory(event.target.value)} placeholder="/path/to/new-folder" autoComplete="off" /></label>
+      {transfer.onPickDirectory ? <button className="secondary-button" type="button" aria-disabled={busy} aria-describedby={busy ? "trust-transfer-waiting" : undefined} onClick={() => void choose(transfer.onPickDirectory!, setDirectory)}>Choose restore folder</button> : null}
+      <label>Its passphrase<input readOnly={busy} type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="off" /></label>
+      <button className="secondary-button" type="submit" aria-disabled={busy} aria-describedby={busy ? "trust-transfer-waiting" : undefined}>Bring it back</button>
     </form>
-    {working ? <span className="action-explanation" id="trust-transfer-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
+    {busy ? <span className="action-explanation" id="trust-transfer-waiting">{choosing ? "Waiting for the chooser… Select one path or cancel to continue." : "Your vault is answering the last request. Pressing again does nothing until it has."}</span> : null}
+    <div role="status" aria-live="polite" aria-atomic="true">{pickerError || (choosing ? "Waiting for the chooser… Select one path or cancel to continue." : "")}</div>
     <div className="visually-hidden" role="status" aria-live="polite">{said}</div>
     {said ? <p className="trust-transfer-answer">{said}</p> : null}
   </section>;

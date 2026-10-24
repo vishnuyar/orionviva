@@ -6,13 +6,14 @@ import { BridgeTimeout } from "./bridge/contracts";
 import { installTauriBridge } from "./tauri-host";
 
 const opened = vi.fn();
+const saved = vi.fn();
 const subscribed = vi.fn();
 const invoked = vi.fn(async (command: string, _args?: Record<string, unknown>) => {
   if (command === "open_remembered_vault") return { state: "opened", directory: "/remembered/vault" };
   return "{}";
 });
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({ open: (options: unknown) => opened(options) }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: (options: unknown) => opened(options), save: (options: unknown) => saved(options) }));
 vi.mock("@tauri-apps/api/webview", () => ({ getCurrentWebview: () => ({ onDragDropEvent: async (handler: unknown) => { subscribed(handler); return () => {}; } }) }));
 
 function install() {
@@ -26,11 +27,21 @@ afterEach(() => {
   delete window.orionVivaBridge;
   delete window.__TAURI_INTERNALS__;
   opened.mockReset();
+  saved.mockReset();
   subscribed.mockReset();
   invoked.mockClear();
 });
 
 describe("the host shim", () => {
+  it("chooses an encrypted backup save path without writing or calling the sidecar", async () => {
+    const transport = install();
+    saved.mockResolvedValueOnce("/chosen/backup.orionvault").mockResolvedValueOnce(null);
+    await expect(transport.pickBackupSavePath?.()).resolves.toBe("/chosen/backup.orionvault");
+    expect(saved).toHaveBeenCalledWith({ title: "Choose a backup location", defaultPath: "backup.orionvault", filters: [{ name: "OrionViva encrypted backup", extensions: ["orionvault"] }] });
+    await expect(transport.pickBackupSavePath?.()).resolves.toBeNull();
+    expect(invoked).not.toHaveBeenCalled();
+  });
+
   it("keeps remembered-vault secrets inside native commands", async () => {
     const transport = install();
     await expect(transport.openRememberedVault?.()).resolves.toEqual({ state: "opened", directory: "/remembered/vault" });

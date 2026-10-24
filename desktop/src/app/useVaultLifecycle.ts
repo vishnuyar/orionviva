@@ -3,6 +3,7 @@ import { BridgeRefusal, BridgeTimeout, OPEN_REFUSALS } from "../bridge/contracts
 import { privateSource, sampleSource } from "../surface/sources";
 import type { SessionCoordination } from "./useSessionState";
 import type { useSessionReads } from "./useSessionReads";
+import type { ActionResult } from "../surface/types";
 
 const REMEMBERED_OPEN_DEADLINE_MS = 2_000;
 const REMEMBER_CREDENTIAL_DEADLINE_MS = 2_000;
@@ -92,6 +93,8 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
     automaticOpenTimedOut,
     hostAvailable: Boolean(hostBridge),
     pickerAvailable: Boolean(hostBridge?.pickVaultDirectory),
+    backupSavePickerAvailable: Boolean(hostBridge?.pickBackupSavePath),
+    backupPickerAvailable: Boolean(hostBridge?.pickDocumentPaths),
     remembersVault: Boolean(hostBridge?.rememberVault),
     hostCloseAvailable: Boolean(hostBridge?.closeVault),
     closingVault,
@@ -162,6 +165,21 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
       return true;
     },
     async pickVaultDirectory() { return hostBridge?.pickVaultDirectory?.() ?? null; },
+    async pickBackupSavePath() { return hostBridge?.pickBackupSavePath?.() ?? null; },
+    async pickBackupArchive() {
+      const paths = await hostBridge?.pickDocumentPaths?.() ?? [];
+      if (paths.length > 1) throw new Error("Choose one backup file");
+      return paths[0] ?? null;
+    },
+    async restoreBackup(archive: string, directory: string, passphrase: string): Promise<ActionResult> {
+      if (!hostBridge || opening.current) return { state: "unanswered" };
+      opening.current = true;
+      try {
+        return await privateSource(hostBridge).transferActions!.restore(archive, directory, passphrase);
+      } catch {
+        return { state: "interrupted", message: "Restoring stopped answering. The destination may already contain the restored vault. Inspect that folder before trying again. OrionViva did not retry the restore." };
+      } finally { opening.current = false; }
+    },
     async closeVault() {
       if (opening.current) return false;
       opening.current = true;

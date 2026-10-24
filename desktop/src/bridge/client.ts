@@ -54,6 +54,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
       }
       return sampleFrame(opened);
     },
+    ...(transport.pickBackupSavePath ? { pickBackupSavePath: transport.pickBackupSavePath } : {}),
     ...(transport.pickVaultDirectory ? { pickVaultDirectory: transport.pickVaultDirectory } : {}),
     ...(transport.pickDocumentPaths ? { pickDocumentPaths: transport.pickDocumentPaths } : {}),
     ...(transport.subscribeToDroppedPaths ? { subscribeToDroppedPaths: transport.subscribeToDroppedPaths } : {}),

@@ -181,3 +181,23 @@ def test_both_transfer_actions_are_served_by_an_opened_vault(tmp_path):
 
     assert EXPORT in handlers
     assert RESTORE in handlers
+
+
+def test_restore_is_served_before_any_vault_is_opened(tmp_path):
+    from viva.desktop_bridge.handlers import default_handlers
+    from viva.vault_transfer import export_vault
+
+    vault = _vault(tmp_path)
+    archive = tmp_path / "copy.orionvault"
+    export_vault(vault.directory, archive)
+    handlers = default_handlers().handlers
+    assert EXPORT not in handlers
+    assert RESTORE in handlers
+    response = json.loads(dispatch_frame(json.dumps({
+        "protocol": CURRENT_PROTOCOL.wire(), "request_id": "restore-baseline",
+        "operation": RESTORE, "payload": {
+            "archive": str(archive), "directory": str(tmp_path / "recovered"),
+            "passphrase": PASSPHRASE}}), handlers))
+    assert response["ok"] is True
+    assert response["result"]["kind"] == "completed"
+    assert response["result"]["state"]["blob_count"] == 1

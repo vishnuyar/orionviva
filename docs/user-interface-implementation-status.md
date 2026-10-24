@@ -141,6 +141,28 @@ remain absent: the bridge exposes neither authenticated original bytes/pages nor
 a resulting document identity in the upload receipt. These UI changes do not
 implement either engine contract.
 
+## Backup and recovery usability
+
+Welcome offers Restore a backup without requiring an open vault. Restore checks
+the encrypted archive, event chain and original documents in private staging
+before publishing the recovered folder. A failed phrase leaves the destination
+retryable; occupied destinations and concurrently arriving files are refused.
+Opening the recovered vault remains a separate explicit action.
+
+Native and browser hosts supply an optional save-file chooser, and Trust exposes
+archive and restore-folder selection. Choosing a path only fills its field;
+cancellation neither submits nor writes. Browser vault transitions drain sent
+bridge requests, reject new work and never replay rejected work into the next
+vault. Stale vault identity and revoked browser access remain fenced.
+
+Chooser/recovery verification passed 138 focused tests, 27 native tests and
+nineteen synthetic production-host checks. The shared interface passed 1,086
+tests, production build, 155 architecture checks and 66 style checks. These are
+source/test-host results, not signed installed-host or assistive-technology
+acceptance. Vite 8.2.4 and Vitest 4.1.12 reduce the measured npm audit findings
+from five to zero. Current release and acceptance limits are recorded in
+[Personal beta readiness](personal-beta-readiness.md).
+
 ## Coverage tables
 
 These tables intentionally repeat only facts that tests derive from executable
@@ -203,7 +225,7 @@ name. The destination shown to people is **Transactions**.
 | `viva.surface.capabilities` | yes | before a vault opens | yes |
 | `viva.surface.read` | yes | opened vault | yes |
 | `viva.vault.export` | yes | opened vault | yes |
-| `viva.vault.restore` | yes | opened vault | yes |
+| `viva.vault.restore` | yes | baseline and opened vault | yes |
 
 ## Open
 

@@ -253,6 +253,26 @@ Export writes an encrypted copy. Restore writes into an empty destination and
 requires the vaultphrase. Neither operation makes an unencrypted copy, and an
 export is not useful without the vaultphrase.
 
+In **Trust & settings**, choose **Choose backup location** to select a new
+`.orionvault` file, then choose **Take a copy** to write it. **Choose backup
+file** and **Choose restore folder** fill the restore paths; enter the backup’s
+passphrase and choose **Bring it back** to restore. These chooser buttons appear
+when the host supports them. You can always enter paths directly. Choosing a
+path or cancelling a chooser never exports or restores a vault.
+
+To recover when no vault is open, choose **Restore a backup** on the welcome
+screen. Choose the `.orionvault` file and an empty destination folder, then
+enter the backup's passphrase. File and folder choosers are available when the
+host offers them; you can also enter the paths directly.
+
+OrionViva verifies the backup in a private temporary folder before publishing
+the recovered vault. A wrong passphrase or failed verification leaves the
+destination available for a corrected attempt. Existing files are never
+replaced. After a completed restore, choose **Open restored vault** and enter
+its passphrase again. Restoring alone does not open the vault or save a device
+credential. If a restore stops answering, inspect the destination before
+trying again: it may already contain the restored vault.
+
 ## Recovery behavior
 
 If an ordinary surface read fails, OrionViva keeps the last valid picture rather

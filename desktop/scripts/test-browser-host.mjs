@@ -98,6 +98,47 @@ try {
   await browser.waitUntil(async () => (await text()).includes("Vault open"), { timeout: 30_000 });
   const inspected = spawnSync(join(desktop, "../.venv/bin/python"), ["-c", "from pathlib import Path; import sys; from viva.ingest.raw_store import RawStore; root=Path(sys.argv[1]); data=(root/'synthetic.txt').read_bytes(); raw=RawStore.open(root/'vault'/'raw', 'synthetic browser phrase'); ids=raw.doc_ids(); assert len(ids)==1; assert raw.get(ids[0])==data; assert all(data not in p.read_bytes() for p in (root/'vault').rglob('*') if p.is_file())", root], { env: { PYTHONPATH: [root, join(desktop, "../product"), join(desktop, "../core"), join(desktop, "../merchant")].join(process.platform === "win32" ? ";" : ":"), VIVA_ENV_FILE: join(root, "empty.env") }, encoding: "utf8" });
   assert.equal(inspected.status, 0, "Synthetic original must reopen from encrypted storage without a plaintext vault copy");
+  await browser.$('aria/Trust & settings').click();
+  await browser.$('aria/Choose backup location').waitForClickable({ timeout: 30_000 });
+  await assert.rejects(access(join(root, "copy.orionvault")), "No backup exists before choosing");
+  await browser.$('aria/Choose backup location').click();
+  assert.equal(await browser.$('aria/Write the copy to').getValue(), join(root, "copy.orionvault"));
+  await assert.rejects(access(join(root, "copy.orionvault")), "Choosing a location must not export a backup");
+  await browser.setWindowSize(390, 1000);
+  await browser.$('.trust-transfer').scrollIntoView();
+  assert.equal(await browser.execute(() => document.documentElement.scrollWidth <= window.innerWidth), true, "Backup controls must fit a narrow viewport");
+  await browser.saveScreenshot(join(root, "backup-390.png"));
+  await browser.setWindowSize(1440, 1100);
+  await browser.$('aria/Take a copy').click();
+  await browser.waitUntil(async () => { try { await access(join(root, "copy.orionvault")); return (await browser.$('aria/Take a copy').getAttribute("aria-disabled")) === "false"; } catch { return false; } }, { timeout: 30_000 });
+  await browser.$('aria/Close this vault').click();
+  await browser.$('aria/Restore a backup').waitForClickable({ timeout: 15_000 });
+  await browser.$('aria/Restore a backup').click();
+  await browser.$('aria/Backup file').setValue(join(root, "copy.orionvault"));
+  await browser.$('aria/Empty destination folder').setValue(join(root, "recovered"));
+  await browser.$('aria/Backup passphrase').setValue("wrong synthetic phrase");
+  await browser.$('aria/Restore backup').click();
+  await browser.waitUntil(async () => (await browser.$('aria/Restore backup').getAttribute("aria-disabled")) === "false" && (await browser.$('[role="status"]').getText()).length > 0, { timeout: 30_000 });
+  assert.equal(await browser.$('aria/Open restored vault').isExisting(), false, "Refusal must not offer a recovered vault");
+  await assert.rejects(access(join(root, "recovered")), "Wrong phrase must leave destination absent");
+  await browser.$('aria/Backup passphrase').setValue("synthetic browser phrase");
+  await browser.$('aria/Restore backup').click();
+  await browser.$('aria/Open restored vault').waitForClickable({ timeout: 30_000 });
+  assert.equal(await browser.$('aria/Backup passphrase').getValue(), "", "Submitted recovery phrase must clear");
+  assert(!(await text()).includes("Vault open"), "Restoring must not open the vault automatically");
+  await browser.setWindowSize(390, 1000);
+  assert.equal(await browser.execute(() => document.documentElement.scrollWidth <= window.innerWidth), true, "Recovery must fit a narrow viewport");
+  await browser.saveScreenshot(join(root, "recovery-390.png"));
+  await browser.$('aria/Open restored vault').scrollIntoView();
+  await browser.saveScreenshot(join(root, "recovery-receipt-390.png"));
+  await browser.setWindowSize(1440, 1100);
+  await browser.$('aria/Open restored vault').scrollIntoView();
+  await browser.saveScreenshot(join(root, "recovery-completed.png"));
+  await browser.$('aria/Open restored vault').click();
+  assert.equal(await browser.$('input[placeholder="/path/to/vault"]').getValue(), join(root, "recovered"));
+  await browser.$('input[type="password"]').setValue("synthetic browser phrase");
+  await browser.$('aria/Open local vault').click();
+  await browser.waitUntil(async () => (await text()).includes("Vault open"), { timeout: 30_000 });
   const original = await browser.getWindowHandle();
   // Opening with an opener clones sessionStorage, matching a duplicated tab.
   await browser.execute(() => { window.open(location.href, "_blank"); });
@@ -113,7 +154,7 @@ try {
   await writeFile(join(root, "revoke"), "revoke\n");
   await browser.waitUntil(async () => (await text()).includes("Browser access has ended"), { timeout: 10_000 });
   await browser.saveScreenshot(join(root, "browser-revoked.png"));
-  console.log(JSON.stringify({ status: "pass", evidence: root, cases: ["production-assets", "responsive-statements", "create-real-vault", "synthetic-file-import", "original-unchanged", "closed-vault-stays-closed-after-reload", "wrong-phrase-refused", "reopen-vault", "encrypted-original-roundtrip", "duplicate-tab-reload-refused", "authorized-reload", "revocation"] }));
+  console.log(JSON.stringify({ status: "pass", evidence: root, cases: ["production-assets", "responsive-statements", "create-real-vault", "synthetic-file-import", "original-unchanged", "closed-vault-stays-closed-after-reload", "wrong-phrase-refused", "reopen-vault", "encrypted-original-roundtrip", "backup-chooser-does-not-write", "explicit-browser-backup-export", "responsive-backup-controls", "restore-without-open-vault", "wrong-backup-phrase-retry", "explicit-restored-vault-open", "responsive-recovery", "duplicate-tab-reload-refused", "authorized-reload", "revocation"] }));
 } catch (error) {
   if (browser) {
     await browser.saveScreenshot(join(root, "failure.png")).catch(() => {});

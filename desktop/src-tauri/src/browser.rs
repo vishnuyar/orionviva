@@ -32,7 +32,7 @@ pub struct BrowserState {
     port: Mutex<Option<u16>>,
     remember: bool,
     #[cfg(test)]
-    test_selections: Option<(String, String)>,
+    test_selections: Option<(String, String, String)>,
 }
 
 impl Default for BrowserState {
@@ -145,14 +145,11 @@ impl BrowserState {
 
     fn enter_vault(&self, expected: u64, switching: bool) -> Result<VaultPermit, String> {
         let mut session = self.session.lock().map_err(|_| "Browser unavailable")?;
-        if expected != session.vault_epoch
-            || session.switching
-            || (switching && session.bridge_operations != 0)
-        {
-            return Err(
-                "The vault changed or is still finishing a request. Reopen it before trying again."
-                    .into(),
-            );
+        if expected != session.vault_epoch {
+            return Err("vault_changed".into());
+        }
+        if session.switching || (switching && session.bridge_operations != 0) {
+            return Err("vault_busy".into());
         }
         session.bridge_operations += 1;
         if switching {
@@ -605,15 +602,16 @@ fn handle<R: tauri::Runtime>(app: &AppHandle<R>, stream: &mut TcpStream, port: u
         match body
             .get("vault_epoch")
             .and_then(Value::as_u64)
-            .and_then(|expected| state.enter_vault(expected, switching).ok())
+            .ok_or_else(|| "vault_changed".to_string())
+            .and_then(|expected| state.enter_vault(expected, switching))
         {
-            Some(permit) => Some(permit),
-            None => {
+            Ok(permit) => Some(permit),
+            Err(reason) => {
                 respond(
                     stream,
                     409,
                     "application/json",
-                    json!({"error": if request.path.ends_with("/current") { "vault_busy" } else { "vault_changed" }, "vault_epoch": state.session.lock().unwrap().vault_epoch}).to_string().as_bytes(),
+                    json!({"error": if request.path.ends_with("/current") || reason == "vault_busy" { "vault_busy" } else { "vault_changed" }, "vault_epoch": state.session.lock().unwrap().vault_epoch}).to_string().as_bytes(),
                 );
                 return;
             }
@@ -708,14 +706,16 @@ fn dispatch<R: tauri::Runtime>(
             let state = app.state::<BrowserState>();
             let session = state.session.lock().map_err(|_| "Browser unavailable")?;
             Ok(
-                json!({"remember": state.remember, "vault_epoch": session.vault_epoch, "sequence": session.sequence}),
+                json!({"remember": state.remember, "backup_save": true, "vault_epoch": session.vault_epoch, "sequence": session.sequence}),
             )
         }
-        "/__orionviva/pick-folder" | "/__orionviva/pick-file" => {
+        "/__orionviva/pick-folder" | "/__orionviva/pick-file" | "/__orionviva/save-backup" => {
             #[cfg(test)]
-            if let Some((folder, file)) = &app.state::<BrowserState>().test_selections {
+            if let Some((folder, file, backup)) = &app.state::<BrowserState>().test_selections {
                 return Ok(json!(if path.ends_with("pick-folder") {
                     folder
+                } else if path.ends_with("save-backup") {
+                    backup
                 } else {
                     file
                 }));
@@ -725,6 +725,12 @@ fn dispatch<R: tauri::Runtime>(
                 picker
                     .set_title("Choose an OrionViva vault folder")
                     .blocking_pick_folder()
+            } else if path.ends_with("save-backup") {
+                picker
+                    .set_title("Choose a backup location")
+                    .set_file_name("backup.orionvault")
+                    .add_filter("OrionViva encrypted backup", &["orionvault"])
+                    .blocking_save_file()
             } else {
                 picker
                     .set_title("Choose a file for OrionViva")
@@ -867,6 +873,20 @@ mod tests {
         drop(request);
         assert!(state.enter(None).is_ok());
         assert!(state.enter_page(&token, "original").is_err());
+    }
+
+    #[test]
+    fn current_epoch_close_waits_without_claiming_the_vault_changed() {
+        let state = BrowserState::default();
+        let reading = state.enter_vault(0, false).unwrap();
+        assert_eq!(state.enter_vault(0, true).err().as_deref(), Some("vault_busy"));
+        assert_eq!(state.session.lock().unwrap().vault_epoch, 0);
+        drop(reading);
+        let closing = state.enter_vault(0, true).unwrap();
+        assert_eq!(state.enter_vault(1, false).err().as_deref(), Some("vault_busy"));
+        assert_eq!(state.enter_vault(0, false).err().as_deref(), Some("vault_changed"));
+        drop(closing);
+        assert!(state.enter_vault(1, false).is_ok());
     }
 
     #[test]

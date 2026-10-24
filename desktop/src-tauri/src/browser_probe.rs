@@ -60,6 +60,7 @@ fn production_browser_routes_with_synthetic_vault() {
         test_selections: Some((
             root.join("vault").to_string_lossy().into_owned(),
             root.join("synthetic.txt").to_string_lossy().into_owned(),
+            root.join("copy.orionvault").to_string_lossy().into_owned(),
         )),
         ..BrowserState::default()
     };

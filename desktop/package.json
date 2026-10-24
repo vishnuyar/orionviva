@@ -27,7 +27,7 @@
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "8.2.4"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",
@@ -38,6 +38,6 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "jsdom": "latest",
-    "vitest": "latest"
+    "vitest": "4.1.12"
   }
 }

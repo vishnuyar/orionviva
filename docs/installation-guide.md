@@ -74,6 +74,11 @@ vault in that folder** before using **Make and open vault**.
 Keep an independent record of the vaultphrase. Keychain or Credential Manager
 provides automatic opening on one device; it is not a portable recovery method.
 
+If you have an encrypted backup rather than a vault folder, choose **Restore
+a backup** on welcome. Restore into an empty folder with the backup's
+passphrase, then explicitly open the recovered vault. See the
+[recovery instructions](usage-guide.md#close-switch-export-and-restore).
+
 ## Build from source
 
 Maintainers need:

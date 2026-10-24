@@ -1,4 +1,4 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { BRIDGE_PROTOCOL, BridgeTimeout, JOB_PROGRESS_EVENT } from "./bridge/contracts";
@@ -38,6 +38,7 @@ export function installTauriBridge(): boolean {
     openRememberedVault: () => invoke<RememberedVaultOpen>("open_remembered_vault"),
     closeVault: () => invoke<void>("close_vault"),
     rememberVault: (vaultDirectory, passphrase) => invoke<void>("remember_vault", { vaultDirectory, passphrase }),
+    pickBackupSavePath: () => save({ title: "Choose a backup location", defaultPath: "backup.orionvault", filters: [{ name: "OrionViva encrypted backup", extensions: ["orionvault"] }] }),
     pickVaultDirectory: async () => {
       const selected = await open({
         directory: true,

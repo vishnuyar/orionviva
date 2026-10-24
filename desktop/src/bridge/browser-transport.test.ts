@@ -100,6 +100,42 @@ describe("installed browser transport", () => {
     expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body).vault_epoch).toBe(1);
   });
 
+  it("drains sent reads before closing and rejects new requests without ending browser access", async () => {
+    const ended = vi.fn();
+    const bridge = await connectBrowser(ended);
+    let finishRead!: (response: Response) => void;
+    fetcher.mockImplementationOnce(() => new Promise<Response>((resolve) => { finishRead = resolve; }));
+    const read = bridge.request({ requestId: "reading", operation: "viva.surface.read", payload: {} });
+    const closing = bridge.closeVault!();
+    const blocked = expect(bridge.request({ requestId: "late", operation: "viva.surface.read", payload: {} })).rejects.toThrow("vault_busy");
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("close"))).toHaveLength(0);
+    fetcher.mockResolvedValueOnce(response({ response: null, vault_epoch: 1 }));
+    finishRead(response({ response: { ok: true }, vault_epoch: 0 }));
+    await read; await closing; await blocked;
+    expect(ended).not.toHaveBeenCalled();
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("bridge"))).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("close"))).toHaveLength(1);
+  });
+
+  it.each([undefined, false, "true", 1])("keeps save unavailable without an explicit true host capability (%s)", async (backup_save) => {
+    fetcher.mockImplementation(async (url: string) => response(url.endsWith("claim") ? { token: "session-secret" } : { remember: false, backup_save, vault_epoch: 0, sequence: 0 }));
+    const bridge = await connectBrowser(vi.fn());
+    expect(bridge.pickBackupSavePath).toBeUndefined();
+  });
+
+  it("opens the authenticated backup chooser only when advertised and preserves cancellation", async () => {
+    fetcher.mockImplementation(async (url: string) => response(url.endsWith("claim") ? { token: "session-secret" } : { remember: false, backup_save: true, vault_epoch: 0, sequence: 0 }));
+    const bridge = await connectBrowser(vi.fn());
+    fetcher.mockResolvedValueOnce(response("/synthetic/copy.orionvault"));
+    await expect(bridge.pickBackupSavePath!()).resolves.toBe("/synthetic/copy.orionvault");
+    const [url, options] = fetcher.mock.calls.at(-1)!;
+    expect(url).toBe("/__orionviva/save-backup");
+    expect(options.headers.authorization).toBe("Bearer session-secret");
+    expect(options.headers["x-orionviva-page"]).toMatch(/^page-/);
+    fetcher.mockResolvedValueOnce(response(null));
+    await expect(bridge.pickBackupSavePath!()).resolves.toBeNull();
+  });
+
   it("uses host file dialogs and respects platforms without protected remembering", async () => {
     fetcher.mockImplementation(async (url: string) => response(url.endsWith("claim") ? { token: "session-secret" } : url.endsWith("capabilities") ? { remember: false, vault_epoch: 0 } : "/synthetic/document.pdf"));
     const bridge = await connectBrowser(vi.fn());
@@ -135,16 +171,18 @@ describe("installed browser transport", () => {
     expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toEqual({ vault_epoch: 1 });
   });
 
-  it("does not let a late error restore the previous vault epoch", async () => {
+  it("drains a failed old read before opening and retains the new vault epoch", async () => {
     const bridge = await connectBrowser(vi.fn());
     let rejectOld!: (value: Response) => void;
     fetcher.mockImplementationOnce(() => new Promise<Response>((resolve) => { rejectOld = resolve; }));
     const oldRead = bridge.request({ requestId: "old", operation: "viva.surface.read", payload: {} });
     const failed = expect(oldRead).rejects.toThrow();
     fetcher.mockResolvedValueOnce(response({ response: { ok: true }, vault_epoch: 1 }));
-    await bridge.request({ requestId: "open", operation: "bridge.open_vault", payload: {} });
+    const opening = bridge.request({ requestId: "open", operation: "bridge.open_vault", payload: {} });
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("bridge"))).toHaveLength(1);
     rejectOld(response({ error: "request_failed", vault_epoch: 0 }, 502));
     await failed;
+    await opening;
     fetcher.mockResolvedValueOnce(response({ response: { ok: true }, vault_epoch: 1 }));
     await bridge.request({ requestId: "new", operation: "viva.surface.read", payload: {} });
     expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body).vault_epoch).toBe(1);

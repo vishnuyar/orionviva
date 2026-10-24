@@ -14,6 +14,35 @@ const priorityEnvelope = (overview: unknown, revision = "vault-fixture") => ({
 });
 
 describe("vault", () => {
+  it("restores from welcome without opening another vault or remembering a credential", async () => {
+    const calls: string[] = [];
+    const rememberVault = vi.fn();
+    window.orionVivaBridge = {
+      rememberVault,
+      request: async <T,>(request: { operation: string }) => {
+        calls.push(request.operation);
+        return { protocol: "2.1", request_id: "recovery", ok: true, result: { kind: "completed", message: "Synthetic backup restored.", reason: "", state: {} } as T };
+      },
+      pickDocumentPaths: async () => ["/synthetic/copy.orionvault"],
+      pickVaultDirectory: async () => "/synthetic/restored",
+    };
+    const view = render(<App />);
+    fireEvent.click(view.getByRole("button", { name: "Restore a backup" }));
+    fireEvent.click(view.getByRole("button", { name: "Choose backup file" }));
+    await waitFor(() => expect(view.getByLabelText("Backup file")).toHaveValue("/synthetic/copy.orionvault"));
+    fireEvent.click(view.getByRole("button", { name: "Choose restore folder" }));
+    await waitFor(() => expect(view.getByLabelText("Empty destination folder")).toHaveValue("/synthetic/restored"));
+    fireEvent.change(view.getByLabelText("Backup passphrase"), { target: { value: "synthetic phrase" } });
+    fireEvent.submit(view.getByRole("button", { name: "Restore backup" }).closest("form")!);
+    await waitFor(() => expect(view.getByText("Synthetic backup restored.")).toBeVisible());
+    expect(calls).toEqual(["viva.vault.restore"]);
+    expect(rememberVault).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole("button", { name: "Open restored vault" }));
+    expect(view.getByLabelText("Vault directory")).toHaveValue("/synthetic/restored");
+    expect(view.getByRole("radio", { name: "Open an existing vault" })).toBeChecked();
+    expect(view.getByLabelText("Passphrase")).toHaveValue("");
+    expect(calls).toEqual(["viva.vault.restore"]);
+  });
   it("starts with welcome choices and reveals creation fields only after an explicit choice", () => {
     const request = vi.fn();
     window.orionVivaBridge = { request: async <T,>() => { request(); return { protocol: "2.0", request_id: "req", ok: true, result: {} as T }; } };
@@ -471,7 +500,10 @@ describe("vault", () => {
   it("renders an explicit empty state for every private-vault destination", async () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
-    window.orionVivaBridge = {
+    const pickBackupSavePath = vi.fn(async () => "/synthetic/backup.orionvault");
+    const pickDocumentPaths = vi.fn(async () => ["/synthetic/restore.orionvault"]);
+    const pickVaultDirectory = vi.fn(async () => "/synthetic/restored");
+    window.orionVivaBridge = { pickBackupSavePath, pickDocumentPaths, pickVaultDirectory,
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") {
           return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", priority_reads: ["overview_accounts"] } as T };
@@ -525,6 +557,15 @@ describe("vault", () => {
       // Trust is a read, and a vault that has sent nothing says so with the
       // same prominence as one that has. That emptiness is the record.
       expect(getAllByText(moments.outbound_none).length).toBeGreaterThan(0);
+      await user.click(getByRole("button", { name: "Choose backup location" }));
+      await user.click(getByRole("button", { name: "Choose backup file" }));
+      await user.click(getByRole("button", { name: "Choose restore folder" }));
+      expect(getByLabelText("Write the copy to")).toHaveValue("/synthetic/backup.orionvault");
+      expect(getByLabelText("Bring back the copy at")).toHaveValue("/synthetic/restore.orionvault");
+      expect(getByLabelText("Into the empty folder")).toHaveValue("/synthetic/restored");
+      expect(pickBackupSavePath).toHaveBeenCalledTimes(1);
+      expect(pickDocumentPaths).toHaveBeenCalledTimes(1);
+      expect(pickVaultDirectory).toHaveBeenCalledTimes(1);
       await user.click(getByRole("button", { name: "Accounts" }));
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
       expect(getByRole("heading", { name: "Your financial picture", level: 1 })).toBeInTheDocument();

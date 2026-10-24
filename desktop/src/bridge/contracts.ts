@@ -85,6 +85,7 @@ export type BridgeTransport = {
   openRememberedVault?: () => Promise<RememberedVaultOpen>;
   rememberVault?: (vaultDirectory: string, passphrase: string) => Promise<void>;
   pickVaultDirectory?: () => Promise<string | null>;
+  pickBackupSavePath?: () => Promise<string | null>;
   pickDocumentPaths?: () => Promise<readonly string[]>;
   subscribeToDroppedPaths?: (listen: DroppedPathsListener) => Promise<() => void>;
   subscribeToJobProgress?: (listen: JobProgressListener) => Promise<() => void>;
@@ -104,6 +105,7 @@ export type BridgeClient = {
   // in, and nowhere to learn what would open it.
   openSampleVault: () => Promise<SampleFrame | null>;
   pickVaultDirectory?: () => Promise<string | null>;
+  pickBackupSavePath?: () => Promise<string | null>;
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readOverviewAccounts: (refresh?: boolean) => Promise<SurfaceReadResult>;
   readSpending?: (parameters: SurfaceParameters) => Promise<SurfaceReadResult>;

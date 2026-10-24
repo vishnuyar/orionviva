@@ -1,5 +1,5 @@
 import userEvent from "@testing-library/user-event";
-import { fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsView, TransferActionState, TrustData } from "../../surface/types";
 import { Trust } from "./Trust";
@@ -91,6 +91,56 @@ describe("Trust surface", () => {
 describe("a copy of a whole vault", () => {
   const props = { identity: unasked, lifecycle: unasked, settings: null, maintenance: null, result: ready({ notes: [note("only")] }) };
   const controls = (state: TransferActionState = { state: "idle" }, onExport = noTransfer, onRestore = noRestore): TransferControls => ({ state, onExport, onRestore });
+
+  it("chooses paths without writing until explicitly submitted", async () => {
+    const onExport = vi.fn(); const onRestore = vi.fn();
+    const view = render(<Trust {...props} transfer={{ ...controls({ state: "idle" }, onExport, onRestore), onPickExport: async () => "/copies/chosen.orionvault", onPickArchive: async () => "/copies/source.orionvault", onPickDirectory: async () => "/vaults/restored" }} />);
+    const user = userEvent.setup();
+    await user.click(view.getByRole("button", { name: "Choose backup location" }));
+    await user.click(view.getByRole("button", { name: "Choose backup file" }));
+    await user.click(view.getByRole("button", { name: "Choose restore folder" }));
+    expect(view.getByLabelText("Write the copy to")).toHaveValue("/copies/chosen.orionvault");
+    expect(view.getByLabelText("Bring back the copy at")).toHaveValue("/copies/source.orionvault");
+    expect(view.getByLabelText("Into the empty folder")).toHaveValue("/vaults/restored");
+    expect(onExport).not.toHaveBeenCalled(); expect(onRestore).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole("button", { name: "Take a copy" }));
+    expect(onExport).toHaveBeenCalledExactlyOnceWith("/copies/chosen.orionvault");
+    fireEvent.change(view.getByLabelText("Its passphrase"), { target: { value: "synthetic phrase" } });
+    fireEvent.click(view.getByRole("button", { name: "Bring it back" }));
+    expect(onRestore).toHaveBeenCalledExactlyOnceWith("/copies/source.orionvault", "/vaults/restored", "synthetic phrase");
+    expect(view.getByLabelText("Its passphrase")).toHaveValue("");
+  });
+
+  it("preserves cancellation and makes chooser errors retryable without exposing details", async () => {
+    const picker = vi.fn().mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("private native path"));
+    const onExport = vi.fn(); const view = render(<Trust {...props} transfer={{ ...controls({ state: "idle" }, onExport), onPickExport: picker }} />);
+    fireEvent.change(view.getByLabelText("Write the copy to"), { target: { value: "/copies/manual.orionvault" } });
+    const user = userEvent.setup();
+    await user.click(view.getByRole("button", { name: "Choose backup location" }));
+    expect(view.getByLabelText("Write the copy to")).toHaveValue("/copies/manual.orionvault");
+    await user.click(view.getByRole("button", { name: "Choose backup location" }));
+    expect(view.getByText("The chooser could not select one path. Try again or enter the path below.")).toBeVisible();
+    expect(view.container).not.toHaveTextContent("private native path"); expect(onExport).not.toHaveBeenCalled();
+  });
+
+  it("fences copy actions while choosing without removing controls from the keyboard", async () => {
+    let finish!: (path: string | null) => void;
+    const picker = vi.fn(() => new Promise<string | null>((resolve) => { finish = resolve; }));
+    const onExport = vi.fn(); const onRestore = vi.fn();
+    const view = render(<Trust {...props} transfer={{ ...controls({ state: "idle" }, onExport, onRestore), onPickExport: picker }} />);
+    const choose = view.getByRole("button", { name: "Choose backup location" });
+    fireEvent.click(choose); fireEvent.click(choose);
+    fireEvent.submit(view.getByRole("button", { name: "Take a copy" }).closest("form")!);
+    fireEvent.submit(view.getByRole("button", { name: "Bring it back" }).closest("form")!);
+    expect(picker).toHaveBeenCalledTimes(1); expect(onExport).not.toHaveBeenCalled(); expect(onRestore).not.toHaveBeenCalled();
+    expect(choose).toHaveAttribute("aria-disabled", "true"); expect(choose).not.toHaveAttribute("disabled");
+    expect(view.getByLabelText("Write the copy to")).toHaveAttribute("readonly");
+    expect(view.getByRole("button", { name: "Bring it back" })).toHaveAccessibleDescription(expect.stringContaining("chooser"));
+    await act(async () => finish(null));
+    await waitFor(() => expect(choose).toHaveAttribute("aria-disabled", "false"));
+    view.rerender(<Trust {...props} transfer={{ ...controls({ state: "working", verb: "export" }), onPickExport: picker }} />);
+    fireEvent.click(choose); expect(picker).toHaveBeenCalledTimes(1);
+  });
 
   it("offers no control at all where the source cannot take a copy", () => {
     const { queryByRole } = render(<Trust {...props} transfer={null} />);

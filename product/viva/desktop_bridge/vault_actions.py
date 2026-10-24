@@ -1,21 +1,8 @@
-"""Injected vault-backed transfer actions: a copy out, and a copy back.
+"""Adapt encrypted vault export and restore to allowlisted bridge replies.
 
-This module knows neither the vault implementation nor the desktop transport. A
-sidecar entry point injects one already-open vault and gets back the handlers
-for the transfer actions this build serves.
-
-**Neither action touches the open vault in place.** The export reads the files
-this vault is made of and writes them somewhere else; the restore writes into a
-directory that holds nothing and reads back what it wrote. There is no branch in
-either that opens the running vault for writing, which is what makes it safe to
-offer them while a vault is open.
-
-**A refusal here is an ordinary reply.** A name already taken, a folder in use
-and a file that would not read back are three different things to be told, and
-each asks a person to do something different next; a single "export failed"
-would ask them to guess. The engine's own exception text never travels — it can
-carry a path, and worse, a message shaped like an answer — so each branch is
-matched to a machine reason and the sentence is the pack's.
+Export requires an injected open vault. Restore accepts an archive, destination
+and passphrase independently of the active vault. Transfer failures map to
+reviewed reason codes and persona sentences without returning exception text.
 """
 
 from __future__ import annotations
@@ -69,9 +56,9 @@ _SENTENCES: dict[str, str] = {
 
 
 class VaultTransferActions:
-    """Adapt one already-open vault into the allowlisted transfer handlers."""
+    """Serve restore independently, and export only for an injected open vault."""
 
-    def __init__(self, vault: Any, jobs: JobRegistry | None = None) -> None:
+    def __init__(self, vault: Any = None, jobs: JobRegistry | None = None) -> None:
         self._vault = vault
         self._jobs = jobs if jobs is not None else JobRegistry()
 
@@ -84,6 +71,8 @@ class VaultTransferActions:
         from viva.persona import moment
         from viva.vault_transfer import TransferError, export_vault
 
+        if self._vault is None:
+            raise BridgeRequestError("export requires an opened vault")
         archive = _one_path(payload, "archive", "viva.vault.export")
         job = self._jobs.open("viva.vault.export", EXPORT_STEPS)
         try:

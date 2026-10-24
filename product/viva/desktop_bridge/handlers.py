@@ -102,18 +102,17 @@ def default_handlers() -> BridgeDispatcher:
     """Return the safe baseline allowlist for a newly started sidecar."""
 
     from .settings_actions import SettingsActions
+    from .vault_actions import VaultTransferActions
 
-    # Settings are in the baseline allowlist rather than the opened-vault one.
-    # A person with no vault yet has to be able to say how figures are written
-    # and whether a model may be reached at all, and a build that made them
-    # open a vault first would have made configuration a thing you need a vault
-    # to reach and a vault a thing you need configuration to use.
+    # Settings and restore are available before a vault opens.
     settings = SettingsActions()
+    transfers = VaultTransferActions()
     return BridgeDispatcher({
         BRIDGE_HANDSHAKE: _handshake,
         SURFACE_CAPABILITIES: _surface_capabilities,
         SETTINGS_READ: settings.read,
         LIFECYCLE_READ: _lifecycle_read,
+        TRANSFER_OPERATIONS["restore"]: transfers.restore,
         SETTINGS_OPERATIONS["propose"]: settings.propose,
         SETTINGS_OPERATIONS["confirm"]: settings.confirm,
     })

@@ -149,10 +149,12 @@ describe("bridge transport framing", () => {
     let listener: ((paths: readonly string[]) => void) | null = null;
     const client = createHostBridgeClient({
       request: async <T>(frame: BridgeRequest) => { frames.push(frame); return { protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }; },
+      pickBackupSavePath: async () => "/chosen/backup.orionvault",
       pickDocumentPaths: async () => ["/chosen/first.pdf", "/chosen/second.pdf"],
       subscribeToDroppedPaths: async (listen) => { listener = listen; return () => { listener = null; }; },
     });
 
+    await expect(client.pickBackupSavePath?.()).resolves.toBe("/chosen/backup.orionvault");
     await expect(client.pickDocumentPaths?.()).resolves.toEqual(["/chosen/first.pdf", "/chosen/second.pdf"]);
     const stop = await client.subscribeToDroppedPaths?.(() => {});
     expect(listener).not.toBeNull();
@@ -163,6 +165,7 @@ describe("bridge transport framing", () => {
 
   it("offers no capture verbs when the host transport carries none", async () => {
     const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => ({ protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }) });
+    expect(client.pickBackupSavePath).toBeUndefined();
     expect(client.pickDocumentPaths).toBeUndefined();
     expect(client.subscribeToDroppedPaths).toBeUndefined();
   });

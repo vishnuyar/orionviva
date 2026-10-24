@@ -225,3 +225,149 @@ def test_a_vault_that_has_taken_in_no_document_is_whole(tmp_path):
 
     assert result.blob_count == 0
     assert result.event_count == 1
+
+
+def test_wrong_passphrase_leaves_destination_retryable_and_archive_unchanged(tmp_path):
+    vault = _vault(tmp_path)
+    archive = tmp_path / "copy.orionvault"
+    export_vault(vault.directory, archive)
+    before = archive.read_bytes()
+    destination = tmp_path / "recovered"
+    destination.mkdir()
+
+    with pytest.raises(TransferError, match="would not open"):
+        restore_vault(archive, destination, "wrong phrase")
+
+    assert list(destination.iterdir()) == []
+    result = restore_vault(archive, destination, PASSPHRASE)
+    assert result.blob_count == 1
+    assert archive.read_bytes() == before
+
+
+@pytest.mark.parametrize("failure", ["missing", "changed", "unsafe", "unlisted", "link"])
+def test_bad_archives_leave_no_destination_or_staging_files(tmp_path, failure):
+    import io
+
+    vault = _vault(tmp_path)
+    archive = tmp_path / "copy.orionvault"
+    export_vault(vault.directory, archive)
+    damaged = tmp_path / "damaged.orionvault"
+    with tarfile.open(archive, "r:gz") as source, tarfile.open(damaged, "w:gz") as out:
+        for entry in source.getmembers():
+            if failure == "missing" and entry.name == RAW_HEADER:
+                continue
+            data = source.extractfile(entry).read()
+            if failure == "changed" and entry.name == EVENTS:
+                data += b"changed"
+            if failure == "unsafe" and entry.name == MANIFEST:
+                manifest = json.loads(data)
+                manifest["members"].append({"name": "../foreign", "length": 0, "digest": ""})
+                data = json.dumps(manifest).encode()
+            if failure == "link" and entry.name == RAW_HEADER:
+                entry.type = tarfile.SYMTYPE
+                entry.linkname = "../foreign"
+            entry.size = len(data)
+            out.addfile(entry, io.BytesIO(data))
+        if failure == "unlisted":
+            entry = tarfile.TarInfo("unlisted")
+            out.addfile(entry, io.BytesIO())
+    before = damaged.read_bytes()
+    destination = tmp_path / "recovered"
+    with pytest.raises(TransferError):
+        restore_vault(damaged, destination, PASSPHRASE)
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".orionviva-restore-*"))
+    assert damaged.read_bytes() == before
+    assert restore_vault(archive, destination, PASSPHRASE).blob_count == 1
+
+
+@pytest.mark.parametrize("arrival", ["before_removal", "before_rename"])
+def test_foreign_files_arriving_during_restore_are_preserved(tmp_path, monkeypatch, arrival):
+    import viva.vault_transfer as transfer
+
+    vault = _vault(tmp_path)
+    archive = tmp_path / "copy.orionvault"
+    export_vault(vault.directory, archive)
+    destination = tmp_path / "recovered"
+    destination.mkdir()
+    original_verify = transfer._verified
+    original_rename = transfer.os.rename
+
+    def verify(*args):
+        result = original_verify(*args)
+        if arrival == "before_removal":
+            (destination / "foreign.txt").write_bytes(b"keep this")
+        return result
+
+    def rename(source, target):
+        if Path(target) == destination:
+            destination.mkdir(exist_ok=True)
+            (destination / "foreign.txt").write_bytes(b"keep this")
+        return original_rename(source, target)
+
+    monkeypatch.setattr(transfer, "_verified", verify)
+    if arrival == "before_rename":
+        monkeypatch.setattr(transfer.os, "rename", rename)
+    with pytest.raises(TransferError, match="already holds something"):
+        restore_vault(archive, destination, PASSPHRASE)
+    assert {path.name for path in destination.iterdir()} == {"foreign.txt"}
+    assert (destination / "foreign.txt").read_bytes() == b"keep this"
+    assert not list(tmp_path.glob(".orionviva-restore-*"))
+
+
+@pytest.mark.parametrize("failure", ["read_model", "chain", "blob", "address", "count"])
+def test_verification_closes_the_vault_even_when_a_check_fails(tmp_path, monkeypatch, failure):
+    from types import SimpleNamespace
+    from viva.vault_transfer import Member, _verified
+
+    closed = []
+    vault = SimpleNamespace(
+        synchronize_read_store=lambda: "degraded" if failure == "read_model" else "equal",
+        ledger=SimpleNamespace(store=SimpleNamespace(verify_chain=lambda: (failure != "chain", 1))),
+        raw=SimpleNamespace(doc_ids=lambda: ["blob"],
+                            get=lambda _doc_id: b"bytes",
+                            fingerprint=lambda _data: "different" if failure == "address" else "blob"),
+        close=lambda: closed.append(True))
+    if failure == "blob":
+        def unreadable(_doc_id):
+            raise ValueError("unreadable")
+        vault.raw.get = unreadable
+    monkeypatch.setattr(Vault, "open", lambda *_args: vault)
+    members = () if failure == "count" else (Member("raw/blob.blob", 0, ""),)
+    with pytest.raises(TransferError):
+        _verified(tmp_path, PASSPHRASE, members)
+    assert closed == [True]
+
+
+@pytest.mark.parametrize("manifest", [None, b"not json", b"[]", b'{"format":"orionvault-v1","members":[{}]}'])
+def test_missing_or_malformed_manifest_is_a_retryable_refusal(tmp_path, manifest):
+    import io
+
+    archive = tmp_path / "unreadable.orionvault"
+    with tarfile.open(archive, "w:gz") as out:
+        if manifest is not None:
+            entry = tarfile.TarInfo(MANIFEST)
+            entry.size = len(manifest)
+            out.addfile(entry, io.BytesIO(manifest))
+    destination = tmp_path / "recovered"
+    with pytest.raises(TransferError):
+        restore_vault(archive, destination, PASSPHRASE)
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".orionviva-restore-*"))
+
+
+def test_restore_never_follows_a_destination_symlink(tmp_path):
+    vault = _vault(tmp_path)
+    archive = tmp_path / "copy.orionvault"
+    export_vault(vault.directory, archive)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    destination = tmp_path / "recovered"
+    try:
+        destination.symlink_to(foreign, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+    with pytest.raises(TransferError, match="already holds something"):
+        restore_vault(archive, destination, PASSPHRASE)
+    assert destination.is_symlink()
+    assert list(foreign.iterdir()) == []

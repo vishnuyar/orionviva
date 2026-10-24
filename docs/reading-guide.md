@@ -44,6 +44,8 @@ Read in this order if arriving fresh. Each entry: what it is, and when you would
 - [installation-guide.md](installation-guide.md) — release installation and source-build instructions for macOS, Windows, and Linux, including protected default-vault behavior and troubleshooting.
 - [decisions/ADR-016-local-browser-interface.md](decisions/ADR-016-local-browser-interface.md) — optional same-computer browser access, retained native host, session ownership and browser-first acceptance.
 - [usage-guide.md](usage-guide.md) — the end-user path through vaults, statements, financial surfaces, evidence, Review, Ask Viva, Trust, recovery, and accessibility.
+- [personal-beta-readiness.md](personal-beta-readiness.md) — the personal release promise, recovery improvements, and the evidence still required before inviting beta users.
+- [user-readiness-plan.md](user-readiness-plan.md) — the staged execution plan for independent acceptance, usable backups, financial-answer qualification and release validation.
 - [`../ROADMAP.md`](../ROADMAP.md) — the product phases and what each one has to deliver.
 
 **2 · The process spine — how things are decided**

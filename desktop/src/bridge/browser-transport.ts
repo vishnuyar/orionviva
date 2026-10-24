@@ -29,6 +29,8 @@ export async function connectBrowser(onEnded: (message?: string) => void): Promi
   }
   let ended = false;
   let vaultEpoch = 0;
+  let changingVault = false;
+  const pendingVaultRequests = new Set<Promise<unknown>>();
   let timer: ReturnType<typeof setTimeout>;
   const listeners = new Set<JobProgressListener>();
   const release = () => {
@@ -61,7 +63,7 @@ export async function connectBrowser(onEnded: (message?: string) => void): Promi
     }
     return await response.json() as T;
   }
-  const capabilities = await call<{ remember: boolean; vault_epoch: number; sequence: number }>("capabilities", {});
+  const capabilities = await call<{ remember: boolean; backup_save?: boolean; vault_epoch: number; sequence: number }>("capabilities", {});
   vaultEpoch = capabilities.vault_epoch;
   let after = capabilities.sequence;
   let eventEpoch = capabilities.vault_epoch;
@@ -83,18 +85,32 @@ export async function connectBrowser(onEnded: (message?: string) => void): Promi
     if (!ended) timer = setTimeout(() => { void poll(); }, 500);
   }
   timer = setTimeout(() => { void poll(); }, 500);
+  async function withVaultAccess<T>(switching: boolean, run: () => Promise<T>): Promise<T> {
+    if (changingVault) throw new Error("vault_busy");
+    if (switching) {
+      changingVault = true;
+      try {
+        await Promise.allSettled([...pendingVaultRequests]);
+        return await run();
+      } finally { changingVault = false; }
+    }
+    const request = run();
+    pendingVaultRequests.add(request);
+    try { return await request; }
+    finally { pendingVaultRequests.delete(request); }
+  }
   return {
-    closeVault: async () => {
+    closeVault: () => withVaultAccess(true, async () => {
       const result = await call<{ response: null; vault_epoch: number }>("close", { vault_epoch: vaultEpoch });
       vaultEpoch = Math.max(vaultEpoch, result.vault_epoch);
-    },
-    request: async <T>(frame: BridgeRequest): Promise<BridgeResponse<T>> => {
+    }),
+    request: <T>(frame: BridgeRequest): Promise<BridgeResponse<T>> => withVaultAccess(frame.operation === "bridge.open_vault" || frame.operation === "bridge.open_demo_vault", async () => {
       const result = await call<{ response: BridgeResponse<T>; vault_epoch: number }>("bridge", { vault_epoch: vaultEpoch, frame: { protocol: BRIDGE_PROTOCOL, request_id: `${page}:${frame.requestId}`, operation: frame.operation, payload: frame.payload } });
       if (result.vault_epoch < vaultEpoch) throw new Error("The active vault changed before this response arrived");
       vaultEpoch = result.vault_epoch;
       return { ...result.response, request_id: frame.requestId };
-    },
-    openRememberedVault: async () => {
+    }),
+    openRememberedVault: () => withVaultAccess(false, async () => {
       for (let attempt = 0; ; attempt++) {
         try {
           const result = await call<{ response: RememberedVaultOpen; vault_epoch: number }>("current", { vault_epoch: vaultEpoch });
@@ -106,8 +122,9 @@ export async function connectBrowser(onEnded: (message?: string) => void): Promi
           await new Promise((resolve) => setTimeout(resolve, 150));
         }
       }
-    },
+    }),
     ...(capabilities.remember ? { rememberVault: (directory: string, passphrase: string) => call<void>("remember", { directory, passphrase, vault_epoch: vaultEpoch }) } : {}),
+    ...(capabilities.backup_save === true ? { pickBackupSavePath: () => call<string | null>("save-backup", {}) } : {}),
     pickVaultDirectory: () => call<string | null>("pick-folder", {}),
     pickDocumentPaths: async () => { const path = await call<string | null>("pick-file", {}); return path ? [path] : []; },
     subscribeToJobProgress: async (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },

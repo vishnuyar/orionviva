@@ -56,3 +56,5 @@
   .welcome-brand > span:last-child { flex-basis: 100%; }
   .welcome-setup .vault-directory-control { grid-template-columns: minmax(0, 1fr); }
 }
+
+.vault-recovery-fields { display: grid; min-width: 0; gap: var(--space-lg); margin: 0; padding: 0; border: 0; }

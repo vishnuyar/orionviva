@@ -1,31 +1,9 @@
-"""Taking a whole vault somewhere else, and bringing one back.
+"""Export encrypted vault members and verify restored copies before publication.
 
-What travels is not a folder. It is an event log carrying its own key
-derivation salt, a head file holding a count, a head hash and a message
-authentication code, a raw-store header carrying a **second, independently
-salted** derivation, and the content-addressed encrypted blobs beneath it. Two
-keystreams and a chain head. Anything that sizes this as a copy will lose one
-of those halves and produce an archive that opens and then cannot read its own
-documents.
-
-Three properties hold everything else up.
-
-**Nothing is decrypted to travel.** Every member goes into the archive as the
-bytes that were on disk. The export therefore needs no passphrase, and an
-archive on a stranger's disk is exactly as readable as the vault was — which is
-to say not at all.
-
-**The manifest carries no vault content.** It names each member, its length and
-the digest of its bytes. A file name and a digest of ciphertext say nothing
-about a person's money, which is what makes it safe to read the manifest
-without a key and check an archive somebody handed you.
-
-**A restore is verified on a copy or it is not a restore.** Restoring writes
-into a directory that does not already hold a vault, never over one, and then
-opens what it wrote with the passphrase and reads it: the chain is walked, the
-head is checked against it, and every blob is decrypted and re-addressed
-against its own content. A restore that only unpacked files would report
-success for an archive whose second keystream never arrived.
+Archives carry the encrypted event log, authenticated chain head, independent
+raw-store header and encrypted blobs. The readable manifest records names,
+lengths and ciphertext digests. Restore validates the chain and decrypts every
+original in private staging before publishing the recovered directory.
 """
 
 from __future__ import annotations
@@ -33,7 +11,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import tarfile
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -229,15 +209,20 @@ def read_manifest(archive: Path) -> tuple[Member, ...]:
                     f"{archive.name} carries no {MANIFEST}, so nothing in it "
                     "can be checked against what it claims to be")
             manifest = json.loads(entry.read().decode("utf-8"))
-    except (OSError, tarfile.TarError, json.JSONDecodeError) as exc:
+    except (OSError, tarfile.TarError, KeyError, UnicodeError, json.JSONDecodeError) as exc:
         raise TransferError(f"{archive.name} could not be read: {exc}") from exc
+    if not isinstance(manifest, dict):
+        raise TransferError(f"{archive.name} carries no valid manifest")
     if manifest.get("format") != FORMAT:
         raise TransferError(
             f"{archive.name} is in the {manifest.get('format')!r} format and "
             f"this build restores {FORMAT!r}; nothing was unpacked")
-    members = tuple(
-        Member(str(item["name"]), int(item["length"]), str(item["digest"]))
-        for item in manifest.get("members", []))
+    try:
+        members = tuple(
+            Member(str(item["name"]), int(item["length"]), str(item["digest"]))
+            for item in manifest.get("members", []))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TransferError(f"{archive.name} carries no valid member manifest") from exc
     missing = [name for name in REQUIRED
                if name not in {member.name for member in members}]
     if missing:
@@ -266,21 +251,17 @@ def _safe(name: str) -> bool:
 
 
 def restore_vault(archive: Path, directory: Path, passphrase: str) -> RestoreResult:
-    """Bring a vault back into a directory that holds none, and read it.
+    """Verify an encrypted archive and publish it into an empty destination.
 
-    The destination must not already hold a vault. This is not caution about
-    overwriting a file: a restore that landed on top of a live vault would mix
-    two event logs under one head, and there is no later moment at which that
-    could be told apart from one log.
-
-    What comes back is verified by being read. The chain is walked and checked
-    against the head, and every blob is decrypted and re-addressed against its
-    own content — which is the only check that reaches the second keystream at
-    all, and the one an archive missing `raw/raw-header.json` fails."""
+    Raises TransferError for occupied destinations, invalid members, failed
+    chain verification or unreadable originals. Validation occurs in private
+    staging and leaves the destination unchanged on verification failure.
+    """
     archive = Path(archive)
     directory = Path(directory)
     members = read_manifest(archive)
-    if directory.exists() and any(directory.iterdir()):
+    if (directory.is_symlink() or (directory.exists()
+            and (not directory.is_dir() or any(directory.iterdir())))):
         raise TransferError(
             f"{directory} already holds something; a vault is restored into a "
             "directory of its own, never over one that is in use")
@@ -291,7 +272,47 @@ def restore_vault(archive: Path, directory: Path, passphrase: str) -> RestoreRes
             "this archive names a member outside a vault's own two places: "
             + ", ".join(sorted(unsafe)[:3]))
 
-    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        directory.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+                prefix=".orionviva-restore-", dir=directory.parent) as temporary:
+            staging = Path(temporary) / "vault"
+            staging.mkdir(mode=0o700)
+            _unpack_verified_bytes(archive, staging, members)
+            verified = _verified(staging, passphrase, members)
+            _publish_restore(staging, directory)
+            return RestoreResult(
+                directory, verified.event_count, verified.blob_count,
+                warnings=verified.warnings)
+    except OSError as exc:
+        raise TransferError(f"{archive.name} could not be restored: {exc}") from exc
+
+
+def _publish_restore(staging: Path, directory: Path) -> None:
+    """Publish verified files without replacing an occupied destination.
+
+    Removing an existing empty directory is atomic: a concurrent arrival makes
+    rmdir refuse it. A directory rename also refuses any nonempty directory,
+    file or symlink that arrives between removal and publication.
+    """
+    try:
+        if directory.is_symlink():
+            raise OSError("the destination is a symbolic link")
+        if directory.exists():
+            directory.rmdir()
+        os.rename(staging, directory)
+    except OSError as exc:
+        if directory.exists() or directory.is_symlink():
+            raise TransferError(
+                f"{directory} already holds something; a vault is restored into a "
+                "directory of its own, never over one that is in use") from exc
+        raise
+
+
+def _unpack_verified_bytes(archive: Path, directory: Path,
+                           members: tuple[Member, ...]) -> None:
+    """Unpack only declared plain files, then check every ciphertext digest."""
+    expected = {member.name: member for member in members}
     (directory / RAW_DIRECTORY).mkdir(exist_ok=True)
     try:
         with tarfile.open(archive, "r:gz") as bundle:
@@ -329,8 +350,6 @@ def restore_vault(archive: Path, directory: Path, passphrase: str) -> RestoreRes
                 "than its manifest records; nothing about this restore is "
                 "trusted")
 
-    return _verified(directory, passphrase, members)
-
 
 def _verified(directory: Path, passphrase: str,
               members: tuple[Member, ...]) -> RestoreResult:
@@ -350,37 +369,38 @@ def _verified(directory: Path, passphrase: str,
             "the restored vault would not open with that passphrase, so "
             f"nothing in it could be read: {exc}") from exc
 
-    if vault.synchronize_read_store() not in {"equal", "caught_up", "rebuilt"}:
+    try:
+        if vault.synchronize_read_store() not in {"equal", "caught_up", "rebuilt"}:
+            raise TransferError(
+                "the restored canonical history could not reconstruct its disposable read model")
+
+        intact, count = vault.ledger.store.verify_chain()
+        if not intact:
+            raise TransferError(
+                f"the restored event log breaks its own chain at record {count}; "
+                "this archive does not carry a whole log")
+
+        declared = {member.name for member in members if member.name.endswith(".blob")}
+        readable = 0
+        for doc_id in vault.raw.doc_ids():
+            try:
+                data = vault.raw.get(doc_id)
+            except (CryptoError, OSError, ValueError) as exc:
+                raise TransferError(
+                    f"a document in the restored vault could not be read back: "
+                    f"{exc}") from exc
+            if vault.raw.fingerprint(data) != doc_id:
+                raise TransferError(
+                    "a document in the restored vault no longer addresses its own "
+                    "content; what came back is not what went in")
+            readable += 1
+        if readable != len(declared):
+            raise TransferError(
+                f"the restored vault holds {readable} documents and its archive "
+                f"declared {len(declared)}")
+
+        log.info("restored %d events and %d documents into %s",
+                 count, readable, directory)
+    finally:
         vault.close()
-        raise TransferError(
-            "the restored canonical history could not reconstruct its disposable read model")
-
-    intact, count = vault.ledger.store.verify_chain()
-    if not intact:
-        raise TransferError(
-            f"the restored event log breaks its own chain at record {count}; "
-            "this archive does not carry a whole log")
-
-    declared = {member.name for member in members if member.name.endswith(".blob")}
-    readable = 0
-    for doc_id in vault.raw.doc_ids():
-        try:
-            data = vault.raw.get(doc_id)
-        except (CryptoError, OSError, ValueError) as exc:
-            raise TransferError(
-                f"a document in the restored vault could not be read back: "
-                f"{exc}") from exc
-        if vault.raw.fingerprint(data) != doc_id:
-            raise TransferError(
-                "a document in the restored vault no longer addresses its own "
-                "content; what came back is not what went in")
-        readable += 1
-    if readable != len(declared):
-        raise TransferError(
-            f"the restored vault holds {readable} documents and its archive "
-            f"declared {len(declared)}")
-
-    log.info("restored %d events and %d documents into %s",
-             count, readable, directory)
-    vault.close()
     return RestoreResult(directory, event_count=count, blob_count=readable)
