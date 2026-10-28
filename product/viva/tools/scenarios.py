@@ -855,7 +855,16 @@ def validate_premises(family, parameters, proofs, question):
             **({'starting_account_clause':parsed['account_phrase'][1]} if 'account_phrase' in parsed else {})}
 
 
-def simulate_scenario(args, figures, question='', *, account_resolver=None):
+SCENARIO_REQUESTS['scenario_starting_account_restricted'] = {
+    family: ('This recorded account has restricted or unresolved availability and cannot '
+             'supply starting cash. Choose an eligible account, or state an explicit '
+             'hypothetical opening amount in a new scenario.')
+    for family in ('savings_scenario', 'cash_flow_scenario')
+}
+
+
+def simulate_scenario(args, figures, question='', *, account_resolver=None,
+                      cash_start_eligible=None):
     tool = 'simulate_scenario'
     if not isinstance(args,dict) or _validate(SCENARIO_PARAMS,args):
         if isinstance(args,dict) and args.get('view') in FAMILIES:
@@ -877,6 +886,11 @@ def simulate_scenario(args, figures, question='', *, account_resolver=None):
             candidates = account_resolver(quote) if callable(account_resolver) else []
             if len(candidates) != 1 or candidates[0]['id'] != parameters['account_phrase']:
                 _fail()
+            # Measurements describe held money; the trusted projection separately
+            # decides whether an observed cash stock may fund this scenario.
+            if (family != 'loan_payoff_scenario' and callable(cash_start_eligible)
+                    and not cash_start_eligible(parameters['account_phrase'])):
+                _fail('scenario_starting_account_restricted')
             fid = args.get('starting_figure')
             observed = figures.get(fid) if isinstance(figures,dict) else None
             expected_quantity = quantity.OWED if family=='loan_payoff_scenario' else quantity.BALANCE

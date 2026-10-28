@@ -7,6 +7,7 @@ transport. A sidecar entry point can inject a provider and a progress sink.
 from __future__ import annotations
 
 import json
+from time import monotonic
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
@@ -53,6 +54,7 @@ class VaultSurfaceReader:
 
     def read(self, payload: dict[str, Any]) -> dict[str, Any]:
         surface, parameters, job_id = _read_request(payload)
+        started = monotonic()
         self._emit(JobProgressEvent(job_id, "started", 0, 1, f"reading {surface}"))
         try:
             with span("surface", surface=surface):
@@ -60,15 +62,15 @@ class VaultSurfaceReader:
             if not isinstance(result, Mapping):
                 raise TypeError("surface provider must return a mapping")
             json.dumps(result)
+            response = {"surface": surface, "job_id": job_id, "data": dict(result)}
+            if surface == "documents" and result.get("contract_version") == "documents-page-v1":
+                if len(json.dumps(response, ensure_ascii=True, separators=(",", ":")).encode("utf-8")) > 100000 or monotonic() - started > 2:
+                    raise BridgeRequestError("resource_limit")
         except Exception as exc:
             self._emit(JobProgressEvent(job_id, "failed", 0, 1, str(exc)))
             raise
         self._emit(JobProgressEvent(job_id, "completed", 1, 1, f"read {surface}"))
-        return {
-            "surface": surface,
-            "job_id": job_id,
-            "data": dict(result),
-        }
+        return response
 
     def _emit(self, event: JobProgressEvent) -> None:
         if self._progress_sink is not None:

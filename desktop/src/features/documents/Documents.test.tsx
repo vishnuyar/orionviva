@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ActionResult, DocumentsData, FeatureResult, JobView, RescanActionState, RescanReport, SurfaceDocument } from "../../surface/types";
 import { Documents } from "./Documents";
@@ -497,4 +497,81 @@ it("opens saved originals outside the narrow library and metadata columns", asyn
   expect(read).not.toHaveBeenCalled(); fireEvent.click(trigger);
   expect(await view.findByText("saved source marker")).toBeInTheDocument();
   expect(view.getByRole("heading", { name: "Saved original: source.pdf" })).toHaveFocus();
+});
+
+it("shows accepted and held sections separately and opens the explicitly selected source page", () => {
+  const id = "d".repeat(64);
+  const doc = { ...document(id, "mortgage.pdf"), resolved: false, componentStatuses: [
+    { component: "mortgage_terms", kind: "mortgage_terms", label: "Mortgage contract terms", disposition: "accepted" as const, reasonCode: "accepted", reason: "Terms passed applicable checks.", sourcePages: [{ documentId: id, page: 1, label: "Terms source page 1" }] },
+    { component: "payment:PAY-A", kind: "payment", label: "Payment PAY-A", disposition: "held" as const, reasonCode: "unmatched_counterpart", reason: "A unique compatible counterpart source has not been established.", sourcePages: [{ documentId: id, page: 2, label: "Payment source page 2" }] },
+  ] };
+  const preview = vi.fn(async () => ({ status: "unavailable" as const, reason: "original_unavailable" as const }));
+  const review = vi.fn();
+  const view = render(<Documents result={ready([doc])} selectedDocument={id} capture={null} rescan={null} onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} previewReader={preview} onOpenReview={review} />);
+  expect(view.getByText("Accepted section")).toBeInTheDocument();
+  expect(view.getByText("Needs review")).toBeInTheDocument();
+  expect(preview).not.toHaveBeenCalled();
+  fireEvent.click(view.getByRole("button", { name: "Payment source page 2" }));
+  expect(preview).toHaveBeenCalledWith(id, 2);
+  fireEvent.click(view.getByRole("button", { name: "Review unresolved source sections" }));
+  expect(review).toHaveBeenCalledOnce();
+});
+
+it("requires independent detail for a versioned in-page summary", () => {
+  const row = { ...document("a".repeat(64)), detailRequiresLookup: true };
+  expect(resolveDocumentSelection([row], row.id)).toEqual({ state: "pending" });
+  expect(resolveDocumentSelection([row], "")).toEqual({ state: "pending" });
+  expect(resolveDocumentSelection([row], row.id, { state: "unavailable", id: row.id, document: null })).toEqual({ state: "unavailable" });
+});
+
+describe("saved original new-reading confirmation", () => {
+ const doc = { ...document("a".repeat(64), "retained.pdf"), retry: { state: "available" as const, reason: "new_reading_available" as const, confirmationToken: "opaque-hidden" } };
+ const props = { rescan: null, capture: null, selectedDocument: doc.id, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+ function supported() { return { state: "ready" as const, data: { ...data([doc]), retainedReadingVersion: "retained-reading-v1" as const, selectedDocument: { state: "ready" as const, reason: null, document: doc } } }; }
+ function controls() { return { selection: [{ documentId: doc.id, name: doc.name, reason: "new_reading_available" as const, confirmationToken: "opaque-hidden" }], blocked: false, canSelect: () => true, onAdd: vi.fn(), onRemove: vi.fn(), onConfirm: vi.fn() }; }
+ it("discloses exact identities and additional cost, keeps selection separate from explicit confirmation, and hides tokens", () => {
+  const retained = controls(); const view = render(<Documents {...props} retained={{ ...retained, selection: [] }} result={supported()} />);
+  expect(view.getByText(/may charge again/)).toBeVisible(); expect(view.queryByText(/opaque-hidden/)).toBeNull();
+  expect(view.getAllByText(doc.id).length).toBeGreaterThan(0); expect(retained.onConfirm).not.toHaveBeenCalled();
+  fireEvent.click(view.getByRole("button", { name: "Select saved original for a new reading" })); expect(retained.onAdd).toHaveBeenCalledWith(doc); expect(retained.onConfirm).not.toHaveBeenCalled();
+  view.rerender(<Documents {...props} retained={retained} result={supported()} />);
+  fireEvent.click(view.getByRole("button", { name: "Read these saved originals again" })); expect(retained.onConfirm).toHaveBeenCalledOnce();
+  fireEvent.click(view.getByRole("button", { name: /Remove retained.pdf/ })); expect(retained.onRemove).toHaveBeenCalledWith(doc.id);
+ });
+ it("hides the new action on old hosts and refuses confirmation when unavailable", () => {
+  const retained = controls(); const view = render(<Documents {...props} retained={retained} result={ready([doc])} />);
+  expect(view.queryByRole("button", { name: "Read these saved originals again" })).toBeNull(); expect(view.queryByRole("button", { name: "Select saved original for a new reading" })).toBeNull();
+  view.rerender(<Documents {...props} retained={{ ...retained, blocked: true }} result={supported()} />);
+  const confirm = view.getByRole("button", { name: "Read these saved originals again" }); expect(confirm).toHaveAttribute("aria-disabled", "true"); fireEvent.click(confirm); expect(retained.onConfirm).not.toHaveBeenCalled();
+ });
+ it.each(["selected", "full", "blocked", "consumed"] as const)("explains the actual local %s selection restriction beside its inert control", (state) => {
+  const retained = controls();
+  const selection = state === "selected" ? retained.selection : state === "full" ? ["b", "c", "d"].map((letter) => ({ ...retained.selection[0], documentId: letter.repeat(64), name: `${letter}.pdf`, confirmationToken: `token-${letter}` })) : [];
+  const view = render(<Documents {...props} retained={{ ...retained, selection, blocked: state === "blocked", canSelect: () => false }} result={supported()} />);
+  const availability = within(view.getByRole("region", { name: "Saved original reading availability" }));
+  const select = availability.getByRole("button", { name: "Select saved original for a new reading" });
+  const reason = availability.getByRole("status");
+  expect(select).toHaveAttribute("aria-describedby", reason.id); expect(select).toHaveAttribute("aria-disabled", "true");
+  expect(reason).not.toHaveTextContent("Available for a new paid reading");
+  expect(reason).toHaveTextContent(state === "selected" ? /already selected/ : state === "full" ? /Three saved originals are already selected/ : state === "blocked" ? /temporarily unavailable/ : /refresh this document.s details/);
+  fireEvent.click(select); expect(retained.onAdd).not.toHaveBeenCalled(); expect(retained.onConfirm).not.toHaveBeenCalled();
+ });
+ it("offers the next keyboard control as a deliberate route to review selection and cost without starting a reading", () => {
+  const retained = controls(); const view = render(<Documents {...props} retained={{ ...retained, selection: [] }} result={supported()} />);
+  const select = view.getByRole("button", { name: "Select saved original for a new reading" }); select.focus(); fireEvent.click(select);
+  expect(retained.onAdd).toHaveBeenCalledOnce(); expect(retained.onConfirm).not.toHaveBeenCalled();
+  view.rerender(<Documents {...props} retained={{ ...retained, canSelect: () => false }} result={supported()} />);
+  const region = within(view.getByRole("region", { name: "Saved original reading availability" }));
+  const route = region.getByRole("button", { name: "Review selection and reading cost" });
+  expect(region.getAllByRole("button")).toEqual([select, route]); expect(select).toHaveFocus();
+  const heading = view.getByRole("heading", { name: "Select saved originals for a new reading" }); heading.scrollIntoView = vi.fn();
+  route.focus(); fireEvent.click(route); expect(heading).toHaveFocus(); expect(heading.scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+  expect(retained.onConfirm).not.toHaveBeenCalled(); expect(retained.onAdd).toHaveBeenCalledOnce();
+ });
+ it("returns focus from a removed selection to the stable confirmation heading", () => {
+  const retained = controls(); const view = render(<Documents {...props} retained={retained} result={supported()} />);
+  const remove = view.getByRole("button", { name: /Remove retained.pdf/ }); remove.focus(); fireEvent.click(remove);
+  view.rerender(<Documents {...props} retained={{ ...retained, selection: [] }} result={supported()} />);
+  expect(view.getByRole("heading", { name: "Select saved originals for a new reading" })).toHaveFocus();
+ });
 });

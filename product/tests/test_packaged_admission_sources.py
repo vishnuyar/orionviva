@@ -14,7 +14,7 @@ import pytest
 ROOT = Path(__file__).parents[2]
 SPEC = ROOT / 'product/viva/desktop_bridge/viva-desktop-bridge.spec'
 HOOK = SPEC.with_name('pyi_rth_admission_sources.py')
-BUILTIN = ROOT / '.venv/lib/python3.13/site-packages/PyInstaller/hooks/rthooks/pyi_rth_inspect.py'
+BUILTIN = Path(importlib.util.find_spec('PyInstaller').origin).parent / 'hooks/rthooks/pyi_rth_inspect.py'
 
 
 def source_map():
@@ -360,6 +360,21 @@ def test_packaging_inventory_matches_every_admitted_module(monkeypatch):
     SemanticFamilyRegistry._admitted_implementation_digests()
     assert 'viva.surface.overview' not in paths
     paths['viva.surface.overview'] = ROOT / 'product/viva/surface/overview.py'
+    # Exact additional source-only closure: these tiers must be hashed without
+    # executing bridge/surface code in the financial engine.
+    for relative in ('instrument_claims', 'instrument_evidence', 'instrument_runtime', 'instrument_conversation', 'allocation_target', 'allocation_continuation', 'answer_program/instrument_families', 'read_store/instrument_authority', 'read_store/instrument_authority_contracts', 'read_store/instrument_authority_sql', 'read_store/instrument_math', 'read_store/apr_context_sql', 'ledger/apr_context', 'ledger/instruments', 'ingest/instrument_contracts', 'ingest/instrument_parser', 'ingest/instrument_observations', 'ingest/instrument_effects', 'ingest/instrument_projector', 'ingest/instrument_read', 'ingest/apr_context_contracts', 'ingest/apr_context_parser', 'ingest/apr_context_grounding', 'ingest/apr_context_local', 'ingest/pipeline', 'ingest/reader', 'ingest/registry', 'ingest/pipeline_models', 'rebuild', 'tools/instruments', 'session', 'surface/conversation', 'surface/numerical_receipts', 'desktop_bridge/conversation_actions', 'desktop_bridge/vault_surface', 'read_store/store', 'read_store/instrument_sql', 'read_store/allocation_continuation', 'read_store/document_index', 'read_store/document_sections', 'read_store/documents_page', 'read_store/instrument_review', 'desktop_bridge/documents_page', 'desktop_bridge/surface_read', 'desktop_bridge/rpc', 'surface/capabilities', 'surface/operations'):
+        paths['viva.'+relative.replace('/','.')] = ROOT / ('product/viva/'+relative+'.py')
+    paths['viva.surface.documents_page']=ROOT/'product/viva/surface/documents_page.py'
+    paths['viva.vault']=ROOT/'product/viva/vault.py'
+    paths.update({name: ROOT / ("product/"+relative)
+                  for name,relative in (('viva.investment', 'viva/investment/__init__.py'), ('viva.investment.authenticated', 'viva/investment/authenticated.py'), ('viva.investment.authority', 'viva/investment/authority.py'), ('viva.investment.composition', 'viva/investment/composition.py'), ('viva.investment.contracts', 'viva/investment/contracts.py'), ('viva.investment.events', 'viva/investment/events.py'), ('viva.investment.extraction', 'viva/investment/extraction.py'), ('viva.investment.funding', 'viva/investment/funding.py'), ('viva.investment.healing', 'viva/investment/healing.py'), ('viva.investment.identity', 'viva/investment/identity.py'), ('viva.investment.lifecycle', 'viva/investment/lifecycle.py'), ('viva.investment.lineage', 'viva/investment/lineage.py'), ('viva.investment.payroll', 'viva/investment/payroll.py'), ('viva.investment.payroll_extraction', 'viva/investment/payroll_extraction.py'), ('viva.investment.projector', 'viva/investment/projector.py'), ('viva.investment.semantic', 'viva/investment/semantic.py'), ('viva.investment.sql', 'viva/investment/sql.py'), ('viva.investment.tool', 'viva/investment/tool.py'), ('viva.investment.units', 'viva/investment/units.py'), ('viva.retirement_funding', 'viva/retirement_funding/__init__.py'), ('viva.retirement_funding.authority', 'viva/retirement_funding/authority.py'), ('viva.retirement_funding.catalog', 'viva/retirement_funding/catalog.py'), ('viva.retirement_funding.contracts', 'viva/retirement_funding/contracts.py'), ('viva.retirement_funding.lineage', 'viva/retirement_funding/lineage.py'), ('viva.retirement_funding.payroll_v2', 'viva/retirement_funding/payroll_v2.py'), ('viva.retirement_funding.population', 'viva/retirement_funding/population.py'), ('viva.retirement_funding.posting_closure', 'viva/retirement_funding/posting_closure.py'), ('viva.retirement_funding.semantic', 'viva/retirement_funding/semantic.py'), ('viva.retirement_funding.sql', 'viva/retirement_funding/sql.py'), ('viva.retirement_funding.tool', 'viva/retirement_funding/tool.py'), ('viva.normalization_context', 'viva/normalization_context.py'), ('viva.ingest.mortgage_known_allocation', 'viva/ingest/mortgage_known_allocation.py'), ('viva.ingest.paystub', 'viva/ingest/paystub.py'), ('viva.ingest.paystub_projector', 'viva/ingest/paystub_projector.py'), ('viva.acquisition', 'viva/acquisition.py'), ('viva.sample', 'viva/sample/__init__.py'), ('viva.sample.curation', 'viva/sample/curation.py'), ('viva.sample.resources', 'viva/sample/resources.py'), ('viva.sample.instances', 'viva/sample/instances.py'), ('viva.sample.activation', 'viva/sample/activation.py'), ('viva.demo', 'viva/demo.py'))})
+    paths['viva.sample.worker']=ROOT/'product/viva/sample/worker.py'
+    paths['viva.desktop_bridge.bulk_documents']=ROOT/'product/viva/desktop_bridge/bulk_documents.py'
+    paths['viva.extraction_responses']=ROOT/'product/viva/extraction_responses.py'
+    paths['viva.ledger.projection.coverage']=ROOT/'product/viva/ledger/projection/coverage.py'
+    paths['viva.read_store.documents']=ROOT/'product/viva/read_store/documents.py'
+    paths.update({name: ROOT / ("product/" + relative)
+                  for name, relative in _SELECTED_REPORT_RESOURCES.values()})
     mapping = source_map()
     assert set(mapping) == set(paths)
     for name, relative in mapping.items():
@@ -453,3 +468,166 @@ def test_source_only_resource_uses_the_existing_hooks_canonical_extraction_root(
     install()
     assert SemanticFamilyRegistry._admitted_source_only_paths() == {
         'financial_surface_overview': resource}
+
+
+_METADATA_RESOURCES = {
+    'instrument_dependency:viva.ledger.projection.coverage':
+        ('viva.ledger.projection.coverage', 'viva/ledger/projection/coverage.py'),
+    'instrument_dependency:viva.read_store.documents':
+        ('viva.read_store.documents', 'viva/read_store/documents.py'),
+}
+
+
+def test_metadata_resources_independently_change_actual_candidate_identity(monkeypatch,tmp_path):
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    original=SemanticFamilyRegistry._admitted_source_only_paths
+    baseline=SemanticFamilyRegistry._admitted_implementation_digests()
+    assert len(baseline)==160
+    for key,(module,relative) in _METADATA_RESOURCES.items():
+        assert baseline[key]==hashlib.sha256((ROOT/'product'/relative).read_bytes()).hexdigest()[:16]
+        changed_source=tmp_path/(module.replace('.','_')+'.py')
+        changed_source.write_bytes((ROOT/'product'/relative).read_bytes()+b'\n# synthetic dependency mutation\n')
+        def replaced(resources=None,*,chosen=key,path=changed_source):
+            paths=original(resources)
+            if resources is not None:
+                assert chosen in paths
+                paths={**paths,chosen:path}
+            return paths
+        monkeypatch.setattr(SemanticFamilyRegistry,'_admitted_source_only_paths',staticmethod(replaced))
+        changed=SemanticFamilyRegistry._admitted_implementation_digests()
+        assert set(changed)==set(baseline)
+        assert changed[key]==hashlib.sha256(changed_source.read_bytes()).hexdigest()[:16]
+        assert changed[key]!=baseline[key]
+        assert all(changed[name]==value for name,value in baseline.items() if name!=key)
+
+
+def test_metadata_packaged_map_roundtrip_has_exact_two_real_additions():
+    mapping=source_map()
+    assert len(mapping)==160
+    assert len(set(mapping.values()))==160
+    for module,relative in _METADATA_RESOURCES.values():
+        assert mapping[module]==relative
+        assert (ROOT/'product'/relative).is_file()
+    assert json.loads(json.dumps(mapping))==mapping
+
+
+@pytest.mark.parametrize('guard',['hook','source_only'])
+@pytest.mark.parametrize('size',[153,154,155,156,157,158,159,161])
+def test_metadata_strict_map_rejects_old_missing_and_extra_cardinalities(frozen,monkeypatch,guard,size):
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    module,mapping=frozen
+    module('viva.answer_program.intents')
+    for name,relative in _METADATA_RESOURCES.values():
+        module(name)
+    install()
+    assert len(mapping)==160
+    assert set(SemanticFamilyRegistry._admitted_source_only_paths(_METADATA_RESOURCES))==set(_METADATA_RESOURCES)
+    changed=dict(mapping)
+    while len(changed)>size:changed.pop(next(reversed(changed)))
+    while len(changed)<size:
+        name='viva.public_extra_'+str(len(changed));changed[name]=name.replace('.','/')+'.py'
+    (Path(sys._MEIPASS)/'admission-source-map.json').write_text(json.dumps(changed))
+    with pytest.raises(RuntimeError,match='source map'):
+        if guard=='hook':install()
+        else:SemanticFamilyRegistry._admitted_source_only_paths(_METADATA_RESOURCES)
+
+
+@pytest.mark.parametrize('guard',['hook','source_only'])
+@pytest.mark.parametrize('target',list(_METADATA_RESOURCES))
+@pytest.mark.parametrize('defect',['remove','substitute','duplicate_path'])
+def test_each_metadata_resource_identity_is_required(frozen,guard,target,defect):
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    module,mapping=frozen;module('viva.answer_program.intents')
+    for name,relative in _METADATA_RESOURCES.values():module(name)
+    install()
+    changed=dict(mapping);name,relative=_METADATA_RESOURCES[target]
+    if defect=='remove':changed.pop(name)
+    elif defect=='substitute':
+        changed.pop(name);changed['viva.public_replacement']='viva/public_replacement.py'
+    else:changed['viva.answer_program.compiler']=relative
+    (Path(sys._MEIPASS)/'admission-source-map.json').write_text(json.dumps(changed))
+    with pytest.raises(RuntimeError,match='source map|canonical resource mapping'):
+        if guard=='hook':install()
+        else:SemanticFamilyRegistry._admitted_source_only_paths(_METADATA_RESOURCES)
+
+
+@pytest.mark.parametrize('target',list(_METADATA_RESOURCES))
+def test_spec_rejects_duplicate_metadata_admission_source(target):
+    tree=ast.parse(SPEC.read_text())
+    loop=next(node for node in tree.body if isinstance(node,ast.For)
+              and any(isinstance(child,ast.Constant) and child.value=='sidecar build: duplicate admission module'
+                      for child in ast.walk(node)))
+    sources=[(ROOT/'product'/relative,str(Path(relative).parent))
+             for module,relative in _METADATA_RESOURCES.values()]
+    module,relative=_METADATA_RESOURCES[target]
+    sources.append((ROOT/'product'/relative,str(Path(relative).parent)))
+    namespace={'ADMISSION_SOURCES':sources,'source_map':{}}
+    with pytest.raises(SystemExit,match='duplicate admission module'):
+        exec(compile(ast.Module(body=[loop],type_ignores=[]),str(SPEC),'exec'),namespace)
+
+
+
+def test_vault_is_exact_additive_source_resource_and_mutation_changes_only_its_digest(monkeypatch,tmp_path):
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    key='foundation_dependency:viva.vault'
+    baseline=SemanticFamilyRegistry._admitted_implementation_digests()
+    assert len(baseline)==160 and key in baseline
+    mapping=source_map()
+    assert len(mapping)==160 and mapping['viva.vault']=='viva/vault.py'
+    assert len({k:v for k,v in mapping.items() if k!='viva.vault'})==159
+    assert len({k:v for k,v in baseline.items() if k!=key})==159
+    source=ROOT/'product/viva/vault.py'
+    assert baseline[key]==hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+    original=SemanticFamilyRegistry._admitted_source_only_paths
+    changed=tmp_path/'vault.py';changed.write_bytes(source.read_bytes()+b'\n# public source-byte mutation\n')
+    def paths(resources=None):
+        result=original(resources)
+        return {**result,key:changed} if resources is not None and key in result else result
+    monkeypatch.setattr(SemanticFamilyRegistry,'_admitted_source_only_paths',staticmethod(paths))
+    altered=SemanticFamilyRegistry._admitted_implementation_digests()
+    assert altered[key]!=baseline[key]
+    assert all(altered[k]==v for k,v in baseline.items() if k!=key)
+    monkeypatch.setattr(SemanticFamilyRegistry,'_admitted_source_only_paths',staticmethod(original))
+    assert SemanticFamilyRegistry._admitted_implementation_digests()==baseline
+
+
+@pytest.mark.parametrize('guard',['hook','source_only'])
+@pytest.mark.parametrize('defect',['remove','substitute','duplicate_path','misname'])
+def test_vault_binding_is_required_in_hook_and_source_resource(frozen,guard,defect):
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    module,mapping=frozen
+    module('viva.answer_program.intents');module('viva.vault');install()
+    changed=dict(mapping)
+    if defect=='remove':changed.pop('viva.vault')
+    elif defect=='substitute':changed['viva.vault']='viva/other.py'
+    elif defect=='misname':changed['viva.other']=changed.pop('viva.vault')
+    else:changed['viva.vault']=changed['viva.acquisition']
+    (Path(sys._MEIPASS)/'admission-source-map.json').write_text(json.dumps(changed))
+    with pytest.raises(RuntimeError):
+        if guard=='hook':install()
+        else:SemanticFamilyRegistry._admitted_source_only_paths({'foundation_dependency:viva.vault':('viva.vault','viva/vault.py')})
+
+
+_SELECTED_REPORT_RESOURCES = {
+    'selected_balance_dependency:viva.answer_program.selected_balances':
+        ('viva.answer_program.selected_balances', 'viva/answer_program/selected_balances.py'),
+    'selected_balance_dependency:viva.tools.account_balances':
+        ('viva.tools.account_balances', 'viva/tools/account_balances.py'),
+    'selected_balance_dependency:viva.ledger.ledger':
+        ('viva.ledger.ledger', 'viva/ledger/ledger.py'),
+}
+
+
+def test_selected_report_and_exact_owner_sources_are_in_the_actual_frozen_admission_map(frozen):
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    module, mapping = frozen
+    module('viva.answer_program.intents')
+    for name, relative in _SELECTED_REPORT_RESOURCES.values():
+        _, path = module(name)
+        path.write_bytes((ROOT / 'product' / relative).read_bytes())
+    install()
+    paths = SemanticFamilyRegistry._admitted_source_only_paths(_SELECTED_REPORT_RESOURCES)
+    assert set(paths) == set(_SELECTED_REPORT_RESOURCES)
+    for key, (name, relative) in _SELECTED_REPORT_RESOURCES.items():
+        assert mapping[name] == relative
+        assert paths[key].read_bytes() == (ROOT / 'product' / relative).read_bytes()

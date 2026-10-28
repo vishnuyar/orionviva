@@ -1,0 +1,9 @@
+Property tax receipt source guidance:
+- paid requires explicit paid evidence. A bill/assessment is bill, not a paid
+  receipt. Unknown status remains unknown with the printed supporting page.
+- Copy actual payment date, payment/receipt reference, property identity and
+  tax year independently. An assessment year is not a payment date.
+- source_account_reference is the exact printed escrow/bank source identifier
+  when present, not an inferred payer from the property or mortgage lender.
+- This receipt corroborates a payment; do not manufacture a second debit or
+  an escrow posting. Do not merge different tax years because amounts match.

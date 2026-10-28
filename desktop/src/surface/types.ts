@@ -141,7 +141,13 @@ export type ProofPresentation = { emphasis: "routine" | "required"; reasons: rea
 export type FigureView = { id: string; display: string; exactValue: string; currency: string; measure: FigureMeasure; grade: FigureGrade; gradeLabel: string; gradeDescription: string; proofPresentation: ProofPresentation; asOf: string; coverage: readonly string[]; caveats: string[]; evidenceLinks: EvidenceLink[]; exactness?: string | null; recordIds?: readonly string[]; evidenceLabel?: string; evidenceHeading?: string; unmeasured?: readonly UnmeasuredAccount[] };
 export type DocumentPhase = "captured" | "queued" | "reading" | "held" | "parked" | "read_ready" | "verified" | "unresolved";
 // Each document row carries the read-supplied sentence describing its contribution.
-export type SurfaceDocument = { id: string; name: string; contribution?: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading; snapshotStatus?: "posted" | "held" | "unavailable"; snapshotSentence?: string; activityStatus?: "complete" | "incomplete" | "unavailable" | "not_applicable"; activitySentence?: string };
+export type SourcePageTarget = { documentId: string; page: number; label: string };
+export type SourceComponentView = { effectiveDate?: string; component: string; kind: string; label: string; disposition: "accepted" | "held" | "conflicted" | "unavailable"; reasonCode: string; reason: string; sourcePages: readonly SourcePageTarget[] };
+export type SourceObservationView = { kind: string; label: string; lifecycle: "active" | "superseded" | "retracted"; sourcePages: readonly SourcePageTarget[] };
+export type RetainedReadingReason = "new_reading_available" | "already_accepted" | "financial_review" | "reading_in_progress" | "uncertain_audit" | "missing_original" | "capture_conflict" | "evidence_unavailable" | "no_model" | "stale_confirmation" | "confirmation_used" | "confirmation_unavailable";
+export type RetainedDocumentRetry = { state: "available" | "blocked" | "unavailable"; reason: RetainedReadingReason; confirmationToken: string | null };
+export type RetainedReadingSelection = { documentId: string; name: string; reason: RetainedReadingReason; confirmationToken: string };
+export type SurfaceDocument = { retry?: RetainedDocumentRetry; detailRequiresLookup?: boolean; observationSections?: readonly SourceObservationView[]; detailUnavailable?: string; componentStatuses?: SourceComponentView[]; observationStatuses?: ("active" | "superseded" | "retracted")[]; identityConflict?: boolean; id: string; name: string; contribution?: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading; snapshotStatus?: "posted" | "held" | "unavailable"; snapshotSentence?: string; activityStatus?: "complete" | "incomplete" | "unavailable" | "not_applicable"; activitySentence?: string };
 export type DocumentCapture = { id: string; label: string; state: "captured" | "processing" | "held" | "ready" | "sent"; detail: string; source: string; note: string };
 export type DocumentJob = { id: string; label: string; state: "running" | "paused" | "done"; detail: string; progress: string };
 export type OutboundRecord = { id: string; label: string; state: "queued" | "sent" | "blocked"; detail: string; destination: string };
@@ -229,7 +235,11 @@ export type PlanActions = { draft: (payload: PlanPayload) => Promise<PlanDraftRe
 // One reviewed sentence for the whole panel, written by the backend, empty
 // when the panel has nothing to say. It is never composed here and never
 // repeated per row.
-export type DocumentsData = { documents: SurfaceDocument[]; readingSentence: string; captureQueue: DocumentCapture[]; processingJobs: DocumentJob[]; outboundRecords: OutboundRecord[] };
+export type DocumentDetailResolution = { state: "none" | "pending" | "ready" | "missing" | "conflicted_identity" | "unavailable"; reason?: string | null; document: SurfaceDocument | null; id?: string };
+export type DocumentsPageMeta = { totalDocuments: number | null; totalUnavailableReason: string | null; pageStart: number; pageEnd: number; pageCount: number; hasMore: boolean; nextCursor: string | null };
+export type DocumentsPageRequest = { contract_version: "documents-page-v1"; cursor?: string; selected_document_id?: string };
+export type DocumentsPageReader = (request: DocumentsPageRequest) => Promise<FeatureResult<DocumentsData>>;
+export type DocumentsData = { retainedReadingVersion?: "retained-reading-v1"; contractVersion?: "documents-page-v1"; revision?: string; page?: DocumentsPageMeta; selectedDocument?: DocumentDetailResolution; summaryScope?: "revision"; documents: SurfaceDocument[]; readingSentence: string; captureQueue: DocumentCapture[]; processingJobs: DocumentJob[]; outboundRecords: OutboundRecord[] };
 export type QuestionQueueData = { queue: QuestionView[]; count: number; meta: { total: number; tail: { count: number; amount: string } | null; pending: { count: number } | null; invite: string; answeredByDocument: string } };
 export type ReviewContext = { date: string; amount: string; account: string; merchant: string };
 export type ReviewConversationTarget = { kind: "conversation"; questionId: string; disclosure: string };
@@ -239,7 +249,8 @@ export type ReviewQuestionReferences = { movement: string; movements: readonly s
 export type ReviewQuestionBinding = { itemId: string; questionId: string; questionKind: string; label: string; reason: string; refs: ReviewQuestionReferences; target: ReviewTarget; status: "open"; primaryAction: "open_question" | "open_transaction"; allowedActions: readonly ("open_question" | "open_transaction")[] };
 export type ReviewItem = { id: string; type: "question"; typeLabel: string; marker: "?"; markerLabel: string; label: string; reason: string; status: "open"; context: ReviewContext; target: ReviewTarget; primaryAction: "open_question" | "open_transaction"; actionLabel: string; allowedActions: readonly ("open_question" | "open_transaction")[]; binding: ReviewQuestionBinding };
 export type ReviewGroup = { id: "questions"; label: string; count: number; items: readonly ReviewItem[] };
-export type ReviewData = { contract: "ReviewSummary.v1"; title: string; summary: string; actionableCount: number; shownCount: number; remainingCount: number; types: readonly { id: "questions"; label: string; count: number }[]; groups: readonly ReviewGroup[] };
+export type InstrumentDocumentAttention = { state: "ready" | "unavailable"; totalDocuments: number | null; shownCount: number; remainingCount: number | null; unavailableReason: string | null; documents: readonly { documentId: string; filename: string; components: readonly SourceComponentView[] }[] };
+export type ReviewData = { documentAttention?: InstrumentDocumentAttention; contract: "ReviewSummary.v1"; title: string; summary: string; actionableCount: number; shownCount: number; remainingCount: number; types: readonly { id: "questions"; label: string; count: number }[]; groups: readonly ReviewGroup[] };
 // A movement retains its read-supplied account-kind direction, unsigned amount and
 // sentence. Ordinary spending has an empty sentence.
 export type ActivityVocabularyItem = { id: string; label: string };
@@ -322,10 +333,15 @@ export type SupportedAnswerKind = { id: string; label: string; example: string }
 export type MissingAnswerInput = { tag: string; label: string; question: string; requestedFamily?: string; requestedLabel?: string; supportedFamilies?: readonly SupportedAnswerKind[] };
 // One whole turn. The grade sentence is a whole reviewed sentence rather than a
 // word in a frame, and it is the read's.
-export type TurnView = { question: string; text: string; answered: boolean; status: AnswerStatus; outcomeTag: string; refusal: string; grade: string; gradeSentence: string; figures: readonly TurnFigure[]; options: readonly AnswerOption[]; missing: readonly MissingAnswerInput[]; spoken: SpokenTurn; goalDraft?: ConversationGoalDraft | null; accountingCorrection?: { id: string; movementIds: readonly string[]; ruleId: string } | null };
+export type ContinuationRecovery = { version: "allocation-continuation-v1"; turn_id: string; answer_id: string };
+export type InstrumentSourceAssertionReceipt = { recordAssociation?: string; id: string; receiptId: string; claim: string; valueType: "date" | "literal_text" | "boolean" | "enum"; value: string | boolean; written: string; account: string; effectiveDate: string; grade: FigureGrade; anchors: readonly { documentId: string; page: number; anchorId: string }[]; observationIds: readonly string[] };
+export type UserTargetPremise = { receiptId: string; questionId: string; kind: "user_stated"; claim: "allocation_target"; targetRoleText: string; exposure: string; written: string; account: string; asOf: string };
+export type RetirementSourceAssertionReceipt = { sourceKind: "retirement_relationship"; id: string; claim: string; valueType: "date" | "literal_text"; value: string; written: string; account: string; grade: FigureGrade; recordAssociation: string; associationLabel: string; sourceAccountId: string; destinationAccountId: string; disposition: "accepted"; sourceLineageDigest: string; anchors: readonly { documentId: string; page: number }[]; observationIds: readonly string[] };
+export type SourceAssertionReceipt = InstrumentSourceAssertionReceipt | RetirementSourceAssertionReceipt;
+export type TurnView = { answerId?: string; continuationEligible?: boolean; allocationSelectionIds?: readonly string[]; sourceAssertions?: readonly SourceAssertionReceipt[]; targetPremises?: readonly UserTargetPremise[]; question: string; text: string; answered: boolean; status: AnswerStatus; outcomeTag: string; refusal: string; grade: string; gradeSentence: string; figures: readonly TurnFigure[]; options: readonly AnswerOption[]; missing: readonly MissingAnswerInput[]; spoken: SpokenTurn; goalDraft?: ConversationGoalDraft | null; accountingCorrection?: { id: string; movementIds: readonly string[]; ruleId: string } | null };
 export type ConversationActions = {
   undoCorrection?: (correctionId: string) => Promise<ActionResult>;
-  ask: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: AskContextMode, movementIds?: readonly string[]) => Promise<{ result: ActionResult; turn: TurnView | null }>;
+  ask: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: AskContextMode, movementIds?: readonly string[], continuationRecovery?: ContinuationRecovery) => Promise<{ result: ActionResult; turn: TurnView | null }>;
   answer: (questionId: string, said: string) => Promise<ActionResult>;
   confirm: (proposalId: string, said: string, asked: string) => Promise<ActionResult>;
   decline: (questionId: string, reason: DeclineReason) => Promise<ActionResult>;
@@ -372,8 +388,13 @@ export type RescanActionState =
   | { state: "idle" }
   | { state: "working" }
   | { state: "settled"; result: ActionResult; report: RescanReport | null };
+export type BulkDocumentResult = { jobId: string; rows: readonly BulkDocumentOutcome[] };
+export type BulkDocumentOutcome = { ordinal: number; documentId: string | null; action: "posted" | "conflict" | "gap" | "identity" | "awaiting" | "parked" | "duplicate" | "refused" | "failed" | "cancelled"; disposition: DocumentReading | null; reason: string | null };
+export type BulkDocumentRow = { documentId?: string; path: string; status: "queued" | "working" | "not_started" | "uncertain" | BulkDocumentOutcome["action"]; outcome?: BulkDocumentOutcome };
+export type BulkDocumentSession = { mode?: "retained"; state: "running" | "stopping" | "finished" | "uncertain"; rows: readonly BulkDocumentRow[]; jobIds: readonly string[] };
 export type DocumentActions = {
-  // One document per call, and one call per gesture.
+  readRetained?: (documents: readonly RetainedReadingSelection[]) => Promise<BulkDocumentResult>;
+  uploadMany?: (paths: readonly string[]) => Promise<BulkDocumentResult>;
   upload: (path: string) => Promise<ActionResult>;
   recover?: (jobId: string) => Promise<ActionResult>;
   // Stop a sidecar job by identity, then read the authoritative job registry.
@@ -395,8 +416,12 @@ export type DocumentPreviewReader = (documentId: string, page: number) => Promis
 
 export type NumericalAxis = { kind: string; value: string; to?: string };
 export type NumericalBoundary = { whole?: boolean; accounts?: { counted: number; held: number }; selected?: readonly NumericalAxis[]; cut?: readonly NumericalAxis[]; unmeasured?: readonly { account: string; reason: string; settled_by: string }[]; unposted?: number };
-export type NumericalSubject = { kind: string; value: string } | { grouping: "category" | "merchant" | "account" } | { account_id: string } | { merchant: string } | { goal_id: string };
+export type RetirementPlanSetSubject = { account_set_id: string; set_type: "retirement_plans"; member_ids: readonly string[] };
+export type RetirementRolloverSubject = RetirementPlanSetSubject & { relationship_id: string; source_account_id: string; destination_account_id: string };
+export type NumericalSubject = RetirementPlanSetSubject | RetirementRolloverSubject | { account_id: string; security_id: string } | { kind: string; value: string } | { grouping: "category" | "merchant" | "account" } | { account_id: string } | { merchant: string } | { goal_id: string };
 export type NumericalFigure = { value: string; quantity: string; kind: "financial" | "computed" | "activity" | "hypothetical"; currency: string; dated: string; grade: string; boundary: NumericalBoundary; subject: NumericalSubject | null };
 export type NumericalPremise = { parameter: string | null; role: string | null; raw: string | null; modeled: string | null; unit: string | null; currency: string | null; source: "current_question"; quote: string | null; derivation: string | null };
 export type NumericalObservedInput = { account_id: string; value: string; modeled_value: string; quantity: string; kind: string; currency: string; dated: string; grade: string; measurement_view: string; record_ids: readonly string[]; carry_forward_hypothetical: boolean };
-export type NumericalReceipt = { id: string; figureIds: readonly string[]; sourceRecords: readonly { recordId: string; kind: "document" | "movement" | "local_activity" | "unavailable"; documentId: string | null }[]; premises: readonly NumericalPremise[]; observedInputs: readonly NumericalObservedInput[]; localInputs: readonly { eventId: string; eventType: string; fields: readonly { label: string; value: string }[] }[]; context: readonly { label: string; value: string }[]; caveats: readonly string[] };
+export type NumericalSourcePage = { documentId: string; page: number };
+export type InvestmentDerivation = { figureId: string; operation: "proceeds_minus_reported_realized_gain"; rows: readonly { rowId: string; proceeds: string; reportedRealizedGain: string; sourcePages: readonly NumericalSourcePage[] }[] };
+export type NumericalReceipt = { figureProvenance?: Readonly<Record<string, readonly NumericalSourcePage[]>>; investmentDerivations?: readonly InvestmentDerivation[]; id: string; figureIds: readonly string[]; sourceRecords: readonly { recordId: string; kind: "document" | "movement" | "local_activity" | "unavailable"; documentId: string | null }[]; premises: readonly NumericalPremise[]; observedInputs: readonly NumericalObservedInput[]; localInputs: readonly { eventId: string; eventType: string; fields: readonly { label: string; value: string }[] }[]; context: readonly { label: string; value: string }[]; caveats: readonly string[] };

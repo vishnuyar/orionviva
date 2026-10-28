@@ -557,6 +557,11 @@ def compute(args: dict, figures: dict, question: str = "") -> ToolResult:
                 f"{{\"{STIPULATED}\": \"<what you said>\"}} — never a number "
                 "typed in directly.", figures)
         fig = figures[fid]
+        from ..quantity import DEDICATED
+        from ..instrument_claims import RETIREMENT_CLAIMS, MORTGAGE_DERIVED_CLAIMS
+        if fig.get("quantity") in DEDICATED or fig.get("claim") in RETIREMENT_CLAIMS | MORTGAGE_DERIVED_CLAIMS:
+            return refusal(TOOL, "dedicated_authority_required",
+                           "This source meaning requires its dedicated instrument authority.")
         try:
             # A figure stating a currency is an amount of money; one stating
             # none — a count of accounts, of documents, of movements — is a

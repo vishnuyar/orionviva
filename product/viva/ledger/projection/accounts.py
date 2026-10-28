@@ -11,7 +11,7 @@ from ..identity import (account_key, account_labels_overlap, account_tokens,
                         identity_number_key,
                         institution_names_overlap, masked_label, names_overlap,
                         preferred_account_key, slug,
-                        usable_full_number)
+                        usable_full_number, SourceAccountIdentity)
 from .core import ProjectionCore, UnknownAccountError
 
 
@@ -81,7 +81,8 @@ def document_types_of(core: ProjectionCore, account: str) -> set:
         return set()
     from ...ingest.registry import profile_for
     # The store itself, not a copy: this is called once per account.
-    seen = core._captured
+    from .coverage import captured_docs
+    seen = captured_docs(core)
     out = set()
     for did in st.doc_ids:
         profile = profile_for(seen.get(did, ""))
@@ -111,7 +112,8 @@ def _learned_alias_matches(core: ProjectionCore, key: str, names: list[str],
 
 def resolve(core: ProjectionCore, institution: str, account_number: str,
             account_ref: str, names: list[str],
-            kind: str = "depository", doc_id: str = "") -> Resolution:
+            kind: str = "depository", doc_id: str = "", *, currency: str = "",
+            source_identity: SourceAccountIdentity | None = None) -> Resolution:
     """Return the same, new, or ambiguous account for these identity signals."""
     key = account_key(institution, account_number, account_ref)
     preferred = preferred_account_key(institution, account_number, account_ref)
@@ -220,7 +222,55 @@ def resolve(core: ProjectionCore, institution: str, account_number: str,
         target_full = usable_full_number(target_state.number)
         if not (mine_full and target_full and mine_full != target_full):
             return Resolution(target, key, "same")
-    state = core._acct.get(preferred)
+    excluded = set()
+    eligible_source = (type(source_identity) is SourceAccountIdentity
+                       and source_identity.eligible()
+                       and source_identity.doc_id == doc_id
+                       and doc_id in core._captured and not mine_number)
+    if eligible_source:
+        matches = []
+        conflicting = []
+        for aid, state in known:
+            compatible = (bool(institution) and bool(state.institution)
+                and institution_names_overlap(institution, state.institution)
+                and bool(currency) and state.currency == currency
+                and (not names or not state.names or names_overlap(names, state.names)))
+            if not compatible:
+                excluded.add(aid)
+                continue
+            if identity_number_key(state.number, state.name):
+                continue
+            references = set()
+            reference_history = set()
+            for row in core._instrument_account_refs.get(aid, ()):
+                claim = SourceAccountIdentity(row["reference"], row["doc_id"],
+                    row.get("page"), row.get("identity_page_count"))
+                if row["scope"] != "account" or claim.doc_id not in core._captured:
+                    continue
+                if claim.eligible():
+                    references.add(claim.reference)
+                # Legacy claims can contradict a new identity without granting
+                # the positive authority of a locally validated page bound.
+                historical = SourceAccountIdentity(claim.reference, claim.doc_id,
+                    claim.page, 200)
+                if historical.eligible():
+                    reference_history.add(claim.reference)
+            if source_identity.reference in references:
+                matches.append(aid)
+                if len(reference_history) > 1:
+                    conflicting.append(aid)
+            elif references:
+                excluded.add(aid)
+        if len(matches) > 1 or conflicting:
+            candidate = matches[0] if len(matches) == 1 else ""
+            candidate_name = masked_label(core._acct[candidate].name) if candidate else ""
+            return Resolution(preferred, key, "ambiguous", candidate=candidate,
+                candidate_name=candidate_name, candidates=tuple(matches),
+                reason="the printed account reference identifies conflicting or multiple accounts")
+        if len(matches) == 1:
+            return Resolution(matches[0], key, "same")
+        known = [(aid, state) for aid, state in known if aid not in excluded]
+    state = core._acct.get(preferred) if preferred not in excluded else None
     if (not mine_number and state is not None and state.seen
             and state.kind == kind):
         return Resolution(preferred, key, "same")

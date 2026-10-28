@@ -197,7 +197,8 @@ describe("shared surface components", () => {
     expect(getByText("Exactness unavailable")).toBeInTheDocument();
     expect(getByText("Record identities were not supplied by this read.")).toBeInTheDocument();
     expect(getByText("Measurement type was not supplied by this read.")).toBeInTheDocument();
-    expect(getByText("Documents are not available in the current vault read.")).toBeInTheDocument();
+    expect(getByText("Retry source lookup for Live statement")).toBeInTheDocument();
+    expect(queryByText("Open Live statement")).not.toBeInTheDocument();
     // A row that was given no page says nothing where the page would be: the
     // document it points at is named by the control beside it, and repeating
     // the word unavailable once per row discloses nothing.

@@ -59,6 +59,10 @@ export function installTauriBridge(): boolean {
       });
       return typeof selected === "string" ? [selected] : [];
     },
+    pickMultipleDocumentPaths: async () => {
+      const selected = await open({ directory: false, multiple: true, title: "Choose documents" });
+      return Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];
+    },
     // The window layer takes an operating-system drop before the page can see
     // it, which is why no browser drop event fires for one. What arrives here
     // instead is the list of paths that landed on the window.

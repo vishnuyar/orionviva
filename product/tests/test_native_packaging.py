@@ -137,6 +137,20 @@ def test_sidecar_delivers_exact_sources_authenticated_by_runtime_admission(monke
     }
     expected.update({f"viva/{relative}.py": ROOT / f"product/viva/{relative}.py"
                      for relative in ("ledger/networth", "ledger/accounting", "read_store/overview", "surface/overview")})
+    expected.update({f"viva/{relative}.py": ROOT / f"product/viva/{relative}.py"
+                     for relative in ('instrument_claims', 'instrument_evidence', 'instrument_runtime', 'instrument_conversation', 'allocation_target', 'allocation_continuation', 'answer_program/instrument_families', 'read_store/instrument_authority', 'read_store/instrument_authority_contracts', 'read_store/instrument_authority_sql', 'read_store/instrument_math', 'read_store/apr_context_sql', 'ledger/apr_context', 'ledger/instruments', 'ingest/instrument_contracts', 'ingest/instrument_parser', 'ingest/instrument_observations', 'ingest/instrument_effects', 'ingest/instrument_projector', 'ingest/instrument_read', 'ingest/apr_context_contracts', 'ingest/apr_context_parser', 'ingest/apr_context_grounding', 'ingest/apr_context_local', 'ingest/pipeline', 'ingest/reader', 'ingest/registry', 'ingest/pipeline_models', 'rebuild', 'tools/instruments', 'session', 'surface/conversation', 'surface/numerical_receipts', 'desktop_bridge/conversation_actions', 'desktop_bridge/vault_surface', 'read_store/store', 'read_store/instrument_sql', 'read_store/allocation_continuation', 'read_store/document_index', 'read_store/document_sections', 'read_store/documents_page', 'read_store/instrument_review', 'desktop_bridge/documents_page', 'desktop_bridge/surface_read', 'desktop_bridge/rpc', 'surface/capabilities', 'surface/operations')})
+    expected['viva/surface/documents_page.py']=ROOT/'product/viva/surface/documents_page.py'
+    expected.update({relative: ROOT / ("product/"+relative)
+                     for relative in ('viva/investment/__init__.py', 'viva/investment/authenticated.py', 'viva/investment/authority.py', 'viva/investment/composition.py', 'viva/investment/contracts.py', 'viva/investment/events.py', 'viva/investment/extraction.py', 'viva/investment/funding.py', 'viva/investment/healing.py', 'viva/investment/identity.py', 'viva/investment/lifecycle.py', 'viva/investment/lineage.py', 'viva/investment/payroll.py', 'viva/investment/payroll_extraction.py', 'viva/investment/projector.py', 'viva/investment/semantic.py', 'viva/investment/sql.py', 'viva/investment/tool.py', 'viva/investment/units.py', 'viva/retirement_funding/__init__.py', 'viva/retirement_funding/authority.py', 'viva/retirement_funding/catalog.py', 'viva/retirement_funding/contracts.py', 'viva/retirement_funding/lineage.py', 'viva/retirement_funding/payroll_v2.py', 'viva/retirement_funding/population.py', 'viva/retirement_funding/posting_closure.py', 'viva/retirement_funding/semantic.py', 'viva/retirement_funding/sql.py', 'viva/retirement_funding/tool.py', 'viva/normalization_context.py', 'viva/ingest/mortgage_known_allocation.py', 'viva/ingest/paystub.py', 'viva/ingest/paystub_projector.py', 'viva/acquisition.py', 'viva/sample/__init__.py', 'viva/sample/curation.py', 'viva/sample/resources.py', 'viva/sample/instances.py', 'viva/sample/activation.py', 'viva/demo.py')})
+    expected['viva/sample/worker.py']=ROOT/'product/viva/sample/worker.py'
+    expected['viva/desktop_bridge/bulk_documents.py']=ROOT/'product/viva/desktop_bridge/bulk_documents.py'
+    expected['viva/extraction_responses.py']=ROOT/'product/viva/extraction_responses.py'
+    expected.update({relative: ROOT / ('product/' + relative) for relative in (
+        'viva/ledger/projection/coverage.py', 'viva/read_store/documents.py', 'viva/vault.py')})
+    expected.update({relative: ROOT / ('product/' + relative) for relative in (
+        'viva/answer_program/selected_balances.py', 'viva/tools/account_balances.py', 'viva/ledger/ledger.py')})
+    assert len(expected) == len(set(expected.values())) == 160
+    assert len([source for source, _destination in data if Path(source).suffix == '.py']) == len(bundled) == 160
     assert bundled.keys() == expected.keys()
     for name, path in expected.items():
         assert bundled[name] == path.read_bytes(), name
@@ -388,6 +402,8 @@ def test_sidecar_build_refuses_a_missing_replay_source(monkeypatch, tmp_path):
     'product/viva/answer_program/admission.py','product/viva/answer_program/eval.py',
     'product/viva/ledger/movement_identity.py','product/viva/ledger/events.py','product/viva/ledger/postings.py',
     'product/viva/answer_program/execute.py','product/viva/tools/registry.py',
+    'product/viva/ledger/projection/coverage.py','product/viva/read_store/documents.py',
+    'product/viva/vault.py',
 ])
 def test_each_added_or_changed_authority_is_mandatory_in_native_source_bundle(monkeypatch,tmp_path,relative):
     data,_=_sidecar_analysis_data(monkeypatch,tmp_path)

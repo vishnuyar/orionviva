@@ -99,8 +99,18 @@ COMPARABLE = (SPENDING, INCOME, BALANCE, OWED, NET_WORTH, GROSS_FLOW,
 
 RATIOS = tuple(ratio_of(kind) for kind in COMPARABLE)
 
+DEPOSIT_CONTRACT_PRINCIPAL = "deposit_contract_principal"
+LOAN_ORIGINAL_PRINCIPAL = "loan_original_principal"
+INSTRUMENT_RATE = "instrument_rate"
+ALLOCATION_PERCENTAGE_POINTS = "allocation_percentage_points"
+DEDICATED = (DEPOSIT_CONTRACT_PRINCIPAL, LOAN_ORIGINAL_PRINCIPAL,
+             INSTRUMENT_RATE, ALLOCATION_PERCENTAGE_POINTS)
+
+INVESTMENT_DEDICATED = ("security_units", "holding_cost_basis", "investment_contribution", "investment_dividend", "sale_proceeds", "disposed_cost_basis", "realized_gain")
+DEDICATED += INVESTMENT_DEDICATED
+
 KINDS = (SPENDING, INCOME, BALANCE, OWED, NET_WORTH, GROSS_FLOW,
-         NET_MOVEMENT, MOVEMENT, REPAYMENT, COUNT, RATIO, TIME) + RATIOS
+         NET_MOVEMENT, MOVEMENT, REPAYMENT, COUNT, RATIO, TIME) + RATIOS + DEDICATED
 
 
 def is_ratio(name: str) -> bool:

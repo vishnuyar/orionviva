@@ -69,6 +69,7 @@ class MovementInfo:
     # counter-leg stays an Uncategorized bucket and every aggregate reads this
     # overlay instead.
     ruling_account: str = ""
+    component_spending: Decimal | None = None
 
 
 # --- majors → nature ---------------------------------------------------------
@@ -193,6 +194,10 @@ def movements(core: ProjectionCore) -> list[MovementInfo]:
             currency=st.currency, provenance=ln.provenance,
             linked=key in linked)
         decide_nature(core, m)
+        role = getattr(core, "_instrument_cash_roles", {}).get(ln.transaction_id)
+        if role is not None and m.component_spending is None:
+            from ..instruments import apply_cash_role
+            apply_cash_role(m, role)
         out.append(m)
     return out
 
@@ -231,6 +236,11 @@ def decide_nature(core: ProjectionCore, m: MovementInfo) -> None:
 
     A ruling outranks the own-account rung, which is a heuristic over
     description text: when the two disagree the ruling decides."""
+    allocation = getattr(core, "_instrument_allocations", {}).get(m.key)
+    if allocation is not None:
+        m.nature, m.nature_reason, m.provisional = MIXED, "document_components", False
+        m.component_spending = allocation.spending
+        return
     if m.linked:
         m.nature, m.nature_reason = TRANSFER, BY_LINK
         return
@@ -305,7 +315,11 @@ def counts_as_spending(m: MovementInfo) -> bool:
     an expense AND its nature is `spending`. A card payment, a brokerage
     contribution, or a movement naming another account you hold is excluded
     whether or not a link was formed."""
-    return is_expense(m) and m.nature == SPENDING
+    return is_expense(m) and (m.component_spending > 0 if m.component_spending is not None else m.nature == SPENDING)
+
+
+def counted_spending_amount(m: MovementInfo) -> Decimal:
+    return m.component_spending if m.component_spending is not None else abs(m.amount)
 
 
 def provisional_spending(core: ProjectionCore,
@@ -330,7 +344,7 @@ def excluded_from_spending(core: ProjectionCore) -> list[MovementInfo]:
     """Expense-shaped movements kept OUT of spending because their nature is
     not `spending`, each carrying the rung that decided it."""
     return [m for m in movements(core)
-            if is_expense(m) and m.nature != SPENDING]
+            if is_expense(m) and m.nature != SPENDING and m.component_spending is None]
 
 
 def spending_by_currency(core: ProjectionCore) -> dict[str, Decimal]:
@@ -347,5 +361,5 @@ def spending_by_currency(core: ProjectionCore) -> dict[str, Decimal]:
     for m in movements(core):
         if not counts_as_spending(m):
             continue
-        out[m.currency] = out.get(m.currency, Decimal("0")) + abs(m.amount)
+        out[m.currency] = out.get(m.currency, Decimal("0")) + counted_spending_amount(m)
     return out

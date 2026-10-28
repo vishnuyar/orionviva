@@ -1,0 +1,3 @@
+# Keep immutable synthetic PDF originals binary in reviews and whitespace checks.
+product/viva/sample_data/five-year-life-v1/*.pdf binary
+product/tests/**/*.pdf binary

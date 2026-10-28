@@ -339,14 +339,14 @@ export function useFeatureActions(context: Coordination, { refreshAfterAction }:
     },
     // Allow one question at a time. `mirrored` identifies an open answer drawer and
     // controls whether the reply may be spoken.
-    async askViva(question: string, mirrored: boolean, planRequest = false, contextMode: import("../surface/types").AskContextMode = "new_question", movementIds?: readonly string[]) {
+    async askViva(question: string, mirrored: boolean, planRequest = false, contextMode: import("../surface/types").AskContextMode = "new_question", movementIds?: readonly string[], continuationRecovery?: import("../surface/types").ContinuationRecovery) {
       const activeSource = source;
       if (!conversationActions || !activeSource || !question.trim() || asking.current) return;
       asking.current = true;
       const nextRequestId = requestId.current;
       dispatch({ type: "asking", requestId: nextRequestId, question: question.trim() });
       try {
-        const { result, turn } = await conversationActions.ask(question.trim(), mirrored, planRequest, contextMode, movementIds);
+        const { result, turn } = await conversationActions.ask(question.trim(), mirrored, planRequest, contextMode, movementIds, continuationRecovery);
         const snapshot = await refreshAfterAction(activeSource, nextRequestId);
         if (requestId.current === nextRequestId) {
           dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn, authoritative: hasAuthoritativeReviewConversationPair(snapshot) });

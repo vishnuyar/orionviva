@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Closed independently sourced payroll period contract",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "payroll-source-v2"
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_reference": {
+          "$ref": "#/$defs/source_field"
+        },
+        "currency": {
+          "$ref": "#/$defs/source_field"
+        },
+        "pay_date": {
+          "$ref": "#/$defs/source_field"
+        },
+        "gross": {
+          "$ref": "#/$defs/source_field"
+        },
+        "net": {
+          "$ref": "#/$defs/source_field"
+        },
+        "period_start": {
+          "$ref": "#/$defs/source_field"
+        },
+        "period_end": {
+          "$ref": "#/$defs/source_field"
+        }
+      },
+      "required": [
+        "source_reference",
+        "currency",
+        "pay_date",
+        "gross",
+        "net",
+        "period_start",
+        "period_end"
+      ]
+    },
+    "deductions": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "$ref": "#/$defs/source_field"
+          },
+          "category": {
+            "$ref": "#/$defs/source_field"
+          },
+          "amount": {
+            "$ref": "#/$defs/source_field"
+          },
+          "destination_reference": {
+            "$ref": "#/$defs/source_field"
+          },
+          "contribution_reference": {
+            "$ref": "#/$defs/source_field"
+          }
+        },
+        "required": [
+          "label",
+          "category",
+          "amount",
+          "destination_reference",
+          "contribution_reference"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "headers",
+    "deductions"
+  ],
+  "$defs": {
+    "source_field": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "raw": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "page": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          "required": [
+            "raw",
+            "page"
+          ]
+        }
+      ]
+    }
+  }
+}

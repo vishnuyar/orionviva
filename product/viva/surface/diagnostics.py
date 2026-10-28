@@ -37,7 +37,7 @@ FIELDS = (
     "diagnostic_schema", "count_definitions",
     "build", "python", "platform",
     "model_named", "model_adapter", "locale", "currency",
-    "documents", "events", "model_calls", "open_questions",
+    "documents", "events", "model_calls", "extraction_http_responses", "open_questions",
     "open_document_holds", "open_conversation_questions",
 )
 
@@ -55,8 +55,10 @@ def diagnostics(counts: dict[str, int] | None = None) -> dict[str, Any]:
     settings = current()
     counted = counts or {}
     return {
-        "diagnostic_schema": 2,
+        "diagnostic_schema": 3,
         "count_definitions": {
+            "model_calls": "aggregate model phase receipts, excluding local curation",
+            "extraction_http_responses": "completed extraction HTTP responses durably recorded",
             "open_document_holds": "documents captured but not posted",
             "open_conversation_questions": "live questions awaiting a person or document",
             "open_questions": "legacy alias of open_conversation_questions",
@@ -74,6 +76,7 @@ def diagnostics(counts: dict[str, int] | None = None) -> dict[str, Any]:
         "documents": _count(counted, "documents"),
         "events": _count(counted, "events"),
         "model_calls": _count(counted, "model_calls"),
+        "extraction_http_responses": _count(counted, "extraction_http_responses"),
         "open_questions": _count(counted, "open_conversation_questions"),
         "open_document_holds": _count(counted, "open_document_holds"),
         "open_conversation_questions": _count(

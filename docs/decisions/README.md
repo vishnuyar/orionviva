@@ -46,6 +46,8 @@ ADR numbers are serial ids in the order decisions were made, never a reading ord
 | [015](ADR-015-encrypted-read-store-binding.md) | A fail-closed, statically linked SQLCipher Python binding protects the disposable read store | Two-way dependency choice; one-way plaintext prohibition |
 | [016](ADR-016-local-browser-interface.md) | Optional local browser interface over the installed host; browser-default acceptance | Two-way presentation choice; encrypted vault and egress promises retained |
 
+| [019](ADR-019-mortgage-principal-source-representation.md) | Explicit signed mortgage source effects lower to unchanged positive canonical magnitudes under a retained backend context | Two-way active selection; immutable retained interpretation |
+
 ## Why
 
 A decision taken at the keyboard and never written down is a decision the next reader re-takes, usually differently and usually worse. An ADR is short on purpose: context, the alternatives that were genuinely considered, the ruling, and the condition that would reverse it. The alternatives section carries most of the value, because the cost of a choice is invisible without the thing it beat.

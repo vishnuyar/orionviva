@@ -77,14 +77,71 @@ class AnswerProgramRuntime:
 
         execution = self.executor.execute(program, context.question)
         binding = self.binder.bind(program, execution)
+        instrument_runtime=getattr(self.executor.registry,"instrument_runtime",None)
+        if (instrument_runtime is not None and any(n.tool in {"read_instrument_details", "read_account_balance_report"} for n in program.nodes)
+                and not instrument_runtime.source_is_current()):
+            execution=self.executor._source_unavailable(program,context.question)
+            binding=self.binder.bind(program,execution)
         result = binding.result
         from .capabilities import analysis_families, measurement_projection_families, scenario_families
         if (program.question_kind in {*analysis_families(), *measurement_projection_families(), *scenario_families()}
-                or any(item.reference_kind == "measurement_date_of" for item in program.bindings)):
+                or any(item.reference_kind == "measurement_date_of" for item in program.bindings)
+                or any(node.tool in {"read_instrument_details", "read_account_balance_report"} for node in program.nodes)):
             result.transcript=[{**item.to_dict(),"figures":copy.deepcopy(item.figures),
                                 "identifiers":copy.deepcopy(item.identifiers),
                                 "record_ids":list(item.record_ids)} for item in execution.transcript]
         status, tag = self._status(program, execution, binding)
+        selected_missing = []
+        if program.question_kind == "selected_account_balances":
+            from ..tools.account_balances import selected_accounts, receipt_provenance, _bind_receipt_origin
+            from datetime import date
+            report = next(node for node in program.nodes if node.tool == "read_account_balance_report")
+            expected = selected_accounts(report.args)
+            produced = [item for item in execution.transcript
+                        if item.tool == "read_account_balance_report" and item.ok]
+            rows = produced[0].data.get("rows", []) if len(produced) == 1 else []
+            by_account = {row.get("account"):row for row in rows if isinstance(row, dict)}
+            try:
+                if len(produced) == 1:
+                    _bind_receipt_origin(result, produced[0], execution.graph.ground.instrument_token)
+                source_pages = receipt_provenance(produced[0].data, produced[0].figures,
+                    producer=produced[0], run_token=execution.graph.ground.instrument_token,
+                    origin=getattr(result, "_selected_report_origin", None)) if len(produced) == 1 else {}
+            except (ValueError, TypeError, KeyError):
+                source_pages = {}
+            for account in expected:
+                row = by_account.get(account, {})
+                from .. import render
+                entities = list(execution.graph.ground.entities.values())
+                selected_entity = next((item for item in entities if item.get("kind") == "account"
+                    and item.get("account") == account), None)
+                account_label = str(render.account(selected_entity, among=entities)) if selected_entity else account
+                published = [f for f in result.figures if f.get("subject") == {"account_id":account}]
+                present = bool(published)
+                try:
+                    dated = present and all(date.fromisoformat(f.get("dated", "")).isoformat() == f["dated"] for f in published)
+                except (ValueError, TypeError, KeyError):
+                    dated = False
+                sourced = present and all(f.get("id") in source_pages and
+                    {p["document_id"] for p in source_pages[f["id"]]} == set(f.get("record_ids", []))
+                    for f in published)
+                for field in ("amount", "date", "source", "restriction", "closure"):
+                    disposition = row.get(field, "unavailable")
+                    if ((field == "amount" and not present) or (field == "date" and not dated)
+                            or (field == "source" and not sourced)):
+                        disposition = "unavailable"
+                    if disposition != "accepted":
+                        selected_missing.append(dict(type="selected_account_field", account=account,
+                            field=field, disposition=disposition,
+                            label=("Accepted records do not establish closure status for " + account_label + "." if field == "closure"
+                                else field.replace("_", " ").capitalize() + " status for " + account_label + ": " + disposition + ".")))
+            if (set(by_account) != set(expected) or len(rows) != len(expected)) and not selected_missing:
+                selected_missing.append(dict(type="selected_account_field", field="population",
+                    disposition="unavailable", label="The selected account report is incomplete."))
+            if selected_missing and status in ("answered", "partial"):
+                status, tag = "partial", "selected_account_field_unavailable"
+            elif selected_missing and status == "missing_data":
+                tag = "selected_account_field_unavailable"
         missing_label = ""
         if status == "missing_data":
             from .capabilities import actionable_limit
@@ -104,7 +161,7 @@ class AnswerProgramRuntime:
             result.options = [dict(item) for item in candidates]
         result.status = status
         result.outcome_tag = tag
-        result.missing = [item.to_dict() for item in binding.unbound]
+        result.missing = [item.to_dict() for item in binding.unbound] + selected_missing
         if missing_label:
             result.missing = [dict(item, label=missing_label) for item in result.missing]
         question = ""

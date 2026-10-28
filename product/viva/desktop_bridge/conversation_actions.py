@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import datetime
+import hashlib
 import json
 import secrets
 from typing import Any
@@ -36,6 +37,10 @@ class ConversationActions:
     def __init__(self, vault: Any, jobs: JobRegistry | None = None) -> None:
         self._vault = vault
         self._jobs = jobs if jobs is not None else JobRegistry()
+        from viva.instrument_conversation import InstrumentConversationContext
+        from viva.instrument_runtime import vault_revision_supplier
+        vault_identity=hashlib.sha256(str(getattr(vault,"directory",getattr(vault,"path",id(vault)))).encode()).hexdigest()
+        self._instrument_context=InstrumentConversationContext(vault_identity,vault_revision_supplier(vault))
 
     def ask(self, payload: dict[str, Any]) -> dict[str, Any]:
         """One question, and the turn it produced.
@@ -53,6 +58,14 @@ class ConversationActions:
 
         question, mirrored, plan_request, context_mode = _ask_request(payload)
         movement_ids, undo_id = _accounting_request(payload)
+        if context_mode=="new_question":self._instrument_context.reset()
+        recovery=payload.get("continuation_recovery")
+        if recovery is not None:
+            from viva.allocation_continuation import RecoveryAnchor
+            try:self._instrument_context.recover(RecoveryAnchor.from_dict(recovery))
+            except (ValueError,RuntimeError):
+                return ActionOutcome("refused","The saved allocation selection is unavailable. Select an account and date again.",reason="allocation_recovery_unavailable").as_dict()
+        context_epoch=self._instrument_context.epoch
         turn_id = secrets.token_urlsafe(18)
         self._vault.ledger.append(conversation_turn_opened(
             turn_id, "ask", question, _today(), mirrored=mirrored,
@@ -130,8 +143,8 @@ class ConversationActions:
                     reason=str(draft_reply.get("reason") or "") or None,
                     state=said)
                 self._vault.ledger.append(conversation_turn_settled(
-                    turn_id, outcome.kind, outcome.message, _today(),
-                    reason=outcome.reason or "", answer=said))
+                    turn_id,outcome.kind,outcome.message,_today(),
+                    reason=outcome.reason or "",answer=said))
                 return outcome.as_dict()
         session = self._opened(context_mode, turn_id)
         if session is None:
@@ -146,21 +159,43 @@ class ConversationActions:
         try:
             with job:
                 job.checkpoint()
+                session.instrument_context=self._instrument_context
                 turn = session.ask(question)
                 job.reached(ASKED)
                 said = conversation(
                     turn, _shown(turn.result), mirrored,
                     projection=self._vault.ledger.projection(),
                     turn_id=turn_id)
+                answer_id=secrets.token_urlsafe(18)
+                said["answer_id"]=answer_id
+                manifests=self._instrument_context.manifests(turn,turn_id,answer_id)
+                if manifests:said["allocation_selection_manifest"]=[m.to_dict() for m in manifests]
                 job.reached(SAID)
                 outcome = ActionOutcome(
                     "completed" if said["answered"] else "refused",
                     said["text"] or said["refusal"],
                     reason=None if said["answered"] else "not_answered",
                     state={"job_id": job.job_id, **said})
-                self._vault.ledger.append(conversation_turn_settled(
-                    turn_id, outcome.kind, outcome.message, _today(),
-                    reason=outcome.reason or "", answer=said))
+                with self._instrument_context.delivery_lock:
+                    def settle(_projection):
+                        nonlocal outcome,said,manifests
+                        current=self._vault.ledger.store._cached_identity()[:2]
+                        if getattr(turn,"instrument_read",False) and (turn.delivery_identity is None or current!=turn.delivery_identity or context_epoch!=self._instrument_context.epoch):
+                            said={"state":"ready","question":question,"answer_id":answer_id,"text":"","answered":False,
+                                "refusal":moment("refusal_bad_delivery"),"status":"missing_data","outcome_tag":"current_data_unavailable",
+                                "grade":"","grade_sentence":"","figures":[],"numerical_receipts":[],"source_assertions":[],"target_premises":[],"gaps":[],"options":[],"missing":[],"spoken":{}}
+                            manifests=()
+                            outcome=ActionOutcome("refused",said["refusal"],reason="current_data_unavailable",state={"job_id":job.job_id,**said})
+                        return (conversation_turn_settled(turn_id,outcome.kind,outcome.message,_today(),reason=outcome.reason or "",answer=said),)
+                    self._vault.ledger.append_atomically(settle)
+                    is_allocation=any(n.get("tool")=="read_instrument_details" and n.get("args",{}).get("view")=="allocation" for n in getattr(turn,"program",{}).get("nodes",()))
+                    if said["answered"] and is_allocation:self._instrument_context.current_selection_ids=()
+                    if manifests:
+                        try:
+                            receipt_ids=self._instrument_context.delivered(manifests,turn_id,answer_id)
+                            outcome.state.update(allocation_selection_ids=list(receipt_ids),continuation_eligible=bool(receipt_ids))
+                        except (ValueError,RuntimeError):
+                            outcome.state.update(allocation_selection_ids=[],continuation_eligible=False)
                 return outcome.as_dict()
         except JobCancelled:
             outcome = ActionOutcome("refused", moment("jobs_stopped"),
@@ -303,10 +338,18 @@ def _session_for(vault, spec, factory, resource_policy, prior_turns=()):
     from viva.tools import default_registry
 
     locale = locale_from_env()
-    return Session(default_registry(vault.ledger.projection(), locale), factory,
+    from viva.instrument_runtime import vault_revision_supplier
+    from viva.sample.activation import reference_day
+    return Session(default_registry(vault.ledger.projection(), locale,
+                   today=reference_day(vault),
+                   instrument_scope=vault_revision_supplier(vault)), factory,
                    ledger=vault.ledger, model=getattr(spec, "model", ""),
                    resource_policy=resource_policy, locale=locale,
-                   prior_turns=prior_turns)
+                   reference_today=lambda:reference_day(vault),
+                   prior_turns=prior_turns,
+                   registry_factory=lambda:default_registry(vault.ledger.projection(),locale,
+                       today=reference_day(vault),
+                       instrument_scope=vault_revision_supplier(vault)))
 
 
 def _prior_context(projection, context_mode: str | None = None,
@@ -389,7 +432,7 @@ def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool, bool, str | Non
 
     from viva.ledger.events import CONVERSATION_CONTEXT_MODES
     allowed = {"question", "mirrored", "plan_request", "context_mode",
-               "movement_ids", "undo_correction_id"}
+               "movement_ids", "undo_correction_id", "continuation_recovery"}
     unexpected = set(payload) - allowed
     if unexpected:
         raise BridgeRequestError(
@@ -409,6 +452,14 @@ def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool, bool, str | Non
     context_mode = payload.get("context_mode")
     if "context_mode" in payload and context_mode not in CONVERSATION_CONTEXT_MODES:
         raise BridgeRequestError("unknown conversation context mode")
+    if "continuation_recovery" in payload:
+        from viva.allocation_continuation import RecoveryAnchor
+        try:
+            if context_mode != "follow_up":
+                raise ValueError("recovery is only supported for an explicit follow-up")
+            RecoveryAnchor.from_dict(payload["continuation_recovery"])
+        except (ValueError, TypeError) as error:
+            raise BridgeRequestError(str(error)) from None
     return question, mirrored, plan_request, context_mode
 
 

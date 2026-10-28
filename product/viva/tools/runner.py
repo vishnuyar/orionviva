@@ -192,6 +192,8 @@ class RunResult:
     # without trying to infer them from prose or from a grade word.
     caveats: list = field(default_factory=list)
     disclosures: list = field(default_factory=list)
+    source_assertions: list = field(default_factory=list)
+    target_premises: list = field(default_factory=list)
     # The answer-program path distinguishes why a turn did not answer.  The
     # legacy runner leaves this empty; surfaces may then retain their existing
     # answered/refused interpretation during the replacement.
@@ -210,6 +212,8 @@ class RunResult:
                 "written": dict(self.written), "gaps": list(self.gaps),
                 "caveats": list(self.caveats),
                 "disclosures": list(self.disclosures),
+                **({"source_assertions": list(self.source_assertions)} if self.source_assertions else {}),
+                **({"target_premises": list(self.target_premises)} if self.target_premises else {}),
                 "status": self.status, "outcome_tag": self.outcome_tag,
                 "options": list(self.options), "missing": list(self.missing)}
 
@@ -219,6 +223,8 @@ def _same_thing(known: dict, item: dict) -> bool:
 
     Every attribute is compared except `id`, and nothing per-kind is decided
     here: two entities carrying the same attributes are the same thing."""
+    if known.get("kind")==item.get("kind")=="security":
+        return (known.get("account"),known.get("security_id"))==(item.get("account"),item.get("security_id"))
     return ({k: v for k, v in known.items() if k != "id"}
             == {k: v for k, v in item.items() if k != "id"})
 
@@ -255,6 +261,10 @@ class _Ground:
     owed: dict = field(default_factory=dict)      # figure id -> (caveat id, ...)
 
     measurement_dates: dict = field(default_factory=dict)
+    instrument_assertions: dict = field(default_factory=dict)
+    instrument_assertion_groups: dict = field(default_factory=dict)
+    instrument_token: object = None
+    instrument_premises: dict = field(default_factory=dict)
 
     def accounts(self) -> dict:
         """The accounts this run established, by ledger path.
@@ -267,6 +277,28 @@ class _Ground:
     def stamp(self, result: ToolResult) -> None:
         """Absorb one ok result: give an identity to every figure, entity,
         attested span and caveat it carries, and note the days it dates."""
+        from ..instrument_evidence import authenticated_figure, authenticated_assertion, authenticated_premise
+        from ..instrument_claims import DEDICATED_QUANTITIES, INVESTMENT_CLAIMS, RETIREMENT_CLAIMS
+        for fig in result.figures:
+            if (fig.get("quantity") in DEDICATED_QUANTITIES or fig.get("claim")) and ((result.tool != ("read_retirement_funding" if fig.get("claim") in RETIREMENT_CLAIMS else "read_investment_evidence" if fig.get("claim") in INVESTMENT_CLAIMS else "read_instrument_details")) or not authenticated_figure(fig) or fig._run_token is not self.instrument_token):
+                raise ValueError("untrusted instrument figure at run stamping")
+        for premise in result.instrument_premises:
+            if result.tool!="read_instrument_details" or not authenticated_premise(premise,self.question) or premise._run_token is not self.instrument_token:
+                raise ValueError("allocation premise is not current-run current-question evidence")
+        from .account_balances import selected_report_stamping_status
+        selected_report = selected_report_stamping_status(result, self.instrument_token)
+        if selected_report is False:
+            raise ValueError("untrusted selected report at run stamping")
+        for assertion in result.instrument_assertions:
+            if selected_report is not True and (result.tool != ("read_retirement_funding" if assertion.get("claim") in RETIREMENT_CLAIMS else "read_instrument_details") or not authenticated_assertion(assertion) or assertion._run_token is not self.instrument_token):
+                raise ValueError("untrusted instrument assertion at run stamping")
+        # Every new authority channel is preflighted before any evidence mutates.
+        for premise in result.instrument_premises:
+            premise['id']=f"u{len(self.instrument_premises)+1}"
+            self.instrument_premises[premise['id']]=premise
+        for assertion in result.instrument_assertions:
+            assertion["id"] = f"i{len(self.instrument_assertions)+1}"
+            self.instrument_assertions[assertion["id"]] = assertion
         caveat_ids = []
         for index, sentence in enumerate(result.caveats or []):
             item = (sentence if isinstance(sentence, dict)

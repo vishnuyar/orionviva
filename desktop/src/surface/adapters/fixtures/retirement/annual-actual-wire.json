@@ -1,0 +1,208 @@
+{
+  "state": "ready",
+  "question": "Show known retirement plans for 2024.",
+  "text": "Employee deductions in the accepted recorded annual payroll population paid into these selected plans: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nemployee retirement contributions · 2024 — USD 12,000.00.\nThis figure is for the explicitly selected retirement plans plan-b, plan-c.",
+  "answered": true,
+  "status": "answered",
+  "outcome_tag": "",
+  "refusal": "",
+  "grade": "unverified",
+  "grade_sentence": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+  "figures": [
+    {
+      "value": "12000",
+      "quantity": "investment_contribution",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2024-01-01",
+            "to": "2024-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:9d2b865eceeac97bbe7915aa7c6f6f6d915fe04df46667b54c596322fbae192c",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-b",
+          "acct:plan-c"
+        ]
+      },
+      "id": "f1",
+      "written": "USD 12,000.00",
+      "what": "employee retirement contributions · 2024",
+      "record_ids": [
+        "56228eeff6d4c1ed8a62ca1353955e329e530a5903a9368bef315b0d4f7a35cb",
+        "5d70ca84bab2da726b92034c528ae3a3003422847d0c8df24788b731fbd55968",
+        "8a516099d6038438de723bfd5e159d07b18053da5b8895384df7984fc1e3e7ff",
+        "b74eb42c00ddbf7138d542d3345a6b38e97405c7d1139f5256631b24dd2f1aa6",
+        "d1c1691f4b6044b4751944d8e84294443fb331541d67db6f45d010edea38f25a",
+        "f1eb29634a1db4acdcd0c3929bdedfa6e4389b4d7ef68ac35e3171c15e6013e3"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-annual:f1",
+      "evidence_links": [
+        {
+          "document_id": "56228eeff6d4c1ed8a62ca1353955e329e530a5903a9368bef315b0d4f7a35cb",
+          "label": "PLAN-C-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5d70ca84bab2da726b92034c528ae3a3003422847d0c8df24788b731fbd55968",
+          "label": "PLAN-B-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "8a516099d6038438de723bfd5e159d07b18053da5b8895384df7984fc1e3e7ff",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "b74eb42c00ddbf7138d542d3345a6b38e97405c7d1139f5256631b24dd2f1aa6",
+          "label": "PLAN-C-bank.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "d1c1691f4b6044b4751944d8e84294443fb331541d67db6f45d010edea38f25a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "f1eb29634a1db4acdcd0c3929bdedfa6e4389b4d7ef68ac35e3171c15e6013e3",
+          "label": "PLAN-B-bank.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-annual:numerical:0"
+      ]
+    }
+  ],
+  "numerical_receipts": [
+    {
+      "schema_version": 1,
+      "id": "conversation:synthetic-retirement-annual:numerical:0",
+      "figure_ids": [
+        "f1"
+      ],
+      "source_records": [
+        {
+          "record_id": "56228eeff6d4c1ed8a62ca1353955e329e530a5903a9368bef315b0d4f7a35cb",
+          "kind": "document",
+          "document_id": "56228eeff6d4c1ed8a62ca1353955e329e530a5903a9368bef315b0d4f7a35cb"
+        },
+        {
+          "record_id": "5d70ca84bab2da726b92034c528ae3a3003422847d0c8df24788b731fbd55968",
+          "kind": "document",
+          "document_id": "5d70ca84bab2da726b92034c528ae3a3003422847d0c8df24788b731fbd55968"
+        },
+        {
+          "record_id": "8a516099d6038438de723bfd5e159d07b18053da5b8895384df7984fc1e3e7ff",
+          "kind": "document",
+          "document_id": "8a516099d6038438de723bfd5e159d07b18053da5b8895384df7984fc1e3e7ff"
+        },
+        {
+          "record_id": "b74eb42c00ddbf7138d542d3345a6b38e97405c7d1139f5256631b24dd2f1aa6",
+          "kind": "document",
+          "document_id": "b74eb42c00ddbf7138d542d3345a6b38e97405c7d1139f5256631b24dd2f1aa6"
+        },
+        {
+          "record_id": "d1c1691f4b6044b4751944d8e84294443fb331541d67db6f45d010edea38f25a",
+          "kind": "document",
+          "document_id": "d1c1691f4b6044b4751944d8e84294443fb331541d67db6f45d010edea38f25a"
+        },
+        {
+          "record_id": "f1eb29634a1db4acdcd0c3929bdedfa6e4389b4d7ef68ac35e3171c15e6013e3",
+          "kind": "document",
+          "document_id": "f1eb29634a1db4acdcd0c3929bdedfa6e4389b4d7ef68ac35e3171c15e6013e3"
+        }
+      ],
+      "premises": [],
+      "observed_inputs": [],
+      "local_inputs": [],
+      "context": [
+        {
+          "label": "Retirement funding source scope",
+          "value": "accepted recorded payroll population"
+        },
+        {
+          "label": "Selected retirement plans",
+          "value": "acct:plan-b, acct:plan-c"
+        },
+        {
+          "label": "Retirement funding view",
+          "value": "annual_employee_contributions"
+        }
+      ],
+      "caveats": [],
+      "figure_provenance": {
+        "f1": [
+          {
+            "document_id": "5d70ca84bab2da726b92034c528ae3a3003422847d0c8df24788b731fbd55968",
+            "page": 1
+          },
+          {
+            "document_id": "8a516099d6038438de723bfd5e159d07b18053da5b8895384df7984fc1e3e7ff",
+            "page": 1
+          },
+          {
+            "document_id": "56228eeff6d4c1ed8a62ca1353955e329e530a5903a9368bef315b0d4f7a35cb",
+            "page": 1
+          },
+          {
+            "document_id": "d1c1691f4b6044b4751944d8e84294443fb331541d67db6f45d010edea38f25a",
+            "page": 1
+          },
+          {
+            "document_id": "f1eb29634a1db4acdcd0c3929bdedfa6e4389b4d7ef68ac35e3171c15e6013e3",
+            "page": 1
+          },
+          {
+            "document_id": "b74eb42c00ddbf7138d542d3345a6b38e97405c7d1139f5256631b24dd2f1aa6",
+            "page": 1
+          }
+        ]
+      },
+      "investment_derivations": []
+    }
+  ],
+  "source_assertions": [],
+  "target_premises": [],
+  "gaps": [],
+  "options": [],
+  "missing": [],
+  "spoken": {
+    "may_speak": true,
+    "withheld": "",
+    "parts": [
+      "text",
+      "grade",
+      "citations"
+    ],
+    "text": "Employee deductions in the accepted recorded annual payroll population paid into these selected plans: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nemployee retirement contributions · 2024 — USD 12,000.00.\nThis figure is for the explicitly selected retirement plans plan-b, plan-c.",
+    "grade_sentence": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+    "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+    "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+  }
+}

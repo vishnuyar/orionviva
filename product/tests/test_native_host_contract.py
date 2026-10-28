@@ -30,6 +30,7 @@ from viva.desktop_bridge.handlers import (ACTIVITY_OPERATIONS,
                                            handlers_for_opened_vault)
 from viva.desktop_bridge.rpc import dispatch_frame
 from viva.desktop_bridge.surface_read import _read_request
+from viva.desktop_bridge.bulk_documents import _paths as _bulk_paths
 from viva.surface import (
     BRIDGE_HANDSHAKE,
     BRIDGE_OPEN_DEMO_VAULT,
@@ -65,6 +66,8 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # rather than answered with a brand-new empty vault.
     BRIDGE_OPEN_VAULT: {"vault_directory", "passphrase", "create"},
     BRIDGE_OPEN_DEMO_VAULT: set(),
+    "bridge.sample.prepare": set(),
+    "bridge.sample.status": set(),
     SURFACE_CAPABILITIES: set(),
     SURFACE_READ: {"surface", "parameters", "job_id"},
     CONVERSATION_OPERATIONS["answer"]: {"question_id", "said"},
@@ -74,6 +77,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # identity cannot assert one, so the constraint is kept by the shape of the
     # request rather than by a check that could be relaxed.
     DOCUMENTS_OPERATIONS["upload"]: {"path"},
+    DOCUMENTS_OPERATIONS["upload_many"]: {"paths"},
     # A stop names the work and nothing else. A cancel carrying a path would be
     # a caller asserting which work an identity stands for, which is the same
     # fence the upload's single field keeps from the other side.
@@ -99,7 +103,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # marks an explicit request for a plan draft. `context_mode` names the
     # durable boundary used for prior Ask text.
     CONVERSATION_OPERATIONS["ask"]: {
-        "question", "mirrored", "plan_request", "context_mode", "movement_ids", "undo_correction_id"},
+        "question", "mirrored", "plan_request", "context_mode", "movement_ids", "undo_correction_id", "continuation_recovery"},
     # Spending is a word rather than a default, and a budget is a number of
     # model calls. There is no field naming what to work on: a wake goes over
     # the whole vault, and a caller pointing it somewhere would be asserting a
@@ -150,6 +154,7 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     CONVERSATION_OPERATIONS["confirm"]: (BRIDGE_PACKAGE / "conversation_actions.py", "_confirm_request"),
     CONVERSATION_OPERATIONS["decline"]: (BRIDGE_PACKAGE / "conversation_actions.py", "_decline_request"),
     DOCUMENTS_OPERATIONS["upload"]: (BRIDGE_PACKAGE / "document_actions.py", "_upload_request"),
+    DOCUMENTS_OPERATIONS["upload_many"]: (BRIDGE_PACKAGE / "bulk_documents.py", "_paths"),
     DOCUMENTS_OPERATIONS["cancel"]: (BRIDGE_PACKAGE / "document_actions.py", "_cancel_request"),
     TRANSFER_OPERATIONS["restore"]: (BRIDGE_PACKAGE / "vault_actions.py", "_restore_request"),
     RESCAN_OPERATIONS["rescan"]: (BRIDGE_PACKAGE / "rescan_actions.py", "_no_fields"),
@@ -198,6 +203,7 @@ REQUIRED_REQUEST_FIELDS = ("protocol", "request_id", "operation")
 UNDECLARED_FIELD = "unexpected_field"
 COMPLETE_PAYLOADS: dict[str, dict[str, object]] = {
     BRIDGE_HANDSHAKE: {},
+    DOCUMENTS_OPERATIONS["upload_many"]: {"paths": ["/synthetic/one.pdf", "/synthetic/two.pdf", "/synthetic/three.pdf"]},
     SURFACE_CAPABILITIES: {},
     SURFACE_READ: {"surface": "overview", "parameters": {}, "job_id": "job-id"},
     DOCUMENTS_OPERATIONS["recover"]: {"job_id": "missing-job", "confirm_reading": True},
@@ -220,22 +226,85 @@ def _served_operations() -> set[str]:
 
 
 def _declared_payload_fields(module: Path, function: str) -> set[str]:
-    """Return the payload field names one sidecar validator accepts."""
+    """Read one finite literal declaration, never infer fields from values."""
     tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef) or node.name != function:
-            continue
-        for statement in ast.walk(node):
-            if (
-                isinstance(statement, ast.Assign)
+    functions = [node for node in ast.walk(tree)
+                 if isinstance(node, ast.FunctionDef) and node.name == function]
+    assert len(functions) == 1, f"{module.name}:{function} must have one validator"
+    declarations = []
+    for statement in ast.walk(functions[0]):
+        if (isinstance(statement, ast.Assign)
                 and len(statement.targets) == 1
                 and isinstance(statement.targets[0], ast.Name)
-                and statement.targets[0].id == "allowed"
-            ):
-                return {ast.literal_eval(element) for element in statement.value.elts}
-    raise AssertionError(
-        f"{module.name}:{function} no longer declares an accepted payload field set"
+                and statement.targets[0].id == "allowed"):
+            literal = statement.value
+            assert isinstance(literal, (ast.Set, ast.Tuple, ast.List)), "unknown allowed declaration"
+            declarations.append(literal)
+        elif (isinstance(statement, ast.Compare)
+                and isinstance(statement.left, ast.Call)
+                and isinstance(statement.left.func, ast.Name)
+                and statement.left.func.id == "set"
+                and len(statement.left.args) == 1
+                and isinstance(statement.left.args[0], ast.Name)
+                and statement.left.args[0].id == "payload"
+                and not statement.left.keywords):
+            assert (len(statement.ops) == 1 and isinstance(statement.ops[0], ast.NotEq)
+                    and len(statement.comparators) == 1), "unknown payload field guard"
+            comparator = statement.comparators[0]
+            if isinstance(comparator, ast.Name) and comparator.id == "allowed":
+                continue
+            assert isinstance(comparator, ast.Set), "unknown inline field declaration"
+            declarations.append(comparator)
+    assert len(declarations) == 1, (
+        f"{module.name}:{function} must declare exactly one accepted payload field set"
     )
+    literal = declarations[0]
+    assert all(isinstance(item, ast.Constant) and type(item.value) is str
+               for item in literal.elts), "payload fields must be literal strings"
+    fields = [item.value for item in literal.elts]
+    assert len(fields) == len(set(fields)), "payload field declaration repeats a name"
+    return set(fields)
+
+
+def test_bulk_payload_parser_accepts_valid_paths_before_refusing_extra_fields():
+    payload = COMPLETE_PAYLOADS[DOCUMENTS_OPERATIONS["upload_many"]]
+    assert set(payload) == PAYLOAD_FIELDS[DOCUMENTS_OPERATIONS["upload_many"]]
+    assert _bulk_paths(dict(payload)) == [Path(path) for path in payload["paths"]]
+    # Call only the parser; these synthetic paths are never opened or uploaded.
+    with pytest.raises(ValueError, match="^upload_many accepts only paths$"):
+        _bulk_paths({**payload, UNDECLARED_FIELD: "v"})
+
+
+@pytest.mark.parametrize("body, expected", [
+    ("allowed = {'field'}", {'field'}),
+    ("allowed = ()", set()),
+    ("if set(payload) != {'paths'}: raise ValueError()", {'paths'}),
+])
+def test_payload_field_extractor_preserves_both_finite_declaration_forms(tmp_path, body, expected):
+    module = tmp_path / "validator.py"
+    module.write_text("def validate(payload):\n    " + body + "\n")
+    assert _declared_payload_fields(module, "validate") == expected
+
+
+@pytest.mark.parametrize("body", [
+    "return payload",
+    "allowed = names",
+    "allowed = set()",
+    "allowed = {'first'}; allowed = {'second'}",
+    "allowed = {'paths'}; assert set(payload) != {'paths'}",
+    "allowed = {1}",
+    "allowed = {'paths'}; assert set(payload) != names",
+    "allowed = {'same', 'same'}",
+    "if set(payload) == {'paths'}: raise ValueError()",
+    "if set(other) != {'paths'}: raise ValueError()",
+    "if set(payload) != names: raise ValueError()",
+    "if set(payload) != {'paths'} != {'extra'}: raise ValueError()",
+])
+def test_payload_field_extractor_refuses_missing_ambiguous_or_unknown_forms(tmp_path, body):
+    module = tmp_path / "validator.py"
+    module.write_text("def validate(payload):\n    " + body + "\n")
+    with pytest.raises(AssertionError):
+        _declared_payload_fields(module, "validate")
 
 
 def _frame(operation: str, **payload) -> str:

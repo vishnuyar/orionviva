@@ -405,7 +405,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       } : combined;
       const ids = selectedIds(snapshot);
       return { ...state, snapshot,
-        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedDocument: state.selectedDocument || ids.documents[0] || "",
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
         notice: mismatchedPair
@@ -448,7 +448,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       const ids = selectedIds(snapshot);
       return { ...state, snapshot,
         destinationReads: action.destination ? { ...state.destinationReads, [action.destination]: destinationOutcome(snapshot, action.destination) } : state.destinationReads,
-        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedDocument: state.selectedDocument || ids.documents[0] || "",
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts) };
     }
@@ -470,7 +470,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         snapshot,
         jobs: action.jobs ?? state.jobs,
         jobStatus: action.jobStatus ?? state.jobStatus,
-        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedDocument: state.selectedDocument || ids.documents[0] || "",
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
         selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
@@ -497,7 +497,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
           : state.destinationReads,
         jobs: action.jobs ?? state.jobs,
         jobStatus: action.jobStatus ?? state.jobStatus,
-        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedDocument: state.selectedDocument || ids.documents[0] || "",
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
         selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
@@ -566,7 +566,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         snapshot: action.snapshot,
         readRevision: action.revision || state.readRevision,
         jobs: action.jobs ?? state.jobs,
-        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedDocument: state.selectedDocument || ids.documents[0] || "",
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
         selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),

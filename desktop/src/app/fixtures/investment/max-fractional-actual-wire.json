@@ -1,0 +1,183 @@
+{
+  "state": "ready",
+  "question": "Show Test account holdings and cost basis at 2025-01-31.",
+  "text": "security units: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nTest security \u00b7 security units \u00b7 2025-01-31 \u2014 123,456,789,012,345,678.123456789012.\nThat counts only what is on 1234.\nholding cost basis: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nTest security \u00b7 holding cost basis \u00b7 2025-01-31 \u2014 USD 20.00.\nThat counts only what is on 1234.",
+  "answered": true,
+  "status": "answered",
+  "outcome_tag": "",
+  "refusal": "",
+  "grade": "unverified",
+  "grade_sentence": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+  "figures": [
+    {
+      "value": "123456789012345678.123456789012",
+      "quantity": "security_units",
+      "kind": "financial",
+      "currency": "",
+      "dated": "2025-01-31",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account",
+            "value": "acct:test-broker:1234"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account",
+            "value": "acct:test-broker:1234"
+          },
+          {
+            "kind": "security",
+            "value": "3be41d35b862ab2eb310313419320c1705b2bf7ed37f2003bf40dbb4f4b415c8"
+          }
+        ]
+      },
+      "subject": {
+        "account_id": "acct:test-broker:1234",
+        "security_id": "3be41d35b862ab2eb310313419320c1705b2bf7ed37f2003bf40dbb4f4b415c8"
+      },
+      "id": "f1",
+      "written": "123,456,789,012,345,678.123456789012",
+      "what": "Test security \u00b7 security units \u00b7 2025-01-31",
+      "record_ids": [
+        "b220195d60cbb4bc02c643d72e60f1c5c8febecd466e690d716081ee62b48b20"
+      ],
+      "evidence_id": "conversation:synthetic-wire-investment_positions:f1",
+      "evidence_links": [
+        {
+          "document_id": "b220195d60cbb4bc02c643d72e60f1c5c8febecd466e690d716081ee62b48b20",
+          "label": "synthetic-investment-max-fractional-source.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-wire-investment_positions:numerical:0"
+      ]
+    },
+    {
+      "value": "20.00",
+      "quantity": "holding_cost_basis",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "2025-01-31",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account",
+            "value": "acct:test-broker:1234"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account",
+            "value": "acct:test-broker:1234"
+          },
+          {
+            "kind": "security",
+            "value": "3be41d35b862ab2eb310313419320c1705b2bf7ed37f2003bf40dbb4f4b415c8"
+          }
+        ]
+      },
+      "subject": {
+        "account_id": "acct:test-broker:1234",
+        "security_id": "3be41d35b862ab2eb310313419320c1705b2bf7ed37f2003bf40dbb4f4b415c8"
+      },
+      "id": "f3",
+      "written": "USD 20.00",
+      "what": "Test security \u00b7 holding cost basis \u00b7 2025-01-31",
+      "record_ids": [
+        "b220195d60cbb4bc02c643d72e60f1c5c8febecd466e690d716081ee62b48b20"
+      ],
+      "evidence_id": "conversation:synthetic-wire-investment_positions:f3",
+      "evidence_links": [
+        {
+          "document_id": "b220195d60cbb4bc02c643d72e60f1c5c8febecd466e690d716081ee62b48b20",
+          "label": "synthetic-investment-max-fractional-source.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-wire-investment_positions:numerical:0"
+      ]
+    }
+  ],
+  "numerical_receipts": [
+    {
+      "schema_version": 1,
+      "id": "conversation:synthetic-wire-investment_positions:numerical:0",
+      "figure_ids": [
+        "f1",
+        "f3"
+      ],
+      "source_records": [
+        {
+          "record_id": "b220195d60cbb4bc02c643d72e60f1c5c8febecd466e690d716081ee62b48b20",
+          "kind": "document",
+          "document_id": "b220195d60cbb4bc02c643d72e60f1c5c8febecd466e690d716081ee62b48b20"
+        }
+      ],
+      "premises": [],
+      "observed_inputs": [],
+      "local_inputs": [],
+      "context": [
+        {
+          "label": "Investment view",
+          "value": "positions"
+        },
+        {
+          "label": "Selected account",
+          "value": "acct:test-broker:1234"
+        },
+        {
+          "label": "Valuation currency",
+          "value": "USD"
+        },
+        {
+          "label": "Authenticated read revision",
+          "value": "g-7059ec7648cf4d23b76c8aebcba8aa22"
+        }
+      ],
+      "caveats": [],
+      "figure_provenance": {
+        "f1": [
+          {
+            "document_id": "b220195d60cbb4bc02c643d72e60f1c5c8febecd466e690d716081ee62b48b20",
+            "page": 1
+          }
+        ],
+        "f3": [
+          {
+            "document_id": "b220195d60cbb4bc02c643d72e60f1c5c8febecd466e690d716081ee62b48b20",
+            "page": 1
+          }
+        ]
+      },
+      "investment_derivations": []
+    }
+  ],
+  "source_assertions": [],
+  "target_premises": [],
+  "gaps": [],
+  "options": [],
+  "missing": [],
+  "spoken": {
+    "may_speak": true,
+    "withheld": "",
+    "parts": [
+      "text",
+      "grade",
+      "citations"
+    ],
+    "text": "security units: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nTest security \u00b7 security units \u00b7 2025-01-31 \u2014 123,456,789,012,345,678.123456789012.\nThat counts only what is on 1234.\nholding cost basis: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nTest security \u00b7 holding cost basis \u00b7 2025-01-31 \u2014 USD 20.00.\nThat counts only what is on 1234.",
+    "grade_sentence": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+    "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+    "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+  }
+}

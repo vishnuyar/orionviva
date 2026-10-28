@@ -1,4 +1,4 @@
-"""Contracts for the persistent fictional sample vault."""
+"""Retained small display-vault scenarios; five-year preparation is tested separately."""
 
 from __future__ import annotations
 
@@ -203,3 +203,15 @@ def test_a_home_is_this_module_s_to_choose(tmp_path: Path):
 
     assert holds_a_vault(tmp_path / "elsewhere")
     assert list(built.events())
+
+
+# These retained financial/display scenarios use the original small fixture.
+# The five-year preparation/status/ready-only contract has separate controls
+# in sample_life/test_activation.py and requires its actual source campaign.
+import pytest
+
+@pytest.fixture(autouse=True)
+def legacy_display_fixture(monkeypatch):
+    from viva.sample import activation
+    from _legacy_sample_support import open_legacy_display_fixture
+    monkeypatch.setattr(activation,'open_ready',open_legacy_display_fixture)

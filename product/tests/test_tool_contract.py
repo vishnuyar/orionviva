@@ -38,7 +38,7 @@ def test_active_attention_description_names_the_bounded_row_contract():
     named, version = descriptions()
     attention = named["check_completeness"]
 
-    assert version == DESCRIPTIONS_VERSION == "tools-v25"
+    assert version == DESCRIPTIONS_VERSION == "tools-v29"
     assert "bounded" in attention
     assert "consequence-ordered" in attention
     assert "each shown open question" in attention
@@ -1078,8 +1078,41 @@ def _probe_vault(factor="1", more=0):
                                "2026-02-03", calls=1))
         evs.append(question_declined(f"q-more-{n}", "nature", "2026-02-03",
                                      amount="0.00"))
-    proj = LedgerProjection(evs)
-    return default_registry(proj), proj
+    # The instrument emitter needs an actual captured source and authenticated
+    # SQL revision. Keep it in this same scaled vault; no registry tool is skipped.
+    import tempfile
+    from pathlib import Path
+    from viva.ledger import Ledger,EventStore
+    from viva.read_store import ReadStore
+    from viva.ledger.instruments import reference_accounts
+    from test_instrument_projector_b import ingest
+    from test_instrument_contracts import deposit_json,printed
+    from viva.ingest import RawStore
+    root=tempfile.TemporaryDirectory(prefix="instrument-emitter-fixture-")
+    path=Path(root.name);ledger=Ledger(EventStore.open(path/"events.jsonl","synthetic-emitter"))
+    ledger.append_atomically(lambda _:tuple(evs))
+    raw=RawStore.open(path/"raw","synthetic-emitter")
+    deposit=deposit_json()
+    for name in ("opening","closing","uncredited_interest"):deposit[name]["raw"]=scaled(deposit[name]["raw"])
+    deposit["movements"][0]["amount"]["raw"]=scaled("10")
+    deposit["terms"]={"principal":printed(scaled("1000")),"opened":printed("2021-01-01"),"maturity":printed("2022-01-01"),
+        "rate":printed("5.25"),"rate_basis":"simple_nominal","rate_basis_source":{"page":1},
+        "day_count":"actual_365","day_count_source":{"page":1},"compounding":printed("No compounding"),"withdrawal_restriction":printed("Restricted until maturity")}
+    ingest(raw,ledger,"synthetic-emitter-deposit",deposit,"term_deposit_statement")
+    reads=ReadStore.create(path/"reads","synthetic-emitter");reads.synchronize(ledger.store)
+    from contextlib import contextmanager
+    proj=ledger.projection()
+    @contextmanager
+    def instrument_supplier():
+        with reads.open_reader() as revision:
+            yield revision
+    instrument_supplier.source_identity = ledger.store.authenticated_identity
+    instrument_supplier.expected_projection_identity = ledger._projection_identity
+    registry=default_registry(proj,instrument_scope=instrument_supplier)
+    registry._instrument_fixture_account=reference_accounts(proj,"CD-A")[0]
+    registry._instrument_fixture_owner=ledger
+    registry._instrument_fixture_cleanup=lambda:(reads.close(),root.cleanup())
+    return registry, proj
 
 
 def _enumerated_args(schema: dict) -> list:
@@ -1173,6 +1206,7 @@ def _every_figure(factor="1", more=0, stable_only=False) -> dict:
             next(schema["parameters"] for schema in registry.schemas()
                  if schema["name"] == "read_financial_analysis")),
         "simulate_scenario": [args for args,_ in _scenario_fixture_calls(factor)],
+        "read_instrument_details":[{"view":"terms","account":registry._instrument_fixture_account,"currency":"USD","as_of":"2021-01-31"}],
     }
     for schema in registry.schemas():
         if schema["name"] in {"read_account_measurements", "read_statement_coverage", "read_financial_projections"}:
@@ -1180,6 +1214,13 @@ def _every_figure(factor="1", more=0, stable_only=False) -> dict:
                 schema["name"], schema["parameters"], account="chk")
     out: dict = {}
     reached = set()
+    from time import monotonic
+    with registry.instrument_runtime.execution(monotonic()+2):
+        report = registry.call("read_account_balance_report",
+            {"account_1":"card","account_2":registry._instrument_fixture_account})
+    assert report.ok, (report.refusal, report.text, report.data)
+    reached.add(report.tool)
+    out.update({fig["what"]:fig for fig in report.figures})
     book = _one_figure(registry, "query_ledger", {"entity": "balances"})
     money = next(f["id"] for f in book.values() if f["currency"])
     calls = [("compute", {"expression": "a * 2", "inputs": {"a": money}}),
@@ -1193,7 +1234,11 @@ def _every_figure(factor="1", more=0, stable_only=False) -> dict:
             calls.append((name, args))
     for name, args in calls:
         question=next((text for candidate,text in _scenario_fixture_calls(factor) if candidate==args),"") if name=="simulate_scenario" else ""
-        result = registry.call(name, args, figures=book,question=question)
+        if name in {"read_instrument_details", "read_account_balance_report"}:
+            from time import monotonic
+            with registry.instrument_runtime.execution(monotonic()+2):
+                result=registry.call(name,args,figures=book,question=question)
+        else:result = registry.call(name, args, figures=book,question=question)
         if not result.ok:
             continue
         reached.add(name)
@@ -1216,6 +1261,12 @@ def _every_figure(factor="1", more=0, stable_only=False) -> dict:
             continue
         for fig in result.figures:
             out[fig["what"]] = fig
+    from _source_emitter_support import source_emitter_results
+    for result in source_emitter_results(str(factor)):
+        reached.add(result.tool)
+        for fig in result.figures:
+            out[fig['what']]=fig
+    registry._instrument_fixture_cleanup()
     assert reached == set(registry.names()), (
         f"{sorted(set(registry.names()) - reached)} emitted nothing here; a "
         "tool this check never calls is a tool whose figures nothing measures")

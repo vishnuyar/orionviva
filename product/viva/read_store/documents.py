@@ -46,6 +46,16 @@ class SQLDocumentsProjection:
             raise ReadStoreError(
                 f"Documents output exceeds its {MAX_DOCUMENTS}-document bound")
 
+        effective = _bounded(self.connection,
+            "SELECT CASE WHEN length(CAST(doc_id AS BLOB))<=? THEN doc_id END,"
+            "CASE WHEN length(CAST(doc_type AS BLOB))<=? THEN doc_type END "
+            "FROM document_library INDEXED BY document_library_order "
+            "ORDER BY first_sequence,doc_id LIMIT ?",
+            (MAX_DOCUMENT_SCALAR_BYTES,) * 2, MAX_DOCUMENTS, "Documents effective types")
+        if any(doc is None or kind is None for doc, kind in effective):
+            raise ReadStoreError("Documents capture field exceeds its scalar byte bound")
+        self._captured.update(effective)
+
         read_columns = ("doc_id", "phase", "parse_ok")
         selected, bounds = scalar_selected(read_columns, ("parse_ok",))
         reads = _bounded(

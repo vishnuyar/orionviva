@@ -103,12 +103,15 @@ def default_handlers() -> BridgeDispatcher:
 
     from .settings_actions import SettingsActions
     from .vault_actions import VaultTransferActions
+    from ..sample.activation import prepare as prepare_sample, status as sample_status
 
     # Settings and restore are available before a vault opens.
     settings = SettingsActions()
     transfers = VaultTransferActions()
     return BridgeDispatcher({
         BRIDGE_HANDSHAKE: _handshake,
+        "bridge.sample.prepare": prepare_sample,
+        "bridge.sample.status": sample_status,
         SURFACE_CAPABILITIES: _surface_capabilities,
         SETTINGS_READ: settings.read,
         LIFECYCLE_READ: _lifecycle_read,
@@ -204,6 +207,7 @@ def handlers_for_opened_vault(
         **reads.handlers,
         PREVIEW_READ: lambda payload: preview_document(vault, payload),
         DOCUMENTS_OPERATIONS["upload"]: captures.upload,
+        DOCUMENTS_OPERATIONS["upload_many"]: captures.upload_many,
         DOCUMENTS_OPERATIONS["cancel"]: captures.cancel,
         DOCUMENTS_OPERATIONS["recover"]: captures.recover,
         TRANSFER_OPERATIONS["export"]: transfers.export,

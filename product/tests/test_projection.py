@@ -442,3 +442,336 @@ def test_an_isolated_background_ledger_cannot_reorder_the_interactive_cache(tmp_
     assert [movement.description for movement in ledger.projection().movements()] == [
         "worker", "interactive"]
     assert ledger.projection().balance("chk").amount == Decimal("30")
+
+
+def _owned_ledger(tmp_path, name="owner", amount="100.00"):
+    from viva.ledger import Ledger, EventStore
+    ledger = Ledger(EventStore.open(tmp_path / name, "public-test-passphrase"))
+    ledger.append(account_opened("owned", "depository", "Public", "USD", "2026-01-01"))
+    from viva.ledger.events import document_captured
+    ledger.append(document_captured("public-doc", "public.pdf", 100, "bank_statement", 1.0, "2026-01-31"))
+    ledger.append(closing_balance_observed("owned", amount, "2026-01-31", Provenance("public-doc", 4)))
+    return ledger
+
+
+def test_owner_projection_rejects_genuine_other_source(tmp_path):
+    from types import SimpleNamespace
+    import time
+    from viva.read_store import ReadStore
+    from viva.instrument_runtime import vault_revision_supplier
+    from viva.ledger import ledger as ownership
+    a = _owned_ledger(tmp_path, "a")
+    b = _owned_ledger(tmp_path, "b", "900.00")
+    with ReadStore.create(tmp_path / "read-a", "public-test-passphrase") as read:
+        read.synchronize(a.store)
+        supplier = vault_revision_supplier(SimpleNamespace(ledger=a, read_store=read, wait_for_read_store=lambda timeout: True))
+        from viva.tools import default_registry
+        registry = default_registry(b.projection(), today="2026-02-01", instrument_scope=supplier)
+        with registry.instrument_runtime.execution(time.monotonic() + 15, question="Public source check"):
+            runtime = registry.instrument_runtime
+            identity = read.authenticated_source_identity(runtime.revision)
+            assert runtime.source_is_current()
+            assert a._projection_identity[0] == b._projection_identity[0] == 3
+            result = registry.call("query_ledger", {"entity": "balances", "filters": {"account": "owned"}})
+            assert next(figure["value"] for figure in result.figures if figure["quantity"] == "balance") == "900.00"
+            assert a.projection().balance("owned").amount == Decimal("100.00")
+            assert runtime.source_is_current()
+            assert a._projection_identity[1] != b._projection_identity[1]
+            assert ownership._owned_projection_identity(a.projection()) == (identity["count"], identity["head"])
+            assert ownership._owned_projection_identity(b.projection()) != (identity["count"], identity["head"])
+
+
+def test_owner_atomic_noop_detaches_decision_prefix(tmp_path):
+    ledger = _owned_ledger(tmp_path)
+    identity = ledger.store.authenticated_identity()
+    def decide(projection):
+        projection._source_events[-1].body["amount"] = "900.00"
+        return ()
+    assert ledger.append_atomically(decide) == []
+    assert ledger.projection().balance("owned").amount == Decimal("100.00")
+    assert ledger.store.authenticated_identity() == identity
+    from viva.ledger.ledger import _owned_projection_identity
+    assert _owned_projection_identity(ledger.projection()) == identity[:2]
+
+
+def test_owner_current_replacement_and_other_constructors(tmp_path):
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    old = ledger.projection()
+    assert identity(old) == ledger._projection_identity[:2]
+    assert ledger.projection() is old
+    for unowned in (LedgerProjection(ledger.events()), ledger.fresh_projection(),
+                    ledger.snapshot_projection()[0], ledger.projection_as_of("2026-01-31")):
+        unowned.source_identity = ledger._projection_identity
+        assert identity(unowned) is None
+    fork = ledger.fork()
+    assert fork._proj is None
+    assert identity(old) is not None
+    fresh = fork.projection()
+    assert fresh is not old and identity(fresh) == identity(old)
+    fork.append(closing_balance_observed("owned", "120.00", "2026-02-01"))
+    replacement = ledger.projection()
+    assert replacement is not old and identity(old) is None
+    assert identity(replacement) == ledger._projection_identity[:2]
+    assert replacement.balance("owned").amount == Decimal("120.00")
+
+
+@pytest.mark.parametrize("route", ["facade", "core", "source", "replace_core", "replace_guard", "remove_guard", "revision", "horizon", "rebuild", "facade_error", "core_error"])
+def test_owner_mutation_routes_revoke_before_changes(tmp_path, route):
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    from viva.ledger.events import Event
+    ledger = _owned_ledger(tmp_path)
+    projection = ledger.projection()
+    core = projection.core
+    event = closing_balance_observed("owned", "120.00", "2026-02-01")
+    assert identity(projection) is not None
+    if route == "source":
+        projection._source_events[-1].body["amount"] = "900.00"
+    elif route == "replace_core":
+        projection._core = LedgerProjection([]).core
+    elif route == "replace_guard":
+        core.apply = lambda event: None
+    elif route == "remove_guard":
+        del core.apply
+    elif route == "revision":
+        core._classification_revision = (999, "replacement")
+    elif route == "horizon":
+        core.as_of = "2026-01-01"
+        assert projection.apply(event) is None
+    elif route == "rebuild":
+        event = Event("InstrumentObservationRecorded", "2026-02-01", {"record": {"prior_id": "missing"}})
+        with pytest.raises((ValueError, KeyError, TypeError)):
+            projection.apply(event)
+    elif route.endswith("error"):
+        event.body["amount"] = "invalid-decimal"
+        from decimal import InvalidOperation
+        with pytest.raises(InvalidOperation):
+            (core.apply if route == "core_error" else projection.apply)(event)
+    else:
+        assert (core.apply if route == "core" else projection.apply)(event) is None
+        assert projection.balance("owned").amount == Decimal("120.00")
+    assert identity(projection) is None
+
+
+@pytest.mark.parametrize("deep", [False, True])
+@pytest.mark.parametrize("route", ["core", "facade", "source", "rebuild"])
+def test_owner_copies_never_copy_authority_or_capture_original_core(tmp_path, deep, route):
+    from copy import copy, deepcopy
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    from viva.ledger.events import Event
+    ledger = _owned_ledger(tmp_path)
+    original = ledger.projection()
+    duplicate = deepcopy(original) if deep else copy(original)
+    duplicate.source_identity = ledger._projection_identity
+    assert identity(duplicate) is None
+    assert identity(original) is not None
+    event = closing_balance_observed("owned", "130.00", "2026-02-01")
+    if route == "source":
+        duplicate._source_events[-1].body["amount"] = "900.00"
+    elif route == "rebuild":
+        event = Event("InstrumentObservationRecorded", "2026-02-01", {"record": {"prior_id": "missing"}})
+        with pytest.raises((ValueError, KeyError, TypeError)):
+            duplicate.apply(event)
+    else:
+        (duplicate.core.apply if route == "core" else duplicate.apply)(event)
+        assert duplicate.balance("owned").amount == Decimal("130.00")
+    if deep:
+        assert identity(original) is not None
+        assert original.balance("owned").amount == Decimal("100.00")
+    else:
+        assert identity(original) is None
+
+
+def test_owner_incoming_and_atomic_output_aliases_are_detached(tmp_path):
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    event = closing_balance_observed("owned", "120.00", "2026-02-01")
+    old = ledger.projection()
+    record = ledger.append(event)
+    assert identity(old) is None
+    event.body["amount"] = "900.00"
+    assert ledger.projection().balance("owned").amount == Decimal("120.00")
+    assert identity(ledger.projection()) == (record["seq"] + 1, record["record_hash"])
+    retained = []
+    output = closing_balance_observed("owned", "140.00", "2026-02-02")
+    def decide(projection):
+        assert identity(projection) is None
+        retained.append(projection)
+        projection._source_events[-1].body["amount"] = "800.00"
+        return [output]
+    records = ledger.append_atomically(decide)
+    output.body["amount"] = "900.00"
+    retained[0].apply(closing_balance_observed("owned", "700.00", "2026-02-03"))
+    assert ledger.projection().balance("owned").amount == Decimal("140.00")
+    assert identity(ledger.projection()) == (records[-1]["seq"] + 1, records[-1]["record_hash"])
+    assert ledger.fresh_projection().balance("owned").amount == Decimal("140.00")
+
+
+@pytest.mark.parametrize("failure", ["decision", "write", "head", "construction"])
+def test_owner_write_failure_revokes_existing_cache(tmp_path, monkeypatch, failure):
+    import viva.ledger.store as store_module
+    import viva.ledger.ledger as owner_module
+    ledger = _owned_ledger(tmp_path)
+    old = ledger.projection()
+    def fail(*args, **kwargs):
+        assert owner_module._owned_projection_identity(old) is None
+        raise OSError("public injected failure")
+    event = closing_balance_observed("owned", "120.00", "2026-02-01")
+    if failure == "write":
+        monkeypatch.setattr(store_module, "_write_batch", fail)
+    elif failure == "head":
+        monkeypatch.setattr(store_module, "write_head", fail)
+    elif failure == "construction":
+        monkeypatch.setattr(owner_module, "LedgerProjection", fail)
+    with pytest.raises(OSError, match="public injected failure"):
+        if failure == "decision":
+            ledger.append_atomically(fail)
+        else:
+            ledger.append(event)
+    assert owner_module._owned_projection_identity(old) is None
+
+
+def test_owner_does_not_issue_for_disagreeing_published_commit(tmp_path, monkeypatch):
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    actual_append = ledger.store.append_atomically
+    def append_with_later_commit(decide):
+        records = actual_append(decide)
+        actual_append(lambda events: (closing_balance_observed("owned", "150.00", "2026-02-02"),))
+        return records
+    monkeypatch.setattr(ledger.store, "append_atomically", append_with_later_commit)
+    ledger.append(closing_balance_observed("owned", "120.00", "2026-02-01"))
+    assert identity(ledger._proj) is None
+
+
+def test_owner_identity_seam_does_no_store_reads(tmp_path, monkeypatch):
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    projection = ledger.projection()
+    expected = ledger._projection_identity[:2]
+    def fail(*args, **kwargs):
+        raise AssertionError("identity seam must not refresh or authenticate")
+    for method in ("authenticated_identity", "snapshot_events", "snapshot_events_with_identity"):
+        monkeypatch.setattr(ledger.store, method, fail)
+    monkeypatch.setattr(ledger, "projection", fail)
+    assert identity(projection) == expected
+
+
+def test_owner_financial_fold_remains_equal_for_positions_and_mutation(tmp_path):
+    from viva.ledger.events import position_observed
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    event = position_observed("owned", "PUBLIC", "2", "250.00", "USD", "2026-02-01", provenance=Provenance("public-holding", 8))
+    ledger.append(event)
+    owned = ledger.projection()
+    plain = LedgerProjection(ledger.events())
+    assert owned.balance("owned") == plain.balance("owned")
+    assert owned.composed_values("owned") == plain.composed_values("owned")
+    assert owned.positions("owned") == plain.positions("owned")
+    assert identity(owned) is not None
+    mutation = closing_balance_observed("owned", "110.00", "2026-02-02", Provenance("public-doc", 5))
+    assert owned.apply(mutation) == plain.apply(mutation)
+    assert owned.balance("owned") == plain.balance("owned")
+    assert owned.composed_values("owned") == plain.composed_values("owned")
+    assert identity(owned) is None
+
+
+def test_owner_snapshot_basis_detaches_retained_store_events(tmp_path, monkeypatch):
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    other = ledger.fork()
+    retained = []
+    snapshot = other.store.snapshot_events_with_identity
+    def capture():
+        events, witness = snapshot()
+        retained.extend(events)
+        return events, witness
+    monkeypatch.setattr(other.store, "snapshot_events_with_identity", capture)
+    projection = other.projection()
+    retained[-1].body["amount"] = "900.00"
+    assert projection.balance("owned").amount == Decimal("100.00")
+    assert identity(projection) == ledger._projection_identity[:2]
+
+
+def test_owner_legacy_noop_never_invents_authenticated_head(tmp_path):
+    import json
+    from viva.crypto import VERSION, open_vault_header, rebind_vault_header
+    from viva.ledger import EventStore, Ledger
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    path = ledger.store.path
+    first, separator, body = path.read_bytes().partition(b"\n")
+    header = json.loads(first)
+    key = open_vault_header(header, "public-test-passphrase")
+    legacy = rebind_vault_header(header, key, header_version=VERSION)
+    path.write_bytes(json.dumps(legacy).encode() + separator + body)
+    path.with_suffix(path.suffix + ".head").unlink()
+    ledger = Ledger(EventStore.open(path, "public-test-passphrase"))
+    before = path.read_bytes()
+    assert identity(ledger.projection()) is None
+    assert ledger.append_atomically(lambda projection: ()) == []
+    assert identity(ledger.projection()) is None
+    assert path.read_bytes() == before
+    assert not path.with_suffix(path.suffix + ".head").exists()
+
+
+def test_owner_records_do_not_keep_owner_or_projection_alive(tmp_path):
+    import gc
+    import weakref
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    projection = ledger.projection()
+    owner_ref = weakref.ref(ledger)
+    del ledger
+    gc.collect()
+    assert owner_ref() is None
+    assert identity(projection) is None
+    projection_ref = weakref.ref(projection)
+    del projection
+    gc.collect()
+    assert projection_ref() is None
+
+
+def test_owner_generation_mismatch_cannot_reuse_same_object(tmp_path):
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    projection = ledger.projection()
+    ledger._cache_generation += 1
+    assert identity(projection) is None
+
+
+def test_owner_noop_published_witness_must_remain_same_commit(tmp_path, monkeypatch):
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    append = ledger.store.append_atomically
+    def advance_after_noop(decide):
+        records = append(decide)
+        append(lambda events: (closing_balance_observed("owned", "150.00", "2026-02-02"),))
+        return records
+    monkeypatch.setattr(ledger.store, "append_atomically", advance_after_noop)
+    assert ledger.append_atomically(lambda projection: ()) == []
+    assert identity(ledger._proj) is None
+
+
+def test_owner_successful_core_rebuild_preserves_financial_fold(tmp_path):
+    from dataclasses import replace
+    from viva.ingest.instrument_contracts import Source, SourcedDate, SourcedText, PositionClassification
+    from viva.ingest.instrument_observations import ObservationChange, ObservationKind, Operation
+    from viva.ledger.instruments import observation_event
+    from viva.ledger.ledger import _owned_projection_identity as identity
+    ledger = _owned_ledger(tmp_path)
+    source = Source("public-classification", 2)
+    original = ObservationChange("first", "owned|PUBLIC", ObservationKind.POSITION_CLASSIFICATION,
+        SourcedDate("2026-01-31", source), Operation.CREATE, source,
+        PositionClassification(SourcedText("PUBLIC", source)))
+    ledger.append(observation_event(original))
+    projection = ledger.projection()
+    plain = LedgerProjection(ledger.events())
+    old_core = projection.core
+    correction = observation_event(replace(original, observation_id="second", prior_id="first", operation=Operation.CORRECT))
+    assert identity(projection) is not None
+    assert projection.apply(correction) == plain.apply(correction)
+    assert projection.core is not old_core
+    assert identity(projection) is None
+    assert projection.balance("owned") == plain.balance("owned")
+    assert projection.core._instrument_observations == plain.core._instrument_observations

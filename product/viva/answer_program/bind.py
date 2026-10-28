@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from ..tools.runner_delivery import _gate
+from ..instrument_claims import selected_subject,CLAIM_RELATIONSHIPS
 
 
 @dataclass(frozen=True)
@@ -60,9 +61,44 @@ class DeterministicBinder:
         kind = binding.reference_kind
         ids = list(graph.references(binding.source, kind))
         selector = binding.selector
+        if kind=="allocation_target":
+            if selector.claim!="allocation_target" or selector.quantity!="ratio":return None,"target_role_proof_required"
+            values=[graph.ground.instrument_premises[i] for i in ids if i in graph.ground.instrument_premises]
+            values=[p for p in values if p.get('account')==selector.entity_ref.get('id')]
+            chosen,reason=self._one(values,selector)
+            return ({kind:chosen['id']},"") if chosen else (None,reason)
+        if kind in ("instrument_date", "instrument_text", "instrument_normalized"):
+            from ..instrument_claims import CLAIMS
+            contract=CLAIMS.get(selector.claim)
+            if contract is None or contract.reference_kind != kind:
+                return None,"instrument_claim_required"
+            assertions=[graph.ground.instrument_assertions[item] for item in ids if item in graph.ground.instrument_assertions]
+            assertions=[a for a in assertions if a.get("claim")==selector.claim]
+            if selector.entity_ref:
+                assertions=[a for a in assertions if (a.get("account")==selector.entity_ref.get("account_set_id") if set(selector.entity_ref)=={"account_set_id","set_type","member_ids"} else a.get("account")==selector.entity_ref.get("id")
+                        if set(selector.entity_ref)=={"id"} else CLAIM_RELATIONSHIPS.get(a.get("claim"))==selector.entity_ref.get("role")==a.get("instrument_relationship"))]
+            if selector.cardinality=="all":
+                from ..instrument_evidence import SourceAssertionGroup
+                if selector.order or selector.limit is not None or selector.currency or selector.quantity or selector.scope:return None,"invalid_source_assertion_group_selector"
+                if not assertions:return None,"no_compatible_evidence"
+                if len(assertions)>80 or len({a["account"] for a in assertions})!=1:return None,"source_assertion_group_resource_limit"
+                key="source-group:"+binding.source+":"+binding.hole
+                group=SourceAssertionGroup(tuple(a["id"] for a in assertions),selector.claim,assertions[0]["account"],kind,graph.ground.instrument_token)
+                graph.ground.instrument_assertion_groups[key]=group
+                return {kind:key},""
+            chosen,reason=self._one(assertions,selector)
+            return ({kind:chosen["id"]},"") if chosen else (None,reason)
         if kind in ("figure", "date_of", "measurement_date_of"):
             figures = [graph.ground.book[item] for item in ids
                        if item in graph.ground.book]
+            if any(fig.get("claim") for fig in figures):
+                if not selector.claim:
+                    return None,"instrument_claim_required"
+                figures=[fig for fig in figures if fig.get("claim")==selector.claim]
+                if selector.entity_ref:
+                    figures=[fig for fig in figures if selected_subject(fig,selector.entity_ref)]
+            elif selector.claim:
+                return None,"instrument_claim_unreachable"
             if selector.quantity:
                 figures = [fig for fig in figures
                            if fig.get("quantity") == selector.quantity]
@@ -109,6 +145,14 @@ class DeterministicBinder:
             figures = [graph.ground.book[item]
                        for item in graph.ground.readings.get(chosen, ())
                        if item in graph.ground.book]
+            if any(item.get("claim") for item in figures):
+                if not selector.claim:
+                    return None,"instrument_claim_required"
+                figures=[item for item in figures if item.get("claim")==selector.claim]
+                if selector.entity_ref:
+                    figures=[item for item in figures if selected_subject(item,selector.entity_ref)]
+            elif selector.claim:
+                return None,"instrument_claim_unreachable"
             if selector.quantity:
                 figures = [item for item in figures
                            if item.get("quantity") == selector.quantity]

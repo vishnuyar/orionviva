@@ -31,6 +31,8 @@ CLARIFICATION_TAGS = ("ambiguous_account", "ambiguous_movement",
                       "ambiguous_period")
 _ENTITY_PARAMETER_GROUPS = {
     "account_phrase": "accounts",
+    **{f"account_phrase_{i}": "accounts" for i in range(1, 8)},
+    "plans_phrase": "retirement_plan_sets",
     "category": "categories",
     "movement_phrase": "counterparties",
     "merchant": "counterparties",
@@ -280,13 +282,15 @@ def _account_inventory(request, manifest):
 class SemanticFamilyRegistry:
     """One authority for the model catalog, schemas, builders and digests."""
 
-    def __init__(self, entity_catalog=None, *, entity_catalog_digest=""):
+    def __init__(self, entity_catalog=None, *, entity_catalog_digest="", currency_resolver=None):
+        self._currency_resolver=currency_resolver
         self.entity_catalog = copy.deepcopy(dict(entity_catalog or {}))
         encoded_entities = json.dumps(
             self.entity_catalog, sort_keys=True, separators=(",", ":"))
         self.entity_catalog_digest = str(entity_catalog_digest or
             hashlib.sha256(encoded_entities.encode()).hexdigest()[:16])
         self._entity_values = {
+            "plans_phrase": {str(item.get("id") or "") for item in self.entity_catalog.get("retirement_plan_sets",())},
             "account_phrase": {str(item.get("id") or "") for item in
                                self.entity_catalog.get("accounts", ())},
             "category": {str(item.get("id") or "") for item in
@@ -296,6 +300,8 @@ class SemanticFamilyRegistry:
             "merchant": {str(item.get("id") or "") for item in
                          self.entity_catalog.get("counterparties", ())},
         }
+        for i in range(1, 8):
+            self._entity_values[f"account_phrase_{i}"] = self._entity_values["account_phrase"]
         self._entity_rows = {
             name: {str(item.get("id") or ""): dict(item)
                    for item in self.entity_catalog.get(group, ())
@@ -343,10 +349,19 @@ class SemanticFamilyRegistry:
                 user_label="a full account inventory",
                 user_example="every account with its evidence status"),
         }
+        from .selected_balances import family as selected_balance_family
+        self._families["selected_account_balances"] = selected_balance_family()
         from .capabilities import analysis_families, measurement_projection_families, scenario_families
         self._families.update(analysis_families())
         self._families.update(measurement_projection_families())
         self._families.update(scenario_families())
+        from .instrument_families import families
+        self._families.update(families())
+        from viva.investment.semantic import families as investment_families
+        self._families.update(investment_families())
+        from viva.retirement_funding.semantic import families as retirement_families
+        self._families.update(retirement_families())
+        self.instrument_context = None
 
     @property
     def ids(self):
@@ -616,7 +631,12 @@ class SemanticFamilyRegistry:
                     return SemanticOutcome("needs_assumption",detail={"tag":exc.tag,"label":message,
                         "question":message,"type":"user_stipulation","scenario_family":family_id})
             self._validate_parameters(family.parameter_schema, raw["parameters"])
-            if family_id not in FAMILIES:
+            if family_id=="instrument_allocation_target":
+                if self.instrument_context is None:raise ContractError("allocation continuation context is unavailable")
+                try:prepared=self.instrument_context.prepare_target(raw["parameters"],raw["parameter_sources"],context,self)
+                except ContractError:
+                    return SemanticOutcome("clarify",detail={"tag":"ambiguous_account","question":"Which allocation account, snapshot date, and current target should I use?","options":[]})
+            elif family_id not in FAMILIES:
                 self._validate_parameter_sources(
                     raw["parameters"], raw["parameter_sources"], context,
                     require_grounding=require_grounding)
@@ -632,14 +652,24 @@ class SemanticFamilyRegistry:
                     or not set(claims) <= set(family.claims)):
                 raise ContractError(
                     "requested_claims must be a non-empty subset of the family's reviewed claims")
+            if (family_id=="instrument_period_components"
+                    and raw["parameters"].get("component_set")=="payment_escrow"
+                    and set(claims)&{"principal_repayment","principal_payoff"}):
+                raise ContractError("component_claim_incompatible: payment_escrow cannot emit principal repayment or payoff")
             request = SemanticRequest(
-                family_id, dict(raw["parameters"]), tuple(claims),
+                family_id, dict(prepared if family_id=="instrument_allocation_target" else raw["parameters"]), tuple(claims),
                 self.catalog_digest,
                 parameter_sources=dict(raw["parameter_sources"]),
                 entity_catalog_digest=self.entity_catalog_digest)
             outcome = SemanticOutcome("request", request)
-            if "account_phrase" in raw["parameters"]:
+            if family_id == "selected_account_balances":
+                from .selected_balances import resolve
+                selected = resolve(self, outcome)
+                return selected[0] if isinstance(selected, tuple) else selected
+            if "account_phrase" in raw["parameters"] and family_id!="instrument_allocation_target":
                 return self._named_account_outcome(outcome)
+            if family_id.startswith('retirement_') and raw['parameters'].get('plans_phrase') not in self._entity_rows.get('plans_phrase',{}):
+                return SemanticOutcome('clarify',detail={'tag':'ambiguous_account','question':'Which source-backed retirement plans should I use?','options':[]})
             return outcome
         required = {
             "clarify": {"request_version", "outcome", "tag", "question", "options"},
@@ -658,6 +688,13 @@ class SemanticFamilyRegistry:
     def lower(self, outcome: SemanticOutcome, manifest) -> AnswerProgram:
         if outcome.request is not None:
             family = self._families[outcome.request.family]
+            if family.id == "selected_account_balances":
+                from .selected_balances import resolve
+                selected = resolve(self, outcome)
+                if not isinstance(selected, tuple):
+                    return self.lower(selected, manifest)
+                resolved, kinds = selected
+                return family.builder(resolved.request, manifest, kinds)
             if family.id == "named_account_balance":
                 resolved = self._named_account_outcome(outcome)
                 if resolved.kind != "request":
@@ -667,6 +704,30 @@ class SemanticFamilyRegistry:
                 request = replace(outcome.request, parameters={
                     **outcome.request.parameters, "account_phrase": row["id"]})
                 return family.builder(request, manifest, row["kind"])
+            if outcome.request.family.startswith('retirement_'):
+                from ..retirement_funding.contracts import Request,ANNUAL
+                request=outcome.request
+                selected=self._entity_rows.get('plans_phrase',{}).get(request.parameters['plans_phrase'])
+                if selected is None:raise ContractError('retirement selected set is unresolved')
+                members=selected.get('member_ids')
+                if type(members) is not list or Request(ANNUAL,tuple(members),'USD',year=2000).subject_id!=selected.get('id'):
+                    raise ContractError('retirement selected set identity differs')
+                currencies={self.resolve_instrument_currency(member) for member in members}
+                if len(currencies)!=1:raise ContractError('retirement selected set currencies differ')
+                request=replace(request,parameters={**request.parameters,'plans':members,'currency':next(iter(currencies))})
+                return family.builder(request,manifest)
+            if outcome.request.family.startswith(("instrument_","investment_")):
+                request=outcome.request
+                if request.family=="instrument_allocation_target":
+                    return family.builder(request,manifest)
+                resolved=self._named_account_outcome(outcome)
+                if resolved.kind!="request":return self.lower(resolved,manifest)
+                row=self._account_role_candidates(request.parameters["account_phrase"])[0]
+                if request.family.startswith("investment_") and row.get("kind")!="investment":raise ContractError("selected investment account is unavailable")
+                currency=self.resolve_instrument_currency(row["id"])
+                if not currency:raise ContractError("selected instrument currency is unavailable")
+                request=replace(request,parameters={**request.parameters,"account_phrase":row["id"],"currency":currency})
+                return family.builder(request,manifest)
             if "account_phrase" in outcome.request.parameters:
                 resolved = self._named_account_outcome(outcome)
                 if resolved.kind != "request":
@@ -687,6 +748,14 @@ class SemanticFamilyRegistry:
             return self._non_answer_program(
                 manifest, "outside_domain", "outside_domain")
         raise ValueError("an unsupported semantic outcome has no executable program")
+
+    def resolve_instrument_currency(self, account):
+        if account not in self._entity_rows["account_phrase"] or not callable(self._currency_resolver):
+            raise ContractError("selected instrument currency is unavailable")
+        value=self._currency_resolver(account)
+        if not isinstance(value,str) or not re.fullmatch(r"[A-Z]{3}",value):
+            raise ContractError("selected instrument currency is unavailable")
+        return value
 
     def _account_role_candidates(self, phrase):
         """Resolve a named account using the ledger's whole-word label policy."""
@@ -749,6 +818,7 @@ class SemanticFamilyRegistry:
     def admission_digest(self, manifest) -> str:
         samples = {
             "named_account_balance": {"account_phrase": "Everyday account"},
+            "selected_account_balances": {"account_phrase_1":"account-held", "account_phrase_2":"account-owed"},
             "needs_attention": {},
             "category_spending_period": {
                 "category": "food", "from": "2000-01-01", "to": "2000-01-31"},
@@ -760,17 +830,32 @@ class SemanticFamilyRegistry:
         samples.update(analysis_samples())
         samples.update(measurement_projection_samples())
         samples.update(scenario_samples())
-        probe = type(self)({"accounts": [
+        from .instrument_families import samples as instrument_samples
+        samples.update(instrument_samples())
+        from viva.investment.semantic import samples as investment_samples
+        samples.update(investment_samples())
+        from viva.retirement_funding.semantic import samples as retirement_samples
+        from viva.retirement_funding.contracts import Request, ANNUAL
+        probe_set = Request(ANNUAL, ("account-investment",), "USD", year=2000).subject
+        samples.update({family: {**parameters, "plans_phrase": probe_set["account_set_id"]}
+                        for family, parameters in retirement_samples().items()})
+        probe = type(self)({"retirement_plan_sets": [{
+            "id": probe_set["account_set_id"], "set_type": "retirement_plans",
+            "member_ids": ["account-investment"], "label": "Example retirement plan"}],
+            "accounts": [
             {"id": "account-held", "name": "Everyday account", "kind": "depository"},
             {"id": "account-owed", "name": "Example debt", "kind": "liability"},
-        ]})
+            {"id": "account-investment", "name": "Example investment account", "kind": "investment"},
+        ]},currency_resolver=lambda account: "USD" if account in {"account-held","account-owed","account-investment"} else None)
         programs = []
         for family_id in self.ids:
             family = self._families[family_id]
-            request = SemanticRequest(family_id, samples[family_id], family.claims,
-                                      self.catalog_digest)
-            programs.append(probe.lower(SemanticOutcome("request", request),
-                                       manifest).to_dict())
+            claim_sets=([(claim,) for claim in family.claims] if family_id.startswith("instrument_") and family_id!="instrument_allocation_target" else [family.claims])
+            for claimed in claim_sets:
+                request = SemanticRequest(family_id, samples[family_id], claimed,
+                                          self.catalog_digest)
+                programs.append(probe.lower(SemanticOutcome("request", request),
+                                           manifest).to_dict())
         for claims in (("balance",), ("balance", "measurement_date")):
             request = SemanticRequest("named_account_balance",
                                       {"account_phrase": "account-owed"},
@@ -932,18 +1017,186 @@ class SemanticFamilyRegistry:
             name: hashlib.sha256(path.read_bytes()).hexdigest()[:16]
             for name, path in SemanticFamilyRegistry._admitted_source_only_paths().items()
         })
+        # Hash the added finite source closure without executing surface tiers.
+        resources = {'foundation_dependency:viva.vault': ('viva.vault', 'viva/vault.py'),
+                     'foundation_dependency:viva.acquisition': ('viva.acquisition', 'viva/acquisition.py'),
+ 'foundation_dependency:viva.demo': ('viva.demo', 'viva/demo.py'),
+ 'foundation_dependency:viva.ingest.mortgage_known_allocation': ('viva.ingest.mortgage_known_allocation',
+                                                                 'viva/ingest/mortgage_known_allocation.py'),
+ 'foundation_dependency:viva.ingest.paystub': ('viva.ingest.paystub', 'viva/ingest/paystub.py'),
+ 'foundation_dependency:viva.ingest.paystub_projector': ('viva.ingest.paystub_projector',
+                                                         'viva/ingest/paystub_projector.py'),
+ 'foundation_dependency:viva.investment': ('viva.investment', 'viva/investment/__init__.py'),
+ 'foundation_dependency:viva.investment.authenticated': ('viva.investment.authenticated',
+                                                         'viva/investment/authenticated.py'),
+ 'foundation_dependency:viva.investment.authority': ('viva.investment.authority',
+                                                     'viva/investment/authority.py'),
+ 'foundation_dependency:viva.investment.composition': ('viva.investment.composition',
+                                                       'viva/investment/composition.py'),
+ 'foundation_dependency:viva.investment.contracts': ('viva.investment.contracts',
+                                                     'viva/investment/contracts.py'),
+ 'foundation_dependency:viva.investment.events': ('viva.investment.events', 'viva/investment/events.py'),
+ 'foundation_dependency:viva.investment.extraction': ('viva.investment.extraction',
+                                                      'viva/investment/extraction.py'),
+ 'foundation_dependency:viva.investment.funding': ('viva.investment.funding',
+                                                   'viva/investment/funding.py'),
+ 'foundation_dependency:viva.investment.healing': ('viva.investment.healing',
+                                                   'viva/investment/healing.py'),
+ 'foundation_dependency:viva.investment.identity': ('viva.investment.identity',
+                                                    'viva/investment/identity.py'),
+ 'foundation_dependency:viva.investment.lifecycle': ('viva.investment.lifecycle',
+                                                     'viva/investment/lifecycle.py'),
+ 'foundation_dependency:viva.investment.lineage': ('viva.investment.lineage',
+                                                   'viva/investment/lineage.py'),
+ 'foundation_dependency:viva.investment.payroll': ('viva.investment.payroll',
+                                                   'viva/investment/payroll.py'),
+ 'foundation_dependency:viva.investment.payroll_extraction': ('viva.investment.payroll_extraction',
+                                                              'viva/investment/payroll_extraction.py'),
+ 'foundation_dependency:viva.investment.projector': ('viva.investment.projector',
+                                                     'viva/investment/projector.py'),
+ 'foundation_dependency:viva.investment.semantic': ('viva.investment.semantic',
+                                                    'viva/investment/semantic.py'),
+ 'foundation_dependency:viva.investment.sql': ('viva.investment.sql', 'viva/investment/sql.py'),
+ 'foundation_dependency:viva.investment.tool': ('viva.investment.tool', 'viva/investment/tool.py'),
+ 'foundation_dependency:viva.investment.units': ('viva.investment.units', 'viva/investment/units.py'),
+ 'foundation_dependency:viva.normalization_context': ('viva.normalization_context',
+                                                      'viva/normalization_context.py'),
+ 'foundation_dependency:viva.retirement_funding': ('viva.retirement_funding',
+                                                   'viva/retirement_funding/__init__.py'),
+ 'foundation_dependency:viva.retirement_funding.authority': ('viva.retirement_funding.authority',
+                                                             'viva/retirement_funding/authority.py'),
+ 'foundation_dependency:viva.retirement_funding.catalog': ('viva.retirement_funding.catalog',
+                                                           'viva/retirement_funding/catalog.py'),
+ 'foundation_dependency:viva.retirement_funding.contracts': ('viva.retirement_funding.contracts',
+                                                             'viva/retirement_funding/contracts.py'),
+ 'foundation_dependency:viva.retirement_funding.lineage': ('viva.retirement_funding.lineage',
+                                                           'viva/retirement_funding/lineage.py'),
+ 'foundation_dependency:viva.retirement_funding.payroll_v2': ('viva.retirement_funding.payroll_v2',
+                                                              'viva/retirement_funding/payroll_v2.py'),
+ 'foundation_dependency:viva.retirement_funding.population': ('viva.retirement_funding.population',
+                                                              'viva/retirement_funding/population.py'),
+ 'foundation_dependency:viva.retirement_funding.posting_closure': ('viva.retirement_funding.posting_closure',
+                                                                   'viva/retirement_funding/posting_closure.py'),
+ 'foundation_dependency:viva.retirement_funding.semantic': ('viva.retirement_funding.semantic',
+                                                            'viva/retirement_funding/semantic.py'),
+ 'foundation_dependency:viva.retirement_funding.sql': ('viva.retirement_funding.sql',
+                                                       'viva/retirement_funding/sql.py'),
+ 'foundation_dependency:viva.retirement_funding.tool': ('viva.retirement_funding.tool',
+                                                        'viva/retirement_funding/tool.py'),
+ 'foundation_dependency:viva.sample': ('viva.sample', 'viva/sample/__init__.py'),
+ 'foundation_dependency:viva.sample.activation': ('viva.sample.activation', 'viva/sample/activation.py'),
+ 'foundation_dependency:viva.sample.curation': ('viva.sample.curation', 'viva/sample/curation.py'),
+ 'foundation_dependency:viva.sample.instances': ('viva.sample.instances', 'viva/sample/instances.py'),
+ 'foundation_dependency:viva.sample.worker': ('viva.sample.worker', 'viva/sample/worker.py'),
+ 'foundation_dependency:viva.extraction_responses': ('viva.extraction_responses', 'viva/extraction_responses.py'),
+ 'foundation_dependency:viva.desktop_bridge.bulk_documents': ('viva.desktop_bridge.bulk_documents', 'viva/desktop_bridge/bulk_documents.py'),
+ 'foundation_dependency:viva.sample.resources': ('viva.sample.resources', 'viva/sample/resources.py'),
+ 'instrument_dependency:viva.allocation_continuation': ('viva.allocation_continuation',
+                                                        'viva/allocation_continuation.py'),
+ 'instrument_dependency:viva.allocation_target': ('viva.allocation_target', 'viva/allocation_target.py'),
+ 'instrument_dependency:viva.answer_program.instrument_families': ('viva.answer_program.instrument_families',
+                                                                   'viva/answer_program/instrument_families.py'),
+ 'instrument_dependency:viva.desktop_bridge.conversation_actions': ('viva.desktop_bridge.conversation_actions',
+                                                                    'viva/desktop_bridge/conversation_actions.py'),
+ 'instrument_dependency:viva.desktop_bridge.documents_page': ('viva.desktop_bridge.documents_page',
+                                                              'viva/desktop_bridge/documents_page.py'),
+ 'instrument_dependency:viva.desktop_bridge.rpc': ('viva.desktop_bridge.rpc',
+                                                   'viva/desktop_bridge/rpc.py'),
+ 'instrument_dependency:viva.desktop_bridge.surface_read': ('viva.desktop_bridge.surface_read',
+                                                            'viva/desktop_bridge/surface_read.py'),
+ 'instrument_dependency:viva.desktop_bridge.vault_surface': ('viva.desktop_bridge.vault_surface',
+                                                             'viva/desktop_bridge/vault_surface.py'),
+ 'instrument_dependency:viva.ingest.apr_context_contracts': ('viva.ingest.apr_context_contracts',
+                                                             'viva/ingest/apr_context_contracts.py'),
+ 'instrument_dependency:viva.ingest.apr_context_grounding': ('viva.ingest.apr_context_grounding',
+                                                             'viva/ingest/apr_context_grounding.py'),
+ 'instrument_dependency:viva.ingest.apr_context_local': ('viva.ingest.apr_context_local',
+                                                         'viva/ingest/apr_context_local.py'),
+ 'instrument_dependency:viva.ingest.apr_context_parser': ('viva.ingest.apr_context_parser',
+                                                          'viva/ingest/apr_context_parser.py'),
+ 'instrument_dependency:viva.ingest.instrument_contracts': ('viva.ingest.instrument_contracts',
+                                                            'viva/ingest/instrument_contracts.py'),
+ 'instrument_dependency:viva.ingest.instrument_effects': ('viva.ingest.instrument_effects',
+                                                          'viva/ingest/instrument_effects.py'),
+ 'instrument_dependency:viva.ingest.instrument_observations': ('viva.ingest.instrument_observations',
+                                                               'viva/ingest/instrument_observations.py'),
+ 'instrument_dependency:viva.ingest.instrument_parser': ('viva.ingest.instrument_parser',
+                                                         'viva/ingest/instrument_parser.py'),
+ 'instrument_dependency:viva.ingest.instrument_projector': ('viva.ingest.instrument_projector',
+                                                            'viva/ingest/instrument_projector.py'),
+ 'instrument_dependency:viva.ingest.instrument_read': ('viva.ingest.instrument_read',
+                                                       'viva/ingest/instrument_read.py'),
+ 'instrument_dependency:viva.ingest.pipeline': ('viva.ingest.pipeline', 'viva/ingest/pipeline.py'),
+ 'instrument_dependency:viva.ingest.pipeline_models': ('viva.ingest.pipeline_models',
+                                                       'viva/ingest/pipeline_models.py'),
+ 'instrument_dependency:viva.ingest.reader': ('viva.ingest.reader', 'viva/ingest/reader.py'),
+ 'instrument_dependency:viva.ingest.registry': ('viva.ingest.registry', 'viva/ingest/registry.py'),
+ 'instrument_dependency:viva.instrument_claims': ('viva.instrument_claims', 'viva/instrument_claims.py'),
+ 'instrument_dependency:viva.instrument_conversation': ('viva.instrument_conversation',
+                                                        'viva/instrument_conversation.py'),
+ 'instrument_dependency:viva.instrument_evidence': ('viva.instrument_evidence',
+                                                    'viva/instrument_evidence.py'),
+ 'selected_balance_dependency:viva.answer_program.selected_balances': ('viva.answer_program.selected_balances', 'viva/answer_program/selected_balances.py'),
+ 'selected_balance_dependency:viva.tools.account_balances': ('viva.tools.account_balances', 'viva/tools/account_balances.py'),
+ 'selected_balance_dependency:viva.ledger.ledger': ('viva.ledger.ledger', 'viva/ledger/ledger.py'),
+ 'instrument_dependency:viva.instrument_runtime': ('viva.instrument_runtime',
+                                                   'viva/instrument_runtime.py'),
+ 'instrument_dependency:viva.ledger.apr_context': ('viva.ledger.apr_context',
+                                                   'viva/ledger/apr_context.py'),
+ 'instrument_dependency:viva.ledger.instruments': ('viva.ledger.instruments',
+                                                   'viva/ledger/instruments.py'),
+ 'instrument_dependency:viva.read_store.allocation_continuation': ('viva.read_store.allocation_continuation',
+                                                                   'viva/read_store/allocation_continuation.py'),
+ 'instrument_dependency:viva.read_store.apr_context_sql': ('viva.read_store.apr_context_sql',
+                                                           'viva/read_store/apr_context_sql.py'),
+ 'instrument_dependency:viva.read_store.document_index': ('viva.read_store.document_index',
+                                                          'viva/read_store/document_index.py'),
+ 'instrument_dependency:viva.read_store.document_sections': ('viva.read_store.document_sections',
+                                                             'viva/read_store/document_sections.py'),
+ 'instrument_dependency:viva.read_store.documents_page': ('viva.read_store.documents_page',
+                                                          'viva/read_store/documents_page.py'),
+ 'instrument_dependency:viva.read_store.instrument_authority': ('viva.read_store.instrument_authority',
+                                                                'viva/read_store/instrument_authority.py'),
+ 'instrument_dependency:viva.read_store.instrument_authority_contracts': ('viva.read_store.instrument_authority_contracts',
+                                                                          'viva/read_store/instrument_authority_contracts.py'),
+ 'instrument_dependency:viva.read_store.instrument_authority_sql': ('viva.read_store.instrument_authority_sql',
+                                                                    'viva/read_store/instrument_authority_sql.py'),
+ 'instrument_dependency:viva.read_store.instrument_math': ('viva.read_store.instrument_math',
+                                                           'viva/read_store/instrument_math.py'),
+ 'instrument_dependency:viva.read_store.instrument_review': ('viva.read_store.instrument_review',
+                                                             'viva/read_store/instrument_review.py'),
+ 'instrument_dependency:viva.read_store.instrument_sql': ('viva.read_store.instrument_sql',
+                                                          'viva/read_store/instrument_sql.py'),
+ 'instrument_dependency:viva.read_store.store': ('viva.read_store.store', 'viva/read_store/store.py'),
+ 'instrument_dependency:viva.rebuild': ('viva.rebuild', 'viva/rebuild.py'),
+ 'instrument_dependency:viva.session': ('viva.session', 'viva/session.py'),
+ 'instrument_dependency:viva.surface.capabilities': ('viva.surface.capabilities',
+                                                     'viva/surface/capabilities.py'),
+ 'instrument_dependency:viva.surface.conversation': ('viva.surface.conversation',
+                                                     'viva/surface/conversation.py'),
+ 'instrument_dependency:viva.surface.numerical_receipts': ('viva.surface.numerical_receipts',
+                                                           'viva/surface/numerical_receipts.py'),
+ 'instrument_dependency:viva.surface.operations': ('viva.surface.operations',
+                                                   'viva/surface/operations.py'),
+ 'instrument_dependency:viva.tools.instruments': ('viva.tools.instruments', 'viva/tools/instruments.py')}
+        resources['instrument_dependency:viva.surface.documents_page']=('viva.surface.documents_page','viva/surface/documents_page.py')
+        resources['instrument_dependency:viva.ledger.projection.coverage']=('viva.ledger.projection.coverage','viva/ledger/projection/coverage.py')
+        resources['instrument_dependency:viva.read_store.documents']=('viva.read_store.documents','viva/read_store/documents.py')
+        digests.update({name: hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+                        for name, path in SemanticFamilyRegistry._admitted_source_only_paths(resources).items()})
         return digests
 
     @staticmethod
-    def _admitted_source_only_paths():
+    def _admitted_source_only_paths(resources=None):
         """Authenticate disclosure source bytes without executing their tier."""
         anchor = pathlib.Path(inspect.getsourcefile(inspect.getmodule(SemanticFamilyRegistry)))
         package = anchor.parent.parent
         if anchor.resolve(strict=True) != anchor or package.resolve(strict=True) != package:
             raise RuntimeError("admission source artifact: noncanonical package anchor")
-        resources = {
-            "financial_surface_overview": ("viva.surface.overview", "viva/surface/overview.py"),
-        }
+        if resources is None:
+            resources = {
+                "financial_surface_overview": ("viva.surface.overview", "viva/surface/overview.py"),
+            }
         if getattr(sys, "frozen", False) is True:
             extraction = pathlib.Path(sys._MEIPASS)
             if not extraction.is_absolute() or not extraction.is_dir():
@@ -955,7 +1208,7 @@ class SemanticFamilyRegistry:
             if manifest.resolve(strict=True) != manifest or not manifest.is_file():
                 raise RuntimeError("admission source artifact: invalid source map resource")
             mapping = json.loads(manifest.read_bytes())
-            if not isinstance(mapping, dict) or len(mapping) != 62:
+            if not isinstance(mapping, dict) or len(mapping) != 160:
                 raise RuntimeError("admission source artifact: incomplete source map")
             for name, relative in mapping.items():
                 if (not isinstance(name, str) or not isinstance(relative, str)
@@ -1050,14 +1303,14 @@ class SemanticFamilyRegistry:
 
     @staticmethod
     def _row_surfaces(name, row):
-        if name == "account_phrase":
+        if _ENTITY_PARAMETER_GROUPS.get(name) == "accounts":
             return tuple(value for value in (
                 row.get("id"), row.get("name"), row.get("institution")) if value)
         return tuple(value for value in (row.get("id"), row.get("label")) if value)
 
     @staticmethod
     def _display_label(name, row):
-        if name == "account_phrase":
+        if _ENTITY_PARAMETER_GROUPS.get(name) == "accounts":
             return str(row.get("name") or row.get("institution") or row.get("id") or "")
         return str(row.get("label") or row.get("id") or "")
 
@@ -1079,6 +1332,11 @@ class SemanticFamilyRegistry:
             if allowed and value not in allowed:
                 raise ContractError(
                     f"semantic parameter {name!r} is not in the supplied entity catalog")
+        for calendar_year_name in ('year','from_year','to_year'):
+            if calendar_year_name not in parameters:continue
+            value=parameters[calendar_year_name]
+            if re.fullmatch(r'[0-9]{4}',value) is None or not 1<=int(value)<=9998:
+                raise ContractError('retirement year must be a four-digit calendar year')
         if "horizon_days" in parameters:
             value=parameters["horizon_days"]
             if not re.fullmatch(r"[0-9]{1,3}",value) or not 1 <= int(value) <= 366:
@@ -1180,7 +1438,7 @@ class SemanticFamilyRegistry:
                     raise ContractError(
                         f"semantic parameter {name!r} differs from its source quote")
                 continue
-            if name not in ("from", "to", "baseline_from", "baseline_to"):
+            if name not in ("from", "to", "baseline_from", "baseline_to", "as_of"):
                 raise ContractError("only date edges may be derived")
             parsed = None
             for pattern in ("%B %Y", "%b %Y", "%Y-%m"):

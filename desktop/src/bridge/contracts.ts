@@ -41,6 +41,7 @@ export const REQUEST_REFUSED = "invalid_request";
 // engine's, not this window's: the one sentence in this product that says
 // nothing here is real is a shipped sentence, and a shell composing its own
 // would put it out of the pack's reach.
+export type SamplePreparation = { state: "preparing" | "ready" | "failed"; sample_version: "five-year-life-v1"; completed_documents: number; total_documents: 794; posted_documents: number; held_documents: number; phase: "validating" | "capturing" | "checking" | "ready" | "failed"; message: string };
 export type SampleFrame = { title: string; detail: string; leave: string };
 export type RememberedVaultOpen =
   | { state: "absent" }
@@ -87,6 +88,7 @@ export type BridgeTransport = {
   pickVaultDirectory?: () => Promise<string | null>;
   pickBackupSavePath?: () => Promise<string | null>;
   pickDocumentPaths?: () => Promise<readonly string[]>;
+  pickMultipleDocumentPaths?: () => Promise<readonly string[]>;
   subscribeToDroppedPaths?: (listen: DroppedPathsListener) => Promise<() => void>;
   subscribeToJobProgress?: (listen: JobProgressListener) => Promise<() => void>;
 };
@@ -104,12 +106,14 @@ export type BridgeClient = {
   // is nowhere here to point it at a folder somebody keeps their own records
   // in, and nowhere to learn what would open it.
   openSampleVault: () => Promise<SampleFrame | null>;
+  prepareSampleVault?: () => Promise<SamplePreparation>;
+  readSamplePreparation?: () => Promise<SamplePreparation>;
   pickVaultDirectory?: () => Promise<string | null>;
   pickBackupSavePath?: () => Promise<string | null>;
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readOverviewAccounts: (refresh?: boolean) => Promise<SurfaceReadResult>;
   readSpending?: (parameters: SurfaceParameters) => Promise<SurfaceReadResult>;
-  readDocuments: () => Promise<SurfaceReadResult>;
+  readDocuments: (parameters?: { contract_version: "documents-page-v1"; cursor?: string; selected_document_id?: string }) => Promise<SurfaceReadResult>;
   readDocumentPreview?: (documentId: string, page: number) => Promise<unknown>;
   readConversation: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readReview?: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
@@ -149,8 +153,11 @@ export type BridgeClient = {
   // One path per call. Several files are several frames, one after another,
   // because the sidecar answers one request before it reads the next.
   uploadDocument: (path: string) => Promise<unknown>;
+  readRetainedDocuments?: (documents: readonly { documentId: string; confirmationToken: string }[]) => Promise<unknown>;
+  uploadDocuments?: (paths: readonly string[]) => Promise<unknown>;
   recoverDocument?: (jobId: string) => Promise<unknown>;
   pickDocumentPaths?: () => Promise<readonly string[]>;
+  pickMultipleDocumentPaths?: () => Promise<readonly string[]>;
   subscribeToDroppedPaths?: (listen: DroppedPathsListener) => Promise<() => void>;
   subscribeToJobProgress?: (listen: JobProgressListener) => Promise<() => void>;
   // Stop one job, named by the identity the sidecar minted for it. A job is
@@ -191,7 +198,7 @@ export type BridgeClient = {
   // One question, and whether its text will be in front of the person. The
   // second is a fact about this screen rather than a preference: it is the
   // input to the rule that a figure is never spoken with nowhere to check it.
-  askViva: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: import("../surface/types").AskContextMode, movementIds?: readonly string[]) => Promise<unknown>;
+  askViva: (question: string, mirrored: boolean, planRequest?: boolean, contextMode?: import("../surface/types").AskContextMode, movementIds?: readonly string[], continuationRecovery?: import("../surface/types").ContinuationRecovery) => Promise<unknown>;
   undoAccountingCorrection?: (correctionId: string) => Promise<unknown>;
   readAccounting?: (start: string, end: string) => Promise<SurfaceReadResult>;
   answerQuestion: (questionId: string, said: string) => Promise<unknown>;

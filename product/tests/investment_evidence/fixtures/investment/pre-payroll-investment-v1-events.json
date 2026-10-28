@@ -1,0 +1,757 @@
+[
+  {
+    "event_type": "AccountOpened",
+    "event_id": "83f20fdc02e647b1a4b6803901361a3c",
+    "occurred_at": "2025-01-01",
+    "provenance": {
+      "doc_id": "",
+      "page": null,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "account_id": "Assets:BrokerTest",
+      "account_names": [],
+      "account_number": "",
+      "currency": "USD",
+      "institution": "",
+      "jurisdiction": "",
+      "kind": "investment",
+      "name": "Test broker",
+      "origin": "issued"
+    }
+  },
+  {
+    "event_type": "AccountOpened",
+    "event_id": "156734139c7f4f97b535f60b7e6f98d0",
+    "occurred_at": "2025-01-01",
+    "provenance": {
+      "doc_id": "",
+      "page": null,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "account_id": "Assets:BankTest",
+      "account_names": [],
+      "account_number": "",
+      "currency": "USD",
+      "institution": "",
+      "jurisdiction": "",
+      "kind": "depository",
+      "name": "Test bank",
+      "origin": "issued"
+    }
+  },
+  {
+    "event_type": "TransactionRecorded",
+    "event_id": "b15917d1c3084162b8c2c8610d3d9e42",
+    "occurred_at": "2025-12-31",
+    "provenance": {
+      "doc_id": "source",
+      "page": 2,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "description": "contribution source row",
+      "postings": [
+        {
+          "account": "Assets:BrokerTest",
+          "amount": "100",
+          "grade": "verified"
+        },
+        {
+          "account": "Transfers:Uncategorized",
+          "amount": "-100",
+          "grade": "unverified"
+        }
+      ],
+      "tags": []
+    }
+  },
+  {
+    "event_type": "TransactionRecorded",
+    "event_id": "e5a1ae2e04f84e21a1b4f53a90ae9d93",
+    "occurred_at": "2025-12-31",
+    "provenance": {
+      "doc_id": "fund-source",
+      "page": 1,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "counterparty_reference": "",
+      "description": "source funding",
+      "postings": [
+        {
+          "account": "Assets:BankTest",
+          "amount": "-100",
+          "grade": "verified"
+        },
+        {
+          "account": "Expenses:Uncategorized",
+          "amount": "100",
+          "grade": "unverified"
+        }
+      ],
+      "source_reference": "PRINTED-X",
+      "tags": []
+    }
+  },
+  {
+    "event_type": "TransactionRecorded",
+    "event_id": "e9eac12404954de29cf70fb8b845287c",
+    "occurred_at": "2025-12-31",
+    "provenance": {
+      "doc_id": "source",
+      "page": 2,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "description": "dividend source row",
+      "postings": [
+        {
+          "account": "Assets:BrokerTest",
+          "amount": "3",
+          "grade": "verified"
+        },
+        {
+          "account": "Income:Dividends",
+          "amount": "-3",
+          "grade": "verified"
+        }
+      ],
+      "tags": []
+    }
+  },
+  {
+    "event_type": "TransactionRecorded",
+    "event_id": "68cec032cfcf4d279f38e0b52a294aa8",
+    "occurred_at": "2025-12-31",
+    "provenance": {
+      "doc_id": "source",
+      "page": 2,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "description": "sell source row",
+      "postings": [
+        {
+          "account": "Assets:BrokerTest",
+          "amount": "30",
+          "grade": "verified"
+        },
+        {
+          "account": "Assets:Investments",
+          "amount": "-35",
+          "grade": "verified"
+        },
+        {
+          "account": "Income:CapitalGains",
+          "amount": "5",
+          "grade": "verified"
+        }
+      ],
+      "tags": []
+    }
+  },
+  {
+    "event_type": "PositionObserved",
+    "event_id": "266ce2a7bf20461dbabe555ad70b1f4e",
+    "occurred_at": "2025-12-31",
+    "provenance": {
+      "doc_id": "source",
+      "page": 2,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "account_id": "Assets:BrokerTest",
+      "cost_basis": "20",
+      "currency": "USD",
+      "grade": "corroborated",
+      "instrument": "TEST-SEC",
+      "market_value": "25",
+      "units": "1.25",
+      "valuation_class": "measured"
+    }
+  },
+  {
+    "event_type": "InvestmentActivityRowObserved",
+    "event_id": "45027e8efadc4687813a376fb59b8596",
+    "occurred_at": "2025-12-31",
+    "provenance": {
+      "doc_id": "source",
+      "page": 2,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "row": {
+        "amount": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "100"
+        },
+        "cash_body_digest": "d362b75f73411efe171f4196ab3144fd199e9b1fdbb3e7d19e122bbec6535471",
+        "cash_event_id": "b15917d1c3084162b8c2c8610d3d9e42",
+        "counterpart_reference": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "BANK-REF"
+        },
+        "date": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "2025-12-31"
+        },
+        "description": "contribution source row",
+        "funding_reference": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "PRINTED-X"
+        },
+        "funding_role": "own_bank",
+        "funding_role_source": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "own_bank"
+        },
+        "funding_status": "accepted",
+        "funding_witness": {
+          "counterpart_account": "Assets:BankTest",
+          "counterpart_reference": {
+            "anchor": "",
+            "document": "fund-source",
+            "grade": "unverified",
+            "page": 1,
+            "raw": "",
+            "status": "accepted",
+            "value": "BANK-REF"
+          },
+          "reference": {
+            "anchor": "",
+            "document": "fund-source",
+            "grade": "unverified",
+            "page": 1,
+            "raw": "",
+            "status": "accepted",
+            "value": "PRINTED-X"
+          },
+          "role": "own_bank",
+          "source_row_event_id": "",
+          "transaction_digest": "1025ec98bb2f9410f3365af4d0cd2ac4ce7770f25556c2a21277347086543b35",
+          "transaction_id": "e5a1ae2e04f84e21a1b4f53a90ae9d93"
+        },
+        "instrument": null,
+        "kind": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "contribution"
+        },
+        "local_id": "0",
+        "namespace": null,
+        "observation_id": "statement-row0",
+        "ordinal": 0,
+        "printed_reference": null,
+        "realized_gain": null
+      },
+      "statement_id": "statement"
+    }
+  },
+  {
+    "event_type": "InvestmentActivityRowObserved",
+    "event_id": "60a6b3de842b464baaa7a1b067db4d8a",
+    "occurred_at": "2025-12-31",
+    "provenance": {
+      "doc_id": "source",
+      "page": 2,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "row": {
+        "amount": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "3"
+        },
+        "cash_body_digest": "03e465035f7de436ec292413d18898ac86380f25fb426f2f4ae257cce93bd3d3",
+        "cash_event_id": "e9eac12404954de29cf70fb8b845287c",
+        "counterpart_reference": null,
+        "date": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "2025-12-31"
+        },
+        "description": "dividend source row",
+        "funding_reference": null,
+        "funding_role": "unknown",
+        "funding_role_source": null,
+        "funding_status": "unavailable",
+        "funding_witness": null,
+        "instrument": null,
+        "kind": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "dividend"
+        },
+        "local_id": "1",
+        "namespace": null,
+        "observation_id": "statement-row1",
+        "ordinal": 1,
+        "printed_reference": null,
+        "realized_gain": null
+      },
+      "statement_id": "statement"
+    }
+  },
+  {
+    "event_type": "InvestmentActivityRowObserved",
+    "event_id": "664cf8145f9f4d508eb1736abe0e82e7",
+    "occurred_at": "2025-12-31",
+    "provenance": {
+      "doc_id": "source",
+      "page": 2,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "row": {
+        "amount": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "30"
+        },
+        "cash_body_digest": "f59b9ccfb0bb7367470722dbf357f375daedd721f5b4d5ce1253a38e826f0381",
+        "cash_event_id": "68cec032cfcf4d279f38e0b52a294aa8",
+        "counterpart_reference": null,
+        "date": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "2025-12-31"
+        },
+        "description": "sell source row",
+        "funding_reference": null,
+        "funding_role": "unknown",
+        "funding_role_source": null,
+        "funding_status": "unavailable",
+        "funding_witness": null,
+        "instrument": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "TEST-SEC"
+        },
+        "kind": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "sell"
+        },
+        "local_id": "2",
+        "namespace": null,
+        "observation_id": "statement-row2",
+        "ordinal": 2,
+        "printed_reference": null,
+        "realized_gain": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "-5"
+        }
+      },
+      "statement_id": "statement"
+    }
+  },
+  {
+    "event_type": "InvestmentActivityStatementObserved",
+    "event_id": "b2e0c40690e94c35b0db3a438e20b314",
+    "occurred_at": "2025-12-31",
+    "provenance": {
+      "doc_id": "source",
+      "page": 2,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "observation_id": "statement",
+      "prefix": {
+        "event_count": 7,
+        "last_event_id": "266ce2a7bf20461dbabe555ad70b1f4e",
+        "prefix_digest": "177e52910c67aa4f919d99e5ff89eff414f041bbe13fe5a63cd795e89d7336f8"
+      },
+      "row_event_ids": [
+        "45027e8efadc4687813a376fb59b8596",
+        "60a6b3de842b464baaa7a1b067db4d8a",
+        "664cf8145f9f4d508eb1736abe0e82e7"
+      ],
+      "schema_version": "investment-evidence-v1",
+      "source_change_event_ids": [],
+      "statement": {
+        "account": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "Assets:BrokerTest"
+        },
+        "as_of": null,
+        "closing_cash": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "133"
+        },
+        "corroborates": null,
+        "currency": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "USD"
+        },
+        "disposition": "accepted_complete_nonempty",
+        "end": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "2025-12-31"
+        },
+        "explicit_empty": null,
+        "observation_id": "statement",
+        "opening_cash": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "0"
+        },
+        "positions": [
+          {
+            "basis": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "20"
+            },
+            "identifier": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "TEST-SEC"
+            },
+            "label": null,
+            "position_body_digest": "04d93d1f716facc145dbf56e2b59c9c55300809e282fe78f94531f1e2b7f6119",
+            "position_event_id": "266ce2a7bf20461dbabe555ad70b1f4e",
+            "security_id": "4f3997ee03ef02d3372e49d20f8e99416f3e344e45290713a9b80a4e0c2d3091",
+            "units": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "1.25"
+            },
+            "value": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "25"
+            }
+          }
+        ],
+        "printed_reference": null,
+        "rows": [
+          {
+            "amount": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "100"
+            },
+            "cash_body_digest": "d362b75f73411efe171f4196ab3144fd199e9b1fdbb3e7d19e122bbec6535471",
+            "cash_event_id": "b15917d1c3084162b8c2c8610d3d9e42",
+            "counterpart_reference": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "BANK-REF"
+            },
+            "date": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "2025-12-31"
+            },
+            "description": "contribution source row",
+            "funding_reference": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "PRINTED-X"
+            },
+            "funding_role": "own_bank",
+            "funding_role_source": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "own_bank"
+            },
+            "funding_status": "accepted",
+            "funding_witness": {
+              "counterpart_account": "Assets:BankTest",
+              "counterpart_reference": {
+                "anchor": "",
+                "document": "fund-source",
+                "grade": "unverified",
+                "page": 1,
+                "raw": "",
+                "status": "accepted",
+                "value": "BANK-REF"
+              },
+              "reference": {
+                "anchor": "",
+                "document": "fund-source",
+                "grade": "unverified",
+                "page": 1,
+                "raw": "",
+                "status": "accepted",
+                "value": "PRINTED-X"
+              },
+              "role": "own_bank",
+              "source_row_event_id": "",
+              "transaction_digest": "1025ec98bb2f9410f3365af4d0cd2ac4ce7770f25556c2a21277347086543b35",
+              "transaction_id": "e5a1ae2e04f84e21a1b4f53a90ae9d93"
+            },
+            "instrument": null,
+            "kind": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "contribution"
+            },
+            "local_id": "0",
+            "namespace": null,
+            "observation_id": "statement-row0",
+            "ordinal": 0,
+            "printed_reference": null,
+            "realized_gain": null
+          },
+          {
+            "amount": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "3"
+            },
+            "cash_body_digest": "03e465035f7de436ec292413d18898ac86380f25fb426f2f4ae257cce93bd3d3",
+            "cash_event_id": "e9eac12404954de29cf70fb8b845287c",
+            "counterpart_reference": null,
+            "date": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "2025-12-31"
+            },
+            "description": "dividend source row",
+            "funding_reference": null,
+            "funding_role": "unknown",
+            "funding_role_source": null,
+            "funding_status": "unavailable",
+            "funding_witness": null,
+            "instrument": null,
+            "kind": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "dividend"
+            },
+            "local_id": "1",
+            "namespace": null,
+            "observation_id": "statement-row1",
+            "ordinal": 1,
+            "printed_reference": null,
+            "realized_gain": null
+          },
+          {
+            "amount": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "30"
+            },
+            "cash_body_digest": "f59b9ccfb0bb7367470722dbf357f375daedd721f5b4d5ce1253a38e826f0381",
+            "cash_event_id": "68cec032cfcf4d279f38e0b52a294aa8",
+            "counterpart_reference": null,
+            "date": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "2025-12-31"
+            },
+            "description": "sell source row",
+            "funding_reference": null,
+            "funding_role": "unknown",
+            "funding_role_source": null,
+            "funding_status": "unavailable",
+            "funding_witness": null,
+            "instrument": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "TEST-SEC"
+            },
+            "kind": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "sell"
+            },
+            "local_id": "2",
+            "namespace": null,
+            "observation_id": "statement-row2",
+            "ordinal": 2,
+            "printed_reference": null,
+            "realized_gain": {
+              "anchor": "",
+              "document": "source",
+              "grade": "unverified",
+              "page": 2,
+              "raw": "",
+              "status": "accepted",
+              "value": "-5"
+            }
+          }
+        ],
+        "snapshot_complete": true,
+        "start": {
+          "anchor": "",
+          "document": "source",
+          "grade": "unverified",
+          "page": 2,
+          "raw": "",
+          "status": "accepted",
+          "value": "2025-01-01"
+        }
+      }
+    }
+  }
+]

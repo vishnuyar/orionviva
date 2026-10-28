@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, field
 
 from ..tools.runner import _Ground
+from ..instrument_claims import CLAIMS
 
 
 @dataclass
@@ -33,6 +34,7 @@ class EvidenceGraph:
             "figures": set(self.ground.book), "entities": set(self.ground.entities),
             "periods": set(self.ground.periods), "readings": set(self.ground.readings),
             "dates": set(self.ground.dates),
+            "instrument_assertions": set(self.ground.instrument_assertions),
         }
         self.ground.stamp(result)
         refs = {
@@ -45,6 +47,10 @@ class EvidenceGraph:
                 ({str(result.dated)} if result.dated else set())
                 | {str(fig.get("dated")) for fig in result.figures if fig.get("dated")})),
         }
+        for reference in ("instrument_date", "instrument_text", "instrument_normalized"):
+            refs[reference] = tuple(a["id"] for a in result.instrument_assertions
+                                    if CLAIMS[a["claim"]].reference_kind == reference)
+        refs["allocation_target"]=tuple(a["id"] for a in result.instrument_premises)
         self.by_node[node_id] = refs
 
     def attach(self, node_id: str, source_node: str) -> None:
@@ -60,6 +66,9 @@ class EvidenceGraph:
     def to_dict(self) -> dict:
         return {
             "figures": list(self.ground.book.values()),
+            "instrument_assertions": [dict(a) for a in self.ground.instrument_assertions.values()],
+            "allocation_premises": [dict(a) for a in self.ground.instrument_premises.values()],
+            "instrument_assertion_groups": {key:{"assertion_ids":list(value.assertion_ids),"claim":value.claim,"account":value.account,"reference_kind":value.reference_kind} for key,value in self.ground.instrument_assertion_groups.items()},
             "measurement_dates": dict(self.ground.measurement_dates),
             "entities": list(self.ground.entities.values()),
             "periods": list(self.ground.periods.values()),

@@ -1,0 +1,10 @@
+Refinance settlement source guidance:
+- Preserve separate old-loan and replacement-loan printed identities, explicit
+  funded principal, payoff principal, cash contribution, cash out, financed
+  costs, itemized fees and printed total fees. Do not treat funding as income.
+- A printed zero is a sourced amount; an omitted field is not a zero. Do not
+  force sources and uses to balance or invent a missing fee or contribution.
+- old_closing_principal requires an explicit old closing/paid-off measurement.
+  Settlement intention/payoff instructions alone do not certify old-loan zero.
+- Replacement terms remain distinct from old terms; note rate and disclosure
+  APR remain separate. Copy only terms explicitly printed on this source.

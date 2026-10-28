@@ -4,12 +4,13 @@ import ast
 import inspect
 import json
 import re
+import textwrap
 from pathlib import Path
 
 import pytest
 
 from viva.ledger import events
-from viva.ledger import EventStore, Provenance
+from viva.ledger import EventStore, LedgerProjection, Provenance, simple_transaction
 from viva.ledger.projection import core
 from viva.read_store import ReadStore, ReadStoreError
 from viva.read_store import store
@@ -31,6 +32,7 @@ FAMILIES = {
     "PositionObserved": ("positions", "typed", "Overview Accounts Activity Statements Trust"),
     "DocumentCaptured": ("documents", "typed", "Statements Review Trust"),
     "ReadRecorded": ("document_reads", "typed+body-json", "Statements Review Trust"),
+    "ModelExtractionResponseRecorded": ("extraction_responses", "bounded-summary", "Trust"),
     "StatementHeld": ("document_holds", "typed+nested-json", "Statements Review Conversation"),
     "BrokerageActivityHeld": ("document_holds", "typed+nested-json", "Statements Review Conversation"),
     "BrokerageActivityResolved": ("document_hold_resolutions", "typed", "Statements Review"),
@@ -62,6 +64,7 @@ FAMILIES = {
 
 
 BODY_FIELDS = {
+    "ModelExtractionResponseRecorded": "schema_version doc_id extraction_id phase phase_attempt transport_attempt adapter_kind configured_model prompt_version input_mode response_status response_bytes_base64 response_encoding",
     "AccountingRuleRecorded": "rule_id anchor anchor_date context legs category starts ends recurrence excluded said prompt_version",
     "AccountingRuleApplied": "rule_id movement previous previous_category",
     "AccountingCorrectionRecorded": "correction_id rule_id movements previous legs said context created_accounts",
@@ -157,6 +160,24 @@ def test_typed_vocabulary_has_exactly_one_materialized_destination_register():
     projection = inspect.getsource(core.ProjectionCore._apply)
     projected = set(re.findall(r'["\']([A-Z][A-Za-z]+)["\']', projection))
     assert declared - {"CorrectionApplied"} <= projected
+    assert FAMILIES["ModelExtractionResponseRecorded"] == (
+        "extraction_responses", "bounded-summary", "Trust")
+    # Raw receipts may support authenticated classification linkage, but this
+    # branch may touch only that cache, never financial projection state.
+    tree = ast.parse(textwrap.dedent(projection))
+    raw_branches = [node for node in ast.walk(tree) if isinstance(node, ast.If)
+                    and isinstance(node.test, ast.Compare)
+                    and isinstance(node.test.left, ast.Name)
+                    and node.test.left.id == "et"
+                    and len(node.test.ops) == len(node.test.comparators) == 1
+                    and isinstance(node.test.ops[0], ast.Eq)
+                    and isinstance(node.test.comparators[0], ast.Constant)
+                    and node.test.comparators[0].value == "ModelExtractionResponseRecorded"]
+    assert len(raw_branches) == 1
+    touched = {node.attr for statement in raw_branches[0].body
+               for node in ast.walk(statement) if isinstance(node, ast.Attribute)
+               and isinstance(node.value, ast.Name) and node.value.id == "self"}
+    assert touched == {"_classification_responses"}
     materializer = inspect.getsource(store.ReadStore._materialize_event)
     for family, (table, representation, destinations) in FAMILIES.items():
         assert family in materializer, family
@@ -180,7 +201,7 @@ def test_representative_typed_events_cover_every_registered_field():
     from product.tests import test_read_store_document_field_coverage as documents
 
     corpus = (_json_family_corpus() + _accounting_family_corpus() + typed._corpus() + overlays._corpus()
-              + documents._corpus())
+              + documents._corpus() + _response_corpus())
     observed = {}
     for event in corpus:
         if event.event_type == "FutureUnknown":
@@ -376,3 +397,120 @@ def test_unrecognized_generation_format_refuses_open(tmp_path: Path):
     connection.close()
     with pytest.raises(ReadStoreError):
         ReadStore.open(path, PASSPHRASE)
+
+
+def _response_corpus():
+    from viva.extraction_responses import response_body
+    body=response_body("doc-response","response-operation","extract",0,0,
+        "openai_compatible","route","prompt","text",200,b'{"usage":{"cost":0}}')
+    return [events.model_extraction_response_recorded(body,"2026-01-01")]
+
+
+def _financial_snapshot(projection):
+    """Public financial answers, including their grades and provenance."""
+    names = ("accounts", "account_infos", "income_by_currency", "posted_doc_ids",
+             "document_contributions", "open_holds", "open_activity_holds",
+             "movements", "movement_grades", "spending_by_currency", "positions",
+             "instrument_allocations", "instrument_component_states")
+    result = {name: getattr(projection, name)() for name in names}
+    result["balances"] = {account: projection.balance(account)
+                          for account in projection.accounts()}
+    result["transactions"] = {account: projection.transactions(account)
+                              for account in projection.accounts()}
+    return result
+
+
+def _primary_rows(reads, excluded=()):
+    with reads.open_reader() as revision:
+        return {table: revision.connection.execute(
+            f"SELECT * FROM {table} ORDER BY source_sequence").fetchall()
+            for table in {row[0] for row in FAMILIES.values()} - set(excluded)}
+
+
+def _raw_boundary_source(tmp_path, phase):
+    from viva.extraction_responses import response_body
+    canonical = EventStore.open(tmp_path / "events.jsonl", PASSPHRASE)
+    for event in (
+        events.account_opened("checking", "depository", "Checking", "USD", "2026-01-01"),
+        events.opening_balance_observed("checking", "1000", "2026-01-01"),
+        simple_transaction("checking", "-25", "Known purchase", "2026-01-02"),
+        events.document_captured("raw-claims", "public.pdf", 1, "unknown", 0,
+                                 "2026-01-03"),
+    ):
+        canonical.append(event)
+    claims = json.dumps({"doc_type": "credit_card_statement", "doc_type_confidence": 0.99,
+                         "account_id": "invented-account", "opening_balance": "999999",
+                         "closing_balance": "999999", "transactions": [{"amount": "999999"}],
+                         "positions": [{"market_value": "999999"}],
+                         "posted": True, "certified": True})
+    wire = json.dumps({"choices": [{"message": {"content": claims}}],
+                       "usage": {"prompt_tokens": 5, "completion_tokens": 7,
+                                 "cost": 0.001}}).encode()
+    raw = events.model_extraction_response_recorded(response_body(
+        "raw-claims", "public-operation", phase, 0, 0, "openai_compatible",
+        "public-model", "public-prompt", "text", 200, wire), "2026-01-03")
+    return canonical, raw, claims
+
+
+@pytest.mark.parametrize("phase", ["classify", "extract"])
+def test_authenticated_raw_financial_claims_have_no_financial_authority(tmp_path, phase):
+    canonical, raw, _ = _raw_boundary_source(tmp_path, phase)
+    before = LedgerProjection(canonical.events())
+    expected = _financial_snapshot(before)
+    old_identity = canonical.authenticated_identity()
+    old_events = tuple(event.to_dict() for event in canonical.events())
+    with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
+        assert reads.synchronize(canonical).state == "rebuilt"
+        domain_rows = _primary_rows(reads, {"extraction_responses"})
+        canonical.append(raw)
+        after = LedgerProjection(canonical.events())
+        assert _financial_snapshot(after) == expected
+        assert after.captured_docs() == before.captured_docs() == {"raw-claims": "unknown"}
+        assert after.read_attempted_docs() == before.read_attempted_docs() == set()
+        assert after.read_parsed_docs() == before.read_parsed_docs() == set()
+        new_identity = canonical.authenticated_identity()
+        assert new_identity[0] == old_identity[0] + 1
+        assert new_identity[1] != old_identity[1]
+        assert tuple(event.to_dict() for event in canonical.events())[:-1] == old_events
+        assert reads.synchronize(canonical).state == "caught_up"
+        assert _primary_rows(reads, {"extraction_responses"}) == domain_rows
+        with reads.open_reader() as revision:
+            connection = revision.connection
+            row = connection.execute("SELECT summary_json FROM extraction_responses").fetchone()
+            summary = json.loads(row[0])
+            assert summary == dict(doc_id="raw-claims", extraction_id="public-operation",
+                phase=phase, phase_attempt=0, transport_attempt=0, response_id=raw.event_id,
+                input_tokens=5, output_tokens=7, cost_usd="0.001")
+            assert "999999" not in row[0] and "response_bytes_base64" not in summary
+            assert connection.execute("SELECT source_count FROM projection_meta").fetchone() == (5,)
+            assert connection.execute("SELECT event_id,event_type FROM applied_events WHERE sequence=4").fetchone() == (
+                raw.event_id, "ModelExtractionResponseRecorded")
+            assert revision.documents_projection().captured_docs() == {"raw-claims": "unknown"}
+
+
+def test_authenticated_linked_classification_changes_only_type_metadata(tmp_path):
+    canonical, raw, claims = _raw_boundary_source(tmp_path, "classify")
+    expected = _financial_snapshot(LedgerProjection(canonical.events()))
+    with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
+        reads.synchronize(canonical)
+        domain_rows = _primary_rows(reads, {"extraction_responses", "document_reads"})
+        canonical.append(raw)
+        assert LedgerProjection(canonical.events()).captured_docs() == {"raw-claims": "unknown"}
+        canonical.append(events.read_recorded("raw-claims", "public-model", "public-prompt",
+            "text", claims, 0.001, 5, 7, True, None, "2026-01-03", phase="classify",
+            transport_receipt_ids=[raw.event_id], transport_complete=True,
+            extraction_id="public-operation", phase_attempt=0))
+        projection = LedgerProjection(canonical.events())
+        assert projection.captured_docs() == {"raw-claims": "credit_card_statement"}
+        assert projection.read_attempted_docs() == {"raw-claims"}
+        assert projection.read_parsed_docs() == set()
+        assert _financial_snapshot(projection) == expected
+        assert reads.synchronize(canonical).state == "caught_up"
+        assert _primary_rows(reads, {"extraction_responses", "document_reads"}) == domain_rows
+        with reads.open_reader() as revision:
+            assert revision.documents_projection().captured_docs() == {
+                "raw-claims": "credit_card_statement"}
+            assert revision.connection.execute("SELECT doc_type FROM document_library").fetchone() == (
+                "credit_card_statement",)
+            assert revision.connection.execute("SELECT doc_type FROM documents").fetchone() == ("unknown",)
+            assert revision.connection.execute("SELECT source_count FROM projection_meta").fetchone() == (6,)

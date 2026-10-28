@@ -1,4 +1,5 @@
 import type { ReviewContext, ReviewData, ReviewItem, ReviewQuestionBinding, ReviewQuestionReferences, ReviewTarget } from "../types";
+import { parseSourceComponents } from "./documents";
 import { isRecord, optionalNonNegativeInteger } from "./primitives";
 
 const ACTIONS = ["open_question", "open_transaction"] as const;
@@ -106,8 +107,25 @@ function item(raw: unknown): ReviewItem | null {
   return { id, type: "question", typeLabel, marker: "?", markerLabel, label, reason, status: "open", context: parsedContext, target: parsedTarget, primaryAction, actionLabel, allowedActions: allowedActions as ReviewItem["allowedActions"], binding };
 }
 
+function documentAttention(raw: unknown): ReviewData["documentAttention"] | null {
+  if (!isRecord(raw) || raw.contract_version !== "instrument-document-review-v1" || raw.scope !== "revision" || !["ready", "unavailable"].includes(String(raw.state)) || !Array.isArray(raw.documents) || raw.documents.length > 50) return null;
+  const nonnegative = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+  if (!nonnegative(raw.shown_count) || raw.shown_count !== raw.documents.length) return null;
+  if (raw.state === "unavailable") return raw.total_documents === null && raw.remaining_count === null && raw.shown_count === 0 && typeof raw.unavailable_reason === "string" ? { state: "unavailable", totalDocuments: null, shownCount: 0, remainingCount: null, unavailableReason: raw.unavailable_reason, documents: [] } : null;
+  if (!nonnegative(raw.total_documents) || !nonnegative(raw.remaining_count) || raw.total_documents !== raw.shown_count + raw.remaining_count || raw.unavailable_reason !== null) return null;
+  const documents: NonNullable<ReviewData["documentAttention"]>["documents"][number][] = [];
+  for (const row of raw.documents) {
+    if (!isRecord(row) || typeof row.document_id !== "string" || !/^[0-9a-f]{64}$/.test(row.document_id) || typeof row.filename !== "string" || new TextEncoder().encode(row.filename).length > 4096) return null;
+    const components = parseSourceComponents(row.components, row.document_id);
+    if (!components?.length || components.some((component) => !["held", "conflicted"].includes(component.disposition))) return null;
+    documents.push({ documentId: row.document_id, filename: row.filename, components });
+  }
+  if (new Set(documents.map((document) => document.documentId)).size !== documents.length) return null;
+  return { state: "ready", totalDocuments: raw.total_documents, shownCount: raw.shown_count, remainingCount: raw.remaining_count, unavailableReason: null, documents };
+}
+
 export function adaptReview(raw: unknown): ReviewData | null {
-  if (!isRecord(raw) || !exact(raw, ["state", "contract", "title", "summary", "actionable_count", "shown_count", "remaining_count", "types", "groups"])
+  if (!isRecord(raw) || !exact(raw, ["state", "contract", "title", "summary", "actionable_count", "shown_count", "remaining_count", "types", "groups", ...(raw.document_attention === undefined ? [] : ["document_attention"])])
       || raw.state !== "ready" || raw.contract !== "ReviewSummary.v1" || !Array.isArray(raw.types) || !Array.isArray(raw.groups)) return null;
   const actionableCount = optionalNonNegativeInteger(raw.actionable_count);
   const shownCount = optionalNonNegativeInteger(raw.shown_count);
@@ -136,5 +154,7 @@ export function adaptReview(raw: unknown): ReviewData | null {
       || types[0]?.label !== groups[0]?.label)) return null;
   const title = string(raw.title), summary = string(raw.summary);
   if (!title || !summary) return null;
-  return { contract: "ReviewSummary.v1", title, summary, actionableCount, shownCount, remainingCount, types: types as ReviewData["types"], groups: groups as ReviewData["groups"] };
+  const attention = raw.document_attention === undefined ? undefined : documentAttention(raw.document_attention);
+  if (attention === null) return null;
+  return { documentAttention: attention, contract: "ReviewSummary.v1", title, summary, actionableCount, shownCount, remainingCount, types: types as ReviewData["types"], groups: groups as ReviewData["groups"] };
 }

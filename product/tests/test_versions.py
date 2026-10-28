@@ -59,7 +59,7 @@ def test_the_manifest_and_the_files_agree():
 
 
 def test_tools_v25_is_active_and_v24_and_v23_remain_resolvable():
-    assert versions.active(PACKAGE, "tools") == "tools-v25"
+    assert versions.active(PACKAGE, "tools") == "tools-v29"
     assert versions.path_of(PACKAGE, "tools-v23").is_file()
     assert versions.path_of(PACKAGE, "tools-v24").is_file()
     assert versions.manifest(PACKAGE)["released"]["tools-v24"] == \
@@ -106,26 +106,81 @@ def test_an_undeclared_family_raises_and_says_what_is_declared():
     assert "semantic_request" in str(e.value)
 
 
-def test_no_version_id_is_declared_as_a_literal_in_the_modules_that_use_one():
-    """No module under `viva/` writes a released version id as its own literal.
+# Fixed historical wire discriminators are not active resource selections.
+# These exact AST sites and full source bytes are reviewed replay contracts.
+_FIXED_WIRE_VERSION_SITES = {'ingest/paystub.py': {'sha256': '90cd4887b8d61fc1de6778ecbb49f83647e8ea61b5f6b3cfa3b2a4afee1598a1',
+                       'sites': [(166, 97, 'payroll-source-v2')]},
+ 'ingest/registry.py': {'sha256': 'e0b51ac064ebb99b546418f56f98f2c89c282bee41b14b41e563b0a4f513f6b5',
+                        'sites': [(103, 24, 'payroll-source-v2')]},
+ 'investment/payroll_extraction.py': {'sha256': 'a3d88941829bc47f53c482422f804223a41b716df8f5f99521652eadbc6801ba',
+                                      'sites': [(26, 50, 'payroll-source-v2')]},
+ 'retirement_funding/authority.py': {'sha256': '26d1655bfbd0f757cfa7245b79e4e264b96da7b12b9a4169696cc267660f6b73',
+                                     'sites': [(74, 33, 'payroll-source-v2')]},
+ 'retirement_funding/payroll_v2.py': {'sha256': '9ce976307ea4eac6f3e2889a815e24b6a9e926c722e1e903bca3c66877e4b820',
+                                      'sites': [(24, 26, 'payroll-source-v2'),
+                                                (34, 103, 'payroll-source-v2')]},
+ 'retirement_funding/population.py': {'sha256': 'ed10c1c1e44d9794a1a804b54a939b474fe0f1517bd676257427048272fd3b0b',
+                                      'sites': [(93, 28, 'payroll-source-v2'),
+                                                (28, 27, 'payroll-source-v2'),
+                                                (24, 53, 'payroll-source-v2')]}}
 
-    The match is textual and reaches a quoted id only: an id assembled by
-    concatenation or by an f-string passes this test and is caught nowhere. The
-    extraction fragments the document-type registry names per row also pass,
-    because the manifest keys them with their `extract-` file prefix and the
-    registry rows carry the recorded id without it."""
-    declared = {v for v in versions.manifest(PACKAGE)["released"]}
-    offenders = []
-    for path in sorted(PACKAGE.rglob("*.py")):
-        if "__pycache__" in path.parts:
-            continue
-        source = path.read_text(encoding="utf-8")
+
+def _literal_version_offenders(root,declared):
+    import ast
+    import hashlib
+    import re
+    offenders=[]
+    for path in sorted(root.rglob('*.py')):
+        if '__pycache__' in path.parts:continue
+        source=path.read_text(encoding='utf-8')
+        relative=path.relative_to(root).as_posix()
+        approved=_FIXED_WIRE_VERSION_SITES.get(relative,{})
+        allowed=set()
+        if hashlib.sha256(path.read_bytes()).hexdigest()==approved.get('sha256'):
+            for node in ast.walk(ast.parse(source)):
+                if isinstance(node,ast.Constant) and (node.lineno,node.col_offset,node.value) in approved.get('sites',[]):
+                    allowed.add((node.lineno,node.col_offset,node.value))
         for version in declared:
-            if f'"{version}"' in source or f"'{version}'" in source:
-                offenders.append(f"{path.name} names {version}")
-    assert not offenders, (
-        "a version id is written as a literal again — read it through "
-        f"versions.active() instead: {offenders}")
+            for match in re.finditer(r"(['\"])"+re.escape(version)+r"\1",source):
+                line=source.count('\n',0,match.start())+1
+                column=match.start()-(source.rfind('\n',0,match.start())+1)
+                if (line,column,version) not in allowed:
+                    offenders.append(f'{relative}:{line}:{column} names {version}')
+    return offenders
+
+
+def test_no_version_id_is_declared_as_a_literal_in_the_modules_that_use_one():
+    offenders=_literal_version_offenders(PACKAGE,set(versions.manifest(PACKAGE)['released']))
+    assert not offenders, f'Active resource selection must use versions.active(): {offenders}'
+
+
+def test_fixed_wire_exception_rejects_added_literal_or_changed_ast_site(tmp_path):
+    relative='retirement_funding/payroll_v2.py'
+    target=tmp_path/relative;target.parent.mkdir(parents=True)
+    original=(PACKAGE/relative).read_text();target.write_text(original)
+    assert not _literal_version_offenders(tmp_path,{'payroll-source-v2','tools-v28'})
+    target.write_text(original+"\nACTIVE_RESOURCE = 'tools-v28'\n")
+    offenders=_literal_version_offenders(tmp_path,{'payroll-source-v2','tools-v28'})
+    assert any('tools-v28' in item for item in offenders)
+    assert any('payroll-source-v2' in item for item in offenders)
+    target.write_text('\n'+original)
+    assert _literal_version_offenders(tmp_path,{'payroll-source-v2'})
+
+
+def test_historical_payroll_wire_roundtrips_independently_of_active_resource(monkeypatch):
+    import copy
+    from _source_emitter_support import TESTS
+    from test_payroll_counterpart import payroll_data,sf
+    from viva.investment.payroll_extraction import parse as parse_v1
+    from viva.retirement_funding.payroll_v2 import parse as parse_v2
+    one=payroll_data()['payroll_source']
+    two=copy.deepcopy(one);two['schema']='payroll-source-v2'
+    two['headers'].update(period_start=sf('2021-01-01'),period_end=sf('2021-01-31'))
+    monkeypatch.setattr(versions,'active',lambda *args:'future-resource-v999')
+    assert parse_v1(one).to_dict()==one
+    assert parse_v2(two).to_dict()==two
+    bad=copy.deepcopy(two);bad['schema']='payroll-source-v999'
+    with pytest.raises(ValueError):parse_v2(bad)
 
 
 # -------------------------------------------------------------- the lint bites
@@ -438,3 +493,16 @@ def test_a_pattern_under_the_wildcard_key_applies_to_this_package(tmp_path):
                     '"*" = ["versions.json", "prompts/*.txt"]\n', encoding="utf-8")
 
     assert versions.unshipped(root, path) == []
+
+
+@pytest.mark.parametrize('mutation', ['extra-literal', 'changed-site'])
+def test_registry_fixed_wire_exception_rejects_new_literal_or_moved_site(tmp_path, mutation):
+    target = tmp_path / 'ingest/registry.py'
+    target.parent.mkdir(parents=True)
+    original = (PACKAGE / 'ingest/registry.py').read_text()
+    target.write_text(original)
+    assert _literal_version_offenders(tmp_path, {'payroll-source-v2'}) == []
+    changed = (original + "\nextra = 'payroll-source-v2'\n" if mutation == 'extra-literal'
+               else '\n' + original)
+    target.write_text(changed)
+    assert _literal_version_offenders(tmp_path, {'payroll-source-v2'})

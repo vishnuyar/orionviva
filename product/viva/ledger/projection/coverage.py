@@ -7,7 +7,8 @@ from .core import ProjectionCore
 
 def is_resolved(core: ProjectionCore, doc_id: str) -> bool:
     """A document has reached a terminal state — posted, or held for review."""
-    return doc_id in core._posted or doc_id in core._held
+    return (doc_id in core._posted or doc_id in core._held
+            or any(state.doc_id == doc_id for state in core._instrument_component_states.values()))
 
 
 def posted_period(core: ProjectionCore, account: str,
@@ -28,7 +29,8 @@ def posted_doc_ids(core: ProjectionCore) -> set[str]:
 
 
 def captured_docs(core: ProjectionCore) -> dict[str, str]:
-    return dict(core._captured)
+    return {doc: effective_type(kind, core._classified_types.get(doc, {}).values())
+            for doc, kind in core._captured.items()}
 
 
 def captured_filenames(core: ProjectionCore) -> dict[str, str]:
@@ -97,3 +99,60 @@ def document_contributions(core: ProjectionCore) -> dict[str, dict]:
         found[doc_id] = {"account": account, "currency": currency,
                          "amount": str(amount), "as_of": as_of}
     return found
+
+
+def parse_classification(text):
+    """Parse the reader's type and confidence claim without interpreting figures."""
+    import json
+    import re
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            value = json.loads(match.group(0))
+            return (str(value.get("doc_type", "unknown")).lower(),
+                    float(value.get("doc_type_confidence", 0.0) or 0.0))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return "unknown", 0.0
+
+
+def canonical_classification(kind, confidence):
+    """Apply the live reader's instrument aliases and confidence rejection."""
+    import math
+    from ...ingest.registry import profile_for, INSTRUMENT_IDENTITY
+    profile = profile_for(kind)
+    if profile is not None and profile.identity == INSTRUMENT_IDENTITY:
+        if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+            return profile.doc_type, 0.0, 'invalid instrument classification confidence'
+        return profile.doc_type, confidence, None
+    return kind, confidence, None
+
+
+def classified_claim(event, responses):
+    """An ordinary saved classify claim, validated against its preceding receipts."""
+    from ...extraction_responses import validate_links, _SCOPED_FIELDS
+    body = event.body
+    if (event.event_type != 'ReadRecorded' or body.get('phase') != 'classify'
+            or body.get('parse_ok') is not True or body.get('parse_error') is not None
+            or 'acquisition' in body or not body.get('doc_id')):
+        return None
+    scoped = _SCOPED_FIELDS.intersection(body)
+    if scoped and body.get('transport_complete') is not True:
+        return None
+    try:
+        validate_links(body, responses)
+        kind, confidence = parse_classification(body.get('response_text', ''))
+        kind, confidence, error = canonical_classification(kind, confidence)
+    except (ValueError, TypeError, AttributeError, OverflowError):
+        return None
+    if error or not kind or kind == 'unknown':
+        return None
+    return (kind, confidence, tuple(body.get('transport_receipt_ids', ())))
+
+
+def effective_type(raw_type, claims):
+    """Known captures keep their claim; contradictory derived claims stay unknown."""
+    if raw_type and raw_type != 'unknown':
+        return raw_type
+    kinds = {claim[0] for claim in claims}
+    return next(iter(kinds)) if len(kinds) == 1 else raw_type

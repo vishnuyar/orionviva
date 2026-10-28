@@ -25,7 +25,16 @@ from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY, BY_KIND, BY_MERCHAN
 # of the vocabulary, so a way of narrowing with nowhere to say what it selected
 # is a build failure rather than a figure that reaches a person looking like a
 # total.
+def _account_set_written(item, accounts):
+    import json
+    from ..retirement_funding.contracts import Request, ANNUAL
+    members=json.loads(item['value'])
+    Request(ANNUAL,tuple(members),'USD',year=2000)
+    return ', '.join(str(account_written(member,accounts)) for member in members)
+
 SELECTED_TERMS = {
+    "account_set": ("boundary_selected_account_set", "plans", _account_set_written),
+    "security": ("boundary_selected_security", "security", lambda item, accounts: render.label(item["value"])),
     BY_ACCOUNT: ("boundary_selected_account", "account",
                  lambda item, accounts: account_written(item["value"],
                                                         accounts)),
@@ -114,6 +123,10 @@ def statements(fig: dict, *, cut: bool = True) -> tuple[list, list]:
     def say(statement):
         # A figure's cuts include what narrowed its read, so the two halves
         # name some of the same slices. One slice is one sentence.
+        if statement[1].get("kind")=="security":
+            if statement[1]["value"]!=(fig.get("subject") or {}).get("security_id") or not fig.get("security_label"):
+                raise ValueError("Security boundary has no accepted security label.")
+            statement=(statement[0],{**statement[1],"value":fig["security_label"]})
         if statement not in said:
             said.append(statement)
 

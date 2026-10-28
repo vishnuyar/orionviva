@@ -39,9 +39,10 @@ RETAIN_SUPERSEDED_GENERATIONS = 2
 RETAIN_QUARANTINED_GENERATIONS = 2
 _MANIFEST_DOMAIN = b"viva-read-store-manifest-key-v1"
 _DATABASE_DOMAIN = b"viva-read-store-database-key-v1"
-CONTROL_SCHEMA_VERSION = 31
-PROJECTOR_VERSION = "materialized-v21"
-RESOLVER_VERSION = "resolver-v2"
+_ACQUISITION_DOMAIN = b"viva-read-store-acquisition-key-v1"
+CONTROL_SCHEMA_VERSION = 39
+PROJECTOR_VERSION = "materialized-v30"
+RESOLVER_VERSION = "resolver-v3"
 AS_OF_VERSION = "as-of-v1"
 _APPLIED_EVENTS_GENESIS_DOMAIN = b"viva-read-store-applied-events-genesis-v1\0"
 _APPLIED_EVENTS_ENTRY_DOMAIN = b"viva-read-store-applied-events-entry-v1\0"
@@ -401,10 +402,71 @@ class _WriterLock:
             self.local.release()
 
 
+class _PublicationReadContext:
+    def __init__(self, store, connection):
+        self._store, self.connection = store, connection
+
+
+def _registered_acquisition_owner(context):
+    if type(context) not in (ReadRevision, _PublicationReadContext):
+        raise ReadStoreError('read acquisition requires an owned read context')
+    owner=context._store
+    if type(owner) is not ReadStore:
+        raise ReadStoreError('read acquisition context has a foreign owner')
+    owner._ensure_open()
+    registry=(owner._acquisition_revisions if type(context) is ReadRevision
+              else owner._acquisition_publications)
+    held=registry.get(context)
+    if held is None or held[0] is not context.connection:
+        raise ReadStoreError('read acquisition context is foreign, closed or revoked')
+    if type(context) is _PublicationReadContext and not owner._owns_acquisition_writer(context.connection):
+        raise ReadStoreError('read acquisition publication transaction has ended')
+    if type(context) is ReadRevision and (context._closed or context.generation!=held[2]):
+        raise ReadStoreError('read acquisition revision is closed or changed')
+    return owner,held[1]
+
+
+def _acquisition_owner(context):
+    owner,expected=_registered_acquisition_owner(context)
+    actual=context.connection.execute('SELECT source_count,source_head,source_end_offset,source_cursor_mac FROM projection_meta WHERE singleton=1').fetchone()
+    if actual!=expected:
+        raise ReadStoreError('read acquisition owned source revision differs')
+    return owner,expected[0]
+
+
 class ReadRevision:
     def __init__(self, store: "ReadStore", generation: str, connection: Any):
         self._store, self.generation, self.connection = store, generation, connection
         self._closed = False
+        self._instrument_cache = {}
+        self._account_balances_cache = {}
+
+    def _instrument_snapshot(self, family: str, as_of: str):
+        if self._closed:
+            raise ReadStoreError("Read revision is closed")
+        try:
+            if date.fromisoformat(as_of).isoformat() != as_of:
+                raise ValueError("noncanonical date")
+        except (TypeError, ValueError) as error:
+            raise ReadStoreError("Instrument snapshot date is invalid") from error
+        key = (family, as_of)
+        if key not in self._instrument_cache:
+            from .instrument_sql import restriction_snapshot, financial_overlay_snapshot
+            value = (restriction_snapshot(self.connection, as_of) if family == "restrictions"
+                     else financial_overlay_snapshot(self.connection, as_of))
+            if len(self._instrument_cache) == 4:
+                self._instrument_cache.pop(next(iter(self._instrument_cache)))
+            self._instrument_cache[key] = value
+        return self._instrument_cache[key]
+
+    def account_restrictions(self, *, as_of: str):
+        return dict(self._instrument_snapshot("restrictions", as_of))
+
+    def instrument_allocations(self, *, as_of: str):
+        return dict(self._instrument_snapshot("financial_overlay", as_of)[0])
+
+    def instrument_cash_roles(self, *, as_of: str):
+        return dict(self._instrument_snapshot("financial_overlay", as_of)[1])
 
     def close(self):
         if self._closed: return
@@ -412,6 +474,7 @@ class ReadRevision:
         # pinned and make the failure visible; a later close may safely retry.
         self.connection.close()
         self._closed = True
+        self._store._acquisition_revisions.pop(self, None)
         self._store._release(self.generation)
 
     def __enter__(self): return self
@@ -520,6 +583,10 @@ class ReadRevision:
         from .overview import SQLOverviewProjection
         return SQLOverviewProjection(
             self, today, statement_evidence=True, locale=locale)
+
+    def documents_page(self, **kwargs):
+        from .documents_page import documents_page
+        return documents_page(self, **kwargs)
 
     def documents_projection(self):
         """Return bounded SQL inputs for current Documents composition."""
@@ -1122,6 +1189,7 @@ class ReadRevision:
         evidence = evidence_as_of or today
         states = self.current_goal_states(as_of=evidence, limit=limit)
         balances = self._goal_account_balances(as_of=evidence, limit=200)
+        restrictions = self.account_restrictions(as_of=evidence)
         # Availability is account-wide canonical state, not a property of the
         # requested goal page. Aggregate all eligible goals before `limit` can
         # affect which goal views are returned.
@@ -1180,6 +1248,7 @@ class ReadRevision:
                           "account_currency_unstated" if not account["currency"] else
                           "account_currency_differs"
                           if account["currency"] != currency else
+                          "account_restricted" if account_id in restrictions else
                           "account_balance_conflicted"
                           if account["grade"] == "conflicted" else "")
                 if reason:
@@ -1271,6 +1340,20 @@ class ReadRevision:
         return "" if year > 9999 else date(year, month + 1, contribution_day).isoformat()
 
     def _goal_account_balances(self, *, as_of: str, limit: int) \
+            -> dict[str, dict[str, Any]]:
+        """Reuse bounded balance inputs only within this immutable revision."""
+        if self._closed:
+            raise ReadStoreError("Read revision is closed")
+        key = (as_of, limit)
+        if key not in self._account_balances_cache:
+            value = self._load_goal_account_balances(as_of=as_of, limit=limit)
+            if len(self._account_balances_cache) == 4:
+                self._account_balances_cache.pop(next(iter(self._account_balances_cache)))
+            self._account_balances_cache[key] = value
+        return {account: {**row, "provenance": dict(row["provenance"])}
+                for account, row in self._account_balances_cache[key].items()}
+
+    def _load_goal_account_balances(self, *, as_of: str, limit: int) \
             -> dict[str, dict[str, Any]]:
         """Return bounded account/balance inputs with a fixed query count.
 
@@ -1654,6 +1737,14 @@ class ReadStore:
         # The coordinator retains only domain-separated operational subkeys.
         self._database_key = bytearray(_database_key(root_key))
         self._manifest_key = bytearray(_mac_key(root_key))
+        self._acquisition_key = bytearray(hmac.new(root_key, _ACQUISITION_DOMAIN, hashlib.sha256).digest())
+        self._acquisition_revisions = {}
+        self._acquisition_publications = {}
+        self._acquisition_writers = set()
+        self._acquisition_transactions = {}
+        self._acquisition_currencies = {}
+        self._acquisition_scopes = {}
+        self._acquisition_witnesses = {}
         self._references: dict[str, int] = {}
         self._lifecycle_lock = threading.RLock()
         self._references_lock, self._closed = threading.Lock(), False
@@ -1670,6 +1761,7 @@ class ReadStore:
         directory.mkdir(parents=True, exist_ok=False); _lstat_kind(directory, directory=True)
         _restrict(directory, 0o700)
         metadata, key = _new_metadata(passphrase)
+        store = None
         try:
             _write_json(directory / METADATA_NAME, metadata)
             for name in (GENERATIONS_NAME, QUARANTINE_NAME):
@@ -1677,6 +1769,7 @@ class ReadStore:
             _create_private_file(directory / LOCK_NAME)
             store = cls(directory, key); store.publish(); return store
         except Exception:
+            if store is not None: store.close()
             shutil.rmtree(directory, ignore_errors=True); raise
         finally:
             owned = bytearray(key); _wipe(owned)
@@ -1696,7 +1789,7 @@ class ReadStore:
 
     @classmethod
     def _open(cls, directory: Path, passphrase: str, *, allow_invalid_current: bool) -> "ReadStore":
-        directory, key = Path(directory), None
+        directory, key, store = Path(directory), None, None
         try:
             _lstat_kind(directory, directory=True)
             for name, is_directory in ((METADATA_NAME, False), (LOCK_NAME, False),
@@ -1723,8 +1816,12 @@ class ReadStore:
             if store._recovery_manifest is None:
                 store._cleanup_best_effort()
             return store
-        except ReadStoreError: raise
-        except Exception as exc: raise ReadStoreError("encrypted read store could not be opened") from exc
+        except ReadStoreError:
+            if store is not None: store.close()
+            raise
+        except Exception as exc:
+            if store is not None: store.close()
+            raise ReadStoreError("encrypted read store could not be opened") from exc
         finally:
             if key is not None: owned = bytearray(key); _wipe(owned)
 
@@ -1757,7 +1854,9 @@ class ReadStore:
                 connection = _connect(self._path(generation) / DATABASE_NAME,
                                       self._database_key, readonly=True)
                 self._assert_manifest_matches(connection, manifest)
-                return ReadRevision(self, generation, connection)
+                revision=ReadRevision(self, generation, connection)
+                self._acquisition_revisions[revision]=(connection,connection.execute('SELECT source_count,source_head,source_end_offset,source_cursor_mac FROM projection_meta WHERE singleton=1').fetchone(),generation)
+                return revision
             except Exception:
                 self._release(generation); raise
 
@@ -1799,8 +1898,13 @@ class ReadStore:
         try:
             with self.open_reader() as reader:
                 control = self._control_state(reader.connection)
+                investment_active = reader.connection.execute(
+                    "SELECT 1 FROM applied_events WHERE event_type IN "
+                    "('InvestmentActivityStatementObserved','InvestmentEvidenceChanged') LIMIT 1"
+                ).fetchone() is not None
         except Exception:
             control = None
+            investment_active = False
 
         try:
             if (control is not None and control["versions"] == versions
@@ -1817,11 +1921,19 @@ class ReadStore:
                         return SynchronizeResult(
                             "equal", self.current_generation,
                             suffix.identity.count, 0)
+                    investment_snapshot = None
+                    if projector_version == PROJECTOR_VERSION and (investment_active or any(entry.event.event_type in (
+                            'InvestmentActivityStatementObserved', 'InvestmentEvidenceChanged',
+                            'RetirementPayrollPopulationObserved', 'RetirementPayrollPopulationRetracted')
+                            for entry in suffix.events)):
+                        investment_snapshot = event_store.committed_snapshot()
+                        if investment_snapshot.identity != suffix.identity:
+                            raise ReadStoreError("investment snapshot changed during source capture")
                     generation = self.publish(
                         lambda connection: self._apply_committed_events(
                             connection, suffix.events, suffix.identity, versions,
                             apply_event, fail_at, resolver_content_hash,
-                            resolver_profiles),
+                            resolver_profiles, investment_snapshot),
                         copy_current=True,
                         fail_at=("after_build" if fail_at == "after_database_commit"
                                  else None))
@@ -1834,7 +1946,11 @@ class ReadStore:
                 lambda connection: self._apply_committed_events(
                     connection, snapshot.events, snapshot.identity, versions,
                     apply_event, fail_at, resolver_content_hash,
-                    resolver_profiles),
+                    resolver_profiles,
+                    snapshot if projector_version == PROJECTOR_VERSION and any(entry.event.event_type in (
+                        'InvestmentActivityStatementObserved', 'InvestmentEvidenceChanged',
+                            'RetirementPayrollPopulationObserved', 'RetirementPayrollPopulationRetracted')
+                        for entry in snapshot.events) else None),
                 fail_at=("after_build" if fail_at == "after_database_commit"
                          else None))
             return SynchronizeResult(
@@ -1901,10 +2017,12 @@ class ReadStore:
                 "end_offset": end_offset, "cursor_mac": cursor_mac,
                 "resolver_content_hash": resolver_hash}
 
-    @staticmethod
-    def _apply_committed_events(connection, entries, identity, versions,
+    def _apply_committed_events(self, connection, entries, identity, versions,
                                 apply_event, fail_at, resolver_content_hash,
-                                resolver_profiles):
+                                resolver_profiles, investment_snapshot=None):
+        self._ensure_open()
+        if self._acquisition_transactions.get(connection)!=threading.get_ident():
+            raise ReadStoreError('read acquisition requires an active owned publication transaction')
         schema, projector, resolver, as_of, key_version = versions
         existing, applied_events_digest = connection.execute(
             "SELECT source_count, applied_events_digest FROM projection_meta WHERE singleton=1"
@@ -1913,11 +2031,23 @@ class ReadStore:
             applied_events_digest = _applied_events_genesis(schema, projector)
         if fail_at == "before_event_rows":
             raise RuntimeError("injected read-store projection failure: before_event_rows")
+        self._acquisition_writers.add(connection)
+        try:
+            return self._apply_owned_events(connection,entries,identity,versions,apply_event,
+                fail_at,resolver_content_hash,resolver_profiles,investment_snapshot,
+                existing,applied_events_digest)
+        finally:
+            self._acquisition_writers.discard(connection)
+
+    def _apply_owned_events(self,connection,entries,identity,versions,apply_event,
+                            fail_at,resolver_content_hash,resolver_profiles,investment_snapshot,
+                            existing,applied_events_digest):
+        schema, projector, resolver, as_of, key_version = versions
         for offset, entry in enumerate(entries):
             expected = existing + offset
             if entry.sequence != expected:
                 raise ReadStoreError("committed suffix is not contiguous")
-            ReadStore._materialize_event(connection, entry)
+            self._materialize_event(connection, entry)
             if apply_event is not None:
                 apply_event(connection, entry)
             connection.execute(
@@ -1932,6 +2062,17 @@ class ReadStore:
                 raise RuntimeError(
                     "injected read-store projection failure: during_event_rows")
         ReadStore._refresh_movements(connection)
+        if investment_snapshot is not None:
+            if investment_snapshot.identity != identity:
+                raise ReadStoreError("investment source frontier differs from native generation")
+            for captured in investment_snapshot.events:
+                actual = connection.execute(
+                    "SELECT event_id,record_hash FROM applied_events WHERE sequence=?",
+                    (captured.sequence,)).fetchone()
+                if actual != (captured.event_id, captured.record_hash):
+                    raise ReadStoreError("investment source entry differs from authenticated prefix")
+            from ..investment.authenticated import materialize_authenticated_snapshot
+            materialize_authenticated_snapshot(connection, investment_snapshot)
         if fail_at == "before_metadata_advance":
             raise RuntimeError(
                 "injected read-store projection failure: before_metadata_advance")
@@ -1951,7 +2092,17 @@ class ReadStore:
             "INSERT INTO resolver_profiles(institution, account_kind, profile_json) "
             "VALUES(?, ?, ?)", resolver_profiles)
         from .account_ledger import materialize_component_index
-        materialize_component_index(connection)
+        actual=connection.execute('SELECT COUNT(*),MAX(sequence) FROM applied_events').fetchone()
+        last=connection.execute('SELECT record_hash FROM applied_events WHERE sequence=?',(identity.count-1,)).fetchone()
+        if (actual!=(identity.count,identity.count-1 if identity.count else None)
+                or (identity.count and (last is None or last[0]!=identity.head_hash))):
+            raise ReadStoreError('read acquisition publication target mapping is incomplete')
+        context=_PublicationReadContext(self,connection)
+        self._acquisition_publications[context]=(connection,(identity.count,identity.head_hash,identity.end_offset,identity.cursor_mac))
+        try:
+            materialize_component_index(context)
+        finally:
+            self._acquisition_publications.pop(context,None)
         if fail_at == "after_mapping_digest_advance":
             raise RuntimeError(
                 "injected read-store projection failure: after_mapping_digest_advance")
@@ -2281,7 +2432,11 @@ class ReadStore:
                                        "WHERE singleton=1")
                 else:
                     self._create_schema(connection, "building")
-                if build: build(connection)
+                self._acquisition_transactions[connection]=threading.get_ident()
+                try:
+                    if build: build(connection)
+                finally:
+                    self._acquisition_transactions.pop(connection,None)
                 connection.commit(); self._inject(fail_at, "after_build")
                 connection.execute("UPDATE projection_meta SET state='ready', publication_epoch=? "
                                    "WHERE singleton=1", (epoch,))
@@ -2337,12 +2492,26 @@ class ReadStore:
                 raise
             # Publication is the commit point. Cleanup cannot turn success into
             # failure and is retried by later open/publish/release operations.
-            self._cleanup_best_effort()
+            self._cleanup_after_publication()
             return generation
 
+    def _cleanup_after_publication(self):
+        # publish lexically owns the directory WriterLock here. Never reacquire
+        # that nonreentrant lock or expose this path to external cleanup.
+        try:
+            with self._lifecycle_lock:
+                self._cleanup_locked()
+            self._cleanup_error = None
+        except Exception as exc:
+            self._cleanup_error = f"{type(exc).__name__}: {exc}"
+
     def cleanup(self):
-        with self._lifecycle_lock:
-            self._cleanup_locked()
+        # Release/open cleanup must neither race another publisher nor wait
+        # while holding this instance's lifecycle lock. A busy writer defers
+        # this best-effort work to the next ordinary cleanup attempt.
+        with _WriterLock(self.directory / LOCK_NAME, 0):
+            with self._lifecycle_lock:
+                self._cleanup_locked()
 
     def _cleanup_locked(self):
         self._ensure_open(); current = self._current_manifest(recover=True)["generation"]
@@ -2391,7 +2560,35 @@ class ReadStore:
         if self._closed: return
         with self._references_lock:
             if self._references: raise ReadStoreError("cannot close read store while revisions are open")
+        if self._acquisition_transactions:
+            raise ReadStoreError('cannot close read store during publication transaction')
         self._closed = True; _wipe(self._database_key); _wipe(self._manifest_key)
+        _wipe(self._acquisition_key)
+        self._acquisition_publications.clear()
+        self._acquisition_writers.clear()
+        self._acquisition_scopes.clear()
+        self._acquisition_transactions.clear()
+        self._acquisition_currencies.clear()
+        self._acquisition_witnesses.clear()
+
+    def _owns_acquisition_writer(self,connection):
+        return (not self._closed and connection in self._acquisition_writers
+                and self._acquisition_transactions.get(connection)==threading.get_ident())
+
+    def _sign_acquisition_row(self,row,connection):
+        self._ensure_open()
+        if not self._owns_acquisition_writer(connection):
+            raise ReadStoreError('read acquisition signer is outside its writer scope')
+        from .document_index import acquisition_row_bytes
+        return hmac.new(self._acquisition_key,acquisition_row_bytes(row),hashlib.sha256).hexdigest()
+
+    def _verify_acquisition_row(self,row,tag):
+        if type(tag) is not str or re.fullmatch('[0-9a-f]{64}',tag) is None:
+            return False
+        self._ensure_open()
+        from .document_index import acquisition_row_bytes
+        expected=hmac.new(self._acquisition_key,acquisition_row_bytes(row),hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected,tag)
 
     def __enter__(self): return self
     def __exit__(self, *_exc): self.close()
@@ -2490,6 +2687,8 @@ class ReadStore:
             profile_json TEXT NOT NULL,
             PRIMARY KEY(institution, account_kind))""")
         # applied_events is an identity ledger, not a second event-body mirror.
+        from .instrument_sql import create_tables as create_instrument_tables
+        create_instrument_tables(connection)
         connection.execute("""CREATE TABLE account_entities (
             account_id TEXT PRIMARY KEY CHECK(length(account_id) > 0))""")
         connection.execute("""CREATE TABLE accounts (
@@ -2609,6 +2808,15 @@ class ReadStore:
                   (role='transaction' AND event_type='TransactionRecorded') OR
                   (role='position' AND event_type='PositionObserved')),
             CHECK(provenance_page IS NULL OR provenance_page>=0))""")
+        connection.execute("""CREATE TABLE extraction_responses (
+            source_sequence INTEGER PRIMARY KEY REFERENCES applied_events(sequence)
+                DEFERRABLE INITIALLY DEFERRED,
+            event_type TEXT NOT NULL CHECK(event_type='ModelExtractionResponseRecorded'),
+            event_id TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL,
+            doc_id TEXT NOT NULL, summary_json TEXT NOT NULL CHECK(json_valid(summary_json)),
+            FOREIGN KEY(source_sequence,event_type)
+                REFERENCES applied_events(sequence,event_type)
+                DEFERRABLE INITIALLY DEFERRED)""")
         connection.execute("""CREATE TABLE document_reads (
             source_sequence INTEGER PRIMARY KEY REFERENCES applied_events(sequence)
                 DEFERRABLE INITIALLY DEFERRED,
@@ -2985,6 +3193,9 @@ class ReadStore:
         connection.execute("CREATE INDEX model_exchanges_by_phase_order ON document_reads(phase,occurred_at DESC,source_sequence DESC)")
         connection.execute("CREATE INDEX document_reads_by_doc_phase_source ON document_reads(doc_id,phase,parse_ok,source_sequence DESC)")
         connection.execute("CREATE INDEX document_reads_by_source ON document_reads(source_sequence,doc_id,phase,parse_ok)")
+        connection.execute("CREATE INDEX extraction_responses_by_source ON extraction_responses(source_sequence)")
+        connection.execute("CREATE INDEX extraction_responses_by_document_source ON extraction_responses(doc_id,source_sequence)")
+        connection.execute("CREATE INDEX event_provenance_by_document_source ON event_provenance(doc_id,source_sequence)")
         connection.execute("CREATE INDEX document_holds_by_doc_date ON document_holds(doc_id, occurred_at DESC, source_sequence DESC)")
         connection.execute("CREATE INDEX document_hold_resolutions_by_doc_date ON document_hold_resolutions(doc_id, occurred_at DESC, source_sequence DESC)")
         connection.execute("CREATE INDEX document_corrections_by_doc_date ON document_corrections(doc_id, occurred_at DESC, source_sequence DESC)")
@@ -3043,8 +3254,14 @@ class ReadStore:
                             _applied_events_genesis(CONTROL_SCHEMA_VERSION,
                             PROJECTOR_VERSION), resolver_hash, state))
 
-    @staticmethod
-    def _materialize_event(connection, entry):
+        connection.execute("CREATE INDEX instrument_states_by_observation ON instrument_component_states(observation_id,source_sequence)")
+        connection.execute("CREATE INDEX instrument_positions_snapshot ON positions(account_id,occurred_at,provenance_doc_id)")
+        from .document_index import create_tables as create_document_index
+        create_document_index(connection)
+        from .allocation_continuation import create_tables as create_allocation_continuation
+        create_allocation_continuation(connection)
+
+    def _materialize_event(self, connection, entry):
         """Losslessly store one authenticated event and its first query models.
 
         Domain numbers remain in canonical JSON or TEXT columns. In particular,
@@ -3058,6 +3275,10 @@ class ReadStore:
         kind = event.event_type
         connection.execute("INSERT INTO event_provenance VALUES(?,?,?,?,?)",
                            (entry.sequence, *prov))
+        from .instrument_sql import materialize as materialize_instruments
+        materialize_instruments(connection, entry)
+        from .allocation_continuation import materialize_delivered
+        materialize_delivered(connection, entry)
         account_id = body.get("account_id")
         if account_id:
             connection.execute("INSERT OR IGNORE INTO account_entities VALUES(?)", (account_id,))
@@ -3133,6 +3354,18 @@ class ReadStore:
                  body.get("filename", ""), body.get("byte_len", 0),
                  body.get("doc_type", ""),
                  _canonical(body.get("doc_type_confidence")).decode(), "captured", *prov))
+            from .document_index import materialize_capture
+            materialize_capture(connection, entry)
+        if kind in ('ModelExtractionResponseRecorded', 'ReadRecorded'):
+            from .document_index import materialize_classification
+            materialize_classification(connection, entry, self)
+        if kind == "ModelExtractionResponseRecorded":
+            from ..extraction_responses import summary
+            metadata = summary(event)
+            connection.execute(
+                "INSERT INTO extraction_responses VALUES(?,?,?,?,?,?)",
+                (entry.sequence, kind, event.event_id, event.occurred_at,
+                 metadata["doc_id"], _canonical(metadata).decode()))
         if kind == "ReadRecorded" and body.get("doc_id"):
             connection.execute(
                 "INSERT INTO document_reads VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -3146,6 +3379,8 @@ class ReadStore:
                   else int(bool(body.get("usage_reported")))),
                  int(bool(body.get("parse_ok"))), body.get("parse_error"),
                  body.get("phase", "extract"), _canonical(body).decode(), *prov))
+            from .document_index import materialize_read
+            materialize_read(connection, entry, self)
         if kind in ("StatementHeld", "BrokerageActivityHeld") and body.get("doc_id"):
             connection.execute(
                 "INSERT INTO document_holds VALUES(?,?,?,?,?,?,?,?,?,?,?)",

@@ -279,17 +279,20 @@ def correction_applied(doc_id: str, target: str, from_value: str,
 
 def document_captured(doc_id: str, filename: str, byte_len: int,
                       doc_type: str, doc_type_confidence: float,
-                      occurred_at: str, provenance: Provenance | None = None) -> Event:
+                      occurred_at: str, provenance: Provenance | None = None,
+                      *, acquisition: dict | None = None) -> Event:
     """This file is now held (raw-captured, encrypted). Recorded for every
     upload, before any judgment about what it is. ``doc_type`` is a
     classification claim carrying ``doc_type_confidence``; it can be wrong, and
     a wrong label surfaces as a conflict downstream rather than a discard."""
-    return Event(
-        "DocumentCaptured", occurred_at,
-        body={"doc_id": doc_id, "filename": filename, "byte_len": byte_len,
-              "doc_type": doc_type, "doc_type_confidence": doc_type_confidence},
-        provenance=provenance or Provenance(doc_id=doc_id),
-    )
+    body = {"doc_id": doc_id, "filename": filename, "byte_len": byte_len,
+            "doc_type": doc_type, "doc_type_confidence": doc_type_confidence}
+    if acquisition is not None:
+        from ..acquisition import validate
+        body.pop("doc_type_confidence")
+        body["acquisition"] = validate(acquisition)
+    return Event("DocumentCaptured", occurred_at, body=body,
+                 provenance=provenance or Provenance(doc_id=doc_id))
 
 
 def account_alias_confirmed(alias_key: str, account_id: str, doc_id: str,
@@ -324,7 +327,9 @@ def read_recorded(doc_id: str, model: str, prompt_version: str, input_mode: str,
                   output_tokens: int, parse_ok: bool, parse_error: str | None,
                   occurred_at: str, provenance: Provenance | None = None,
                   phase: str = "extract", resolved_model: str = "",
-                  usage_reported: bool | None = None) -> Event:
+                  usage_reported: bool | None = None, *,
+                  normalization_context=None, transport_receipt_ids=None,
+                  transport_complete=None, extraction_id="", phase_attempt=0) -> Event:
     """What a model asserted, verbatim, on one read: configured and reported
     model identities, prompt version, input mode, raw response text, cost,
     provider-reported token counts where present, and parse status.
@@ -343,6 +348,23 @@ def read_recorded(doc_id: str, model: str, prompt_version: str, input_mode: str,
             "response_text": response_text, "cost_usd": cost_usd,
             "parse_ok": parse_ok, "parse_error": parse_error,
             "phase": phase}
+    if transport_receipt_ids is None and (transport_complete is not None or
+            extraction_id != '' or type(phase_attempt) is not int or phase_attempt != 0):
+        raise ValueError('incomplete scoped extraction response fields')
+    if transport_receipt_ids is not None:
+        if (type(transport_receipt_ids) is not list or
+                any(type(value) is not str or not value for value in transport_receipt_ids) or
+                type(transport_complete) is not bool or
+                type(extraction_id) is not str or not extraction_id or
+                type(phase_attempt) is not int or phase_attempt < 0):
+            raise ValueError('invalid extraction response links')
+        body.update(transport_receipt_ids=list(transport_receipt_ids),
+                    transport_complete=transport_complete, extraction_id=extraction_id,
+                    phase_attempt=phase_attempt)
+    if normalization_context is not None:
+        if phase != 'extract':raise ValueError('normalization context is extraction-only')
+        from ..normalization_context import encode_context
+        body['normalization_context'] = encode_context(normalization_context)
     # The configured route and the provider's reported model are separate audit
     # facts; the reported field is omitted when the provider supplies none.
     if resolved_model:
@@ -358,6 +380,23 @@ def read_recorded(doc_id: str, model: str, prompt_version: str, input_mode: str,
                      "usage_reported": True})
     return Event("ReadRecorded", occurred_at, body=body,
                  provenance=provenance or Provenance(doc_id=doc_id))
+
+
+def curated_read_recorded(doc_id: str, doc_type: str, response_text: str,
+                          parse_ok: bool, parse_error: str | None,
+                          occurred_at: str, acquisition: dict) -> Event:
+    """Retain a locally curated proposal without claiming a model interaction."""
+    import hashlib
+    from ..acquisition import validate
+    source = validate(acquisition)
+    if (source["document_sha256"] != doc_id or
+            source["reading_sha256"] != hashlib.sha256(response_text.encode()).hexdigest()):
+        raise ValueError("curated reading is not bound to its source")
+    return Event("ReadRecorded", occurred_at, body={"doc_id": doc_id,
+        "doc_type": doc_type, "response_text": response_text, "parse_ok": parse_ok,
+        "parse_error": parse_error, "phase": "extract", "acquisition": source,
+        "normalization_locale": "en-US", "source_currency": "USD"},
+        provenance=Provenance(doc_id=doc_id))
 
 
 def transfer_linked(movement_a: str, movement_b: str, grade: str,
@@ -1310,3 +1349,11 @@ def accounting_treatment_restored(movement: str, previous: dict,
         raise ValueError("restoration must identify its movement")
     return Event("AccountingTreatmentRestored", occurred_at, body={"movement": movement,
         "previous": dict(previous), "previous_category": dict(previous_category)})
+
+
+def model_extraction_response_recorded(body, occurred_at):
+    """Retain one completed HTTP response before interpreting its contents."""
+    from ..extraction_responses import validate_response_body
+    validate_response_body(body)
+    return Event("ModelExtractionResponseRecorded", occurred_at,
+                 body=dict(body), provenance=Provenance(doc_id=body['doc_id']))

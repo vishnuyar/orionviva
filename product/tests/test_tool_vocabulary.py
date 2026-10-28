@@ -1223,6 +1223,9 @@ def test_a_turn_that_established_nothing_says_why_the_last_read_stopped(registry
                            + moment("diagnosis_unknown_category"))
     assert "Zzz" not in result.text
     assert result.to_dict()["diagnosis"] == "unknown_category"
+    assert moment("refusal_nothing_established") == "I do not have enough supported information to answer that question."
+    assert not result.figures
+
 
 
 def test_a_turn_that_spent_its_budget_says_why_the_last_read_stopped(registry):
@@ -1261,6 +1264,10 @@ def test_a_cause_is_not_spoken_where_a_later_read_succeeded(registry):
     assert result.refusal == "nothing_established"
     assert result.diagnosis == ""
     assert result.text == moment("refusal_nothing_established")
+    assert result.text == "I do not have enough supported information to answer that question."
+    assert not result.figures
+    assert any(item.get("ok") for item in result.transcript)
+
 
 
 def test_a_cause_is_not_spoken_where_the_last_read_refused_the_call_itself(
@@ -1381,7 +1388,7 @@ _EVERY_READ = (
 
 
 def test_every_read_says_what_set_each_of_its_figures_was_taken_over(registry,
-                                                                    proj):
+                                                                    proj, tmp_path):
     """No figure any read emits leaves its set for something downstream to
     guess at. Silence and "this is everything" are different sentences, and a
     figure carrying neither is one that can be spoken as any claim at all.
@@ -1416,6 +1423,39 @@ def test_every_read_says_what_set_each_of_its_figures_was_taken_over(registry,
                                   tool, args, result.text)
         for fig in result.figures:
             assert fig["boundary"] != {}, (tool, args, fig["what"])
+    # The new source-authority read requires an actual captured source and an
+    # authenticated SQL revision, which the label vocabulary fixture lacks.
+    # Exercise it explicitly through the existing complete emitter fixture.
+    instrument_registry,_instrument_projection=_probe_vault()
+    try:
+        from time import monotonic
+        with instrument_registry.instrument_runtime.execution(monotonic()+2):
+            result=instrument_registry.call('read_instrument_details',{'view':'terms','account':instrument_registry._instrument_fixture_account,'currency':'USD','as_of':'2021-01-31'})
+        assert result.ok and result.figures
+        assert all(f['boundary'] and f['record_ids'] and f['observation_ids'] for f in result.figures)
+        called.add('read_instrument_details')
+    finally:instrument_registry._instrument_fixture_cleanup()
+    from _source_emitter_support import source_emitter_results
+    for result in source_emitter_results():
+        assert result.ok and result.figures
+        assert all(fig['boundary'] and fig['record_ids'] for fig in result.figures)
+        called.add(result.tool)
+    from test_selected_account_balances import live_report
+    selected_fixture = live_report.__wrapped__(tmp_path / 'selected-balances')
+    selected = next(selected_fixture)
+    try:
+        selected_registry = default_registry(selected.projection, today='2021-01-31',
+                                             instrument_scope=selected.runtime.supplier)
+        with selected_registry.instrument_runtime.execution(monotonic() + 15):
+            result = selected_registry.call('read_account_balance_report', {
+                f'account_{i}': account for i, account in enumerate(selected.accounts, 1)})
+            assert result.ok and len(result.figures) == 2
+            assert {fig['subject']['account_id'] for fig in result.figures} == set(selected.accounts)
+            assert all(fig['boundary'] and fig['record_ids'] for fig in result.figures)
+            assert result.record_ids
+            called.add(result.tool)
+    finally:
+        selected_fixture.close()
     # And the calls above reach every read there is, every entity, every
     # metric and every topic — so a read arriving later is either in this list
     # or fails here.
@@ -1471,6 +1511,8 @@ def test_a_read_names_the_things_its_figures_are_slices_of_as_it_named_them(
     ]
     reads = [(tool, args, registry.call(tool, args)) for tool, args in calls]
     reads = [read for read in reads if read[2].ok]
+    from _source_emitter_support import source_emitter_results
+    reads.extend((result.tool,{},result) for result in source_emitter_results())
 
     def labelled(result):
         out: dict = {}

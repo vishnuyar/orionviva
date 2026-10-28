@@ -49,13 +49,39 @@ def account_id_for(facts: StatementFacts) -> str:
                                  facts.account_ref)
 
 
+def _source_identity(facts):
+    """Map only supported account-source contracts, retaining their page bound."""
+    from ..ledger.identity import SourceAccountIdentity
+    if isinstance(facts, StatementFacts):
+        raw, page = facts.source_account_ref, facts.source_account_ref_page
+    elif isinstance(facts, BrokerageFacts) and facts.investment_source is not None:
+        field = dict(facts.investment_source.headers).get("account_reference")
+        raw, page = (field.raw, field.page) if field is not None else ("", None)
+    else:
+        return None
+    claim = SourceAccountIdentity(raw, facts.doc_id, page,
+                                  facts.validated_source_page_count)
+    return claim if claim.eligible() else None
+
+
+def _record_source_identity(ledger, facts, account, dated):
+    claim = _source_identity(facts)
+    if claim is None or facts.doc_id not in ledger.projection().captured_docs():
+        return
+    from ..ledger.instruments import reference_event
+    from .instrument_contracts import Source
+    ledger.append(reference_event(account, claim.reference, dated,
+        Source(claim.doc_id, claim.page), identity_page_count=claim.page_count))
+
+
 def _resolve(proj, facts: StatementFacts):
     # Identity resolves within one account kind: a card and a checking account
     # with the same holder are different accounts, not an ambiguity.
     return proj.resolve(facts.institution, facts.account_number,
                         facts.account_ref, facts.account_names,
                         kind=account_kind_for(facts.doc_type),
-                        doc_id=facts.doc_id)
+                        doc_id=facts.doc_id, currency=facts.currency,
+                        source_identity=_source_identity(facts))
 
 
 def _record_stronger_identity(ledger: Ledger, proj, account: str,
@@ -474,13 +500,23 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
         ledger.append(simple_transaction(
             account, t.amount, t.description, t.date,
             provenance=t.provenance(facts.doc_id),
-            account_grade=(t.grade or VERIFIED), kind=kind))
+            account_grade=(t.grade or VERIFIED), kind=kind,
+            source_reference=t.source_reference, counterparty_reference=t.counterparty_reference))
     ledger.append(closing_balance_observed(
         account, facts.closing_amount, facts.closing_date,
         facts.closing_provenance(), confirmed_by=confirmed_by))
     log.info("_post_reconciled: posted %d transactions + closing %s to %s%s",
              len(facts.transactions), facts.closing_amount, account,
              " (human-confirmed)" if confirmed_by == "human" else "")
+
+    if facts.source_account_ref and facts.source_account_ref_page is not None:
+        from ..ledger.instruments import reference_event
+        from .instrument_contracts import Source
+        ledger.append(reference_event(account, facts.source_account_ref, facts.opening_date,
+                                      Source(facts.doc_id, facts.source_account_ref_page),
+                                      identity_page_count=(_source_identity(facts).page_count
+                                          if _source_identity(facts) is not None
+                                          and facts.doc_id in ledger.projection().captured_docs() else None)))
 
     grade = "verified" if confirmed_by == "human" else "corroborated"
     return IngestResult(

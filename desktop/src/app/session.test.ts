@@ -1,3 +1,4 @@
+import { documentsPageFixture } from "./documentsPage.testSupport";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BridgeTimeout } from "../bridge/contracts";
@@ -12,7 +13,28 @@ import { retainSelection } from "./selection";
 const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", sample: false, frame: null, load: async () => liveReadingSnapshot(), activityActions: { read: async () => ({ state: "absent", reason: "not asked" }), assignCategory: async () => ({ state: "unanswered" }), assignClassification: async () => ({ state: "unanswered" }), assignMeaning: async () => ({ state: "unanswered" }), replaceTags: async () => ({ state: "unanswered" }), addTags: async () => ({ state: "unanswered" }), removeTags: async () => ({ state: "unanswered" }), confirmTransfer: async () => ({ state: "unanswered" }), rejectTransfer: async () => ({ state: "unanswered" }), unlinkTransfer: async () => ({ state: "unanswered" }) }, documentActions: null, jobStream: null, transferActions: null, settingsActions: null, conversationActions: null, trustActions: null, describe: async () => ({ identity: { state: "unavailable", reason: "not asked" }, registry: { state: "unavailable", reason: "not asked" }, lifecycle: { state: "unavailable", reason: "not asked" } }) };
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason?: unknown) => void; const promise = new Promise<T>((onResolve, onReject) => { resolve = onResolve; reject = onReject; }); return { promise, resolve, reject }; }
 function ok<T>(requestId: string, result: T): BridgeResponse<T> { return { protocol: "1.0", request_id: requestId, ok: true, result }; }
-function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-current", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" } : surface === "documents" ? { documents: [] } : surface === "conversation" ? { turns: [], questions: [], total: 0 } : surface === "review" ? { contract: "ReviewSummary.v1", state: "ready", title: "Review", summary: "Nothing needs your answer.", actionable_count: 0, shown_count: 0, remaining_count: 0, types: [], groups: [] } : surface === "jobs" ? { state: "absent", jobs: [], running: [] } : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] } : surface === "trust" ? { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } } : surface === "activity" ? activityPayload() : { questions: [], total: 0 }; }
+// Wire fixtures use the explicit page contract; direct reducer snapshots below
+// retain their own symbolic identities and old-protocol controls stay unchanged.
+// Authored stable64hex identities; no runtime hashing/dependency is needed.
+const fixtureDocumentIds: Readonly<Record<string, string>> = {
+  "obsolete-document": "741c4862ee05b8162deef4f96858030352ec7d1c6721f349d01b608ef7d4c103",
+  "synthetic-import": "6d5ad0024c39ee18a66a658a5a0ddb96120b41ad003dd3f7001ae8796e6def16",
+  "old-vault-document": "9f47bb7404bb0bb857aa1a94e6e81889dbb8f539e04096cdd714195bd6ad2f76",
+  "new-document": "bdd091f13c0e1f7933c7829a2887b00f608e8f5703311098227a7b1f30f01285",
+  "old-document": "b8a285a9ff0b8791848eca0e63da222bd86d1474dbd5b1f812e9d3c73e1b4e4f",
+};
+function fixtureDocumentId(label: string): string {
+  const id = fixtureDocumentIds[label];
+  if (!id) throw new Error("Unknown authored document fixture identity");
+  return id;
+}
+function documentPage(documents: Record<string, unknown>[] = []) {
+  return documentsPageFixture({ documents: documents.map((row) => {
+    const label = String(row.id);
+    return { ...row, id: /^[0-9a-f]{64}$/.test(label) ? label : fixtureDocumentId(label), filename: row.filename ?? label };
+  }) });
+}
+function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-current", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" } : surface === "documents" ? documentPage() : surface === "conversation" ? { turns: [], questions: [], total: 0 } : surface === "review" ? { contract: "ReviewSummary.v1", state: "ready", title: "Review", summary: "Nothing needs your answer.", actionable_count: 0, shown_count: 0, remaining_count: 0, types: [], groups: [] } : surface === "jobs" ? { state: "absent", jobs: [], running: [] } : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] } : surface === "trust" ? { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } } : surface === "activity" ? activityPayload() : { questions: [], total: 0 }; }
 function rawReviewBinding(questionId: string, label: string, reason: string) {
   const target = { kind: "conversation", question_id: questionId, disclosure: "No exact transaction was supplied." };
   return { item_id: `question:${questionId}`, question_id: questionId, question_kind: "identity", label, reason, refs: { movement: "", movements: [], candidates: [], document: "", doc_id: "", account: "" }, target, status: "open", primary_action: "open_question", allowed_actions: ["open_question"] };
@@ -68,7 +90,7 @@ function transferActivityPayload(suggestedState: boolean) {
 function completeSurfacePayload(surface: SurfaceName, refreshed = false): unknown {
   if (surface === "overview") return { accounts: [] };
   if (surface === "overview_accounts") return { state: "ready", freshness: "current", lifecycle: "equal", revision: refreshed ? "g-refreshed" : "g-current", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" };
-  if (surface === "documents") return { documents: [] };
+  if (surface === "documents") return documentPage();
   if (surface === "conversation") return { turns: [], questions: [], total: 0 };
   if (surface === "review") return emptyPayload("review");
   if (surface === "jobs") return { state: "absent", jobs: [], running: [] };
@@ -379,7 +401,7 @@ describe("surface session", () => {
     let opens = 0;
     const transport: BridgeTransport = { request: async <T>(frame: BridgeRequest) => {
       if (frame.operation === "bridge.open_vault") return (++opens === 1 ? first.promise : second.promise) as Promise<BridgeResponse<T>>;
-      const data = frame.payload.surface === "overview" ? { accounts: [{ account: "newest-account", name: "Newest account" }] } : frame.payload.surface === "documents" ? { documents: [] } : { questions: [], total: 0 };
+      const data = frame.payload.surface === "overview" ? { accounts: [{ account: "newest-account", name: "Newest account" }] } : frame.payload.surface === "documents" ? documentPage() : { questions: [], total: 0 };
       return ok(frame.requestId, { surface: frame.payload.surface, job_id: "job", data } as T);
     } };
     window.orionVivaBridge = transport;
@@ -672,7 +694,7 @@ describe("surface session", () => {
     await waitFor(() => expect(result.current.session.destinationReads.activity).toBe("ready"));
     expect(result.current.session.snapshot.activity.state).toBe("ready");
     expect(result.current.session.readRevision).toBe("g-current");
-    blockedDocuments.resolve(ok("late-documents", { surface: "documents", job_id: "late", data: { documents: [{ id: "obsolete-document" }] } }));
+    blockedDocuments.resolve(ok("late-documents", { surface: "documents", job_id: "late", data: documentPage([{ id: "obsolete-document" }]) }));
     await act(async () => { await Promise.resolve(); });
     expect(JSON.stringify(result.current.session.snapshot.documents)).not.toContain("obsolete-document");
   });
@@ -934,7 +956,7 @@ describe("surface session", () => {
             result: { job_id: `read-${reads}`, operation: "", status: "completed", completed: 1, total: 1, attempt: 1 } });
         }
         const data = afterUpload && surface === "documents"
-          ? { documents: [{ id: "synthetic-import", filename: "synthetic.txt", doc_type: "document" }] }
+          ? documentPage([{ id: "synthetic-import", filename: "synthetic.txt", doc_type: "document" }])
           : completeSurfacePayload(surface, afterUpload);
         return ok(frame.requestId, { surface, job_id: "read", data } as T);
       },
@@ -946,7 +968,7 @@ describe("surface session", () => {
     await act(async () => { listener?.({ protocol: "2.1", request_id: "upload", event: "progress",
       result: { job_id: "upload-1", operation: "viva.documents.upload", status: "completed", completed: 3, total: 3, attempt: 1 } }); });
     await waitFor(() => expect(result.current.session.snapshot.documents.state).toBe("ready"));
-    expect(result.current.session.snapshot.documents).toMatchObject({ data: { documents: [{ id: "synthetic-import", name: "synthetic.txt" }] } });
+    expect(result.current.session.snapshot.documents).toMatchObject({ data: { documents: [{ id: fixtureDocumentId("synthetic-import"), name: "synthetic.txt" }] } });
     expect(refreshes).toBe(1);
     expect(reads).toBe(8);
     expect(result.current.session.jobs.map((job) => job.jobId)).toEqual(["upload-1"]);
@@ -1017,7 +1039,7 @@ describe("surface session", () => {
     await act(async () => { await result.current.openVault("/second", "secret", false); });
     await waitFor(() => expect(result.current.session.readRevision).toBe("g-2"));
     const currentDocuments = result.current.session.snapshot.documents;
-    oldDocuments.resolve(ok("documents", { surface: "documents", job_id: "old", data: { documents: [{ id: "old-vault-document", doc_type: "statement" }] } }));
+    oldDocuments.resolve(ok("documents", { surface: "documents", job_id: "old", data: documentPage([{ id: "old-vault-document", doc_type: "statement" }]) }));
     await act(async () => { await Promise.resolve(); });
     expect(result.current.session.readRevision).toBe("g-2");
     expect(result.current.session.snapshot.documents).toBe(currentDocuments);
@@ -1047,7 +1069,7 @@ describe("surface session", () => {
     act(() => { retryResult = result.current.retryPriorityRead(); });
     await waitFor(() => expect(priorityCalls).toBe(2));
 
-    const releaseDocuments = () => documents.resolve(ok("documents", { surface: "documents", job_id: "secondary", data: { documents: [{ id: "new-document", doc_type: "statement" }] } }));
+    const releaseDocuments = () => documents.resolve(ok("documents", { surface: "documents", job_id: "secondary", data: documentPage([{ id: "new-document", doc_type: "statement" }]) }));
     const releasePriority = () => retry.resolve(ok("retry", { surface: "overview_accounts", job_id: "retry", data: { state: "ready", freshness: "current", lifecycle: "equal", revision: "new", overview: { accounts: [{ account: "new", name: "New account" }] }, accounts: { accounts: [{ account: "new", name: "New account" }] }, error: "" } }));
     if (order === "secondary-first") {
       releaseDocuments();
@@ -1074,7 +1096,7 @@ describe("surface session", () => {
       if (openCount === 1 && surface === "documents") return oldDocuments.promise as Promise<BridgeResponse<T>>;
       const data = surface === "overview_accounts"
         ? { state: "ready", freshness: "current", lifecycle: "equal", revision: openCount === 1 ? "old" : "new", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" }
-        : surface === "documents" ? { documents: [{ id: "new-document", doc_type: "statement" }] } : completeSurfacePayload(surface);
+        : surface === "documents" ? documentPage([{ id: "new-document", doc_type: "statement" }]) : completeSurfacePayload(surface);
       return ok(frame.requestId, { surface, job_id: "read", data } as T);
     } };
     const { result } = renderHook(() => useSurfaceSession());
@@ -1085,7 +1107,7 @@ describe("surface session", () => {
     await act(async () => { await result.current.openVault("/new", "secret", false); });
     act(() => { result.current.navigate("documents"); });
     await waitFor(() => expect(JSON.stringify(result.current.session.snapshot.documents)).toContain("new-document"));
-    oldDocuments.resolve(ok("old-documents", { surface: "documents", job_id: "old", data: { documents: [{ id: "old-document", doc_type: "statement" }] } }));
+    oldDocuments.resolve(ok("old-documents", { surface: "documents", job_id: "old", data: documentPage([{ id: "old-document", doc_type: "statement" }]) }));
     await act(async () => { await Promise.resolve(); });
     expect(result.current.session.readRevision).toBe("new");
     expect(JSON.stringify(result.current.session.snapshot.documents)).toContain("new-document");

@@ -274,7 +274,7 @@ describe("dialogs", () => {
       fireEvent.click(getByRole("button", { name: /everyday-checking-2026-06\.pdf/i }));
       getByRole("heading", { name: "Statements & documents" }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: "everyday-checking-2026-06.pdf" })).not.toHaveFocus();
+      await waitFor(() => expect(getByRole("heading", { name: "everyday-checking-2026-06.pdf" })).not.toHaveFocus());
     } finally {
       frames.restore();
     }
@@ -290,7 +290,7 @@ describe("dialogs", () => {
     expect(getByRole("button", { name: "Close evidence" })).toHaveFocus();
     expect(document.querySelector("main")).toHaveAttribute("inert");
     expect(document.getElementById("primary-navigation-drawer")).toHaveAttribute("inert");
-    await user.click(getByRole("button", { name: "Open everyday-checking-2026-06.pdf" }));
+    await user.click(getByRole("button", { name: "Find everyday-checking-2026-06.pdf" }));
 
     expect(queryByRole("dialog", { name: "Net worth in USD" })).not.toBeInTheDocument();
     await waitFor(() => expect(getByRole("heading", { name: "everyday-checking-2026-06.pdf" })).toHaveFocus());

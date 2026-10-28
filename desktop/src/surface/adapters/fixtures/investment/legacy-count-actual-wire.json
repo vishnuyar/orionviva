@@ -1,0 +1,122 @@
+{
+  "state": "ready",
+  "question": "Show Test account holdings count at 2025-01-31.",
+  "text": "investment holdings count: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\ncount \u2014 1.\nThat counts only what is on 1234.",
+  "answered": true,
+  "status": "answered",
+  "outcome_tag": "",
+  "refusal": "",
+  "grade": "unverified",
+  "grade_sentence": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+  "figures": [
+    {
+      "value": "1",
+      "quantity": "count",
+      "kind": "financial",
+      "currency": "",
+      "dated": "2025-01-31",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account",
+            "value": "acct:test-broker:1234"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account",
+            "value": "acct:test-broker:1234"
+          }
+        ]
+      },
+      "subject": {
+        "account_id": "acct:test-broker:1234"
+      },
+      "id": "f4",
+      "written": "1",
+      "what": "count",
+      "record_ids": [
+        "fda1494fac8eb31c37f5b13e54e1930bc329cf239bc9064a030e8081c225aeea"
+      ],
+      "evidence_id": "conversation:synthetic-wire-investment_positions:f4",
+      "evidence_links": [
+        {
+          "document_id": "fda1494fac8eb31c37f5b13e54e1930bc329cf239bc9064a030e8081c225aeea",
+          "label": "synthetic-investment-source.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-wire-investment_positions:numerical:0"
+      ]
+    }
+  ],
+  "numerical_receipts": [
+    {
+      "schema_version": 1,
+      "id": "conversation:synthetic-wire-investment_positions:numerical:0",
+      "figure_ids": [
+        "f4"
+      ],
+      "source_records": [
+        {
+          "record_id": "fda1494fac8eb31c37f5b13e54e1930bc329cf239bc9064a030e8081c225aeea",
+          "kind": "document",
+          "document_id": "fda1494fac8eb31c37f5b13e54e1930bc329cf239bc9064a030e8081c225aeea"
+        }
+      ],
+      "premises": [],
+      "observed_inputs": [],
+      "local_inputs": [],
+      "context": [
+        {
+          "label": "Investment view",
+          "value": "positions"
+        },
+        {
+          "label": "Selected account",
+          "value": "acct:test-broker:1234"
+        },
+        {
+          "label": "Valuation currency",
+          "value": "USD"
+        },
+        {
+          "label": "Authenticated read revision",
+          "value": "g-5535e30eeca84df39481bb832b87f786"
+        }
+      ],
+      "caveats": [],
+      "figure_provenance": {
+        "f4": [
+          {
+            "document_id": "fda1494fac8eb31c37f5b13e54e1930bc329cf239bc9064a030e8081c225aeea",
+            "page": 1
+          }
+        ]
+      },
+      "investment_derivations": []
+    }
+  ],
+  "source_assertions": [],
+  "target_premises": [],
+  "gaps": [],
+  "options": [],
+  "missing": [],
+  "spoken": {
+    "may_speak": true,
+    "withheld": "",
+    "parts": [
+      "text",
+      "grade",
+      "citations"
+    ],
+    "text": "investment holdings count: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\ncount \u2014 1.\nThat counts only what is on 1234.",
+    "grade_sentence": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+    "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+    "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+  }
+}

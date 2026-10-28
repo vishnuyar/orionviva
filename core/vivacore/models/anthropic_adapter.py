@@ -13,7 +13,8 @@ import httpx
 
 from .spec import ModelSpec
 from .base import (AdapterError, PageImage, Turn, elide_images,
-                   run_to_completion)
+                   run_to_completion, admit_extraction_transport,
+                   retain_extraction_response)
 
 _API_URL = "https://api.anthropic.com/v1/messages"
 _API_VERSION = "2023-06-01"
@@ -59,13 +60,15 @@ class AnthropicAdapter:
                 "messages": messages,
             }
 
+            key = c.api_key() or ""
+            admit_extraction_transport("anthropic", c.model, attempt)
             started = time.monotonic()
             try:
                 resp = httpx.post(
                     _API_URL,
                     json=body,
                     headers={
-                        "x-api-key": c.api_key() or "",
+                        "x-api-key": key,
                         "anthropic-version": _API_VERSION,
                     },
                     timeout=c.timeout_s,
@@ -79,6 +82,7 @@ class AnthropicAdapter:
                     f"[{c.name}] HTTP failure calling Anthropic after "
                     f"{time.monotonic() - started:.1f}s (timeout {c.timeout_s}s, "
                     f"attempt {attempt + 1}): {e}") from e
+            retain_extraction_response("anthropic", c.model, attempt, resp)
             latency = time.monotonic() - started
 
             if resp.status_code != 200:

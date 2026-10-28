@@ -53,23 +53,67 @@ def claims_by_doc(events) -> dict[str, dict]:
     return out
 
 
-def _parse(doc_type: str, text: str, doc_id: str, locale: str, currency: str):
+def _parse(doc_type: str, text: str, doc_id: str, locale: str, currency: str,
+           *, source_contract=None, page_count=None):
     """Run today's parser over a stored reply, through the same dispatch the
     reader uses. Returns `(facts, error)`, or `(None, None)` when the doc type
     has no profile and the document parks."""
     from .ingest.brokerage import from_brokerage_json
     from .ingest.paystub import from_paystub_json
-    from .ingest.registry import (BROKERAGE_IDENTITY, PAYSTUB_IDENTITY,
+    from .ingest.registry import (BROKERAGE_IDENTITY, PAYSTUB_IDENTITY, INSTRUMENT_IDENTITY,
                                   profile_for)
     from .ingest.statement import from_model_json
 
     profile = profile_for(doc_type)
     if profile is None:
         return None, None            # no profile: the document parks, as it should
+    if profile.identity == INSTRUMENT_IDENTITY:
+        from .ingest.instrument_read import parser_for
+        if source_contract is None:
+            return parser_for(profile.doc_type)(text, doc_id, locale, currency)
+        return parser_for(profile.doc_type, source_contract=source_contract,
+                          page_count=page_count)(text, doc_id, locale, currency)
     parse_fn = {PAYSTUB_IDENTITY: from_paystub_json,
                 BROKERAGE_IDENTITY: from_brokerage_json}.get(
                     profile.identity, from_model_json)
     return parse_fn(text, doc_id, locale, currency)
+
+
+def _parse_claim(doc_type, body, doc_id, locale, currency, *, page_count=None):
+    """Exactly one selected interpretation at each existing parse boundary."""
+    if body.get('transport_complete') is False:
+        return None, 'incomplete extraction transport', None
+    context = None
+    from .normalization_context import source_contract_for_claim
+    if 'acquisition' not in body and 'normalization_context' not in body:
+        # Absent-context ordinary compatibility retains the original parser
+        # invocation/defaults and exception behavior exactly.
+        try:
+            source_contract_for_claim(None, doc_type, body.get('prompt_version', ''))
+        except ValueError as exc:
+            return None, str(exc), None
+        facts, error = _parse(doc_type, body.get('response_text') or '', doc_id, locale, currency)
+        return facts, error, None
+    try:
+        if 'acquisition' in body:
+            from .sample.curation import decode_retained_input
+            text = decode_retained_input(body)
+            locale, currency = body['normalization_locale'], body['source_currency']
+        else:
+            text = body.get('response_text') or ''
+            if 'normalization_context' in body:
+                from .normalization_context import decode_context
+                context = decode_context(body['normalization_context'])
+                locale, currency = context.parser_locale, context.parser_currency
+        selected = source_contract_for_claim(context, doc_type, body.get('prompt_version', ''))
+        if selected is None:
+            facts, error = _parse(doc_type, text, doc_id, locale, currency)
+        else:
+            facts, error = _parse(doc_type, text, doc_id, locale, currency,
+                                  source_contract=selected, page_count=page_count)
+        return facts, error, context
+    except (ValueError, TypeError, KeyError) as exc:
+        return None, str(exc), context
 
 
 def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
@@ -82,7 +126,9 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
 
     src = Vault.open(source, passphrase)
     src_raw = RawStore.open(source / "raw", passphrase)
-    claims = claims_by_doc(src.ledger.store.events())
+    from .ingest.pipeline import _capture_authenticated_replay, _retain_authenticated_replay
+    original = _capture_authenticated_replay(src.ledger, src_raw)
+    claims = claims_by_doc(original.events())
     doc_ids = [d for d in src_raw.doc_ids() if d in claims]
     missing = [d for d in src_raw.doc_ids() if d not in claims]
 
@@ -126,13 +172,15 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
             if dt == "unknown":
                 dt = doc_type_for_prompt_version(
                     e.get("prompt_version", "")) or dt
-            facts, _err = _parse(dt, t, doc, locale, currency)
+            if "acquisition" in e:dt = e["doc_type"]
+            facts, _err, _context = _parse_claim(dt, e, doc, locale, currency)
             return getattr(facts, "opening_date", "") or getattr(
                 facts, "as_of", "") or getattr(facts, "period_end", "") or ""
         doc_ids = sorted(doc_ids, key=_period)
     log(f"  order: {'oldest first' if by_date else 'as stored (content hash)'}\n")
 
     vault = Vault.open(dest, passphrase)
+    retained_audit = _retain_authenticated_replay(original, vault.raw, vault.ledger)
     recovered_types = 0
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     counts: dict[str, int] = {}
@@ -144,6 +192,8 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
         text = extract.get("response_text") or ""
         doc_type, confidence = _peek_classification(
             classify.get("response_text") or text)
+        if "acquisition" in extract:
+            doc_type, confidence = extract["doc_type"], None
         if doc_type == "unknown":
             # No classify claim, or an unreadable one. The extract claim still
             # names its type: the version is a self-describing
@@ -158,7 +208,7 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
 
         def replay(_data, new_doc_id, _text=text, _t=doc_type, _c=confidence,
                    _v=extract.get("prompt_version", ""),
-                   _m=extract.get("model", "")):
+                   _m=extract.get("model", ""), _body=extract):
             """The reader's shape, fed from storage instead of a model.
 
             The parser runs fresh over unchanged text. The stored `parse_ok` is
@@ -166,23 +216,62 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
 
             The original `prompt_version` and `model` ride along, so the rebuilt
             vault's claims still name the instructions that produced the text."""
-            facts, err = _parse(_t, _text, new_doc_id, locale, currency)
+            if "acquisition" in _body:
+                from .sample.curation import RetainedCuratedReader
+                return RetainedCuratedReader(_body)(_data, new_doc_id)
+            facts, err, context = _parse_claim(_t, _body, new_doc_id, locale, currency)
             if facts is not None:
                 # The balance family's extract JSON carries no doc_type: it
                 # comes from the classify phase, and the reader stamps it onto
                 # the facts after parsing. Without it every statement is
                 # `unknown`, which has no projector, so nothing posts.
-                facts.doc_type = _t
-                facts.doc_type_confidence = _c
+                from .ingest.instrument_read import InstrumentReadFacts, validate_sources
+                if isinstance(facts, InstrumentReadFacts):
+                    from dataclasses import replace
+                    from .ingest.reader import _render_and_read_text
+                    try:
+                        pages, _ = _render_and_read_text(_data)
+                        if context is not None and context.schema_version == 2:
+                            # Kind evidence belongs to the source adapter, not
+                            # canonical money. Reuse this existing render to
+                            # validate it before accepting retained v2 claims.
+                            facts, err, context = _parse_claim(
+                                _t, _body, new_doc_id, locale, currency,
+                                page_count=len(pages))
+                        if facts is not None:
+                            facts = replace(facts, doc_type_confidence=_c)
+                            validate_sources(facts.payload, new_doc_id, len(pages))
+                    except ValueError as exc:
+                        facts, err = None, str(exc)
+                else:
+                    from .investment.payroll_extraction import validate_pages
+                    extensions = (getattr(facts, "payroll_source", None),
+                                  getattr(facts, "investment_source", None))
+                    try:
+                        if any(source is not None for source in extensions):
+                            from .ingest.reader import _render_and_read_text
+                            pages, _ = _render_and_read_text(_data)
+                            from .retirement_funding.payroll_v2 import invalidate_period_pages
+                            if extensions[0] is not None:
+                                facts=invalidate_period_pages(facts,len(pages))
+                            for source in (getattr(facts,'payroll_source',None),getattr(facts,'investment_source',None)):
+                                validate_pages(source, len(pages))
+                        facts.doc_type = _t
+                        facts.doc_type_confidence = _c
+                    except ValueError as exc:
+                        facts, err = None, str(exc)
             return ReadResult(doc_type=(facts.doc_type if facts else _t),
                               doc_type_confidence=(facts.doc_type_confidence
                                                    if facts else _c),
                               facts=facts, error=err, raw_text=_text,
-                              model=_m, prompt_version=_v, input_mode="replay")
+                              model=_m, prompt_version=_v, input_mode="replay",
+                              source_locale=(context.parser_locale if context is not None else locale),
+                              normalization_context=context)
 
         data = src_raw.get(doc_id)
         res = capture_and_ingest(vault.raw, vault.ledger, data, replay,
-                                 filename=f"{doc_id[:10]}.pdf", captured_at=now)
+                                 filename=f"{doc_id[:10]}.pdf", captured_at=now,
+                                 _retained_audit=retained_audit.get(doc_id))
         counts[res.action] = counts.get(res.action, 0) + 1
         why = ""
         if res.action not in ("posted", "prepended"):

@@ -46,3 +46,6 @@
 .evidence-drawer [data-receipt-section] .evidence-detail-grid dd { white-space: pre-wrap; overflow-wrap: anywhere; }
 .conversation-receipt-unavailable { display: block; color: var(--muted); font-size: var(--text-fine); }
 @media (max-width: 600px) { .evidence-drawer .evidence-detail-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.evidence-disclosure > summary { min-height: var(--control-min-height); padding-block: var(--space-sm); cursor: pointer; font-weight: var(--weight-strong); color: var(--ink); }
+.evidence-disclosure[open] > summary { margin-block-end: var(--space-sm); }

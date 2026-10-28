@@ -16,6 +16,7 @@ from ..ingest.brokerage import BrokerageFacts
 from ..ingest.registry import (BALANCE_IDENTITY, BROKERAGE_IDENTITY,
                                account_kind_for, identity_of_facts)
 from ..ingest.statement import StatementFacts
+from ..ingest.statement_projector import _source_identity
 from ..ledger.identity import masked, masked_label
 from ..ledger.projection.accounts import account_info, resolve
 from ..ledger.projection.core import UnknownAccountError
@@ -120,7 +121,8 @@ def _identity_core(connection, as_of: str):
     for sequence, holder in name_rows:
         names_by_sequence.setdefault(sequence, []).append(holder)
     core = SimpleNamespace(_acct={}, _aliases={}, _alias_evidence={},
-                           _document_account_aliases={})
+                           _document_account_aliases={}, _captured={},
+                           _instrument_account_refs={})
     for sequence, event_type, account_id, occurred_at, kind, name, currency, jurisdiction, institution, number, origin in rows:
         state = core._acct.setdefault(account_id, SimpleNamespace(
             seen=False, kind="", currency="", name="", institution="",
@@ -170,6 +172,31 @@ def _identity_core(connection, as_of: str):
                 core._alias_evidence.pop(key, None)
         if doc_id:
             core._document_account_aliases[doc_id] = account
+    reference_columns = "account_id,reference,scope,doc_id,page,identity_page_count"
+    numeric = ("page", "identity_page_count")
+    selected, bounds = _bounded_text_columns(reference_columns, numeric)
+    references = _bounded(connection,
+        f"SELECT {selected} FROM instrument_account_references WHERE effective<=? ORDER BY source_sequence LIMIT ?",
+        (*bounds, as_of), MAX_ACCOUNT_HISTORY_ROWS, "identity source reference history")
+    _refuse_oversized_text(references, reference_columns, numeric)
+    for account, reference, scope, doc_id, page, page_count in references:
+        core._instrument_account_refs.setdefault(account, []).append({
+            "reference": reference, "scope": scope, "doc_id": doc_id,
+            "page": page, "identity_page_count": page_count})
+    reference_documents = tuple(dict.fromkeys(row[3] for row in references))
+    membership = ("d.doc_id IN (" + ",".join("?" for _ in reference_documents) + ")"
+                  if reference_documents else "0")
+    capture_columns = "d.doc_id"
+    selected, bounds = _bounded_text_columns(capture_columns)
+    captures = _bounded(connection,
+        f"SELECT {selected} FROM documents d WHERE d.occurred_at<=? AND "
+        f"({membership} OR EXISTS(SELECT 1 FROM document_holds h "
+        "WHERE h.doc_id=d.doc_id AND h.occurred_at<=?)) "
+        "GROUP BY d.doc_id ORDER BY d.doc_id LIMIT ?",
+        (*bounds, as_of, *reference_documents, as_of), MAX_ACCOUNT_HISTORY_ROWS,
+        "identity source capture history")
+    _refuse_oversized_text(captures, capture_columns)
+    core._captured = {doc_id: "" for doc_id, in captures}
     return core
 
 
@@ -349,7 +376,8 @@ def held_items(connection, *, as_of: str):
             continue
         resolution = resolve(core, facts.institution, facts.account_number,
                              facts.account_ref, facts.account_names,
-                             kind=account_kind_for(facts.doc_type), doc_id=facts.doc_id)
+                             kind=account_kind_for(facts.doc_type), doc_id=facts.doc_id,
+                             currency=facts.currency, source_identity=_source_identity(facts))
         held_balance = (_running_balance(connection, resolution.account_id, as_of)
                         if identity == BALANCE_IDENTITY and resolution.verdict == "same" else None)
         out.append({"source_sequence": sequence, "doc_id": doc_id, "reason": reason,

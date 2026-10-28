@@ -148,17 +148,110 @@ enum RoutedFrame {
     Interrupted(String),
 }
 
+struct BulkBinding {
+    bulk: std::sync::Weak<Mutex<BulkOwnership>>,
+    stdin: std::sync::Weak<Mutex<Option<ChildStdin>>>,
+    closed: std::sync::Weak<AtomicBool>,
+}
+
+#[derive(Default)]
+struct BulkStopTicket {
+    stopped: AtomicBool,
+    binding: Mutex<Option<BulkBinding>>,
+}
+
+impl BulkStopTicket {
+    fn stop(self: &Arc<Self>) -> Result<(), String> {
+        self.stopped.store(true, Ordering::SeqCst);
+        let binding = self
+            .binding
+            .lock()
+            .map_err(|_| "Bulk stop ownership is unavailable".to_string())?;
+        let Some(binding) = binding.as_ref() else {
+            return Ok(());
+        };
+        let (Some(bulk), Some(stdin), Some(closed)) = (
+            binding.bulk.upgrade(),
+            binding.stdin.upgrade(),
+            binding.closed.upgrade(),
+        ) else {
+            return Ok(());
+        };
+        let mut bulk = bulk
+            .lock()
+            .map_err(|_| "Bulk ownership is unavailable".to_string())?;
+        if bulk.request_id.is_some()
+            && bulk
+                .ticket
+                .as_ref()
+                .is_some_and(|ticket| Arc::ptr_eq(ticket, self))
+        {
+            bulk.draining = true;
+            closed.store(true, Ordering::SeqCst);
+            stdin
+                .lock()
+                .map_err(|_| "OrionViva bridge input is unavailable".to_string())?
+                .take();
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct BulkOwnership {
+    request_id: Option<String>,
+    ticket: Option<Arc<BulkStopTicket>>,
+    draining: bool,
+}
+
 #[derive(Clone)]
 struct BridgeProcess {
     child: Arc<Mutex<Option<Child>>>,
     stdin: Arc<Mutex<Option<ChildStdin>>>,
     pending: PendingCalls,
+    bulk: Arc<Mutex<BulkOwnership>>,
     closed: Arc<AtomicBool>,
     terminal: Arc<Mutex<bool>>,
     generation: usize,
 }
 
 impl BridgeProcess {
+    fn begin_bulk_drain(&self) -> Result<bool, String> {
+        let mut bulk = self
+            .bulk
+            .lock()
+            .map_err(|_| "Bulk ownership is unavailable".to_string())?;
+        if bulk.request_id.is_none() {
+            return Ok(false);
+        }
+        bulk.draining = true;
+        self.closed.store(true, Ordering::SeqCst);
+        self.stdin
+            .lock()
+            .map_err(|_| "OrionViva bridge input is unavailable".to_string())?
+            .take();
+        Ok(true)
+    }
+
+    fn wait_bulk_exit(&self) -> Result<(), String> {
+        while self.status()?.is_none() {
+            thread::sleep(BRIDGE_SHUTDOWN_POLL_INTERVAL);
+        }
+        *self
+            .terminal
+            .lock()
+            .map_err(|_| "OrionViva bridge termination state is unavailable".to_string())? = true;
+        let mut bulk = self
+            .bulk
+            .lock()
+            .map_err(|_| "Bulk ownership is unavailable".to_string())?;
+        bulk.request_id = None;
+        bulk.ticket = None;
+        drop(bulk);
+        interrupt_pending(&self.pending, "OrionViva bulk upload drained after interruption. Outcome unknown; inspect the vault before trying again.");
+        Ok(())
+    }
+
     fn status(&self) -> Result<Option<ExitStatus>, String> {
         let mut child = self
             .child
@@ -173,6 +266,20 @@ impl BridgeProcess {
     }
 
     fn shutdown(&mut self) -> Result<(), String> {
+        let mut bulk = self
+            .bulk
+            .lock()
+            .map_err(|_| "Bulk ownership is unavailable".to_string())?;
+        if bulk.request_id.is_some() {
+            bulk.draining = true;
+            self.closed.store(true, Ordering::SeqCst);
+            self.stdin
+                .lock()
+                .map_err(|_| "OrionViva bridge input is unavailable".to_string())?
+                .take();
+            drop(bulk);
+            return self.wait_bulk_exit();
+        }
         let mut terminal = self
             .terminal
             .lock()
@@ -187,6 +294,7 @@ impl BridgeProcess {
         if let Ok(mut stdin) = self.stdin.lock() {
             stdin.take();
         }
+        drop(bulk);
         interrupt_pending(&self.pending, "OrionViva bridge was interrupted");
         let deadline = Instant::now() + BRIDGE_SHUTDOWN_TIMEOUT;
 
@@ -458,11 +566,26 @@ fn route_pending(pending: &PendingCalls, request_id: &str, frame: RoutedFrame) {
     }
 }
 
-fn route_stdout<R: tauri::Runtime>(
-    app: AppHandle<R>,
-    stdout: ChildStdout,
+fn finish_router_failure(
+    mut stdout: BufReader<ChildStdout>,
     mut bridge: BridgeProcess,
+    reason: &str,
 ) {
+    if bridge.begin_bulk_drain().unwrap_or(false) {
+        let _ = std::io::copy(&mut stdout, &mut std::io::sink());
+        drop(stdout);
+        if let Err(error) = bridge.shutdown() {
+            eprintln!("unable to drain OrionViva bulk upload: {error}");
+        }
+    } else {
+        interrupt_pending(&bridge.pending, reason);
+        if let Err(error) = bridge.shutdown() {
+            eprintln!("unable to stop OrionViva bridge after output failure: {error}");
+        }
+    }
+}
+
+fn route_stdout<R: tauri::Runtime>(app: AppHandle<R>, stdout: ChildStdout, bridge: BridgeProcess) {
     let mut stdout = BufReader::new(stdout);
     let mut line = String::new();
     loop {
@@ -470,36 +593,30 @@ fn route_stdout<R: tauri::Runtime>(
         let read = match stdout.read_line(&mut line) {
             Ok(read) => read,
             Err(error) => {
-                interrupt_pending(
-                    &bridge.pending,
+                finish_router_failure(
+                    stdout,
+                    bridge,
                     &format!("unable to read OrionViva bridge response: {error}"),
                 );
-                if let Err(error) = bridge.shutdown() {
-                    eprintln!("unable to stop OrionViva bridge after output failure: {error}");
-                }
                 return;
             }
         };
         if read == 0 {
-            interrupt_pending(
-                &bridge.pending,
+            finish_router_failure(
+                stdout,
+                bridge,
                 "OrionViva bridge closed its output before responding",
             );
-            if let Err(error) = bridge.shutdown() {
-                eprintln!("unable to stop OrionViva bridge after output closure: {error}");
-            }
             return;
         }
         let response: Value = match serde_json::from_str(line.trim()) {
             Ok(response) => response,
             Err(error) => {
-                interrupt_pending(
-                    &bridge.pending,
+                finish_router_failure(
+                    stdout,
+                    bridge,
                     &format!("OrionViva bridge returned invalid JSON: {error}"),
                 );
-                if let Err(error) = bridge.shutdown() {
-                    eprintln!("unable to stop OrionViva bridge after invalid output: {error}");
-                }
                 return;
             }
         };
@@ -508,13 +625,11 @@ fn route_stdout<R: tauri::Runtime>(
             .and_then(Value::as_str)
             .map(str::to_string)
         else {
-            interrupt_pending(
-                &bridge.pending,
+            finish_router_failure(
+                stdout,
+                bridge,
                 "OrionViva bridge returned a frame without a request identity",
             );
-            if let Err(error) = bridge.shutdown() {
-                eprintln!("unable to stop OrionViva bridge after uncorrelated output: {error}");
-            }
             return;
         };
         if response.get("event").is_some() {
@@ -591,6 +706,7 @@ fn spawn_bridge_command<R: tauri::Runtime>(
         pending: Arc::clone(&pending),
         closed: Arc::clone(&closed),
         terminal: Arc::new(Mutex::new(false)),
+        bulk: Arc::new(Mutex::new(BulkOwnership::default())),
         generation: 0,
     };
     let app = app.clone();
@@ -600,6 +716,19 @@ fn spawn_bridge_command<R: tauri::Runtime>(
 }
 
 fn shutdown_current(process: &mut Option<BridgeProcess>) -> Result<(), String> {
+    if let Some(current) = process.as_mut() {
+        let owned = current
+            .bulk
+            .lock()
+            .map_err(|_| "Bulk ownership is unavailable".to_string())?
+            .request_id
+            .is_some();
+        if owned {
+            current.shutdown()?;
+            process.take();
+            return Ok(());
+        }
+    }
     let Some(mut current) = process.take() else {
         return Ok(());
     };
@@ -612,6 +741,15 @@ fn ensure_bridge<R: tauri::Runtime>(
     spawn: impl Fn(&AppHandle<R>) -> Result<BridgeProcess, String>,
     next_generation: &AtomicUsize,
 ) -> Result<BridgeProcess, String> {
+    if let Some(current) = process.as_ref() {
+        let bulk = current
+            .bulk
+            .lock()
+            .map_err(|_| "Bulk ownership is unavailable".to_string())?;
+        if bulk.request_id.is_some() && bulk.draining {
+            return Err("Bulk admission refused: the current upload is draining".to_string());
+        }
+    }
     let stale_status = match process.as_mut() {
         Some(current) => current.status()?,
         None => None,
@@ -693,6 +831,7 @@ fn is_long_job(operation: &str) -> bool {
     matches!(
         operation,
         "viva.documents.upload"
+            | "viva.documents.upload_many"
             | "viva.documents.recover"
             | "viva.documents.rescan"
             | "viva.maintenance.run"
@@ -715,8 +854,16 @@ fn operation_may_have_written(operation: Option<&str>) -> bool {
     !matches!(operation, Some(operation) if is_read(operation))
 }
 
+#[cfg(test)]
 fn wait_for_response(
     receiver: mpsc::Receiver<RoutedFrame>,
+    policy: DeadlinePolicy,
+) -> Result<Value, String> {
+    wait_for_response_borrowed(&receiver, policy)
+}
+
+fn wait_for_response_borrowed(
+    receiver: &mpsc::Receiver<RoutedFrame>,
     policy: DeadlinePolicy,
 ) -> Result<Value, String> {
     let started = Instant::now();
@@ -746,12 +893,64 @@ fn request_process(
     encoded: &str,
     policy: DeadlinePolicy,
 ) -> Result<Value, String> {
+    request_process_owned(bridge, request_id, encoded, policy, None)
+}
+
+fn request_process_owned(
+    bridge: &BridgeProcess,
+    request_id: &str,
+    encoded: &str,
+    policy: DeadlinePolicy,
+    ticket: Option<Arc<BulkStopTicket>>,
+) -> Result<Value, String> {
     let queued = Instant::now();
-    if bridge.closed.load(Ordering::SeqCst) {
-        return Err("OrionViva bridge is not running".to_string());
+    let frame: Value = serde_json::from_str(encoded)
+        .map_err(|_| "OrionViva bridge request is unreadable".to_string())?;
+    let bulk_request =
+        frame.get("operation").and_then(Value::as_str) == Some("viva.documents.upload_many");
+    let companion = frame.get("operation").and_then(Value::as_str) == Some("viva.documents.cancel")
+        || (frame.get("operation").and_then(Value::as_str) == Some("viva.surface.read")
+            && frame.pointer("/payload/surface").and_then(Value::as_str) == Some("jobs")
+            && frame
+                .pointer("/payload/parameters")
+                .is_none_or(|parameters| {
+                    parameters
+                        .as_object()
+                        .is_some_and(|parameters| parameters.is_empty())
+                }));
+    if ticket.is_some() && !bulk_request {
+        return Err("Bulk admission refused: stop owner does not match operation".to_string());
     }
     let (sender, receiver) = mpsc::channel();
-    {
+    let write_result = {
+        let mut binding = ticket
+            .as_ref()
+            .map(|ticket| {
+                ticket
+                    .binding
+                    .lock()
+                    .map_err(|_| "Bulk stop ownership is unavailable".to_string())
+            })
+            .transpose()?;
+        if ticket
+            .as_ref()
+            .is_some_and(|ticket| ticket.stopped.load(Ordering::SeqCst))
+        {
+            return Err("Bulk admission refused: browser owner has left".to_string());
+        }
+        if binding.as_ref().is_some_and(|binding| binding.is_some()) {
+            return Err("Bulk admission refused: browser owner was already used".to_string());
+        }
+        let mut bulk = bridge
+            .bulk
+            .lock()
+            .map_err(|_| "Bulk ownership is unavailable".to_string())?;
+        if bulk.draining || (bulk.request_id.is_some() && !companion) {
+            return Err("Bulk admission refused: an upload owns this generation".to_string());
+        }
+        if bridge.closed.load(Ordering::SeqCst) {
+            return Err("OrionViva bridge is not running".to_string());
+        }
         let mut pending = bridge
             .pending
             .lock()
@@ -759,29 +958,63 @@ fn request_process(
         if pending.contains_key(request_id) {
             return Err("OrionViva bridge request identity is already pending".to_string());
         }
-        pending.insert(request_id.to_string(), sender);
-    }
-    let write_result = (|| {
-        let mut stdin = bridge
-            .stdin
-            .lock()
-            .map_err(|_| "OrionViva bridge input is unavailable".to_string())?;
-        let stdin = stdin
-            .as_mut()
-            .ok_or_else(|| "OrionViva bridge stdin is closed".to_string())?;
-        writeln!(stdin, "{encoded}")
-            .map_err(|error| format!("unable to write to OrionViva bridge: {error}"))?;
-        stdin
-            .flush()
-            .map_err(|error| format!("unable to flush OrionViva bridge request: {error}"))
-    })();
-    if let Err(error) = write_result {
-        if let Ok(mut pending) = bridge.pending.lock() {
-            pending.remove(request_id);
+        if bulk_request && !pending.is_empty() {
+            return Err("Bulk admission refused: earlier requests are still pending".to_string());
         }
-        return Err(error);
+        if bulk_request {
+            bulk.request_id = Some(request_id.to_string());
+            bulk.ticket = ticket.clone();
+            if let Some(binding) = binding.as_mut() {
+                **binding = Some(BulkBinding {
+                    bulk: Arc::downgrade(&bridge.bulk),
+                    stdin: Arc::downgrade(&bridge.stdin),
+                    closed: Arc::downgrade(&bridge.closed),
+                });
+            }
+        }
+        pending.insert(request_id.to_string(), sender);
+        (|| {
+            let mut stdin = bridge
+                .stdin
+                .lock()
+                .map_err(|_| "OrionViva bridge input is unavailable".to_string())?;
+            let stdin = stdin
+                .as_mut()
+                .ok_or_else(|| "OrionViva bridge stdin is closed".to_string())?;
+            writeln!(stdin, "{encoded}")
+                .map_err(|error| format!("unable to write to OrionViva bridge: {error}"))?;
+            stdin
+                .flush()
+                .map_err(|error| format!("unable to flush OrionViva bridge request: {error}"))
+        })()
+    };
+    let mut result = write_result.and_then(|_| wait_for_response_borrowed(&receiver, policy));
+    if result.is_err() && bridge.begin_bulk_drain()? {
+        bridge.wait_bulk_exit()?;
+    } else if result.is_ok() && bulk_request {
+        let mut bulk = bridge
+            .bulk
+            .lock()
+            .map_err(|_| "Bulk ownership is unavailable".to_string())?;
+        if bulk.request_id.as_deref() == Some(request_id)
+            && !bulk.draining
+            && !bridge.closed.load(Ordering::SeqCst)
+        {
+            bulk.request_id = None;
+            bulk.ticket = None;
+        }
     }
-    let result = wait_for_response(receiver, policy);
+    if bulk_request {
+        let draining = bridge
+            .bulk
+            .lock()
+            .map_err(|_| "Bulk ownership is unavailable".to_string())?
+            .draining;
+        if draining {
+            bridge.wait_bulk_exit()?;
+            result = Err("OrionViva bulk upload was interrupted. Outcome unknown; inspect the vault before trying again.".to_string());
+        }
+    }
     // This is total host-side request wait. The serial sidecar does not yet
     // announce when a queued frame begins executing, so calling it queue time
     // would turn execution time into a misleading diagnosis.
@@ -859,6 +1092,26 @@ fn request_bridge_with<R: tauri::Runtime>(
     policy: impl Fn(Option<&str>) -> DeadlinePolicy + Copy,
     before_failed_identity_clear: impl Fn(),
 ) -> Result<Value, String> {
+    request_bridge_with_owner(
+        app,
+        state,
+        frame,
+        spawn,
+        policy,
+        before_failed_identity_clear,
+        None,
+    )
+}
+
+fn request_bridge_with_owner<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &BridgeState,
+    frame: Value,
+    spawn: impl Fn(&AppHandle<R>) -> Result<BridgeProcess, String> + Copy,
+    policy: impl Fn(Option<&str>) -> DeadlinePolicy + Copy,
+    before_failed_identity_clear: impl Fn(),
+    ticket: Option<Arc<BulkStopTicket>>,
+) -> Result<Value, String> {
     state.recovery_gate.wait()?;
     let request_id = frame
         .get("request_id")
@@ -906,7 +1159,13 @@ fn request_bridge_with<R: tauri::Runtime>(
                 return Err(format!("{error}. The bridge was reset safely"));
             }
         }
-        let result = request_process(&bridge, &request_id, &encoded, policy(operation));
+        let result = request_process_owned(
+            &bridge,
+            &request_id,
+            &encoded,
+            policy(operation),
+            ticket.clone(),
+        );
         match result {
             Ok(response) => {
                 let current = state.lock()?;
@@ -967,6 +1226,9 @@ fn request_bridge_with<R: tauri::Runtime>(
                 return Ok(response);
             }
             Err(error) => {
+                if error.starts_with("Bulk admission refused:") {
+                    return Err(error);
+                }
                 let (cleanup_error, will_recover) = {
                     let mut process = state.lock()?;
                     let is_current = process
@@ -1082,7 +1344,8 @@ mod tests {
         operation_can_reopen_vault_and_replay, operation_may_have_written,
         protected_default_matches_active, recovery_directory_for, recovery_is_exact, route_pending,
         startup_diagnostic_record, wait_for_response, ActiveVault, ActiveVaultRecord,
-        BridgeProcess, BridgeState, DeadlinePolicy, PendingCalls, RecoveryGate, RoutedFrame,
+        BridgeProcess, BridgeState, BulkOwnership, DeadlinePolicy, PendingCalls, RecoveryGate,
+        RoutedFrame,
     };
     use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -1094,6 +1357,375 @@ mod tests {
     static LIFECYCLE_FAKE_SPAWNS: AtomicUsize = AtomicUsize::new(0);
     #[cfg(unix)]
     static LIFECYCLE_FAKE_LOCK: Mutex<()> = Mutex::new(());
+
+    #[cfg(unix)]
+    pub(crate) fn bulk_fixture(
+        script: &str,
+        paths: &[&std::path::Path],
+    ) -> (tauri::App<tauri::test::MockRuntime>, BridgeProcess) {
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let mut command = Command::new("sh");
+        command.args(["-c", script, "bulk-fixture"]);
+        for path in paths {
+            command.arg(path);
+        }
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let bridge = BridgeProcess {
+            child: Arc::new(Mutex::new(Some(child))),
+            stdin: Arc::new(Mutex::new(Some(stdin))),
+            pending: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            closed: Arc::new(AtomicBool::new(false)),
+            terminal: Arc::new(Mutex::new(false)),
+            bulk: Arc::new(Mutex::new(BulkOwnership::default())),
+            generation: 71,
+        };
+        let routed = bridge.clone();
+        let handle = app.handle().clone();
+        thread::spawn(move || super::route_stdout(handle, stdout, routed));
+        (app, bridge)
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn bulk_frame(id: &str) -> String {
+        serde_json::json!({ "request_id": id, "operation": "viva.documents.upload_many", "payload": { "paths": ["/synthetic.pdf"] } }).to_string()
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn bulk_barrier(path: &std::path::Path) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !path.exists() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(path.exists(), "owned surrogate did not reach its barrier");
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn bulk_folder(name: &str) -> std::path::PathBuf {
+        let folder =
+            std::env::temp_dir().join(format!("orionviva-bulk-{}-{}", name, std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        folder
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bulk_refuses_earlier_pending_and_new_mutations_without_stopping_the_owner() {
+        let folder = bulk_folder("admission");
+        let started = folder.join("started");
+        let release = folder.join("release");
+        let eof = folder.join("eof");
+        for path in [&started, &release, &eof] {
+            let _ = std::fs::remove_file(path);
+        }
+        let script = r#"while IFS= read -r line; do case "$line" in *upload_many*) ( : > "$1"; while [ ! -f "$2" ]; do sleep 0.01; done; printf '{"request_id":"bulk-owner","ok":true}\n' ) & ;; *) id=$(printf '%s\n' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p'); printf '{"request_id":"%s","ok":true}\n' "$id";; esac; done; : > "$3"; wait"#;
+        let (_app, mut bridge) = bulk_fixture(script, &[&started, &release, &eof]);
+        let (prior, _receiver) = mpsc::channel();
+        bridge
+            .pending
+            .lock()
+            .unwrap()
+            .insert("prior".to_string(), prior);
+        let refused = super::request_process(
+            &bridge,
+            "not-admitted",
+            &bulk_frame("not-admitted"),
+            lifecycle_test_policy(None),
+        )
+        .unwrap_err();
+        assert!(refused.starts_with("Bulk admission refused:"));
+        assert!(bridge.bulk.lock().unwrap().request_id.is_none());
+        assert!(!bridge.closed.load(Ordering::SeqCst));
+        bridge.pending.lock().unwrap().remove("prior");
+        let owner_bridge = bridge.clone();
+        let owner = thread::spawn(move || {
+            super::request_process(
+                &owner_bridge,
+                "bulk-owner",
+                &bulk_frame("bulk-owner"),
+                super::DeadlinePolicy {
+                    first: Duration::from_secs(5),
+                    silence: Duration::from_secs(5),
+                    cap: Duration::from_secs(5),
+                },
+            )
+        });
+        bulk_barrier(&started);
+        let mutation = serde_json::json!({ "request_id": "mutation", "operation": "viva.maintenance.run", "payload": { "spend": false } }).to_string();
+        assert!(super::request_process(
+            &bridge,
+            "mutation",
+            &mutation,
+            lifecycle_test_policy(None)
+        )
+        .unwrap_err()
+        .starts_with("Bulk admission refused:"));
+        for frame in [
+            serde_json::json!({"request_id":"jobs","operation":"viva.surface.read","payload":{"surface":"jobs","parameters":{}}}),
+            serde_json::json!({"request_id":"cancel","operation":"viva.documents.cancel","payload":{"job_id":"active-job"}}),
+        ] {
+            assert!(super::request_process(
+                &bridge,
+                frame["request_id"].as_str().unwrap(),
+                &frame.to_string(),
+                super::DeadlinePolicy {
+                    first: Duration::from_secs(1),
+                    silence: Duration::from_secs(1),
+                    cap: Duration::from_secs(1)
+                }
+            )
+            .is_ok());
+        }
+        assert!(bridge.status().unwrap().is_none());
+        assert!(!bridge.closed.load(Ordering::SeqCst));
+        std::fs::write(&release, b"release").unwrap();
+        assert!(owner.join().unwrap().is_ok());
+        assert!(bridge.bulk.lock().unwrap().request_id.is_none());
+        bridge.shutdown().unwrap();
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bulk_normal_completion_releases_admission_for_the_next_chunk() {
+        let script = r#"while IFS= read -r line; do id=$(printf '%s\n' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p'); printf '{"request_id":"%s","ok":true}\n' "$id"; done"#;
+        let (_app, mut bridge) = bulk_fixture(script, &[]);
+        for id in ["chunk-one", "chunk-two"] {
+            assert!(super::request_process(
+                &bridge,
+                id,
+                &bulk_frame(id),
+                super::DeadlinePolicy {
+                    first: Duration::from_secs(1),
+                    silence: Duration::from_secs(1),
+                    cap: Duration::from_secs(1)
+                }
+            )
+            .is_ok());
+            assert!(bridge.bulk.lock().unwrap().request_id.is_none());
+            assert!(bridge.stdin.lock().unwrap().is_some());
+        }
+        bridge.shutdown().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bulk_invalid_stdout_is_consumed_while_the_exact_child_drains() {
+        let folder = bulk_folder("protocol");
+        let release = folder.join("release");
+        let eof = folder.join("eof");
+        let receipt = folder.join("receipt");
+        for path in [&release, &eof, &receipt] {
+            let _ = std::fs::remove_file(path);
+        }
+        let script = r#"IFS= read -r line; printf 'invalid-protocol\n'; while IFS= read -r rest; do :; done; : > "$2"; while [ ! -f "$1" ]; do sleep 0.01; done; dd if=/dev/zero bs=65536 count=4 2>/dev/null; printf retained > "$3""#;
+        let (app, bridge) = bulk_fixture(script, &[&release, &eof, &receipt]);
+        let child_identity = Arc::clone(&bridge.child);
+        let owner_bridge = bridge.clone();
+        let owner = thread::spawn(move || {
+            super::request_process(
+                &owner_bridge,
+                "bulk-owner",
+                &bulk_frame("bulk-owner"),
+                super::DeadlinePolicy {
+                    first: Duration::from_secs(5),
+                    silence: Duration::from_secs(5),
+                    cap: Duration::from_secs(5),
+                },
+            )
+        });
+        bulk_barrier(&eof);
+        assert!(bridge.bulk.lock().unwrap().draining);
+        assert!(bridge.pending.lock().unwrap().contains_key("bulk-owner"));
+        assert!(bridge.status().unwrap().is_none());
+        let mut current = Some(bridge.clone());
+        let generation = AtomicUsize::new(71);
+        assert!(super::ensure_bridge(
+            app.handle(),
+            &mut current,
+            |_| panic!("replacement crossed bulk drain"),
+            &generation
+        )
+        .err()
+        .unwrap()
+        .starts_with("Bulk admission refused:"));
+        assert!(Arc::ptr_eq(
+            &child_identity,
+            &current.as_ref().unwrap().child
+        ));
+        std::fs::write(&release, b"release").unwrap();
+        assert!(owner.join().unwrap().is_err());
+        assert!(receipt.exists());
+        assert!(bridge.status().unwrap().is_some());
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bulk_stdout_eof_does_not_release_ownership_before_actual_exit() {
+        let folder = bulk_folder("eof");
+        let release = folder.join("release");
+        let eof = folder.join("eof");
+        let receipt = folder.join("receipt");
+        for path in [&release, &eof, &receipt] {
+            let _ = std::fs::remove_file(path);
+        }
+        let script = r#"IFS= read -r line; exec 1>&-; while IFS= read -r rest; do :; done; : > "$2"; while [ ! -f "$1" ]; do sleep 0.01; done; printf retained > "$3""#;
+        let (_app, bridge) = bulk_fixture(script, &[&release, &eof, &receipt]);
+        let owner_bridge = bridge.clone();
+        let owner = thread::spawn(move || {
+            super::request_process(
+                &owner_bridge,
+                "bulk-owner",
+                &bulk_frame("bulk-owner"),
+                super::DeadlinePolicy {
+                    first: Duration::from_secs(5),
+                    silence: Duration::from_secs(5),
+                    cap: Duration::from_secs(5),
+                },
+            )
+        });
+        bulk_barrier(&eof);
+        assert!(bridge.status().unwrap().is_none());
+        assert!(bridge.bulk.lock().unwrap().request_id.is_some());
+        assert!(!*bridge.terminal.lock().unwrap());
+        std::fs::write(&release, b"release").unwrap();
+        assert!(owner.join().unwrap().is_err());
+        assert!(receipt.exists());
+        assert!(bridge.status().unwrap().is_some());
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bulk_explicit_shutdown_drains_before_reaping_or_releasing_waiters() {
+        let folder = bulk_folder("shutdown");
+        let release = folder.join("release");
+        let eof = folder.join("eof");
+        let started = folder.join("started");
+        let receipt = folder.join("receipt");
+        for path in [&release, &eof, &started, &receipt] {
+            let _ = std::fs::remove_file(path);
+        }
+        let script = r#"IFS= read -r line; : > "$3"; while IFS= read -r rest; do :; done; : > "$2"; while [ ! -f "$1" ]; do sleep 0.01; done; printf retained > "$4"; printf '{"request_id":"bulk-owner","ok":true}\n'"#;
+        let (_app, bridge) = bulk_fixture(script, &[&release, &eof, &started, &receipt]);
+        let owner_bridge = bridge.clone();
+        let owner = thread::spawn(move || {
+            super::request_process(
+                &owner_bridge,
+                "bulk-owner",
+                &bulk_frame("bulk-owner"),
+                super::DeadlinePolicy {
+                    first: Duration::from_secs(5),
+                    silence: Duration::from_secs(5),
+                    cap: Duration::from_secs(5),
+                },
+            )
+        });
+        bulk_barrier(&started);
+        let mut stopping = bridge.clone();
+        let stop = thread::spawn(move || stopping.shutdown());
+        bulk_barrier(&eof);
+        assert!(bridge.status().unwrap().is_none());
+        assert!(bridge.bulk.lock().unwrap().draining);
+        assert!(!stop.is_finished());
+        std::fs::write(&release, b"release").unwrap();
+        stop.join().unwrap().unwrap();
+        let _ = owner.join().unwrap();
+        assert!(receipt.exists());
+        assert!(bridge.status().unwrap().is_some());
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bulk_timeout_keeps_the_owned_reader_alive_until_receipts_drain() {
+        use std::io::BufRead;
+        let folder =
+            std::env::temp_dir().join(format!("orionviva-bulk-drain-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let release = folder.join("release");
+        let observed_eof = folder.join("eof");
+        let receipt = folder.join("receipt");
+        for path in [&release, &observed_eof, &receipt] {
+            let _ = std::fs::remove_file(path);
+        }
+        let script = "IFS= read -r request; while IFS= read -r rest; do :; done; : > \"$2\"; while [ ! -f \"$1\" ]; do sleep 0.01; done; printf retained > \"$3\"; printf '{\"request_id\":\"bulk-owner\",\"ok\":true}\\n'";
+        let mut child = Command::new("sh")
+            .args(["-c", script, "bulk-surrogate"])
+            .arg(&release)
+            .arg(&observed_eof)
+            .arg(&receipt)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let bridge = BridgeProcess {
+            child: Arc::new(Mutex::new(Some(child))),
+            stdin: Arc::new(Mutex::new(Some(stdin))),
+            pending: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            closed: Arc::new(AtomicBool::new(false)),
+            terminal: Arc::new(Mutex::new(false)),
+            bulk: Arc::new(Mutex::new(super::BulkOwnership::default())),
+            generation: 51,
+        };
+        let routed = bridge.clone();
+        thread::spawn(move || {
+            for line in std::io::BufReader::new(stdout).lines() {
+                if let Ok(response) = serde_json::from_str::<serde_json::Value>(&line.unwrap()) {
+                    super::route_pending(
+                        &routed.pending,
+                        "bulk-owner",
+                        RoutedFrame::Response(response),
+                    );
+                }
+            }
+        });
+        let owner_bridge = bridge.clone();
+        let (done_tx, done_rx) = mpsc::channel();
+        let owner = thread::spawn(move || {
+            let mut owner_bridge = owner_bridge;
+            let result = super::request_process(&owner_bridge, "bulk-owner", "{\"request_id\":\"bulk-owner\",\"operation\":\"viva.documents.upload_many\",\"payload\":{\"paths\":[\"/synthetic.pdf\"]}}", lifecycle_test_policy(None));
+            if result.is_err() {
+                owner_bridge.shutdown().unwrap();
+            }
+            done_tx.send(result).unwrap();
+        });
+        let eof_deadline = Instant::now() + Duration::from_secs(5);
+        while !observed_eof.exists() && Instant::now() < eof_deadline {
+            thread::yield_now();
+        }
+        assert!(
+            observed_eof.exists(),
+            "timeout never stopped new phase admission by EOF"
+        );
+        let premature = done_rx.recv_timeout(Duration::from_secs(3));
+        std::fs::write(&release, b"release").unwrap();
+        let completed_early = premature.is_ok();
+        if !completed_early {
+            let _ = done_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+        owner.join().unwrap();
+        let retained = receipt.exists();
+        let _ = std::fs::remove_dir_all(folder);
+        assert!(
+            !completed_early,
+            "bulk ownership was released before the receipt barrier opened"
+        );
+        assert!(
+            retained,
+            "host killed the owned reader before its receipt was retained"
+        );
+    }
 
     #[test]
     fn startup_diagnostic_record_enforces_its_privacy_allowlist() {
@@ -1200,6 +1832,7 @@ mod tests {
             pending: Arc::clone(&pending),
             closed: Arc::clone(&closed),
             terminal: Arc::new(Mutex::new(false)),
+            bulk: Arc::new(Mutex::new(BulkOwnership::default())),
             generation: 0,
         };
         thread::spawn(move || {
@@ -1250,6 +1883,7 @@ mod tests {
             pending: Arc::new(Mutex::new(std::collections::HashMap::new())),
             closed: Arc::new(AtomicBool::new(false)),
             terminal: Arc::new(Mutex::new(false)),
+            bulk: Arc::new(Mutex::new(BulkOwnership::default())),
             generation: 0,
         };
         let reader_bridge = bridge.clone();
@@ -1278,6 +1912,7 @@ mod tests {
             pending: Arc::new(Mutex::new(std::collections::HashMap::new())),
             closed: Arc::new(AtomicBool::new(false)),
             terminal: Arc::new(Mutex::new(false)),
+            bulk: Arc::new(Mutex::new(BulkOwnership::default())),
             generation: 0,
         };
         let routed = bridge.clone();
@@ -1441,6 +2076,16 @@ mod tests {
         ));
         assert!(operation_may_have_written(Some("bridge.open_vault")));
         assert!(operation_may_have_written(Some("viva.documents.upload")));
+        assert!(operation_may_have_written(Some(
+            "viva.documents.upload_many"
+        )));
+        assert!(!operation_can_reopen_vault_and_replay(Some(
+            "viva.documents.upload_many"
+        )));
+        assert!(!can_replay_after_recovery(
+            Some("viva.documents.upload_many"),
+            Some(&ActiveVault::Sample)
+        ));
         assert!(!operation_may_have_written(Some("viva.surface.read")));
         let claimed = AtomicBool::new(false);
         assert!(claim_read_recovery(&claimed));
@@ -1452,7 +2097,10 @@ mod tests {
         let operation = Some("viva.documents.preview.read");
         assert!(!operation_may_have_written(operation));
         assert!(!operation_can_reopen_vault_and_replay(operation));
-        assert!(!can_replay_after_recovery(operation, Some(&ActiveVault::Sample)));
+        assert!(!can_replay_after_recovery(
+            operation,
+            Some(&ActiveVault::Sample)
+        ));
         assert_eq!(deadline_policy(operation).cap, Duration::from_secs(15));
     }
 
@@ -1505,6 +2153,10 @@ mod tests {
         let recovery = deadline_policy(Some("viva.documents.recover"));
         assert_eq!(recovery.cap, Duration::from_secs(1800));
         assert!(operation_may_have_written(Some("viva.documents.recover")));
+        assert_eq!(
+            deadline_policy(Some("viva.documents.upload_many")),
+            deadline_policy(Some("viva.documents.upload"))
+        );
         let job = deadline_policy(Some("viva.documents.upload"));
         assert_eq!(job.first, Duration::from_secs(60));
         assert_eq!(job.silence, Duration::from_secs(120));
@@ -1679,6 +2331,7 @@ mod tests {
             pending,
             closed,
             terminal: Arc::new(Mutex::new(false)),
+            bulk: Arc::new(Mutex::new(BulkOwnership::default())),
             generation: 23,
         };
         let peer_bridge = bridge.clone();
@@ -1729,6 +2382,7 @@ mod tests {
             pending: Arc::new(Mutex::new(std::collections::HashMap::new())),
             closed: Arc::new(AtomicBool::new(false)),
             terminal: Arc::new(Mutex::new(false)),
+            bulk: Arc::new(Mutex::new(BulkOwnership::default())),
             generation: 24,
         };
         let reader_bridge = bridge.clone();

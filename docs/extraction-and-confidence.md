@@ -13,6 +13,21 @@
 1. A figure's grade is assigned by deterministic code after a check runs, never copied from a number the model produced.
 2. The model's own `doc_type_confidence` is stored as a claim on the document and never becomes, gates, or modifies any grade.
 
+Brokerage extraction requests `investment-source-v2` through the versioned
+`brokerage-base-v7` prompt. Its raw fields and genuine rendered pages are claims,
+not verification. References, role wording, explicit no-activity assertions and
+separate exposure/vehicle classifications must come from the printed source;
+the model does not create canonical ids, grades or accepted funding witnesses.
+The request copies a separately printed holding identifier exactly into both
+ordinary and source fields. Activity correspondence uses only that activity
+row's printed security token; a holding cannot supply an unprinted activity
+identifier. Names remain labels and descriptions retain their printed wording.
+Missing identifiers remain missing, so evidence can still be unavailable.
+Existing numeric, page, multiplicity and opposing-source checks still determine
+what the read surfaces may use. Historical absent-extension and source-v1 reads
+remain supported. Deterministic prompt/parser tests do not establish model
+compliance; live source comparison and fresh exact qualification are still owed.
+
 ### ING-2 — The grade vocabulary is closed and four-valued
 **State:** enforced
 **Code:** product/viva/ledger/events.py:63-67
@@ -191,3 +206,60 @@ goes; queries then run against data that has already been verified.
 - [Too Consistent to Detect: self-consistent errors in LLMs](https://arxiv.org/pdf/2505.17656)
 - [BaseCal: unsupervised confidence calibration](https://arxiv.org/pdf/2601.03042)
 - [Calibrating LLM confidence via perturbed representation stability](https://arxiv.org/pdf/2505.21772)
+
+## Mortgage principal source representation
+
+The mortgage-principal-source-v2 reader distinguishes a printed positive magnitude from a signed
+principal-balance effect. A signed row retains its exact scalar/page, explicit
+kind and supporting page, plus the literal principal_balance_effect-v1 basis.
+The backend records mortgage-principal-source-v2 in normalization context schema2;
+other families retain schema1 and numeric normalization remains nv1. Only a
+finite nonzero signed effect agreeing with the explicit kind becomes a positive
+canonical magnitude. Payment and escrow semantics, financial checks and grades
+are unchanged. Supporting-page pointers remain proposals, not certified readings.
+
+Immutable raw replies and context preserve that distinction. Old contexts and
+mortgage v1 replies keep their old interpretation, including old failures; new
+contract/prompt mismatches reject. Full replay validates the retained source
+against the captured document's rendered page bounds before acceptance. A
+preliminary parse without a rendered page count does not establish that check.
+See [ADR-019](decisions/ADR-019-mortgage-principal-source-representation.md).
+
+The active reader combines immutable mortgage-base-v2 with mortgage-v3. The
+fragment clarifies escrow.identity's three printed fields separately from the
+loan identity. A common institution or holder header can supply a field only
+when its printed scope unambiguously includes escrow. Missing, unreadable,
+competing or ambiguously scoped fields leave the entire escrow identity null;
+other readable escrow components remain. Only the explicitly printed escrow
+account identifier supplies its reference: loan, payment, property and
+continuity references cannot substitute. No institution or holder is inferred
+from a lender name, balances, matching references or another document.
+
+The source contract remains mortgage-principal-source-v2 with the complete
+base-v2 schema and schema2 context unchanged. Both exact base-v2/fragment-v2 and
+base-v2/fragment-v3 pairs retain their finite unique support suffixes; all other
+new-contract pairings reject. Historical v2 replay, signed-principal kind/sign
+and page checks, escrow arithmetic, identity resolution and unique cash
+counterpart requirements remain unchanged. Identity text/page survive parsing;
+numeric/date scalars normalize, with their original text in the retained raw
+response. Accepted escrow allocation does not create duplicate household cash.
+
+Offline handcrafted replies test this machinery, not actual-model compliance.
+Fresh exact-candidate qualification and authorized browser Witness comparison
+of the three public sources, missing/ambiguous-header controls, saved originals
+and allocation remain owed before any live-success claim.
+
+The brokerage v7 request copies both ordinary and typed cash-effect raw strings
+from the same printed settled row without removing or inventing a sign. Local
+ordinary parsing still interprets a magnitude; typed source raw stays exact.
+The v6 security/row correspondence rules and historical prompt bytes remain.
+
+Term-deposit fragment v2 asks for the full applicable printed withdrawal
+restriction clause rather than an adjacent status token when both are printed.
+It preserves scope, conditions and any printed destination without paraphrase
+or combining clauses. Token-only sources keep their literal; absent or ambiguous
+clauses use null/omission. Existing schema, source pages, parser and financial
+availability rules do not change. Older token proposals remain their original
+literals; they are not rewritten into prose. Actual model fidelity, complete
+source comparison and financial answers still need exact-candidate qualification
+and Witness evidence; these prompt changes do not establish them.

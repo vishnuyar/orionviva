@@ -16,13 +16,15 @@ answer on current-turn evidence.
 from __future__ import annotations
 
 import json
+import datetime
 
 from . import ledger_tools
 from .compute import COMPUTE_PARAMS, compute
 from .envelope import ToolResult, refusal, weakest
 from .registry import Registry, ToolSpec
 from .runner import RunResult
-from ..quantity import MEASURES
+from ..quantity import MEASURES, DEDICATED
+_GENERIC_MEASURES = tuple(value for value in MEASURES if value not in DEDICATED)
 
 __all__ = ["Registry", "ToolSpec", "ToolResult", "RunResult",
            "default_registry", "refusal", "weakest"]
@@ -72,7 +74,7 @@ def _semantic_entities(proj) -> dict:
     return catalog
 
 
-def default_registry(proj, locale: str = "", today: str = "") -> Registry:
+def default_registry(proj, locale: str = "", today: str = "", *, instrument_scope=None) -> Registry:
     """The registered read tools, bound to one projection.
 
     The locale travels with them because a read writes amounts of its own — a
@@ -84,14 +86,50 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     to the day the call is made, and is a parameter so a test does not depend
     on the day it runs."""
     registry = Registry()
-    registry.set_semantic_entity_provider(lambda: _semantic_entities(proj))
+    from ..instrument_runtime import InstrumentRuntime
+    from .instruments import INSTRUMENT_PARAMS,read_instrument_details
+    from ..instrument_claims import CLAIMS,INTERNAL_ONLY_CLAIMS
+    registry.instrument_runtime=InstrumentRuntime(instrument_scope)
+    registry.register(ToolSpec(name="read_instrument_details",params=INSTRUMENT_PARAMS,
+        fn=lambda args:read_instrument_details(registry.instrument_runtime,args),
+        emits={"reference_kinds":["figure","read_figures","instrument_date","instrument_text","instrument_normalized","allocation_target"],
+            "figure_types":["money","count","rate","percentage_points"],
+            "quantities":sorted({c.quantity for c in CLAIMS.values() if c.quantity}|{"ratio"}),
+            "claims":{name:{"quantity":c.quantity,"type":c.render_type,"reference_kind":c.reference_kind,"value_type":c.value_type,"allowed_values":list(c.allowed_values)} for name,c in CLAIMS.items() if name not in INTERNAL_ONLY_CLAIMS}},
+        bounds={"max_figures":80,"max_payload_bytes":50000,"max_execution_ms":2000}))
+    def instrument_currency(account):
+        # Private projection-bound metadata, never part of the label catalog.
+        candidates=[str(info.currency or "") for info in proj.account_infos() if info.account==account]
+        if len(candidates)!=1 or len(candidates[0])!=3 or not candidates[0].isascii() or not candidates[0].isupper():
+            raise ValueError("selected instrument currency is unavailable or ambiguous")
+        return candidates[0]
+    registry.instrument_currency=instrument_currency
+    from .account_balances import PARAMS as BALANCE_REPORT_PARAMS, TOOL as BALANCE_REPORT_TOOL, read_report, source_matches
+    registry.selected_balance_source_current = lambda: source_matches(proj, registry.instrument_runtime,
+        revision=registry.instrument_runtime.revision is not None)
+    registry.register(ToolSpec(name=BALANCE_REPORT_TOOL, params=BALANCE_REPORT_PARAMS,
+        fn=lambda args: read_report(proj, registry.instrument_runtime,
+            today or datetime.date.today().isoformat(), args),
+        emits={"reference_kinds":["read_figures", "instrument_normalized", "entity"],
+            "figure_types":["money"], "quantities":["balance", "owed"], "entity_kinds":["account"],
+            "claims":{"availability_restriction":{"quantity":"", "type":"instrument_normalized",
+                "reference_kind":"instrument_normalized", "value_type":"enum",
+                "allowed_values":list(CLAIMS["availability_restriction"].allowed_values)}}},
+        bounds={"max_accounts":7, "max_authority_invocations":14, "max_figures":32,
+            "max_payload_bytes":50000, "max_execution_ms":2000}))
+    from viva.investment.tool import runtime_spec
+    registry.register(runtime_spec(registry.instrument_runtime,today or datetime.date.today().isoformat()))
+    from viva.retirement_funding.tool import runtime_spec as retirement_spec
+    registry.register(retirement_spec(registry.instrument_runtime,today or datetime.date.today().isoformat()))
+    from viva.retirement_funding.catalog import semantic_catalog
+    registry.set_semantic_entity_provider(lambda: semantic_catalog(_semantic_entities(proj),instrument_scope))
     from ..answer_program.capabilities import ANALYSIS_PARAMS, read_financial_analysis
     registry.register(ToolSpec(
         name="read_financial_analysis", params=ANALYSIS_PARAMS,
         fn=lambda args: read_financial_analysis(proj, args, locale, today),
         emits={"reference_kinds": ["figure", "read", "read_figures", "date_of", "period"],
                "figure_types": ["money", "count", "rate"],
-               "quantities": list(MEASURES), "entity_kinds": ["account", "merchant", "category"]},
+               "quantities": list(_GENERIC_MEASURES), "entity_kinds": ["account", "merchant", "category"]},
         bounds={"max_figures": 80, "max_payload_bytes": 5000,
                 "max_execution_ms": 2000}))
     from .measurements import (MEASUREMENT_PARAMS, COVERAGE_PARAMS,
@@ -105,7 +143,7 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
         registry.register(ToolSpec(name=name, params=params,
             fn=lambda args, fn=fn: fn(proj, args, locale, today),
             emits={"reference_kinds": ["figure", "read", "read_figures", "date_of", "period"],
-                   "figure_types": ["money", "count"], "quantities": list(MEASURES),
+                   "figure_types": ["money", "count"], "quantities": list(_GENERIC_MEASURES),
                    "entity_kinds": ["account", "document", "merchant"]},
             bounds={"max_figures": 50, "max_payload_bytes": (50_000 if name == "read_account_measurements" else
                                                           10_000 if name == "read_financial_projections" else 5000),
@@ -124,17 +162,18 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     registry.register(ToolSpec(
         name="simulate_scenario", params=SCENARIO_PARAMS,
         fn=lambda args, figures, question: simulate_scenario(
-            args, figures, question, account_resolver=resolve_scenario_account),
+            args, figures, question, account_resolver=resolve_scenario_account,
+            cash_start_eligible=lambda account: account not in proj.account_restrictions()),
         needs_figures=True,
         emits={"reference_kinds":["figure","read","read_figures","date_of"],
-               "figure_types":["money","count"], "quantities":list(MEASURES), "entity_kinds":[]},
+               "figure_types":["money","count"], "quantities":list(_GENERIC_MEASURES), "entity_kinds":[]},
         bounds={"max_figures":4,"max_payload_bytes":10_000,"max_execution_ms":2000}))
     registry.register(ToolSpec(
         name="query_ledger", params=ledger_tools.QUERY_LEDGER_PARAMS,
         fn=lambda args: ledger_tools.query_ledger(proj, args, locale, today),
         emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "date_of", "measurement_date_of", "period"],
                "figure_types": ["money", "count", "rate"],
-               "quantities": list(MEASURES),
+               "quantities": list(_GENERIC_MEASURES),
                "entity_kinds": ["account", "merchant", "category", "document"]},
         bounds={"max_figures": 80, "max_payload_bytes": 5000,
                 "max_execution_ms": 1000}))
@@ -182,7 +221,7 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
         needs_figures=True,
         emits={"reference_kinds": ["figure", "read", "read_figures"],
                "figure_types": ["money", "count", "rate"],
-               "quantities": list(MEASURES), "entity_kinds": []},
+               "quantities": list(_GENERIC_MEASURES), "entity_kinds": []},
         bounds={"max_figures": 1, "max_payload_bytes": 5000,
                 "max_execution_ms": 250}))
     from ..query import FinancialQueryExecutor, default_sources

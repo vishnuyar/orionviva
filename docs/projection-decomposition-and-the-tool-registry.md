@@ -400,3 +400,21 @@ longer say is [the-suggestions-channel.md](the-suggestions-channel.md).
   usable complete program first time, or that the resulting answer is true of
   the real vault. Whether this design works remains a per-model, real-data
   question for the Witness.
+
+## Effective classified document types
+
+The capture fold keeps raw capture identities separate from classifier claims.
+Its captured-document facade derives a type for absent or unknown raw types from
+compatible successful ordinary classify events in that same source prefix.
+Known captures stay authoritative; disagreeing canonical claims stay unknown.
+The fold retains capture and classifier identities, response links, and its
+source-prefix identity without modifying canonical event dictionaries.
+
+Authenticated SQL publication keeps the same separation in disposable derived
+indexes. It materializes classifier eligibility and lineage once, then serves
+list, filter and detail types from the bounded document index. Legacy Documents
+reads keep their scalar/history checks and overlay the same indexed result.
+Control schema 37 and projector materialized-v28 invalidate older indexes through
+the normal authenticated rebuild path. Incremental and full replay share the
+same classifier policy; reading or rebuilding metadata does not manufacture
+historical merchant-enrichment events.

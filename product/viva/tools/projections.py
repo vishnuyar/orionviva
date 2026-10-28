@@ -55,7 +55,10 @@ def _json(value):
 
 def _compatible_starts(proj, currency):
     """The unchanged current-period helper must use accepted cash sources."""
+    restrictions = proj.account_restrictions()
     for account, state in proj.core._acct.items():
+        if account in restrictions:
+            continue
         if (not state.seen or state.kind != 'depository' or state.origin != ISSUED
                 or not state.currency or (currency and state.currency != currency)):
             continue
@@ -90,6 +93,8 @@ def _local_goal_inputs(proj, row, day, end, goals):
     if not row.steps or row.steps[0].kind != 'balance':
         raise ValueError('missing starting account scope')
     starting=set(row.steps[0].account_ids)
+    if starting.intersection(proj.account_restrictions()):
+        raise ValueError('restricted starting account scope')
     for account in starting:
         state=proj.core._acct.get(account)
         if (state is None or not state.seen or state.kind != 'depository'

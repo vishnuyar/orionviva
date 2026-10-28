@@ -179,6 +179,31 @@ def financial_statements(proj, *, start: str = "", end: str = "", as_of: str = "
         ruling = _ruling(proj, m, rulings)
         classification = _evidence(proj, m, ruling)
         row_args = {"classification": classification, "grade": grades.get(m.key, "")}
+        instrument_allocation = (proj.instrument_allocations().get(m.key)
+                                 if hasattr(proj, "instrument_allocations") else None)
+        if instrument_allocation is not None:
+            payment = instrument_allocation.payment
+            evidence = {"reason": "document_components", "by": "document", "category_by": "document",
+                        "explanation": "Explicit reconciled payment components and bounded cash counterpart",
+                        "source_refs": sorted({payment.reference.source.doc_id, instrument_allocation.bank_source.doc_id}),
+                        "provisional": False}
+            row_args["classification"] = evidence
+            components = []
+            for name, major, account in (("principal", "liability", instrument_allocation.loan_account),
+                ("interest", "expense", "Expenses:Interest"),
+                ("escrow", "asset", instrument_allocation.escrow_account), ("fees", "expense", "Expenses:Fees")):
+                if name not in instrument_allocation.component_names:
+                    continue
+                amount = getattr(payment, name).value
+                components.append({"component": name, "major": major, "account": account, "amount": str(amount)})
+                if major == "expense" and amount:
+                    row = _row(proj, m, "expenses", amount, account=account, category=account.split(":")[1], **row_args)
+                    row["amount_evidence"]["component_source"] = getattr(payment, name).source.doc_id
+                    lines.append(row)
+            allocation = _row(proj, m, "allocated", abs(m.amount), **row_args)
+            allocation["components"] = components
+            allocations.append(allocation)
+            continue
         shares = recorded_shares(ruling)
         if shares is not None:
             components = []

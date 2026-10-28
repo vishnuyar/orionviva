@@ -94,6 +94,10 @@ class Vault:
     _read_store_visibility_lock: threading.RLock = field(
         default_factory=threading.RLock, repr=False)
 
+    _retained_confirmation_closed: bool = field(default=False, init=False, repr=False)
+    _retained_confirmation_owner: object | None = field(default=None, init=False, repr=False)
+    _retained_confirmation_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+
     def hold_read_store_visibility(self) -> int:
         """Fence reads for one background writer and identify its ownership."""
         with self._read_store_visibility_lock:
@@ -454,6 +458,8 @@ class Vault:
         self._read_store_worker_cancel = None
 
     def close(self) -> None:
+        from .ingest.pipeline_models import revoke_retained_confirmations
+        revoke_retained_confirmations(self)
         self.ledger.store.observe_commits(None)
         self.stop_read_store_worker()
         if self.read_store is not None:

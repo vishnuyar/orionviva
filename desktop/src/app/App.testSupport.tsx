@@ -1,3 +1,4 @@
+import { documentsPageFixture } from "./documentsPage.testSupport";
 import isolatedReviewReads from "./fixtures/requested-editors-synthetic.json";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
@@ -109,6 +110,8 @@ function installSampleBridge(overrides: Record<string, unknown> = {}) {
   window.orionVivaBridge = {
     pickDocumentPaths: async () => [],
     request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+      // Preparation is a finite protocol stub here; financial data still comes from the retained parity artifact.
+      if (operation === "bridge.sample.prepare" || operation === "bridge.sample.status") return { protocol: "1.0", request_id: "preparation", ok: true, result: { state: "ready", sample_version: "five-year-life-v1", completed_documents: 794, total_documents: 794, posted_documents: 794, held_documents: 0, phase: "ready", message: "Prepared sample fixture" } as T };
       if (operation === "bridge.open_demo_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: true, frame: sampleFrame, priority_reads: ["overview_accounts"] } as T };
       if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: false, priority_reads: ["overview_accounts"] } as T };
       if (operation === "bridge.handshake") return { protocol: "1.0", request_id: "hand", ok: true, result: { protocol: "2.0", transport: "json-lines", revision: "sample-build" } as T };
@@ -119,7 +122,7 @@ function installSampleBridge(overrides: Record<string, unknown> = {}) {
       const data = surface === "overview_accounts"
         ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "sample-fixture", overview: overrides.overview ?? sampleReads.overview?.result.data, accounts: overrides.overview ?? sampleReads.overview?.result.data, error: "" }
         : surface in overrides ? overrides[surface] : sampleReads[surface]?.result.data;
-      return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+      return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data: surface === "documents" ? documentsPageFixture(data, (payload.parameters as Record<string, string>)?.selected_document_id) : data } as T };
     },
   };
   return () => { window.orionVivaBridge = previous; };

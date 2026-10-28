@@ -74,6 +74,16 @@ def _net_pay_deposit(proj, net: Decimal, currency: str, pay_date: str):
     return matches[0] if len(matches) == 1 else None
 
 
+def _retain_payroll_source(ledger,facts):
+    from ..investment.payroll import append_source
+    from ..investment.healing import heal_after_source
+    try:
+        append_source(ledger,facts)
+        heal_after_source(ledger,facts.doc_id)
+    except ValueError as error:
+        log.info("payroll source attribution unavailable: %s",error)
+
+
 def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
     """Verify a pay stub and, only if it holds, decompose the matching deposit.
 
@@ -83,6 +93,11 @@ def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
     net counted once — reusing the deposit already on the ledger. With no such
     deposit yet, the stub is held as AWAITING and ``heal_paystubs`` posts it
     when the deposit arrives."""
+    from ..retirement_funding.population import append as retain_population
+    try:
+        retain_population(ledger,facts)
+    except ValueError as error:
+        log.info("payroll population source unavailable: %s",error)
     finding = _paystub_diagnose(facts)
     when = facts.pay_date or facts.period_end or facts.period_start
     if not finding.reconciles:
@@ -107,6 +122,7 @@ def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
     if proj.is_pay_decomposed(description, when, str(facts.gross)):
         log.info("post_paystub: pay from %s on %s already decomposed — "
                  "this stub is a duplicate", facts.employer, when)
+        _retain_payroll_source(ledger,facts)
         return IngestResult(
             doc_id=facts.doc_id, action=DUPLICATE, doc_type=facts.doc_type,
             message=(f"Already broken down — I hold this pay from "
@@ -133,6 +149,7 @@ def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
         f"Pay from {facts.employer or 'employer'}", when,
         provenance=facts.provenance("net-pay decomposition"),
         matched_movement_key=deposit.key, matched_currency=deposit.currency))
+    _retain_payroll_source(ledger,facts)
     log.info("post_paystub: decomposed pay from %r gross=%s net=%s deductions=%d "
              "against deposit on %s", facts.employer, facts.gross, facts.net,
              len(facts.deductions), deposit.account)

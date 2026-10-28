@@ -1,6 +1,7 @@
 import { BridgeRefusal, BridgeTimeout, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/contracts";
 import type { BridgeClient, PriorityReadResult } from "../bridge/contracts";
-import { adaptDocuments } from "./adapters/documents";
+import { adaptDocumentsPage } from "./adapters/documents";
+import { adaptBulkDocuments } from "./adapters/bulk-documents";
 import { adaptActivity, adaptActivityActionOutcome } from "./adapters/activity";
 import { adaptAccountLedger } from "./adapters/account-ledger";
 import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
@@ -62,7 +63,7 @@ async function readConversationFeature(client: BridgeClient): Promise<FeatureRes
 
 async function readDocumentsFeature(client: BridgeClient): Promise<FeatureResult<DocumentsData>> {
   const [read] = await Promise.allSettled([client.readDocuments()]);
-  return settled(read, (value) => adaptDocuments(value.data));
+  return settled(read, (value) => adaptDocumentsPage(value.data));
 }
 
 export async function readJobsFeature(client: BridgeClient): Promise<FeatureResult<JobsData>> {
@@ -154,11 +155,21 @@ export function privateJobStream(client: BridgeClient): JobStream | null {
   });
 }
 
-// Document actions send one path per call without document bytes, then reread
-// the vault-backed document list.
+// Document actions send local paths without document bytes. Bulk terminal
+// rows are checked before the session queue can admit its next chunk.
 export function privateDocumentActions(client: BridgeClient): DocumentActions {
   return {
     upload: (path) => acted(client.uploadDocument(path)),
+    ...(client.readRetainedDocuments ? { readRetained: async (documents: readonly import("./types").RetainedReadingSelection[]) => {
+      const result = adaptBulkDocuments(await client.readRetainedDocuments!(documents), documents.length, documents.map((document) => document.documentId));
+      if (!result) throw new BridgeUnreadable("viva.documents.upload_many");
+      return result;
+    } } : {}),
+    ...(client.uploadDocuments ? { uploadMany: async (paths: readonly string[]) => {
+      const result = adaptBulkDocuments(await client.uploadDocuments!(paths), paths.length);
+      if (!result) throw new BridgeUnreadable("viva.documents.upload_many");
+      return result;
+    } } : {}),
     recover: client.recoverDocument ? (jobId) => acted(client.recoverDocument!(jobId)) : undefined,
     reread: () => readDocumentsFeature(client),
     cancel: (jobId) => acted(client.cancelJob(jobId)),
@@ -180,8 +191,8 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
 // turn itself, read only from a reply the vault settled.
 export function privateConversationActions(client: BridgeClient): ConversationActions {
   return {
-    ask: async (question, mirrored, planRequest = false, contextMode, movementIds) => {
-      const [replied] = await Promise.allSettled([client.askViva(question, mirrored, planRequest, contextMode, movementIds)]);
+    ask: async (question, mirrored, planRequest = false, contextMode, movementIds, continuationRecovery) => {
+      const [replied] = await Promise.allSettled([client.askViva(question, mirrored, planRequest, contextMode, movementIds, continuationRecovery)]);
       const result = await acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
       const turn = replied.status === "fulfilled" && isRecord(replied.value) ? adaptTurn(replied.value.state) : null;
       return { result, turn };
@@ -293,7 +304,7 @@ export async function loadCoherentSnapshot(client: BridgeClient, disclosure?: Su
   if (confirmed.freshness !== "current" || confirmed.revision !== first.revision) throw new Error("aggregate_revision_mismatch");
   return { revision: first.revision, snapshot: buildLiveSnapshot(
     first.snapshot.overview,
-    settled(documentsRead, (read) => adaptDocuments(read.data)),
+    settled(documentsRead, (read) => adaptDocumentsPage(read.data)),
     settled(conversationRead, (read) => adaptConversation(read.data)),
     settled(trustRead, (read) => adaptTrust(read.data)),
     settled(activityRead, (read) => initialActivity(read.data, activityFocus)),
@@ -364,7 +375,7 @@ export async function loadSecondarySnapshot(client: BridgeClient, disclosure?: S
   const [documentsRead, conversationRead, reviewRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readDocuments(), client.readConversation(), client.readReview ? client.readReview() : Promise.reject(new Error("review_not_served")), client.readTrust(), requestActivityRead(client, activityParameters), client.readPlans()]);
   return buildLiveSnapshot(
     { state: "absent", reason: "priority_owned" },
-    settled(documentsRead, (read) => adaptDocuments(read.data)),
+    settled(documentsRead, (read) => adaptDocumentsPage(read.data)),
     settled(conversationRead, (read) => adaptConversation(read.data)),
     settled(trustRead, (read) => adaptTrust(read.data)),
     settled(activityRead, (read) => initialActivity(read.data, activityFocus)),
@@ -396,4 +407,18 @@ export async function loadPrivateDestination(client: BridgeClient, destination: 
   if (destination === "activity") return { activity: await readActivityFeature(client, 50, "", activityFocus) };
   const [read] = await Promise.allSettled([client.readPlans()]);
   return { plans: settledPlans(read) };
+}
+
+export function privateDocumentsPageReader(client: BridgeClient): import("./types").DocumentsPageReader {
+  return async (request) => {
+    try {
+      const result = await client.readDocuments(request);
+      const data = adaptDocumentsPage(result.data);
+      if (!data) {
+        const raw = result.data as Record<string, unknown>;
+        return { state: "unavailable", reason: raw?.contract_version === "documents-page-v1" && typeof raw.reason === "string" ? raw.reason : "documents_contract_unavailable" };
+      }
+      return { state: "ready", data };
+    } catch { return { state: "unavailable", reason: "documents_read_failed" }; }
+  };
 }

@@ -264,6 +264,16 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
 
     supported = [ground.book[references[name]["measurement_date_of"]]
                  for name in said if "measurement_date_of" in references[name]]
+    source_assertions=[]
+    for name in said:
+        for key in ("instrument_date","instrument_text","instrument_normalized"):
+            if key in references[name]:
+                forms=getattr(written[name],"assertion_forms",None)
+                if forms is None:forms=((references[name][key],str(written[name])),)
+                for aid,form in forms:
+                    assertion=ground.instrument_assertions[aid]
+                    if not any(a["id"]==assertion["id"] for a in source_assertions):source_assertions.append({**dict(assertion),"written":str(form)})
+    target_premises=[{**dict(ground.instrument_premises[references[name]["allocation_target"]]),"written":str(written[name])} for name in said if "allocation_target" in references[name]]
     evidence = cited + supported
     for fig in evidence:
         # A money figure with no record behind it is refused. The other kinds
@@ -302,8 +312,8 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     # when a sentence states an amount or a supporting measurement date.
     # Row-only blocks retain their own grade placement.
     graded = [f for f in evidence if f["kind"] in MONEY_KINDS]
-    stood_behind = weakest(f["grade"] for f in graded)
-    stated_in_a_sentence = bool(supported) or any(f["id"] in as_numbers for f in graded)
+    stood_behind = weakest([f["grade"] for f in graded]+[a["grade"] for a in source_assertions])
+    stated_in_a_sentence = bool(supported or source_assertions) or any(f["id"] in as_numbers for f in graded)
 
     parts: list = []
     for clause, figures in zip(spoken, per_clause):
@@ -316,7 +326,8 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
                              counted=render.count(covered),
                              held=render.count(held)), False))
     if stood_behind and stated_in_a_sentence:
-        parts.append((moment(STOOD_BEHIND_MOMENT + stood_behind), False))
+        from .envelope import scoped_grade_sentence
+        parts.append((scoped_grade_sentence(stood_behind,evidence,target_premises,source_assertions), False))
     if owed:
         parts.append((moment("answer_limits", limits=render.caveat(
             " ".join(ground.caveats[cid] for cid in owed))), False))
@@ -345,6 +356,8 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     return RunResult(
         answered=True, text=_written_out(parts),
         figures=[dict(f) for f in cited],
+        source_assertions=[dict(a) for a in source_assertions],
+        target_premises=[dict(p) for p in target_premises],
         grade=stood_behind,
         transcript=dicts, calls=len(transcript),
         shape=shape.to_dict(),

@@ -33,4 +33,4 @@ export function interrupted(message: string): Extract<ActionResult, { state: "in
 
 // What a gesture carrying files turned out to be. Only `one` reaches the
 // vault; `several` is refused and `none` is a person changing their mind.
-export type CaptureGesture = "none" | "one" | "several";
+export type CaptureGesture = "none" | "one" | "several" | "bulk" | "over_limit";

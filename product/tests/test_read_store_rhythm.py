@@ -211,6 +211,7 @@ def test_rhythm_canonical_profile_exact_utf8_byte_bound_refuses_before_decoding(
         "provenance_region TEXT, provenance_note TEXT);"
         "CREATE TABLE postings(source_sequence INTEGER, posting_index INTEGER, "
         "account_id TEXT, amount_text TEXT, grade TEXT);"
+        "CREATE TABLE instrument_cash_roles(source_sequence INTEGER PRIMARY KEY, role TEXT);"
         "CREATE TABLE resolver_profiles(institution TEXT, account_kind TEXT, "
         "profile_json TEXT);")
     try:
@@ -276,7 +277,13 @@ def test_work_bounds_and_query_plans_are_explicit(tmp_path: Path, monkeypatch):
             assert "OFFSET" not in "\n".join(traced).upper()
             selected = [sql for sql in traced
                         if sql.lstrip().upper().startswith(("SELECT", "WITH"))]
-            assert selected
+            assert len(selected) == 7
+            role_queries = [sql for sql in selected if "JOIN instrument_cash_roles r" in sql]
+            assert len(role_queries) == 1
+            role_plan = revision.connection.execute("EXPLAIN QUERY PLAN " + role_queries[0]).fetchall()
+            role_detail = " ".join(row[3] for row in role_plan if "SEARCH r " in row[3])
+            assert "INTEGER PRIMARY KEY" in role_detail
+            assert "SCAN r" not in str(role_plan) and "AUTOMATIC" not in str(role_plan).upper()
             assert all("LIMIT" in sql.upper() for sql in selected), selected
             monkeypatch.setattr(sql_rhythm, "MAX_RHYTHM_POSTING_ROWS", 2)
             with pytest.raises(sql_rhythm.RhythmReadError, match="2-row read bound"):
@@ -527,3 +534,171 @@ def test_frozen_profile_and_changed_profile_rebuild_remain_oracle_equivalent(
         events, as_of="2026-05-01",
         resolve_keys=resolve.installed_resolver()).rhythm_hypotheses()
     assert _normal(actual) == _normal(expected)
+
+
+@pytest.mark.parametrize('advance', [False, True])
+def test_principal_recurrence_sql_findings_overview_reopen_and_rebuild(tmp_path, advance):
+    from test_rhythm import _principal_recurrence_events
+    from viva.surface.overview import overview
+
+    events = _principal_recurrence_events(advance=advance)
+    canonical = _store(tmp_path, events)
+    projection = LedgerProjection(events)
+    directory = tmp_path / 'read-model'
+    with ReadStore.create(directory, PASSPHRASE) as reads:
+        reads.synchronize(canonical)
+        with reads.open_reader() as revision:
+            hypotheses = revision.rhythm_hypotheses(as_of='2021-05-20')
+            assert hypotheses == []
+            assert _normal(revision.findings(today='2021-05-20')) == _normal(projection.findings('2021-05-20'))
+            assert revision.obligations(today='2021-04-28') == []
+            sql_overview = overview(revision.overview_projection(today='2021-05-20'), 'en-US', '2021-05-20')
+            assert sql_overview == overview(projection, 'en-US', '2021-05-20')
+            assert not any(f.kind == 'income_interrupted' for f in revision.findings(today='2021-05-20'))
+    with ReadStore.open(directory, PASSPHRASE) as reads:
+        with reads.open_reader() as revision:
+            assert revision.rhythm_hypotheses(as_of='2021-05-20') == []
+    with ReadStore.create(tmp_path / 'rebuilt-model', PASSPHRASE) as reads:
+        reads.synchronize(canonical)
+        with reads.open_reader() as revision:
+            assert revision.rhythm_hypotheses(as_of='2021-05-20') == []
+            assert overview(revision.overview_projection(today='2021-05-20'), 'en-US', '2021-05-20') == sql_overview
+
+
+@pytest.mark.parametrize('mode', ['payroll', 'expense', 'settlement'])
+def test_nonprincipal_recurrence_sql_income_expense_settlement_parity(tmp_path, mode):
+    from test_rhythm import _principal_recurrence_events
+    from viva.surface.overview import overview
+
+    events = _principal_recurrence_events(mode=mode)
+    canonical = _store(tmp_path, events)
+    projection = LedgerProjection(events)
+    with ReadStore.create(tmp_path / 'read-model', PASSPHRASE) as reads:
+        reads.synchronize(canonical)
+        with reads.open_reader() as revision:
+            assert len(revision.rhythm_hypotheses(as_of='2021-05-20')) == 1
+            assert _normal(revision.rhythm_hypotheses(as_of='2021-05-20')) == _normal(projection.rhythm_hypotheses())
+            assert _normal(revision.findings(today='2021-05-20')) == _normal(projection.findings('2021-05-20'))
+            assert overview(revision.overview_projection(today='2021-05-20'), 'en-US', '2021-05-20') == overview(projection, 'en-US', '2021-05-20')
+
+
+@pytest.mark.parametrize('glyph', ['X', '雪'])
+def test_principal_role_sql_exact_scalar_and_posting_row_bounds(tmp_path, monkeypatch, glyph):
+    from test_rhythm import _principal_recurrence_events
+    from viva.read_store.scalar_bounds import MAX_SCALAR_BYTES
+    from viva.read_store.store import ReadStoreError
+
+    canonical = _store(tmp_path, _principal_recurrence_events())
+    with ReadStore.create(tmp_path / 'read-model', PASSPHRASE) as reads:
+        reads.synchronize(canonical)
+        with reads.open_reader() as revision:
+            rows = sql_rhythm._movement_rows(revision.connection, '2021-05-20')
+            assert len(rows) == 3 and all(row['instrument_role'] == 'principal' for row in rows)
+            assert len(sql_rhythm._movement_rows(revision.connection, '2021-01-31')) == 1
+            assert revision.rhythm_hypotheses(as_of='2021-01-31') == []
+            monkeypatch.setattr(sql_rhythm, 'MAX_RHYTHM_POSTING_ROWS', 6)
+            assert revision.rhythm_hypotheses(as_of='2021-05-20') == []
+            monkeypatch.setattr(sql_rhythm, 'MAX_RHYTHM_POSTING_ROWS', 5)
+            with pytest.raises(sql_rhythm.RhythmReadError, match='5-row read bound'):
+                revision.rhythm_hypotheses(as_of='2021-05-20')
+            monkeypatch.undo()
+        width = len(glyph.encode('utf-8'))
+        bounded = glyph * (MAX_SCALAR_BYTES // width) + 'X' * (MAX_SCALAR_BYTES % width)
+        for extra in ('', 'X'):
+            value = bounded + extra
+            assert len(value.encode('utf-8')) == MAX_SCALAR_BYTES + len(extra)
+            reads.publish(lambda connection: connection.execute(
+                'UPDATE instrument_cash_roles SET role=?', (value,)), copy_current=True)
+            with reads.open_reader() as revision:
+                if extra:
+                    with pytest.raises(ReadStoreError, match='scalar byte bound'):
+                        revision.rhythm_hypotheses(as_of='2021-05-20')
+                else:
+                    assert len(revision.rhythm_hypotheses(as_of='2021-05-20')) == 1
+
+
+
+@pytest.mark.parametrize('mixed', [False, True])
+def test_full_dispatched_escrow_sql_overview_revision_reopen_and_rebuild(tmp_path, mixed):
+    import copy
+    from test_rhythm import _escrow_dispatched_store
+    from viva.surface.overview import overview
+
+    canonical = _escrow_dispatched_store(tmp_path, mixed=mixed)
+    events = list(canonical.events())
+    original = copy.deepcopy(events)
+    directory = tmp_path / 'escrow-reads'
+    expected = LedgerProjection(events)
+    with ReadStore.create(directory, PASSPHRASE) as reads:
+        reads.synchronize(canonical)
+        with reads.open_reader() as revision:
+            held = revision.rhythm_hypotheses(as_of='2021-01-31')
+            for today in ('2021-01-31', '2021-05-20'):
+                oracle = LedgerProjection(events, as_of=today)
+                actual = revision.rhythm_hypotheses(as_of=today)
+                assert _normal(actual) == _normal(oracle.rhythm_hypotheses())
+                assert len(actual) == (2 if mixed else 0)
+                assert _normal(revision.findings(today=today)) == _normal(oracle.findings(today))
+                assert overview(revision.historical_overview_projection(as_of=today, today=today),
+                                'en-US', today) == overview(oracle, 'en-US', today)
+            assert revision.rhythm_hypotheses(as_of='2021-01-31') == held
+            assert revision.account_restrictions(as_of='2021-05-20') == expected.account_restrictions()
+    with ReadStore.open(directory, PASSPHRASE) as reads:
+        with reads.open_reader() as revision:
+            assert _normal(revision.rhythm_hypotheses(as_of='2021-05-20')) == _normal(expected.rhythm_hypotheses())
+    with ReadStore.create(tmp_path / 'escrow-rebuilt', PASSPHRASE) as reads:
+        reads.synchronize(canonical)
+        with reads.open_reader() as revision:
+            assert _normal(revision.findings(today='2021-05-20')) == _normal(expected.findings('2021-05-20'))
+            assert overview(revision.overview_projection(today='2021-05-20'), 'en-US', '2021-05-20') == overview(expected, 'en-US', '2021-05-20')
+    assert list(canonical.events()) == original
+
+
+
+@pytest.mark.parametrize('role', ['term_interest', 'term_fee', 'refinance_fee',
+                                  'escrow_tax', 'escrow_insurance', 'escrow_adjustment',
+                                  'term_funding', 'term_redemption'])
+def test_other_closed_instrument_roles_sql_recurrence_unchanged(tmp_path, role):
+    from test_rhythm import _other_instrument_role_events
+    from viva.surface.overview import overview
+
+    events = _other_instrument_role_events(role)
+    canonical = _store(tmp_path, events)
+    expected = LedgerProjection(events)
+    with ReadStore.create(tmp_path / 'role-reads', PASSPHRASE) as reads:
+        reads.synchronize(canonical)
+        with reads.open_reader() as revision:
+            actual = revision.rhythm_hypotheses(as_of='2021-05-20')
+            assert len(actual) == 1
+            assert _normal(actual) == _normal(expected.rhythm_hypotheses())
+            assert _normal(revision.findings(today='2021-05-20')) == _normal(expected.findings('2021-05-20'))
+            assert overview(revision.overview_projection(today='2021-05-20'), 'en-US', '2021-05-20') == overview(expected, 'en-US', '2021-05-20')
+
+
+
+def test_full_dispatched_escrow_rows_count_before_filter_and_held_revision(tmp_path, monkeypatch):
+    from test_rhythm import _escrow_dispatched_store
+    from viva.surface.overview import overview
+
+    canonical = _escrow_dispatched_store(tmp_path)
+    with ReadStore.create(tmp_path / 'bounded-escrow-reads', PASSPHRASE) as reads:
+        reads.synchronize(canonical)
+        held = reads.open_reader()
+        rows = sql_rhythm._movement_rows(held.connection, '2021-05-20')
+        assert len(rows) == 6
+        assert {row['instrument_role'] for row in rows} == {'principal', 'escrow_deposit'}
+        monkeypatch.setattr(sql_rhythm, 'MAX_RHYTHM_POSTING_ROWS', 12)
+        assert held.rhythm_hypotheses(as_of='2021-05-20') == []
+        monkeypatch.setattr(sql_rhythm, 'MAX_RHYTHM_POSTING_ROWS', 11)
+        with pytest.raises(sql_rhythm.RhythmReadError, match='11-row read bound'):
+            held.rhythm_hypotheses(as_of='2021-05-20')
+        monkeypatch.undo()
+        before = overview(held.overview_projection(today='2021-05-20'), 'en-US', '2021-05-20')
+        canonical.append(account_opened('late-cash', 'depository', 'Late cash', 'USD', '2021-01-01'))
+        canonical.append(simple_transaction('late-cash', '100', 'LATE PAYROLL', '2021-04-01', kind='depository'))
+        reads.synchronize(canonical)
+        assert held.rhythm_hypotheses(as_of='2021-05-20') == []
+        assert overview(held.overview_projection(today='2021-05-20'), 'en-US', '2021-05-20') == before
+        with reads.open_reader() as current:
+            assert overview(current.overview_projection(today='2021-05-20'), 'en-US', '2021-05-20') != before
+        held.close()

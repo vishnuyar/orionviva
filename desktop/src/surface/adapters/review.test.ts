@@ -46,3 +46,15 @@ describe("ReviewSummary.v1 adapter", () => {
     expect(adaptReview(payload([baseItem], 1250))?.remainingCount).toBe(1249);
   });
 });
+
+it("keeps bounded source attention separate from Question actions and refuses foreign page provenance", () => {
+  const id = "a".repeat(64);
+  const component = { component: "payment:PAY-X", kind: "payment", label: "Payment PAY-X", disposition: "held", reason_code: "unmatched_counterpart", reason: "A counterpart is unresolved.", source_pages: [{ document_id: id, page: 2, label: "Source page 2" }] };
+  const attention = { contract_version: "instrument-document-review-v1", scope: "revision", state: "ready", total_documents: 51, shown_count: 1, remaining_count: 50, unavailable_reason: null, documents: [{ document_id: id, filename: "source.pdf", components: [component] }] };
+  const result = adaptReview({ ...payload([]), document_attention: attention });
+  expect(result?.actionableCount).toBe(0);
+  expect(result?.documentAttention).toMatchObject({ totalDocuments: 51, shownCount: 1, remainingCount: 50, documents: [{ documentId: id, components: [{ sourcePages: [{ documentId: id, page: 2 }] }] }] });
+  expect(adaptReview({ ...payload([]), document_attention: { ...attention, documents: [{ ...attention.documents[0], components: [{ ...component, source_pages: [{ document_id: "b".repeat(64), page: 2, label: "Other source" }] }] }] } })).toBeNull();
+  expect(adaptReview({ ...payload([]), document_attention: { ...attention, total_documents: 0 } })).toBeNull();
+  expect(adaptReview({ ...payload([]), document_attention: { ...attention, documents: [{ ...attention.documents[0], components: [{ ...component, disposition: "accepted" }] }] } })).toBeNull();
+});

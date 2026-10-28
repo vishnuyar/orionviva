@@ -396,6 +396,13 @@ def test_overview_refuses_every_input_family_whole(tmp_path, monkeypatch,
                          "en-US", "2026-05-01")
 
 
+def _assert_source_identity_prerequisites(selects):
+    references = [sql for sql in selects if "FROM instrument_account_references WHERE" in sql]
+    captures = [sql for sql in selects if "FROM documents d WHERE" in sql]
+    assert len(references) == len(captures) == 1
+    assert all("LIMIT 10001" in sql for sql in references + captures)
+
+
 def test_overview_queries_are_bounded_indexed_and_offset_free(tmp_path):
     source = _source(tmp_path, _composition_events())
     with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
@@ -409,7 +416,8 @@ def test_overview_queries_are_bounded_indexed_and_offset_free(tmp_path):
                        if sql.lstrip().upper().startswith(("SELECT", "WITH"))]
             plans = [" ".join(str(row[3]) for row in revision.connection.execute(
                 "EXPLAIN QUERY PLAN " + sql).fetchall()) for sql in selects]
-    assert len(selects) == 16
+    assert len(selects) == 18
+    _assert_source_identity_prerequisites(selects)
     assert all("SCAN" in plan or "SEARCH" in plan for plan in plans)
     assert all("USE TEMP B-TREE" not in plan for plan in plans)
     assert all("AUTOMATIC" not in plan.upper() for plan in plans)
@@ -436,10 +444,11 @@ def test_overview_query_count_is_fixed_for_current_corpus(tmp_path):
     assert len(selects) <= 78, "\n".join(selects)
 
 
-def test_overview_prerequisite_query_count_does_not_grow_per_account(tmp_path):
+@pytest.mark.parametrize("account_count", [1, 40])
+def test_overview_prerequisite_query_count_does_not_grow_per_account(tmp_path, account_count):
     events = [account_opened(f"a-{number}", "depository", f"A {number}",
                              "USD", "2026-01-01")
-              for number in range(40)]
+              for number in range(account_count)]
     source = _source(tmp_path, events)
     with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as reads:
         reads.synchronize(source)
@@ -450,7 +459,8 @@ def test_overview_prerequisite_query_count_does_not_grow_per_account(tmp_path):
             revision.connection.set_trace_callback(None)
     selects = [sql for sql in statements
                if sql.lstrip().upper().startswith(("SELECT", "WITH"))]
-    assert len(selects) == 16
+    assert len(selects) == 18
+    _assert_source_identity_prerequisites(selects)
 
 
 @pytest.mark.parametrize("field", ["matched_movement_key", "matched_currency"])

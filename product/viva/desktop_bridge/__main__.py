@@ -18,6 +18,12 @@ from pathlib import Path
 from typing import Any
 
 # Parser mode must dispatch before any configuration, settings or vault import.
+if any(argument.startswith("--sample-worker") for argument in sys.argv[1:]):
+    if sys.argv[1:] != ["--sample-worker"]:
+        raise SystemExit("invalid sample worker arguments")
+    from viva.sample.worker import main as sample_worker_main
+    raise SystemExit(sample_worker_main())
+
 if sys.argv[1:] == ["--source-preview-worker"]:
     from viva.source_preview_worker import main as preview_worker_main
     raise SystemExit(preview_worker_main())
@@ -220,6 +226,9 @@ class Sidecar:
                 return lines
             line = source.readline()
             if not line:
+                handler=self._dispatcher.handlers.get('viva.documents.upload_many')
+                owner=getattr(handler,'__self__',None)
+                if owner is not None:owner.stop_bulk()
                 return lines
             if line.strip():
                 lines.append(line)

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { SourceAssertionReceipt as SourcedAssertion } from "../../surface/types";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Figure } from "../../components/Figure";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
@@ -142,7 +143,21 @@ function CorrectionUndo({ id, onUndo }: { id: string; onUndo: (correctionId: str
   return <div><button type="button" className="text-button" aria-disabled={working || completed} aria-describedby={working || completed ? `undo-status-${id}` : undefined} onClick={() => void undo()}>{working ? "Undoing correction…" : completed ? "Correction undone" : "Undo accounting correction"}</button>{working || message ? <p id={`undo-status-${id}`} role="status" aria-live="polite">{working ? "The correction is being undone. Wait for the result before trying again." : message}</p> : null}</div>;
 }
 
-function AnswerDetail({ answer, onOpenFigure, onReviewPlan, onUndoCorrection }: { answer: TurnView; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult> }) {
+const retirementClaimLabels: Record<string, string> = { rollover_date: "Rollover date", rollover_reference: "Rollover reference", rollover_source_account: "Source account", rollover_destination_account: "Destination account" };
+
+function sourceRecordGroups(receipts: readonly SourcedAssertion[]) {
+  const groups = new Map<string, SourcedAssertion[]>();
+  for (const receipt of receipts) {
+    const key = receipt.recordAssociation ?? `assertion:${receipt.id}`;
+    const group = groups.get(key) ?? [];
+    group.push(receipt);
+    groups.set(key, group);
+  }
+  return [...groups.entries()];
+}
+
+function AnswerDetail({ answer, onOpenFigure, onReviewPlan, onUndoCorrection, onOpenSourceDocument }: { answer: TurnView; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult>; onOpenSourceDocument?: (documentId: string, page: number) => void; onContinueAllocation?: (turnId: string, answerId: string) => void }) {
+  const sourceGroupId = useId();
   const answerText = answer.text || answer.refusal;
   const ordinaryMissing = answer.missing.filter((item) => item.tag !== "unsupported_family" && (item.question || item.label || item.tag).trim() !== answerText.trim());
   const capability = answer.missing.find((item) => item.tag === "unsupported_family");
@@ -154,6 +169,18 @@ function AnswerDetail({ answer, onOpenFigure, onReviewPlan, onUndoCorrection }: 
       <dt>{figure.evidenceId && (figure.evidenceLinks.length || figure.receiptState === "ready" || figure.receiptState === "unavailable") ? <Figure figure={conversationEvidenceFigure(figure)} onOpenEvidence={onOpenFigure} className="conversation-figure-trigger" /> : figure.written || figure.what}</dt>
       <dd><span data-field="what">{figure.what}</span>{figure.recordIds.length ? ` · ${figure.recordIds.length === 1 ? "1 cited record" : `${figure.recordIds.length} cited records`}` : ""}{figure.receiptState === "unavailable" || figure.receiptState === "legacy" ? <span className="conversation-receipt-unavailable">Numerical receipt unavailable for this saved answer.</span> : null}</dd>
     </div>)}</dl> : null}
+    {answer.sourceAssertions?.length ? <section aria-label="Source assertions"><h4>Source evidence</h4>{sourceRecordGroups(answer.sourceAssertions).map(([key, receipts], groupIndex) => {
+      const first = receipts[0];
+      const label = "associationLabel" in first ? first.associationLabel : "Source record";
+      const headingId = `${sourceGroupId}-source-${groupIndex}`;
+      return <section key={key} aria-labelledby={headingId} data-source-association={first.recordAssociation}><h5 id={headingId}>{label}</h5>{receipts.map((receipt) => <div key={receipt.id}><p>{receipt.written}</p><p>{receipt.grade}{"effectiveDate" in receipt ? ` · ${receipt.effectiveDate}` : ""}</p>{receipt.anchors.map((anchor) => {
+        const claim = "associationLabel" in receipt ? retirementClaimLabels[receipt.claim] : undefined;
+        const context = claim ? `${label} · ${claim} · page ${anchor.page} · ${anchor.documentId}` : undefined;
+        const anchorKey = "anchorId" in anchor ? anchor.anchorId : `${anchor.documentId}:${anchor.page}`;
+        return onOpenSourceDocument ? <button key={anchorKey} type="button" className="text-button" aria-label={context} onClick={() => onOpenSourceDocument(anchor.documentId, anchor.page)}>{claim || "Open source"} · page {anchor.page}</button> : <span key={anchorKey}>{claim ? `${label} · ${claim} · page ${anchor.page} · ${anchor.documentId}` : `Source page ${anchor.page}`}</span>;
+      })}</div>)}</section>;
+    })}</section> : null}
+    {answer.targetPremises?.length ? <section aria-label="User-stated target"><h4>Your stated target</h4>{answer.targetPremises.map((premise) => <p key={premise.receiptId}>{premise.written}</p>)}</section> : null}
     {answer.options.length ? <ul className="conversation-answer-options">{answer.options.map((option) => <li key={option.id}>{option.label}</li>)}</ul> : null}
     {capability ? <CapabilityBoundary item={capability} /> : null}
     {ordinaryMissing.length ? <ul className="conversation-answer-missing">{ordinaryMissing.map((item, index) => <li key={`${item.tag}:${item.label}:${index}`}>{item.question || item.label || item.tag}</li>)}</ul> : null}
@@ -163,7 +190,7 @@ function AnswerDetail({ answer, onOpenFigure, onReviewPlan, onUndoCorrection }: 
   </div>;
 }
 
-function Timeline({ data, controls, onOpenFigure, onReviewPlan, onUndoCorrection, mode }: { mode: "ask" | "review" | "combined"; data: ConversationData; controls: ConversationControls; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult> }) {
+function Timeline({ data, controls, onOpenFigure, onReviewPlan, onUndoCorrection, mode, onOpenSourceDocument, onContinueAllocation }: { mode: "ask" | "review" | "combined"; data: ConversationData; controls: ConversationControls; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult>; onOpenSourceDocument?: (documentId: string, page: number) => void; onContinueAllocation?: (turnId: string, answerId: string) => void }) {
   if (!data.turns.length) return <section className="conversation-thread"><div className="empty-state"><strong>No conversation yet</strong><span>{mode === "ask" ? "Ask Viva about your money. Your questions and answers stay saved in this vault." : mode === "review" ? "Answer one of the questions below. Your replies stay saved in this vault." : "Ask Viva, or answer one of the questions below. Your messages stay saved in this vault."}</span></div></section>;
   return <section className="conversation-thread" aria-labelledby="conversation-turns-title">
     <h3 id="conversation-turns-title">Conversation</h3>
@@ -174,14 +201,15 @@ function Timeline({ data, controls, onOpenFigure, onReviewPlan, onUndoCorrection
       </div>
       <p>{turn.prompt}</p>
       {turn.said ? <blockquote>{turn.said}</blockquote> : null}
-      {turn.answer ? <AnswerDetail answer={turn.answer} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} onUndoCorrection={onUndoCorrection} /> : turn.message ? <p className="conversation-answer-text">{turn.message}</p> : null}
+      {turn.answer ? <AnswerDetail answer={turn.answer} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} onUndoCorrection={onUndoCorrection} onOpenSourceDocument={onOpenSourceDocument} /> : turn.message ? <p className="conversation-answer-text">{turn.message}</p> : null}
       {turn.proposal && turn.proposal.status !== "open" && turn.proposal.message ? <p>{turn.proposal.message}</p> : null}
+      {turn.answer?.continuationEligible && turn.answer.answerId && onContinueAllocation ? <button type="button" className="secondary-button" onClick={() => onContinueAllocation(turn.id, turn.answer!.answerId!)}>Continue from this allocation answer</button> : null}
       <ProposalReply turn={turn} controls={controls} />
     </li>)}</ol>
   </section>;
 }
 
-export function ConversationDrawer({ result, selectedQueue, onSelectQueue, onOpenFigure, onReviewPlan, ask, controls, mode = "combined", accountingContext = null, onUndoCorrection, onClearAccountingContext, context, starterQuestions = [] }: { result: FeatureResult<ConversationData>; selectedQueue: string; onSelectQueue: (id: string) => void; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; ask: AskControls | null; controls: ConversationControls; mode?: "ask" | "review" | "combined"; accountingContext?: AccountingContext | null; onClearAccountingContext?: () => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult>; context?: ConversationContextControls; starterQuestions?: readonly string[] }) {
+export function ConversationDrawer({ result, selectedQueue, onSelectQueue, onOpenFigure, onReviewPlan, ask, controls, mode = "combined", accountingContext = null, onUndoCorrection, onClearAccountingContext, context, starterQuestions = [], onContinueAllocation, onOpenSourceDocument }: { result: FeatureResult<ConversationData>; selectedQueue: string; onSelectQueue: (id: string) => void; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; ask: AskControls | null; controls: ConversationControls; mode?: "ask" | "review" | "combined"; accountingContext?: AccountingContext | null; onClearAccountingContext?: () => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult>; context?: ConversationContextControls; starterQuestions?: readonly string[]; onOpenSourceDocument?: (documentId: string, page: number) => void; onContinueAllocation?: (turnId: string, answerId: string) => void }) {
   const actionSaid = controls.state.state === "settled" ? outcomePresentation(controls.state.verb, controls.state.result) : null;
   const conversationReadable = result.state === "ready" || result.state === "partial" || result.state === "needs_input";
   const historyTurns = result.state === "ready" ? result.data.turns : [];
@@ -193,7 +221,7 @@ export function ConversationDrawer({ result, selectedQueue, onSelectQueue, onOpe
       {(data) => {
         const proposalIsRestored = data.turns.some((turn) => turn.proposal?.status === "open");
         const questionControls = proposalIsRestored ? { ...controls, onConfirm: undefined } : controls;
-        return <div className="conversation-body"><Timeline mode={mode} data={data} controls={controls} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} onUndoCorrection={onUndoCorrection} />{mode !== "ask" ? <Questions result={{ state: "ready", data: data.questions }} selectedQueue={selectedQueue} onSelectQueue={onSelectQueue} actions={questionControls} /> : null}</div>;
+        return <div className="conversation-body"><Timeline onContinueAllocation={onContinueAllocation} mode={mode} data={data} controls={controls} onOpenFigure={onOpenFigure} onReviewPlan={onReviewPlan} onUndoCorrection={onUndoCorrection} onOpenSourceDocument={onOpenSourceDocument} />{mode !== "ask" ? <Questions result={{ state: "ready", data: data.questions }} selectedQueue={selectedQueue} onSelectQueue={onSelectQueue} actions={questionControls} /> : null}</div>;
       }}
     </PanelStateView>
     {actionSaid && !conversationReadable ? <section className="conversation-action-outcome" role="status" aria-live="polite"><h3 id="conversation-action-outcome" tabIndex={-1}>{actionSaid.title}</h3><p>{actionSaid.detail}</p></section> : null}

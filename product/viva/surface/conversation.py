@@ -104,6 +104,14 @@ def _timeline_turn(row: dict[str, Any],
             "reason": str(proposal.get("reason") or ""),
         }
     answer = dict(row.get("answer") or {})
+    from ..tools.envelope import scope_saved_grade
+    scope_saved_grade(answer)
+    answer.pop("allocation_selection_manifest",None)
+    answer.pop("allocation_selection_ids",None)
+    key=(str(row.get("turn_id") or ""),str(answer.get("answer_id") or ""))
+    eligible=getattr(getattr(projection,"core",None),"_delivered_allocation_answers",{})
+    if key in eligible or "continuation_eligible" in answer:
+        answer["continuation_eligible"]=bool(key in eligible and answer.get("answered") is True)
     figures = []
     for figure in answer.get("figures", []):
         if not isinstance(figure, dict):
@@ -112,6 +120,7 @@ def _timeline_turn(row: dict[str, Any],
             figure, projection, str(row.get("turn_id") or "")))
     if figures or "figures" in answer:
         answer["figures"] = figures
+        _attach_investment_pages(figures,answer.get("numerical_receipts",[]))
     return {
         "id": str(row.get("turn_id") or ""),
         "kind": str(row.get("kind") or ""),
@@ -152,7 +161,10 @@ def conversation(turn: Any, shown: dict[str, str],
     receipts, references = numerical_receipts(turn, projection, turn_id)
     for figure in figures:
         figure["receipt_ids"] = references.get(figure["id"], [])
+    _attach_investment_pages(figures,receipts)
     grade = getattr(result, "grade", "") or ""
+    from ..tools.envelope import scoped_grade_sentence
+    grade_line=scoped_grade_sentence(grade,figures,getattr(result,"target_premises",()),getattr(result,"source_assertions",()))
     return {
         "state": PanelState.READY.value,
         "question": getattr(turn, "question", ""),
@@ -167,13 +179,15 @@ def conversation(turn: Any, shown: dict[str, str],
         "grade": grade,
         # The whole reviewed sentence for the grade, never a frame with a word
         # dropped into it. Empty when the answer stated no graded figure.
-        "grade_sentence": moment(STOOD_BEHIND_MOMENT + grade) if grade else "",
+        "grade_sentence": grade_line,
         "figures": figures,
         "numerical_receipts": receipts,
+        "source_assertions": [dict(a) for a in getattr(result,"source_assertions",[])],
+        "target_premises": [dict(p) for p in getattr(result,"target_premises",[])],
         "gaps": [dict(gap) for gap in getattr(result, "gaps", [])],
         "options": [dict(option) for option in getattr(result, "options", [])],
         "missing": [dict(item) for item in getattr(result, "missing", [])],
-        "spoken": _spoken(getattr(result, "text", ""), grade, figures, mirrored),
+        "spoken": _spoken(getattr(result, "text", ""), grade, figures, mirrored,grade_sentence=grade_line),
     }
 
 
@@ -230,6 +244,24 @@ def _figure(figure: dict, shown: dict[str, str], projection: Any = None,
     }, projection, turn_id)
 
 
+
+def _attach_investment_pages(figures,receipts):
+    """Use only closed same-producer page hints retained in numerical receipts."""
+    for figure in figures:
+        hints=[]
+        for receipt in receipts if isinstance(receipts,list) else []:
+            if not isinstance(receipt,dict) or receipt.get('id') not in figure.get('receipt_ids',[]):continue
+            provenance=receipt.get('figure_provenance')
+            if not isinstance(provenance,dict):continue
+            sources=provenance.get(figure.get('id'))
+            if not isinstance(sources,list) or len(sources)>512:continue
+            captured={source.get('document_id') for source in receipt.get('source_records',[]) if isinstance(source,dict) and source.get('kind')=='document'}
+            if any(not isinstance(source,dict) or set(source)!={'document_id','page'} or source['document_id'] not in captured or type(source['page']) is not int or not 1<=source['page']<=200 for source in sources):continue
+            hints.extend((source['document_id'],source['page']) for source in sources)
+        if hints:
+            links={link['document_id']:link for link in figure.get('evidence_links',[]) if isinstance(link,dict) and 'document_id' in link}
+            figure['evidence_links']=[{**links[document],'page':str(page)} for document,page in sorted(set(hints)) if document in links]
+
 def _figure_receipt(figure: dict[str, Any], projection: Any,
                     turn_id: str) -> dict[str, Any]:
     """Add captured-document links and a turn-scoped selection identity.
@@ -260,7 +292,7 @@ def _figure_receipt(figure: dict[str, Any], projection: Any,
 
 
 def _spoken(text: str, grade: str, figures: list[dict],
-            mirrored: bool) -> dict[str, Any]:
+            mirrored: bool, *, grade_sentence=None) -> dict[str, Any]:
     """What a voice surface may say, and what it may not.
 
     Nothing here is composed by a surface: the words are the turn's, the grade
@@ -290,7 +322,7 @@ def _spoken(text: str, grade: str, figures: list[dict],
             (ANNOUNCE_CITATIONS, bool(cited)),
         ) if present],
         "text": text,
-        "grade_sentence": moment(STOOD_BEHIND_MOMENT + grade) if grade else "",
+        "grade_sentence": (moment(STOOD_BEHIND_MOMENT + grade) if grade else "") if grade_sentence is None else grade_sentence,
         # Announced, never read out. A document read aloud is not evidence.
         "citation_sentence": moment("conversation_spoken_citation") if cited else "",
         # Stated rather than left to be discovered: reaching a remote provider

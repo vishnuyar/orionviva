@@ -1,0 +1,286 @@
+{
+  "kind": "completed",
+  "message": "The actual allocation is about 68.3552%; compared with your stated target of 70% (your figure), the difference is about -1.64482472 percentage points. That counts only what is on RET-C. The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+  "state": {
+    "job_id": "viva.conversation.ask-2",
+    "state": "ready",
+    "question": "For the active retirement plan from the last allocation answer, what is the percentage-point difference between actual bond allocation and the 70% target at December 2025? Retain that account and date.",
+    "text": "The actual allocation is about 68.3552%; compared with your stated target of 70% (your figure), the difference is about -1.64482472 percentage points. That counts only what is on RET-C. The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+    "answered": true,
+    "status": "answered",
+    "outcome_tag": "",
+    "refusal": "",
+    "grade": "corroborated",
+    "grade_sentence": "The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+    "figures": [
+      {
+        "value": "0.6835517528255877",
+        "quantity": "ratio_of_balance",
+        "kind": "financial",
+        "currency": "",
+        "dated": "2025-12-31",
+        "grade": "corroborated",
+        "boundary": {
+          "whole": false,
+          "accounts": {
+            "counted": 1,
+            "held": 1
+          },
+          "selected": [
+            {
+              "kind": "account",
+              "value": "RET-C"
+            }
+          ],
+          "cut": [
+            {
+              "kind": "account",
+              "value": "RET-C"
+            }
+          ]
+        },
+        "subject": {
+          "account_id": "RET-C"
+        },
+        "id": "f4",
+        "written": "about 68.3552%",
+        "what": "allocation exposure bond weight \u00b7 2025-12-31",
+        "record_ids": [
+          "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9"
+        ],
+        "evidence_id": "conversation:EypfZqKnbgrMJ6g1WyNU_UtV:f4",
+        "evidence_links": [
+          {
+            "document_id": "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9",
+            "label": "ret-c.pdf",
+            "relation": "attests",
+            "page": ""
+          }
+        ],
+        "receipt_ids": [
+          "conversation:EypfZqKnbgrMJ6g1WyNU_UtV:numerical:0"
+        ]
+      },
+      {
+        "value": "-1.64482472",
+        "quantity": "allocation_percentage_points",
+        "kind": "hypothetical",
+        "currency": "",
+        "dated": "2025-12-31",
+        "grade": "",
+        "boundary": {
+          "whole": false,
+          "accounts": {
+            "counted": 1,
+            "held": 1
+          },
+          "selected": [
+            {
+              "kind": "account",
+              "value": "RET-C"
+            }
+          ],
+          "cut": [
+            {
+              "kind": "account",
+              "value": "RET-C"
+            }
+          ]
+        },
+        "subject": {
+          "account_id": "RET-C"
+        },
+        "id": "f13",
+        "written": "about -1.64482472 percentage points",
+        "what": "allocation percentage points \u00b7 2025-12-31",
+        "record_ids": [
+          "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9"
+        ],
+        "evidence_id": "conversation:EypfZqKnbgrMJ6g1WyNU_UtV:f13",
+        "evidence_links": [
+          {
+            "document_id": "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9",
+            "label": "ret-c.pdf",
+            "relation": "attests",
+            "page": ""
+          }
+        ],
+        "receipt_ids": [
+          "conversation:EypfZqKnbgrMJ6g1WyNU_UtV:numerical:0"
+        ]
+      }
+    ],
+    "numerical_receipts": [
+      {
+        "schema_version": 1,
+        "id": "conversation:EypfZqKnbgrMJ6g1WyNU_UtV:numerical:0",
+        "figure_ids": [
+          "f4",
+          "f13"
+        ],
+        "source_records": [
+          {
+            "record_id": "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9",
+            "kind": "document",
+            "document_id": "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9"
+          }
+        ],
+        "premises": [
+          {
+            "parameter": "allocation_target",
+            "role": "user-stated allocation target",
+            "raw": "the 70% target",
+            "modeled": "70/100",
+            "unit": "fraction",
+            "currency": "",
+            "source": "current_question",
+            "quote": "the 70% target",
+            "derivation": "exact positive target-role grammar"
+          }
+        ],
+        "observed_inputs": [],
+        "local_inputs": [],
+        "context": [
+          {
+            "label": "Instrument view",
+            "value": "allocation"
+          },
+          {
+            "label": "Selected account",
+            "value": "RET-C"
+          },
+          {
+            "label": "Valuation currency",
+            "value": "USD"
+          },
+          {
+            "label": "Authenticated read revision",
+            "value": "g-0a19257a70f54c9aa50a3ea893d4d5b3"
+          },
+          {
+            "label": "Allocation comparison operation",
+            "value": "100*(exposure_market_value/cash_inclusive_market_value-user_target_fraction)"
+          },
+          {
+            "label": "Accepted exposure market-value numerator",
+            "value": "164129.58"
+          },
+          {
+            "label": "Numerator source figure",
+            "value": "ad2df948521da97dc35f98d0d8dbc4e3e7ac151a5f67cbf30158332d72076403"
+          },
+          {
+            "label": "Accepted cash-inclusive market-value denominator",
+            "value": "240112.88"
+          },
+          {
+            "label": "Denominator source figure",
+            "value": "b6eb9d829f7fed26ad35cc15c866cc3db16c16fcd4280547dc1c46c302c0b846"
+          },
+          {
+            "label": "Display-only rounded allocation weight",
+            "value": "709ae13f37fd77085c3be33635f8be04409e1f1333165a5cec2cb9adf73f0d9f"
+          },
+          {
+            "label": "Current target receipt",
+            "value": "0m01OIuzzexUvrKDbzORW8POk2ivFk-h"
+          },
+          {
+            "label": "Exposure",
+            "value": "bond"
+          },
+          {
+            "label": "Snapshot date",
+            "value": "2025-12-31"
+          },
+          {
+            "label": "Arithmetic convention",
+            "value": "Exact rational rounded directly to eight fractional percentage-point digits, HALF_EVEN"
+          }
+        ],
+        "caveats": []
+      }
+    ],
+    "source_assertions": [],
+    "target_premises": [
+      {
+        "receipt_id": "0m01OIuzzexUvrKDbzORW8POk2ivFk-h",
+        "question_id": "4f950920fd38447e8d828ae1663e10b1",
+        "account": "RET-C",
+        "currency": "USD",
+        "exposure": "bond",
+        "as_of": "2025-12-31",
+        "target_numerator": 70,
+        "target_denominator": 100,
+        "target_role_span": [
+          139,
+          153
+        ],
+        "exposure_span": [
+          119,
+          123
+        ],
+        "target_role_text": "the 70% target",
+        "exposure_text": "bond",
+        "percent_unit": "%",
+        "continuation_receipt_id": "qxvzZBJ8RBFQfJMrimmxnembAbCKITd3",
+        "dependencies": [
+          "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9bond-holding",
+          "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9equity-holding",
+          "balance:9",
+          "position:10",
+          "position:12"
+        ],
+        "id": "u1",
+        "claim": "allocation_target",
+        "kind": "user_stated",
+        "question_digest": "4389e1e616b66ec784bb6d16f092b70be5a1f709e334d68bdc4abf7a2ca6d5d1",
+        "written": "70% (your figure)"
+      }
+    ],
+    "gaps": [],
+    "options": [],
+    "missing": [],
+    "spoken": {
+      "may_speak": true,
+      "withheld": "",
+      "parts": [
+        "text",
+        "grade",
+        "citations"
+      ],
+      "text": "The actual allocation is about 68.3552%; compared with your stated target of 70% (your figure), the difference is about -1.64482472 percentage points. That counts only what is on RET-C. The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+      "grade_sentence": "The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+      "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+      "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+    },
+    "answer_id": "C0nUwWWj1uqjSYZxxS5Asdu5",
+    "allocation_selection_manifest": [
+      {
+        "version": "allocation-continuation-v1",
+        "turn_id": "EypfZqKnbgrMJ6g1WyNU_UtV",
+        "answer_id": "C0nUwWWj1uqjSYZxxS5Asdu5",
+        "account": "RET-C",
+        "currency": "USD",
+        "snapshot_date": "2025-12-31",
+        "axis": "exposure",
+        "exposure": "bond",
+        "revision": "g-0a19257a70f54c9aa50a3ea893d4d5b3",
+        "dependencies": [
+          "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9bond-holding",
+          "7c6a020b8d01d0cdccad6a2f6c1cf40d39e4d6b88fdb0245a1c429524c06e8c9equity-holding",
+          "balance:9",
+          "position:10",
+          "position:12"
+        ],
+        "source_commitment": "f3f68a2fb4dc9caff9064b66218907da556bc0a4ef473e61a05fe5e204964d97",
+        "binding_identity": "1628fb83604abfd624fd83496b044da964324dd95294f0ec8f7cb69c026ef27f"
+      }
+    ],
+    "allocation_selection_ids": [
+      "OEUWftmD3dJbgcxiuN5pRgJQ1loHI37M"
+    ],
+    "continuation_eligible": true
+  },
+  "reason": null
+}

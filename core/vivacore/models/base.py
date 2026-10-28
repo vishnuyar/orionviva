@@ -32,6 +32,41 @@ def observe_extractions(observer):
         _extraction_observer.reset(token)
 
 
+@dataclass
+class ExtractionTransportScope:
+    """Callbacks for actual extraction dispatch and durable raw response capture."""
+
+    admit: Callable
+    receive: Callable
+    turns: list = field(default_factory=list)
+
+
+_extraction_transport = ContextVar("extraction_transport", default=None)
+
+
+@contextmanager
+def extraction_transport_scope(admit, receive):
+    scope = ExtractionTransportScope(admit, receive)
+    token = _extraction_transport.set(scope)
+    try:
+        yield scope
+    finally:
+        _extraction_transport.reset(token)
+
+
+def admit_extraction_transport(adapter_kind, configured_model, attempt):
+    scope = _extraction_transport.get()
+    if scope is not None:
+        scope.admit(adapter_kind, configured_model, attempt)
+
+
+def retain_extraction_response(adapter_kind, configured_model, attempt, response):
+    scope = _extraction_transport.get()
+    if scope is not None:
+        scope.receive(adapter_kind, configured_model, attempt,
+                      response.status_code, bytes(response.content))
+
+
 # --------------------------------------------------------- continuation driver
 
 # An answer that exceeds the model's output budget comes back truncated
@@ -105,6 +140,9 @@ def run_to_completion(call_once: Callable[[str, int], Turn],
             raise
         if observer is not None:
             observer(turn, None, attempt)
+        scope = _extraction_transport.get()
+        if scope is not None:
+            scope.turns.append(turn)
         accumulated += turn.text
         reasoning += turn.reasoning_text
         in_tok += turn.input_tokens

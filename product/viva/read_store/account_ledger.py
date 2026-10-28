@@ -18,6 +18,8 @@ from ..ledger.statements import AccountStatements, _record, _runs
 from ..ledger.account_ledger_contract import (
     AccountLedgerIdentityError, _coverage, _deduplicate, _overlap)
 from .store import ReadStoreError
+from .document_index import (acquisition_scoped, account_acquisition_scoped, acquisition_currency, owned_read_rows, retained_input,
+    READ_ACQUISITION_COLUMNS, READ_ACQUISITION_JOINS)
 
 
 MAX_ACCOUNT_MOVEMENTS = 10_000
@@ -65,22 +67,20 @@ def _movements(connection, account_id: str):
              ruling) in rows]
 
 
-def _statements(connection, account_id: str, locale: str):
-    currency_row = connection.execute(
-        "SELECT currency FROM accounts INDEXED BY accounts_by_identity_source "
-        "WHERE account_id=? AND event_type='AccountOpened' "
-        "ORDER BY source_sequence DESC LIMIT 1", (account_id,)).fetchone()
-    currency = (currency_row[0] if currency_row else "") or "USD"
-    rows = connection.execute(
+@account_acquisition_scoped
+def _statements(revision, account_id: str, locale: str):
+    connection=revision.connection
+    currency=acquisition_currency(revision,account_id)
+    rows = owned_read_rows(revision,
         "SELECT p.doc_id,d.doc_type,"
         "CASE WHEN length(CAST(r.response_text AS BLOB))<=? THEN r.response_text END,"
         "p.closing_amount_text,"
-        "p.period_end FROM statement_periods p "
+        "p.period_end"+READ_ACQUISITION_COLUMNS+"FROM statement_periods p "
         "INDEXED BY statement_periods_by_account_date "
         "JOIN documents d INDEXED BY documents_by_doc ON d.doc_id=p.doc_id "
         "JOIN document_reads r INDEXED BY document_reads_by_doc_phase_source "
         "ON r.doc_id=p.doc_id AND r.phase='extract' AND r.parse_ok=1 "
-        "WHERE p.account_id=? "
+        +READ_ACQUISITION_JOINS+"WHERE p.account_id=? "
         "AND NOT EXISTS (SELECT 1 FROM documents newer "
         "WHERE newer.doc_id=d.doc_id "
         "AND newer.source_sequence>d.source_sequence) "
@@ -91,18 +91,19 @@ def _statements(connection, account_id: str, locale: str):
         "WHERE newer.doc_id=r.doc_id AND newer.phase='extract' "
         "AND newer.parse_ok=1 AND newer.source_sequence>r.source_sequence) "
         "ORDER BY p.period_end DESC,p.source_sequence DESC LIMIT ?",
-        (MAX_STATEMENT_RESPONSE_BYTES, account_id, MAX_ACCOUNT_STATEMENTS + 1)).fetchall()
+        (MAX_STATEMENT_RESPONSE_BYTES, account_id, MAX_ACCOUNT_STATEMENTS + 1))
     if len(rows) > MAX_ACCOUNT_STATEMENTS:
         raise ReadStoreError("account ledger statements exceed their row bound")
     records = []
-    for doc, doc_type, reply, accepted_amount, accepted_date in rows:
+    for doc, doc_type, reply, accepted_amount, accepted_date, witness in rows:
+        reply,parse_locale,parse_currency,_acquisition=retained_input(revision,witness,doc,reply,locale,currency)
         if reply is None:
             raise ReadStoreError("account ledger statement response exceeds its byte bound")
         profile = profile_for(doc_type)
         if profile is None or profile.identity != BALANCE_IDENTITY:
             continue
         try:
-            period = period_from_model_json(reply, locale, currency)
+            period = period_from_model_json(reply, parse_locale, parse_currency)
         except Exception as exc:
             raise ReadStoreError("account ledger statement period is invalid") from exc
         if period is None:
@@ -116,7 +117,9 @@ def _statements(connection, account_id: str, locale: str):
             if records else None)
 
 
-def _check_ownership(connection, account_id: str, movements, records, locale: str):
+@acquisition_scoped
+def _check_ownership(revision, account_id: str, movements, records, locale: str):
+    connection=revision.connection
     doc_ids = {record.doc_id for record in records} | {
         movement.provenance.doc_id for movement in movements
         if movement.provenance.doc_id}
@@ -127,18 +130,18 @@ def _check_ownership(connection, account_id: str, movements, records, locale: st
     for start in range(0, len(ordered), OWNERSHIP_BATCH):
         batch = ordered[start:start + OWNERSHIP_BATCH]
         placeholders = ",".join("?" for _ in batch)
-        rows = connection.execute(
+        rows = owned_read_rows(revision,
             "SELECT p.doc_id,p.account_id,d.doc_type,"
             "CASE WHEN length(CAST(r.response_text AS BLOB))<=? THEN r.response_text END,"
             "p.closing_amount_text,p.period_end,"
             "(SELECT a.currency FROM accounts a INDEXED BY accounts_by_identity_source "
             "WHERE a.account_id=p.account_id AND a.event_type='AccountOpened' "
-            "ORDER BY a.source_sequence DESC LIMIT 1) "
+            "ORDER BY a.source_sequence DESC LIMIT 1)"+READ_ACQUISITION_COLUMNS+
             "FROM statement_periods p INDEXED BY statement_periods_by_document_source "
             "JOIN documents d INDEXED BY documents_by_doc ON d.doc_id=p.doc_id "
             "JOIN document_reads r INDEXED BY document_reads_by_doc_phase_source "
             "ON r.doc_id=p.doc_id AND r.phase='extract' AND r.parse_ok=1 "
-            f"WHERE p.doc_id IN ({placeholders}) AND p.account_id<>? "
+            +READ_ACQUISITION_JOINS+f"WHERE p.doc_id IN ({placeholders}) AND p.account_id<>? "
             "AND NOT EXISTS (SELECT 1 FROM statement_periods newer "
             "WHERE newer.doc_id=p.doc_id AND newer.account_id=p.account_id "
             "AND newer.source_sequence>p.source_sequence) "
@@ -149,18 +152,19 @@ def _check_ownership(connection, account_id: str, movements, records, locale: st
             "AND newer.parse_ok=1 AND newer.source_sequence>r.source_sequence) "
             "LIMIT ?",
             (MAX_STATEMENT_RESPONSE_BYTES, *batch, account_id,
-             MAX_OWNERSHIP_ROWS - seen + 1)).fetchall()
+             MAX_OWNERSHIP_ROWS - seen + 1))
         seen += len(rows)
         if seen > MAX_OWNERSHIP_ROWS:
             raise ReadStoreError("account ledger ownership exceeds its row bound")
-        for doc, other, doc_type, reply, amount, dated, currency in rows:
+        for doc, other, doc_type, reply, amount, dated, currency, witness in rows:
+            reply,parse_locale,parse_currency,_acquisition=retained_input(revision,witness,doc,reply,locale,currency or 'USD')
             if reply is None:
                 raise ReadStoreError("account ledger ownership response exceeds its byte bound")
             profile = profile_for(doc_type)
             if profile is None or profile.identity != BALANCE_IDENTITY:
                 continue
             try:
-                period = period_from_model_json(reply, locale, currency or "USD")
+                period = period_from_model_json(reply, parse_locale, parse_currency)
             except Exception as exc:
                 raise ReadStoreError("account ledger ownership period is invalid") from exc
             if period is None:
@@ -170,6 +174,7 @@ def _check_ownership(connection, account_id: str, movements, records, locale: st
                     "the account ledger evidence belongs to another account")
 
 
+@account_acquisition_scoped
 def components(revision, account_id: str, *, locale: str = "en-US"):
     """Resolve one account's deduplicated components before any page boundary."""
     if not isinstance(account_id, str) or not account_id:
@@ -178,9 +183,9 @@ def components(revision, account_id: str, *, locale: str = "en-US"):
     per_day = Counter(movement.date for movement in movements)
     if sum(count * (count - 1) // 2 for count in per_day.values()) > MAX_SAME_DAY_PAIRS:
         raise ReadStoreError("account ledger overlap candidates exceed their pair bound")
-    statements = _statements(revision.connection, account_id, locale)
+    statements = _statements(revision, account_id, locale)
     records = list(statements.records) if statements else []
-    _check_ownership(revision.connection, account_id, movements, records, locale)
+    _check_ownership(revision, account_id, movements, records, locale)
     coverage = _coverage(records, list(statements.runs) if statements else [])
     overlap = _overlap(records)
     entries, deduplication = _deduplicate(movements, records)
@@ -197,8 +202,13 @@ def _encoded(value):
     return encoded
 
 
-def materialize_component_index(connection):
+@acquisition_scoped
+def materialize_component_index(revision):
     """Publish deduplicated component identities within the SQL generation."""
+    from .store import _PublicationReadContext
+    if type(revision) is not _PublicationReadContext:
+        raise ReadStoreError('component publication requires an owned publication context')
+    connection=revision.connection
     try:
         locale = locale_from_env()
     except SystemExit as exc:
@@ -211,7 +221,7 @@ def materialize_component_index(connection):
     from .held import _identity_core
     from .store import ReadRevision
     identity = _identity_core(connection, "9999-12-31")
-    balances = ReadRevision._goal_account_balances(
+    balances = ReadRevision._load_goal_account_balances(
         SimpleNamespace(connection=connection),
         as_of="9999-12-31", limit=MAX_LEDGER_ACCOUNTS * 5)
     observations = connection.execute(
@@ -229,7 +239,7 @@ def materialize_component_index(connection):
     total = 0
     for (account_id,) in account_rows:
         try:
-            result = components(SimpleNamespace(connection=connection),
+            result = components(revision,
                                 account_id, locale=locale)
             coverage = _encoded(result.coverage)
             overlap = _encoded(result.overlap)

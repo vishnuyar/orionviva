@@ -1,15 +1,26 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 type EvidenceDialogOptions = { open: boolean; drawerRef: RefObject<HTMLElement | null>; initialFocusRef: RefObject<HTMLElement | null>; pageTitleRef: RefObject<HTMLElement | null>; onDismiss: () => void; restoreTarget?: (() => HTMLElement | null) | null };
-const focusableSelector = 'button, input, a[href], select, textarea, [tabindex]:not([tabindex="-1"])';
+const focusableSelector = 'button, input, a[href], select, textarea, summary, [tabindex]:not([tabindex="-1"])';
 
 function eligibleFocusable(element: HTMLElement | null): element is HTMLElement {
   if (!element?.isConnected || element.hasAttribute("disabled") || element.matches(":disabled") || element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
-  if (typeof globalThis.getComputedStyle !== "function") return true;
+  if (element.tagName === "SUMMARY") {
+    const owner = element.parentElement;
+    const firstSummary = owner?.tagName === "DETAILS" ? Array.from(owner.children).find((child) => child.tagName === "SUMMARY") : null;
+    if (element.hasAttribute("tabindex") && element.tabIndex < 0) return false;
+    if (firstSummary !== element && !element.hasAttribute("tabindex")) return false;
+  }
   let current: HTMLElement | null = element;
   while (current) {
-    const style = globalThis.getComputedStyle(current);
-    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (current !== element && current.tagName === "DETAILS" && !current.hasAttribute("open")) {
+      const firstSummary: Element | undefined = Array.from(current.children).find((child) => child.tagName === "SUMMARY");
+      if (!firstSummary?.contains(element)) return false;
+    }
+    if (typeof globalThis.getComputedStyle === "function") {
+      const style = globalThis.getComputedStyle(current);
+      if (style.display === "none" || style.visibility === "hidden") return false;
+    }
     current = current.parentElement;
   }
   return true;

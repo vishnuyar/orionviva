@@ -2,7 +2,7 @@
   "in_force": {
     "answer_program_schema": {
       "in": "schemas",
-      "active": "answer-program-schema-v4"
+      "active": "answer-program-schema-v7"
     },
     "financial_query_schema": {
       "in": "schemas",
@@ -10,19 +10,19 @@
     },
     "semantic_request_schema": {
       "in": "schemas",
-      "active": "semantic-request-schema-v14"
+      "active": "semantic-request-schema-v19"
     },
     "semantic_request": {
       "in": "prompts",
-      "active": "semantic-request-v17"
+      "active": "semantic-request-v21"
     },
     "semantic_request_retry": {
       "in": "prompts",
-      "active": "semantic-request-retry-v15"
+      "active": "semantic-request-retry-v19"
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v25"
+      "active": "tools-v29"
     },
     "goal_binding": {
       "in": "prompts",
@@ -30,7 +30,7 @@
     },
     "classify": {
       "in": "prompts",
-      "active": "classify-v2"
+      "active": "classify-v3"
     },
     "interpret": {
       "in": "prompts",
@@ -46,7 +46,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v53"
+      "active": "pack-v62"
     },
     "schema_pack": {
       "in": "schemas",
@@ -87,6 +87,10 @@
     "date_only_expectations": {
       "in": "evals",
       "active": "date-only-expectations-v040"
+    },
+    "retirement_funding_semantic": {
+      "in": "prompts",
+      "active": "semantic-retirement-funding-v1"
     }
   },
   "released": {
@@ -318,6 +322,57 @@
     "semantic-request-v17": "ffba2fc1dfc4ef0a",
     "semantic-request-retry-v15": "c3769a0134b4e3d6",
     "semantic-request-schema-v14": "36655a64d7556473",
-    "date-only-expectations-v040": "c5255b1ff2daf8b0"
+    "date-only-expectations-v040": "c5255b1ff2daf8b0",
+    "extract-base-v2": "f0cf2c40b1bce581",
+    "extract-refinance-base-v1": "3b343ddd07586c1d",
+    "extract-term-deposit-v1": "7c329086e54cfb3a",
+    "extract-term-deposit-base-v1": "94468a8c610eaeb4",
+    "classify-v3": "bc3f1a1c7c308d5b",
+    "extract-brokerage-base-v4": "eed32c43aef83e0a",
+    "extract-brokerage-base-v5": "9ba298935eddb303",
+    "extract-property-tax-v1": "8eb3c39ca1831a4b",
+    "extract-property-tax-base-v1": "7fe4fe0a0728a449",
+    "extract-refinance-v1": "2194c7a0b3828519",
+    "extract-mortgage-v1": "dfb77fddc9726cfa",
+    "extract-mortgage-base-v1": "29a79b9e206648a7",
+    "pack-v54": "b7ba4a399d51aa2a",
+    "answer-program-schema-v5": "b9880b6a75ee5df8",
+    "tools-v26": "1b8092f0d94ff48f",
+    "pack-v55": "5c5b6a7a2cd241c2",
+    "answer-program-schema-v6": "d9fbe84d8574f552",
+    "semantic-request-schema-v15": "cfce2e180559a378",
+    "semantic-request-v18": "3b19e89ae7ee6061",
+    "semantic-request-retry-v16": "0da9d8f1d51149aa",
+    "pack-v56": "1b7800517ba33600",
+    "tools-v28": "5dd19acf918a02af",
+    "extract-paystub-base-v2": "007d8f1e084b47a5",
+    "extract-paystub-v2": "8b4d179330655123",
+    "semantic-request-retry-v17": "2d2ebc9ce09e901d",
+    "semantic-request-v19": "50619655887925aa",
+    "semantic-retirement-funding-v1": "c79db4bbe1bc27d3",
+    "answer-program-schema-v7": "1fec23e282252e87",
+    "payroll-source-v2": "757692f83f7fcebc",
+    "semantic-request-schema-v16": "171979fe20da21ec",
+    "pack-v58": "87c5361fcfef12ee",
+    "pack-v57": "705bd000d4a1bab8",
+    "tools-v27": "7ee103c34daa8669",
+    "pack-v59": "d9d714cc98860b0e",
+    "semantic-request-schema-v17": "1156d775f1df194c",
+    "pack-v60": "d0ed661d621ee92d",
+    "pack-v61": "dff3241d4eea70f5",
+    "extract-mortgage-base-v2": "0ec7df8a06cae5df",
+    "extract-mortgage-v2": "c117aaf8db10ec1a",
+    "extract-mortgage-v3": "60feaf95ce4a00c0",
+    "semantic-request-v20": "1c5c6c63d2b049d2",
+    "semantic-request-retry-v18": "cb7b25eab71830d0",
+    "semantic-request-schema-v18": "5c8561d2be2d211b",
+    "extract-brokerage-base-v6": "1fb7108621eebf70",
+    "pack-v62": "48ce05c4f2df1166",
+    "semantic-request-v21": "43a7bde25fff72f1",
+    "semantic-request-retry-v19": "8e5776d2cf18fd88",
+    "tools-v29": "ae52028fce80adb9",
+    "semantic-request-schema-v19": "a43a64642a0b7b18",
+    "extract-brokerage-base-v7": "7fb629462fb37ad4",
+    "extract-term-deposit-v2": "f73c4cf87f0aea41"
   }
 }

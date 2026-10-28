@@ -28,11 +28,12 @@ from dataclasses import dataclass, field
 BALANCE_IDENTITY = "balance"      # opening + Σ(effect on balance) = closing
 PAYSTUB_IDENTITY = "paystub"      # gross − Σ(deductions) = net
 BROKERAGE_IDENTITY = "brokerage"  # Σ(position market_value) + cash = total
+INSTRUMENT_IDENTITY = "instrument"  # independent sourced instrument components
 
 # Identities the pipeline has a projector for. A type whose identity is not
 # listed here parks instead of posting.
 PROJECTABLE_IDENTITIES = frozenset({BALANCE_IDENTITY, PAYSTUB_IDENTITY,
-                                    BROKERAGE_IDENTITY})
+                                    BROKERAGE_IDENTITY, INSTRUMENT_IDENTITY})
 
 # Account kinds — this system's interpretation, not the model's.
 DEPOSITORY = "depository"         # an asset; balance = money held
@@ -55,8 +56,9 @@ class DocProfile:
     identity: str = BALANCE_IDENTITY
     profile_version: str = "bal-v1"
     aliases: frozenset[str] = field(default_factory=frozenset)
-    extract_base: str = "base-v1"
+    extract_base: str = "base-v2"
     type_fragment: str = "balance-generic-v1"
+    instrument_source_contract: str | None = None
 
     @property
     def is_liability(self) -> bool:
@@ -82,11 +84,23 @@ _SEED: tuple[DocProfile, ...] = (
             "credit_card", "card_statement", "creditcard_statement",
             "credit_card_account_statement",
         })),
+    DocProfile("term_deposit_statement", DEPOSITORY, identity=INSTRUMENT_IDENTITY,
+               profile_version="term-deposit-v2", extract_base="term-deposit-base-v1",
+               type_fragment="term-deposit-v2"),
+    DocProfile("mortgage_statement", LIABILITY, identity=INSTRUMENT_IDENTITY,
+               profile_version="mortgage-principal-source-v2", extract_base="mortgage-base-v2",
+               type_fragment="mortgage-v3", instrument_source_contract="mortgage-principal-source-v2"),
+    DocProfile("refinance_settlement", LIABILITY, identity=INSTRUMENT_IDENTITY,
+               profile_version="instrument-v1", extract_base="refinance-base-v1",
+               type_fragment="refinance-v1"),
+    DocProfile("property_tax_receipt", "", identity=INSTRUMENT_IDENTITY,
+               profile_version="instrument-v1", extract_base="property-tax-base-v1",
+               type_fragment="property-tax-v1"),
     # A divergent profile: its own shape and its own identity. `account_kind` is
     # empty — a pay stub is an income document, not an account.
     DocProfile(
         "pay_stub", "", identity=PAYSTUB_IDENTITY,
-        extract_base="paystub-base-v1", type_fragment="paystub-v1",
+        profile_version="payroll-source-v2", extract_base="paystub-base-v2", type_fragment="paystub-v2",
         aliases=frozenset({
             "paystub", "pay_slip", "payslip", "salary_slip", "earnings_statement",
             "wage_statement", "payroll_statement",
@@ -96,7 +110,7 @@ _SEED: tuple[DocProfile, ...] = (
     # holds both cash and positions, distinct from a plain depository.
     DocProfile(
         "brokerage_statement", INVESTMENT, identity=BROKERAGE_IDENTITY,
-        profile_version="brk-v3", extract_base="brokerage-base-v3",
+        profile_version="brk-v7", extract_base="brokerage-base-v7",
         type_fragment="brokerage-v2",
         aliases=frozenset({
             "brokerage", "brokerage_account_statement", "investment_statement",
@@ -165,7 +179,8 @@ def doc_type_for_prompt_version(version: str) -> str:
     known fragment; the caller must treat that as unknown, not as a default."""
     if not version or not version.startswith("extract:"):
         return ""
-    fragment = version[len("extract:"):].split("+", 1)[-1]
+    parts = version[len("extract:"):].split("+")
+    fragments = parts[1:] if len(parts) > 1 else parts
 
     def _family(frag: str) -> str:
         """A fragment's family: `brokerage-v2` -> `brokerage`.
@@ -177,11 +192,10 @@ def doc_type_for_prompt_version(version: str) -> str:
         stem = frag.rsplit("-v", 1)
         return stem[0] if len(stem) == 2 and stem[1].isdigit() else frag
 
-    want = _family(fragment)
-    for profile in set(_INDEX.values()):
-        if _family(profile.type_fragment) == want:
-            return profile.doc_type
-    return ""
+    wanted = {_family(fragment) for fragment in fragments}
+    matches = {profile.doc_type for profile in set(_INDEX.values())
+               if _family(profile.type_fragment) in wanted}
+    return next(iter(matches)) if len(matches) == 1 else ""
 
 
 def extraction_prompt_for(doc_type: str) -> tuple[str, str] | None:

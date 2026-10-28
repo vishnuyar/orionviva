@@ -1,3 +1,4 @@
+"""Authenticated opening controls over the explicitly retained small display fixture."""
 from __future__ import annotations
 
 import io
@@ -111,3 +112,15 @@ def test_sample_creation_directly_publishes_authenticated_read_store(tmp_path, m
         assert source["head"] == expected[1]
     finally:
         vault.close()
+
+
+# These retained financial/display scenarios use the original small fixture.
+# The five-year preparation/status/ready-only contract has separate controls
+# in sample_life/test_activation.py and requires its actual source campaign.
+import pytest
+
+@pytest.fixture(autouse=True)
+def legacy_display_fixture(monkeypatch):
+    from viva.sample import activation
+    from _legacy_sample_support import open_legacy_display_fixture
+    monkeypatch.setattr(activation,'open_ready',open_legacy_display_fixture)

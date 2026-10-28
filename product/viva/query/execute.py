@@ -214,6 +214,11 @@ class FinancialQueryExecutor:
                               refusal="invalid_financial_query", text=str(error))
 
     def _apply(self, op, inputs, args):
+        from ..quantity import DEDICATED
+        from ..instrument_claims import RETIREMENT_CLAIMS, MORTGAGE_DERIVED_CLAIMS
+        if any(row.values.get('claim') in RETIREMENT_CLAIMS | MORTGAGE_DERIVED_CLAIMS for table in inputs for row in table.rows):raise QueryError('retirement source claims require dedicated authority')
+        if any(value in DEDICATED for table in inputs for value in table.quantities.values()) or any(row.values.get("quantity") in DEDICATED for table in inputs for row in table.rows):
+            raise QueryError("dedicated instrument quantities cannot enter generic query operators")
         if op == "scan":
             return self._scan(args)
         if op in DOMAIN_OPERATORS:
@@ -321,6 +326,8 @@ class FinancialQueryExecutor:
         if not result.ok:
             raise QueryError(result.refusal or result.text or "domain read refused")
         rows = []
+        from ..instrument_claims import RETIREMENT_CLAIMS, MORTGAGE_DERIVED_CLAIMS
+        if any(item.get('claim') in RETIREMENT_CLAIMS | MORTGAGE_DERIVED_CLAIMS for item in result.figures):raise QueryError('retirement source claims cannot enter generic query domains')
         for item in result.figures:
             boundary = item.get("boundary") or {}
             coverage = tuple(
@@ -805,6 +812,11 @@ class FinancialQueryExecutor:
                                  <= ladder.index(minimum)))
 
     def _emit(self, table, spec):
+        from ..quantity import DEDICATED
+        from ..instrument_claims import RETIREMENT_CLAIMS, MORTGAGE_DERIVED_CLAIMS
+        if any(row.values.get('claim') in RETIREMENT_CLAIMS | MORTGAGE_DERIVED_CLAIMS for row in table.rows):raise QueryError('retirement source claims cannot enter generic emission')
+        if spec.get("quantity") in DEDICATED or any(value in DEDICATED for value in table.quantities.values()) or any(row.values.get("quantity") in DEDICATED for row in table.rows):
+            raise QueryError("dedicated instrument quantities cannot enter generic query emission")
         value_field = str(spec.get("value_field") or "")
         what_field = str(spec.get("what_field") or "")
         quantity = str(spec.get("quantity") or "")

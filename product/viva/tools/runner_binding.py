@@ -21,7 +21,7 @@ from .shape import WHOLE
 # these and nothing else, so there is no field a value could arrive in. A
 # caveat is not among them: this module places what a stated figure owes, so
 # there is no hole for one to fill and nothing to refer to it by.
-BINDING_KEYS = ("figure", "entity", "period", "date", "date_of", "measurement_date_of", "supposed",
+BINDING_KEYS = ("allocation_target", "instrument_date", "instrument_text", "instrument_normalized", "figure", "entity", "period", "date", "date_of", "measurement_date_of", "supposed",
                 "read", "read_figures", "read_labels")
 
 # The one kind of reference a hole of each type can hold. Where a type admits
@@ -151,6 +151,62 @@ def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
                 "span.")
         return render.period(span["from"], span["to"]), "", ""
 
+    if key=="allocation_target":
+        from ..instrument_evidence import authenticated_premise
+        premise=ground.instrument_premises.get(str(value))
+        if slot.type!=render.SUPPOSED or slot.quantity!=quantity.RATIO or not premise or not authenticated_premise(premise,ground.question):
+            return None,"target_role_proof_required","The target requires its validated current-question role proof."
+        import decimal,re
+        literal=re.search(r"(?:0|[1-9][0-9]{0,2})(?:\.[0-9]{1,12})?",premise['target_role_text'])
+        if literal is None:return None,"target_role_proof_required","The target role has no percentage literal."
+        with decimal.localcontext(decimal.Context(prec=80,Emin=-9999,Emax=9999)):
+            return render.supposed(literal[0],quantity.RATIO,locale=locale),"",""
+
+    if key in ("instrument_date", "instrument_text", "instrument_normalized"):
+        from ..instrument_evidence import authenticated_assertion
+        from ..instrument_claims import CLAIMS
+        if slot.type==render.ROWS:
+            from ..instrument_evidence import SourceAssertionGroup
+            from types import SimpleNamespace
+            group=ground.instrument_assertion_groups.get(str(value))
+            if type(group) is not SourceAssertionGroup or group.reference_kind!=key or group.run_token is not ground.instrument_token:
+                return None,"instrument_authority_required","The source rows have no current-run authority."
+            forms=[];grades=[]
+            for aid in group.assertion_ids:
+                assertion=ground.instrument_assertions.get(aid)
+                if (assertion is None or assertion.get("claim")!=group.claim or assertion.get("account")!=group.account
+                        or not authenticated_assertion(assertion) or assertion._run_token is not ground.instrument_token):
+                    return None,"instrument_authority_required","A source row lost its exact claim, subject or current-run authority."
+                contract=CLAIMS[group.claim]
+                form,tag,detail=_bound(SimpleNamespace(name="source_row",type=contract.render_type,quantity="",scope=()),{key:aid},ground,locale)
+                if tag:return None,tag,detail
+                if len(str(form).encode("utf-8"))>2048:return None,"resource_limit","The source assertion row exceeds its byte bound."
+                label=assertion.get('association_label','')
+                forms.append((aid,(label+' · ' if label else '')+str(form)));grades.append(assertion["grade"])
+            block=_SourceRows(render.rows([(group.claim.replace("_"," "),form) for _,form in forms],grade=weakest(grades)))
+            if len(str(block).encode("utf-8"))>50000:return None,"resource_limit","The complete source assertion group exceeds its byte bound."
+            block.assertion_forms=tuple(forms)
+            return block,"",""
+        assertion=ground.instrument_assertions.get(str(value))
+        if not assertion or not authenticated_assertion(assertion) or assertion._run_token is not ground.instrument_token:
+            return None,"instrument_authority_required","The assertion has no current-run source authority."
+        if assertion.get('record_association') and alongside and any(fig.get('association_id')!=assertion['record_association'] for fig in alongside):
+            return None,'source_relationship_mismatch','Source assertions and figures must describe the same accepted relationship.'
+        contract=CLAIMS[assertion["claim"]]
+        if contract.reference_kind!=key or slot.type!=contract.render_type:
+            return None,"wrong_kind","The source assertion has a different declared type."
+        if key=="instrument_date":return render.date(assertion["value"]),"",""
+        if key=="instrument_text":
+            # Quotations remain literal text. React/terminal consumers never interpret
+            # source markup as instructions, links or executable content.
+            anchors=assertion.get("anchors",())
+            pages=", ".join(str(a["document_id"])+" page "+str(a["page"]) for a in anchors)
+            form=render.InstrumentText('Source states “'+assertion["value"]+'” ('+pages+')')
+            if len(str(form).encode("utf-8"))>2048:return None,"resource_limit","The sourced text exceeds its rendered byte bound."
+            return form,"",""
+        from ..instrument_claims import normalized_words
+        return render.InstrumentNormalized(normalized_words(assertion["claim"],assertion["value"])),"",""
+
     if key in ("read", "read_figures", "read_labels"):
         rows = ground.readings.get(str(value))
         if rows is None:
@@ -223,6 +279,8 @@ def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
         return render.date(str(fig["dated"])), "", ""
 
     # supposed
+    if slot.quantity in quantity.DEDICATED:
+        return None,"dedicated_authority_required","A stated premise cannot introduce a dedicated source quantity."
     if slot.type != render.SUPPOSED:
         return None, "wrong_kind", (
             f"The hole {slot.name!r} wants {slot.type}, and a value you "
@@ -265,6 +323,8 @@ APPROX_TERMS = {
     render.MONEY: ("approx_amount", "amount", render.Money),
     render.COUNT: ("approx_count", "count", render.Count),
     render.RATE: ("approx_rate", "rate", render.Rate),
+    render.PERCENTAGE_POINTS: ("approx_percentage_points", "points", render.PercentagePoints),
+    render.SECURITY_UNITS: ("approx_amount", "amount", render.SecurityUnits),
 }
 
 
@@ -287,6 +347,23 @@ def _figure_bound(slot, fig: dict, locale: str):
     An amount states a currency and a plain number states none — the one
     distinction the emitters already make — so binding a count where an amount
     belongs, or the reverse, is a type error rather than a matter of wording."""
+    from ..instrument_claims import DEDICATED_QUANTITIES
+    from ..instrument_evidence import authenticated_figure
+    if (fig.get("quantity") in DEDICATED_QUANTITIES or fig.get("claim")) and not authenticated_figure(fig):
+        return None, "instrument_authority_required", "This claim has no authenticated instrument authority."
+    if fig.get("quantity") == "allocation_percentage_points":
+        if slot.type != render.PERCENTAGE_POINTS or slot.quantity != "allocation_percentage_points" or fig.get("kind") != HYPOTHETICAL or fig.get("grade"):
+            return None, "wrong_kind", "Allocation comparisons require their dedicated hypothetical point type."
+        try:
+            written=render.percentage_points(fig["value"], locale=locale)
+            return _hedged(written,fig,render.PERCENTAGE_POINTS), "", ""
+        except ValueError:
+            return None, "wrong_kind", "The allocation point value is not canonical."
+    from ..instrument_claims import RETIREMENT_CLAIMS, MORTGAGE_DERIVED_CLAIMS
+    if fig.get('claim') in MORTGAGE_DERIVED_CLAIMS and getattr(slot,'_mortgage_claim',None)!=fig.get('claim'):
+        return None,'mortgage_claim_scope_required','Payment reconciliation requires its exact claim-selected source rows.'
+    if fig.get('claim') in RETIREMENT_CLAIMS and getattr(slot,'_retirement_claim',None)!=fig.get('claim'):
+        return None,'retirement_claim_scope_required','Retirement funding needs its exact claim-selected source rows.'
     value = _decimal(fig["value"])
     money_like = bool(fig["currency"]) or fig["kind"] == HYPOTHETICAL
 
@@ -364,6 +441,12 @@ def _figure_bound(slot, fig: dict, locale: str):
             f"The hole {slot.name!r} wants {slot.type}, and {fig['what']!r} "
             "holds no magnitude.")
 
+    if slot.type == render.SECURITY_UNITS:
+        if fig["quantity"]!="security_units" or money_like or fig.get("exactness")!=EXACT:
+            return None,"wrong_kind","Security quantities require exact supported units."
+        try:return render.security_units(fig["value"],locale=locale),"",""
+        except ValueError:return None,"unsupported_units","The source units cannot be rendered faithfully."
+
     if slot.type == render.MONEY:
         if not money_like:
             return None, "wrong_kind", (
@@ -383,6 +466,10 @@ def _figure_bound(slot, fig: dict, locale: str):
         return _hedged(render.count(value), fig, slot.type), "", ""
 
     if slot.type == render.RATE:
+        if fig.get("quantity")=="instrument_rate":
+            import decimal
+            with decimal.localcontext(decimal.Context(prec=80, Emin=-9999, Emax=9999)):
+                return _hedged(render.rate(value,locale=locale),fig,slot.type),"",""
         if money_like:
             return None, "wrong_kind", (
                 f"The hole {slot.name!r} wants a proportion, and "
@@ -482,6 +569,8 @@ def _rows_bound(slot, rows, ground: _Ground, locale: str):
         cut = _line_of(fig)
         if not cut:
             continue
+        if fig.get("claim") or fig.get("quantity") in quantity.DEDICATED:
+            return None,"instrument_claim_required","Use a claim-selected instrument figure block."
         kind = render.TYPE_OF_QUANTITY.get(fig["quantity"], "")
         value = _decimal(fig["value"])
         if not kind or value is None:
@@ -500,8 +589,20 @@ def _rows_bound(slot, rows, ground: _Ground, locale: str):
         return None, "wrong_kind", (
             f"The hole {slot.name!r} wants rows, and that read named no slice "
             "of anything — there is nothing in it to write one line per.")
-    return render.rows(lines, grade=weakest(
-        f["grade"] for f in cited if f["kind"] in MONEY_KINDS)), "", ""
+    return _source_rows(lines,cited), "", ""
+
+
+def _source_rows(lines,cited):
+    grade=weakest(f["grade"] for f in cited if f["kind"] in MONEY_KINDS)
+    if grade and any(f.get("kind")==HYPOTHETICAL for f in cited):
+        from .envelope import scoped_grade_sentence
+        line=scoped_grade_sentence(grade,cited)
+        return render.Rows("\n"+line+str(render.rows(lines)))
+    return render.rows(lines,grade=grade)
+
+
+class _SourceRows(render.Rows):
+    assertion_forms: tuple = ()
 
 
 class _FigureRows(render.Rows):
@@ -516,6 +617,16 @@ def _figure_forms(rows, ground: _Ground, locale: str):
         if fig is None:
             return None, "unknown_figure", (
                 f"The answer refers to figure {fid!r} this turn never established.")
+        if fig.get("claim") or fig.get("quantity") in quantity.DEDICATED:
+            from types import SimpleNamespace
+            from ..instrument_claims import CLAIMS
+            contract=CLAIMS.get(fig.get("claim"))
+            if contract is None:return None,"instrument_claim_required","Instrument rows require a closed claim."
+            slot=SimpleNamespace(name="instrument_row",type=contract.render_type,quantity=contract.quantity,scope=(),_retirement_claim=fig.get("claim"),_mortgage_claim=fig.get("claim"))
+            written,tag,detail=_figure_bound(slot,fig,locale)
+            if tag:return None,tag,detail
+            forms.append((str(fid),str(fig.get("what") or "Sourced instrument field"),written));cited.append(fig)
+            continue
         kind = render.TYPE_OF_QUANTITY.get(fig.get("quantity"), "")
         value = _decimal(fig.get("value"))
         if not kind or value is None:
@@ -537,8 +648,7 @@ def _figures_bound(slot, rows, ground: _Ground, locale: str):
         return None, tag, detail
     cited = [ground.book[fid] for fid, _label, _written in forms]
     lines = [(label, written) for _fid, label, written in forms]
-    block = _FigureRows(render.rows(lines, grade=weakest(
-        f["grade"] for f in cited if f["kind"] in MONEY_KINDS)))
+    block = _FigureRows(_source_rows(lines,cited))
     block.figure_forms = tuple(forms)
     return block, "", ""
 
@@ -566,11 +676,29 @@ def _labels_bound(slot, rows, ground: _Ground):
 # One entry per kind that holds one, keyed the same way `APPROX_TERMS` is, so a
 # new shape of magnitude arriving with nowhere to be written is a build failure
 # rather than a row silently dropped.
+def _sealed_percentage_points_writer(value, fig, locale):
+    from ..instrument_evidence import authenticated_figure
+    if not authenticated_figure(fig) or fig.get("claim")!="allocation_percentage_points" or fig.get("kind")!=HYPOTHETICAL or fig.get("grade"):
+        raise ValueError("percentage points require authenticated hypothetical instrument evidence")
+    return render.percentage_points(str(fig["value"]),locale=locale)
+
+
+def _sealed_security_units_writer(value, fig, locale):
+    from ..instrument_evidence import authenticated_figure
+    if (not authenticated_figure(fig) or fig.get('claim')!='security_units'
+            or fig.get('quantity')!='security_units' or fig.get('currency')
+            or fig.get('exactness')!=EXACT):
+        raise ValueError('security units require exact authenticated investment evidence')
+    return render.security_units(fig['value'],locale=locale)
+
+
 _MAGNITUDE_WRITERS = {
     render.MONEY: lambda value, fig, locale: render.money(
         value, fig["currency"], locale=locale),
     render.COUNT: lambda value, fig, locale: render.count(value),
     render.RATE: lambda value, fig, locale: render.rate(value, locale=locale),
+    render.PERCENTAGE_POINTS: _sealed_percentage_points_writer,
+    render.SECURITY_UNITS: _sealed_security_units_writer,
 }
 
 

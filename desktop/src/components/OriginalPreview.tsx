@@ -3,9 +3,9 @@ import type { DocumentPreview, DocumentPreviewReader } from "../surface/types";
 const messages = {
   invalid_request: "This page cannot be opened.", original_unavailable: "The saved original is unavailable in this vault.", identity_unverifiable: "The saved original's identity could not be verified.", unsupported_type: "This file type cannot be previewed here.", unsupported_encoding: "This text encoding cannot be previewed here.", over_limit: "This original exceeds the local preview limits. It remains saved in your vault.", encrypted_pdf: "Password-protected PDFs cannot be previewed here.", damaged_original: "The saved original could not be verified or rendered.", page_unavailable: "This page is unavailable. Try opening again to return to page 1, or choose another document.", timed_out: "Opening the local preview took too long.", renderer_unavailable: "Local preview is unavailable in this build.",
 };
-type Props = { documentId: string; name: string; read?: DocumentPreviewReader; subscribeEnd?: (clear: () => void) => () => void };
+type Props = { onOpenRequest?: (nonce: number) => void; documentId: string; name: string; read?: DocumentPreviewReader; subscribeEnd?: (clear: () => void) => () => void; openRequest?: { page: number; nonce: number } };
 // Only the explicit action fetches content. This component retains one page.
-export function OriginalPreview({ documentId, name, read, subscribeEnd }: Props) {
+export function OriginalPreview({ documentId, name, read, subscribeEnd, openRequest, onOpenRequest }: Props) {
   const [open, setOpen] = useState(false);
   const [working, setWorking] = useState(false);
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
@@ -36,6 +36,13 @@ export function OriginalPreview({ documentId, name, read, subscribeEnd }: Props)
     if (ended.current || generation.current !== request) return;
     busy.current = false; setWorking(false); setPreview(result);
   }
+  useLayoutEffect(() => {
+    if (openRequest && Number.isInteger(openRequest.page) && openRequest.page >= 1 && openRequest.page <= 200) {
+      ++generation.current; busy.current = false;
+      void load(openRequest.page);
+      onOpenRequest?.(openRequest.nonce);
+    }
+  }, [openRequest]);
   const ready = preview?.status === "ready" ? preview : null;
   const page = (offset: number) => { if (!working && ready && ready.page + offset >= 1 && ready.page + offset <= ready.pageCount) void load(ready.page + offset); };
   return <section className="original-source">

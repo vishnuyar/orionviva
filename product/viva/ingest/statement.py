@@ -33,6 +33,8 @@ class TxnFact:
     source_doc_id: str = ""
     grade: str = ""
     note: str = ""
+    source_reference: str = ""
+    counterparty_reference: str = ""
 
     def provenance(self, doc_id: str) -> Provenance:
         return Provenance(doc_id=self.source_doc_id or doc_id, page=self.page,
@@ -44,7 +46,8 @@ class TxnFact:
                 "running_balance": (None if self.running_balance is None
                                     else str(self.running_balance)),
                 "source_doc_id": self.source_doc_id, "grade": self.grade,
-                "note": self.note}
+                "note": self.note, "source_reference": self.source_reference,
+                "counterparty_reference": self.counterparty_reference}
 
     @classmethod
     def from_dict(cls, d: dict) -> "TxnFact":
@@ -53,14 +56,16 @@ class TxnFact:
                    amount=Decimal(d["amount"]), page=d.get("page"),
                    running_balance=(None if rb is None else Decimal(rb)),
                    source_doc_id=d.get("source_doc_id", ""),
-                   grade=d.get("grade", ""), note=d.get("note", ""))
+                   grade=d.get("grade", ""), note=d.get("note", ""),
+                   source_reference=d.get("source_reference", ""),
+                   counterparty_reference=d.get("counterparty_reference", ""))
 
 
 @dataclass
 class StatementFacts:
     doc_id: str
     doc_type: str
-    doc_type_confidence: float
+    doc_type_confidence: float | None
     account_ref: str
     currency: str
     opening_amount: Decimal
@@ -76,6 +81,14 @@ class StatementFacts:
     account_number: str = ""
     institution: str = ""
     account_names: list[str] = field(default_factory=list)
+    source_account_ref: str = ""
+    source_account_ref_page: int | None = None
+    acquisition: dict | None = None
+    validated_source_page_count: int | None = None
+
+    def __post_init__(self):
+        from ..acquisition import classification
+        classification(self.doc_id, self.doc_type_confidence, self.acquisition)
 
     @property
     def period_end(self) -> str:
@@ -97,6 +110,9 @@ class StatementFacts:
         return {
             "doc_id": self.doc_id, "doc_type": self.doc_type,
             "doc_type_confidence": self.doc_type_confidence,
+            **({"acquisition": dict(self.acquisition)} if self.acquisition is not None else {}),
+            **({"validated_source_page_count": self.validated_source_page_count}
+               if self.validated_source_page_count is not None else {}),
             "account_ref": self.account_ref, "currency": self.currency,
             "opening_amount": str(self.opening_amount),
             "opening_date": self.opening_date,
@@ -107,6 +123,8 @@ class StatementFacts:
             "account_number": self.account_number,
             "institution": self.institution,
             "account_names": list(self.account_names),
+            "source_account_ref": self.source_account_ref,
+            "source_account_ref_page": self.source_account_ref_page,
         }
 
     @classmethod
@@ -114,6 +132,8 @@ class StatementFacts:
         return cls(
             doc_id=d["doc_id"], doc_type=d["doc_type"],
             doc_type_confidence=d.get("doc_type_confidence", 0.0),
+            acquisition=d.get("acquisition"),
+            validated_source_page_count=d.get("validated_source_page_count"),
             account_ref=d.get("account_ref", ""), currency=d["currency"],
             opening_amount=Decimal(d["opening_amount"]),
             opening_date=d["opening_date"],
@@ -123,7 +143,9 @@ class StatementFacts:
             opening_page=d.get("opening_page"), closing_page=d.get("closing_page"),
             account_number=d.get("account_number", ""),
             institution=d.get("institution", ""),
-            account_names=list(d.get("account_names", [])))
+            account_names=list(d.get("account_names", [])),
+            source_account_ref=d.get("source_account_ref", ""),
+            source_account_ref_page=d.get("source_account_ref_page"))
 
 
 def _find_json(text: str) -> str | None:
@@ -307,9 +329,13 @@ def from_model_json(text: str, doc_id: str, locale: str,
         if rt.get("running_balance_raw") not in (None, ""):
             rb, rberr = _amount(rt["running_balance_raw"], locale, currency)
             running = rb if rberr is None else None
+        for field_name in ("source_reference", "counterparty_reference"):
+            if type(rt.get(field_name, "")) is not str:
+                return None, f"transaction {i} {field_name} must be printed text"
         txns.append(TxnFact(date=d, description=str(rt.get("description", "")),
                             amount=signed, page=rt.get("page"),
-                            running_balance=running))
+                            running_balance=running, source_reference=rt.get("source_reference", ""),
+                            counterparty_reference=rt.get("counterparty_reference", "")))
 
     raw_names = data.get("account_names")
     if isinstance(raw_names, list):
@@ -319,6 +345,11 @@ def from_model_json(text: str, doc_id: str, locale: str,
     else:
         names = []
 
+    if type(data.get("source_account_ref", "")) is not str:
+        return None, "source_account_ref must be printed text"
+    reference_page = data.get("source_account_ref_page")
+    if reference_page is not None and (type(reference_page) is not int or reference_page < 1):
+        return None, "source_account_ref_page must be a positive page"
     facts = StatementFacts(
         doc_id=doc_id,
         doc_type=str(data.get("doc_type", "unknown")).strip().lower(),
@@ -332,6 +363,7 @@ def from_model_json(text: str, doc_id: str, locale: str,
         closing_page=data["closing"].get("page"),
         account_number=str(data.get("account_number", "")),
         institution=str(data.get("institution", "")),
-        account_names=names,
+        account_names=names, source_account_ref=data.get("source_account_ref", ""),
+        source_account_ref_page=reference_page,
     )
     return facts, None

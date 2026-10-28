@@ -150,15 +150,38 @@ def main() -> None:
     for did, dt in captured:
         print(f"    {did}…  {dt}")
 
+    from ..extraction_responses import RESPONSE_EVENT, summary
+    responses = [event for event in events if event.event_type == RESPONSE_EVENT]
+    if responses:
+        print(f"completed extraction HTTP responses: {len(responses)}")
+        for event in responses:
+            metadata = summary(event)
+            print(f"    response={event.event_id}  doc={metadata['doc_id']}  "
+                  f"phase={metadata['phase']}  attempt={metadata['phase_attempt']}  "
+                  f"transport={metadata['transport_attempt']}  "
+                  f"reported_cost_usd={metadata['cost_usd']}  "
+                  f"reported_input={metadata['input_tokens']}  "
+                  f"reported_output={metadata['output_tokens']}")
+
     reads = [e for e in events if e.event_type == "ReadRecorded"]
     if reads:
         print("model reads recorded (claims layer):")
         for e in reads:
             b = e.body
+            from ..acquisition import local_read
+            if local_read(b):
+                print(f"    {b['doc_id'][:10]}…  acquisition=local-curation-v1  parse_ok={b.get('parse_ok')}")
+                continue
             print(f"    {b.get('doc_id','')[:10]}…  model={b.get('model')}  "
-                  f"prompt={b.get('prompt_version')}  cost=${b.get('cost_usd',0):.4f}  "
+                  f"prompt={b.get('prompt_version')}  cost={_cost_label(b)}  "
                   f"parse_ok={b.get('parse_ok')}  resp_chars={len(b.get('response_text') or '')}"
                   + (f"  error={b.get('parse_error')}" if not b.get('parse_ok') else ""))
+
+
+
+def _cost_label(body):
+    value = body.get("cost_usd")
+    return "unavailable" if value is None else f"${value:.4f}"
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ from ..ingest.brokerage import is_cash_row
 from ..ledger.events import GRADES, Provenance
 from ..ledger.projection.accounts import AccountInfo, account_info
 from ..ledger.projection.balances import BalanceAnswer
-from ..ledger.projection.movements import MovementInfo, is_expense
+from ..ledger.projection.movements import MovementInfo, is_expense, counts_as_spending, counted_spending_amount
 from ..ledger.projection.core import TxnLine
 from ..ledger.projection.positions import ComposedValue, snapshot_positions
 from ..ledger.projection.obligations import Obligation
@@ -257,56 +257,64 @@ class SQLOverviewProjection:
                  "evidence": decoded_evidence})
 
     def _load_statement_register(self):
-        rows = _bounded(
-            self.connection,
-            "SELECT p.doc_id,p.account_id,d.doc_type,"
-            "CASE WHEN length(CAST(r.response_text AS BLOB))<=? "
-            "THEN r.response_text ELSE NULL END,"
-            "p.period_end,p.closing_amount_text,p.source_sequence "
-            "FROM statement_periods p INDEXED BY statement_periods_by_account_date "
-            "JOIN documents d INDEXED BY documents_by_doc ON d.doc_id=p.doc_id "
-            "JOIN document_reads r INDEXED BY document_reads_by_doc_phase_source "
-            "ON r.doc_id=p.doc_id AND r.phase='extract' "
-            "AND r.parse_ok=1 "
-            "WHERE NOT EXISTS (SELECT 1 FROM documents newer "
-            "WHERE newer.doc_id=d.doc_id AND newer.source_sequence>d.source_sequence) "
-            "AND NOT EXISTS (SELECT 1 FROM statement_periods newer "
-            "WHERE newer.doc_id=p.doc_id AND newer.account_id=p.account_id "
-            "AND newer.source_sequence>p.source_sequence) "
-            "AND NOT EXISTS (SELECT 1 FROM document_reads newer "
-            "WHERE newer.doc_id=r.doc_id AND newer.phase='extract' "
-            "AND newer.parse_ok=1 AND newer.source_sequence>r.source_sequence) "
-            "ORDER BY p.account_id DESC,p.period_end,p.source_sequence",
-            (MAX_STATEMENT_RESPONSE_BYTES,), MAX_STATEMENT_REGISTER_ROWS,
-            "statement evidence register")
-        by_account = {}
-        seen = set()
-        from ..ingest.registry import BALANCE_IDENTITY, profile_for
-        from ..ingest.statement import period_from_model_json
-        for doc, account, doc_type, response, closing_date, closing, _seq in rows:
-            if response is None:
-                raise ReadStoreError("statement response exceeds its byte bound")
-            identity = (doc, account)
-            if identity in seen:
-                raise ReadStoreError("statement evidence register is ambiguous")
-            seen.add(identity)
-            profile = profile_for(doc_type)
-            state = self._states.get(account)
-            if profile is None or profile.identity != BALANCE_IDENTITY or state is None:
-                continue
-            try:
-                period = period_from_model_json(
-                    response, self._locale, state.currency or "USD")
-            except Exception as exc:
-                raise ReadStoreError("statement evidence register is invalid") from exc
-            if period is None:
-                continue
-            record = _record(doc, account, period,
-                             (Decimal(closing), closing_date))
-            if record is not None:
-                by_account.setdefault(account, []).append(record)
-        return {account: AccountStatements(account, records, _runs(records))
-                for account, records in by_account.items()}
+        from .document_index import acquisition_scope
+        with acquisition_scope(self._revision):
+            from .document_index import (owned_read_rows,retained_input,READ_ACQUISITION_COLUMNS,READ_ACQUISITION_JOINS)
+            rows = owned_read_rows(
+                self._revision,
+                "SELECT p.doc_id,p.account_id,d.doc_type,"
+                "CASE WHEN length(CAST(r.response_text AS BLOB))<=? "
+                "THEN r.response_text ELSE NULL END,"
+                "p.period_end,p.closing_amount_text,p.source_sequence"+READ_ACQUISITION_COLUMNS+
+                "FROM statement_periods p INDEXED BY statement_periods_by_account_date "
+                "JOIN documents d INDEXED BY documents_by_doc ON d.doc_id=p.doc_id "
+                "JOIN document_reads r INDEXED BY document_reads_by_doc_phase_source "
+                "ON r.doc_id=p.doc_id AND r.phase='extract' "
+                "AND r.parse_ok=1 "
+                +READ_ACQUISITION_JOINS+"WHERE NOT EXISTS (SELECT 1 FROM documents newer "
+                "WHERE newer.doc_id=d.doc_id AND newer.source_sequence>d.source_sequence) "
+                "AND NOT EXISTS (SELECT 1 FROM statement_periods newer "
+                "WHERE newer.doc_id=p.doc_id AND newer.account_id=p.account_id "
+                "AND newer.source_sequence>p.source_sequence) "
+                "AND NOT EXISTS (SELECT 1 FROM document_reads newer "
+                "WHERE newer.doc_id=r.doc_id AND newer.phase='extract' "
+                "AND newer.parse_ok=1 AND newer.source_sequence>r.source_sequence) "
+                "ORDER BY p.account_id DESC,p.period_end,p.source_sequence LIMIT ?",
+                (MAX_STATEMENT_RESPONSE_BYTES,MAX_STATEMENT_REGISTER_ROWS+1))
+            if len(rows)>MAX_STATEMENT_REGISTER_ROWS:
+                raise ReadStoreError(f"statement evidence register exceeds its {MAX_STATEMENT_REGISTER_ROWS}-row read bound")
+            by_account = {}
+            seen = set()
+            from ..ingest.registry import BALANCE_IDENTITY, profile_for
+            from ..ingest.statement import period_from_model_json
+            for doc, account, doc_type, response, closing_date, closing, _seq, witness in rows:
+                state = self._states.get(account)
+                response,parse_locale,parse_currency,_acquisition=retained_input(
+                    self._revision,witness,doc,response,self._locale,
+                    state.currency or 'USD' if state else 'USD')
+                if response is None:
+                    raise ReadStoreError("statement response exceeds its byte bound")
+                identity = (doc, account)
+                if identity in seen:
+                    raise ReadStoreError("statement evidence register is ambiguous")
+                seen.add(identity)
+                profile = profile_for(doc_type)
+                state = self._states.get(account)
+                if profile is None or profile.identity != BALANCE_IDENTITY or state is None:
+                    continue
+                try:
+                    period = period_from_model_json(
+                        response, parse_locale, parse_currency)
+                except Exception as exc:
+                    raise ReadStoreError("statement evidence register is invalid") from exc
+                if period is None:
+                    continue
+                record = _record(doc, account, period,
+                                 (Decimal(closing), closing_date))
+                if record is not None:
+                    by_account.setdefault(account, []).append(record)
+            return {account: AccountStatements(account, records, _runs(records))
+                    for account, records in by_account.items()}
 
     def _load_rulings(self):
         rows = _bounded(
@@ -423,6 +431,12 @@ class SQLOverviewProjection:
             corrections, self.rulings() + list(rules.values()), metadata)
         return set(self._inactive_accounting_cache)
 
+    def instrument_allocations(self):
+        return self._revision.instrument_allocations(as_of=self._boundary)
+
+    def account_restrictions(self):
+        return self._revision.account_restrictions(as_of=self._boundary)
+
     def accounts(self):
         return sorted(account for account, state in self._states.items()
                       if state.seen)
@@ -476,6 +490,18 @@ class SQLOverviewProjection:
                 for currency, row in sorted(grouped.items())]
 
     def movements(self):
+        if not getattr(self, "_instrument_movement_overlay_applied", False):
+            allocations = self.instrument_allocations()
+            from ..ledger.instruments import apply_cash_role
+            roles = self._revision.instrument_cash_roles(as_of=self._boundary)
+            for movement in self._movements:
+                if movement.key in roles:
+                    apply_cash_role(movement, roles[movement.key])
+                allocation = allocations.get(movement.key)
+                if allocation is not None:
+                    movement.nature, movement.nature_reason, movement.provisional = "mixed", "document_components", False
+                    movement.component_spending = allocation.spending
+            self._instrument_movement_overlay_applied = True
         return list(self._movements)
 
     def accounting_postings(self):
@@ -527,9 +553,9 @@ class SQLOverviewProjection:
 
     def spending_by_currency(self):
         output = {}
-        for movement in self._movements:
-            if is_expense(movement) and movement.nature == "spending":
-                output[movement.currency] = output.get(movement.currency, Decimal(0)) + abs(movement.amount)
+        for movement in self.movements():
+            if counts_as_spending(movement):
+                output[movement.currency] = output.get(movement.currency, Decimal(0)) + counted_spending_amount(movement)
         return output
 
     def rulings(self, scope=None):

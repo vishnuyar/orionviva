@@ -648,7 +648,7 @@ def test_cleanup_failure_after_commit_is_reported_without_failing_publish(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     with ReadStore.create(tmp_path / "read-model", PASSPHRASE) as store:
         old = store.current_generation
-        monkeypatch.setattr(store, "cleanup", lambda: (_ for _ in ()).throw(OSError("denied")))
+        monkeypatch.setattr(store, "_cleanup_locked", lambda: (_ for _ in ()).throw(OSError("denied")))
         new = store.publish()
         assert new != old and store.current_generation == new
         assert "denied" in store.cleanup_error

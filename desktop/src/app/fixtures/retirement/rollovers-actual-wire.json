@@ -1,0 +1,1749 @@
+{
+  "state": "ready",
+  "question": "Show known retirement plans from 2021-01-01 to 2025-12-31.",
+  "text": "For each documented direct rollover, direct rollover amount: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\ndirect rollover amount · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 212,855.52\ndirect rollover amount · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 185,973.66.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover source outflow: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover source outflow · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 212,855.52\nrollover source outflow · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 185,973.66.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover destination inflow: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover destination inflow · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 212,855.52\nrollover destination inflow · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 185,973.66.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover checking receipts: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover checking receipts · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 0.00\nrollover checking receipts · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 0.00.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover attributed income: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover attributed income · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 0.00\nrollover attributed income · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 0.00.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover date: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover date — acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · 2024-06-30\nrollover date — acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · 2022-12-31.\nFor each documented direct rollover, rollover reference: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover reference — acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · Source states “ROLLOVER-041” (e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8 page 1)\nrollover reference — acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · Source states “ROLLOVER-023” (9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f page 1).\nFor each documented direct rollover, rollover source account: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover source account — acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · Source states “PLAN-B” (0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd page 1)\nrollover source account — acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · Source states “PLAN-A” (850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4 page 1).\nFor each documented direct rollover, rollover destination account: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover destination account — acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · Source states “PLAN-C” (e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8 page 1)\nrollover destination account — acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · Source states “PLAN-B” (9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f page 1).\nRead this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+  "answered": true,
+  "status": "answered",
+  "outcome_tag": "",
+  "refusal": "",
+  "grade": "unverified",
+  "grade_sentence": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+  "figures": [
+    {
+      "value": "212855.52",
+      "quantity": "investment_contribution",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684",
+        "source_account_id": "acct:plan-b",
+        "destination_account_id": "acct:plan-c"
+      },
+      "id": "f1",
+      "written": "USD 212,855.52",
+      "what": "direct rollover amount · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041",
+      "record_ids": [
+        "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+        "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f1",
+      "evidence_links": [
+        {
+          "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+          "label": "ROLLOVER-041-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+          "label": "ROLLOVER-041-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    },
+    {
+      "value": "185973.66",
+      "quantity": "investment_contribution",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85",
+        "source_account_id": "acct:plan-a",
+        "destination_account_id": "acct:plan-b"
+      },
+      "id": "f6",
+      "written": "USD 185,973.66",
+      "what": "direct rollover amount · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023",
+      "record_ids": [
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+        "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f6",
+      "evidence_links": [
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+          "label": "ROLLOVER-023-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+          "label": "ROLLOVER-023-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    },
+    {
+      "value": "212855.52",
+      "quantity": "gross_flow",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684",
+        "source_account_id": "acct:plan-b",
+        "destination_account_id": "acct:plan-c"
+      },
+      "id": "f2",
+      "written": "USD 212,855.52",
+      "what": "rollover source outflow · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041",
+      "record_ids": [
+        "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+        "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f2",
+      "evidence_links": [
+        {
+          "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+          "label": "ROLLOVER-041-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+          "label": "ROLLOVER-041-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    },
+    {
+      "value": "185973.66",
+      "quantity": "gross_flow",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85",
+        "source_account_id": "acct:plan-a",
+        "destination_account_id": "acct:plan-b"
+      },
+      "id": "f7",
+      "written": "USD 185,973.66",
+      "what": "rollover source outflow · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023",
+      "record_ids": [
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+        "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f7",
+      "evidence_links": [
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+          "label": "ROLLOVER-023-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+          "label": "ROLLOVER-023-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    },
+    {
+      "value": "212855.52",
+      "quantity": "gross_flow",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684",
+        "source_account_id": "acct:plan-b",
+        "destination_account_id": "acct:plan-c"
+      },
+      "id": "f3",
+      "written": "USD 212,855.52",
+      "what": "rollover destination inflow · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041",
+      "record_ids": [
+        "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+        "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f3",
+      "evidence_links": [
+        {
+          "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+          "label": "ROLLOVER-041-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+          "label": "ROLLOVER-041-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    },
+    {
+      "value": "185973.66",
+      "quantity": "gross_flow",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85",
+        "source_account_id": "acct:plan-a",
+        "destination_account_id": "acct:plan-b"
+      },
+      "id": "f8",
+      "written": "USD 185,973.66",
+      "what": "rollover destination inflow · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023",
+      "record_ids": [
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+        "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f8",
+      "evidence_links": [
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+          "label": "ROLLOVER-023-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+          "label": "ROLLOVER-023-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    },
+    {
+      "value": "0",
+      "quantity": "gross_flow",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684",
+        "source_account_id": "acct:plan-b",
+        "destination_account_id": "acct:plan-c"
+      },
+      "id": "f4",
+      "written": "USD 0.00",
+      "what": "rollover checking receipts · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041",
+      "record_ids": [
+        "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+        "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f4",
+      "evidence_links": [
+        {
+          "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+          "label": "ROLLOVER-041-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+          "label": "ROLLOVER-041-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    },
+    {
+      "value": "0",
+      "quantity": "gross_flow",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85",
+        "source_account_id": "acct:plan-a",
+        "destination_account_id": "acct:plan-b"
+      },
+      "id": "f9",
+      "written": "USD 0.00",
+      "what": "rollover checking receipts · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023",
+      "record_ids": [
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+        "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f9",
+      "evidence_links": [
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+          "label": "ROLLOVER-023-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+          "label": "ROLLOVER-023-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    },
+    {
+      "value": "0",
+      "quantity": "income",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85",
+        "source_account_id": "acct:plan-a",
+        "destination_account_id": "acct:plan-b"
+      },
+      "id": "f10",
+      "written": "USD 0.00",
+      "what": "rollover attributed income · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023",
+      "record_ids": [
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+        "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f10",
+      "evidence_links": [
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+          "label": "ROLLOVER-023-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+          "label": "ROLLOVER-023-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    },
+    {
+      "value": "0",
+      "quantity": "income",
+      "kind": "financial",
+      "currency": "USD",
+      "dated": "",
+      "grade": "unverified",
+      "boundary": {
+        "whole": false,
+        "selected": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          }
+        ],
+        "cut": [
+          {
+            "kind": "account_set",
+            "value": "[\"acct:plan-a\",\"acct:plan-b\",\"acct:plan-c\"]"
+          },
+          {
+            "kind": "period",
+            "value": "2021-01-01",
+            "to": "2025-12-31"
+          }
+        ]
+      },
+      "subject": {
+        "account_set_id": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+        "set_type": "retirement_plans",
+        "member_ids": [
+          "acct:plan-a",
+          "acct:plan-b",
+          "acct:plan-c"
+        ],
+        "relationship_id": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684",
+        "source_account_id": "acct:plan-b",
+        "destination_account_id": "acct:plan-c"
+      },
+      "id": "f5",
+      "written": "USD 0.00",
+      "what": "rollover attributed income · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041",
+      "record_ids": [
+        "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+        "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+        "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+        "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+        "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+        "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+        "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+        "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8"
+      ],
+      "evidence_id": "conversation:synthetic-retirement-rollovers:f5",
+      "evidence_links": [
+        {
+          "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+          "label": "ROLLOVER-041-out.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "label": "PLAN-B-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "label": "PLAN-A-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "label": "PLAN-C-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "label": "PLAN-B-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "label": "PLAN-C-initial-plan.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "label": "PLAN-A-payroll.pdf",
+          "relation": "attests",
+          "page": "1"
+        },
+        {
+          "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+          "label": "ROLLOVER-041-in.pdf",
+          "relation": "attests",
+          "page": "1"
+        }
+      ],
+      "receipt_ids": [
+        "conversation:synthetic-retirement-rollovers:numerical:0"
+      ]
+    }
+  ],
+  "numerical_receipts": [
+    {
+      "schema_version": 1,
+      "id": "conversation:synthetic-retirement-rollovers:numerical:0",
+      "figure_ids": [
+        "f1",
+        "f6",
+        "f2",
+        "f7",
+        "f3",
+        "f8",
+        "f4",
+        "f9",
+        "f10",
+        "f5"
+      ],
+      "source_records": [
+        {
+          "record_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+          "kind": "document",
+          "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd"
+        },
+        {
+          "record_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+          "kind": "document",
+          "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e"
+        },
+        {
+          "record_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+          "kind": "document",
+          "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229"
+        },
+        {
+          "record_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+          "kind": "document",
+          "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a"
+        },
+        {
+          "record_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+          "kind": "document",
+          "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552"
+        },
+        {
+          "record_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+          "kind": "document",
+          "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4"
+        },
+        {
+          "record_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+          "kind": "document",
+          "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f"
+        },
+        {
+          "record_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+          "kind": "document",
+          "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54"
+        },
+        {
+          "record_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+          "kind": "document",
+          "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3"
+        },
+        {
+          "record_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+          "kind": "document",
+          "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8"
+        }
+      ],
+      "premises": [],
+      "observed_inputs": [],
+      "local_inputs": [],
+      "context": [
+        {
+          "label": "Retirement funding source scope",
+          "value": "complete accepted posting set for each documented direct rollover"
+        },
+        {
+          "label": "Selected retirement plans",
+          "value": "acct:plan-a, acct:plan-b, acct:plan-c"
+        },
+        {
+          "label": "Retirement funding view",
+          "value": "direct_rollovers"
+        },
+        {
+          "label": "Documented rollover relationship",
+          "value": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684"
+        },
+        {
+          "label": "Canonical rollover source",
+          "value": "acct:plan-b"
+        },
+        {
+          "label": "Canonical rollover destination",
+          "value": "acct:plan-c"
+        },
+        {
+          "label": "Documented rollover relationship",
+          "value": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85"
+        },
+        {
+          "label": "Canonical rollover source",
+          "value": "acct:plan-a"
+        },
+        {
+          "label": "Canonical rollover destination",
+          "value": "acct:plan-b"
+        }
+      ],
+      "caveats": [],
+      "figure_provenance": {
+        "f1": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+            "page": 1
+          },
+          {
+            "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+            "page": 1
+          }
+        ],
+        "f6": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+            "page": 1
+          },
+          {
+            "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+            "page": 1
+          }
+        ],
+        "f2": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+            "page": 1
+          },
+          {
+            "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+            "page": 1
+          }
+        ],
+        "f7": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+            "page": 1
+          },
+          {
+            "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+            "page": 1
+          }
+        ],
+        "f3": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+            "page": 1
+          },
+          {
+            "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+            "page": 1
+          }
+        ],
+        "f8": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+            "page": 1
+          },
+          {
+            "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+            "page": 1
+          }
+        ],
+        "f4": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+            "page": 1
+          },
+          {
+            "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+            "page": 1
+          }
+        ],
+        "f9": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+            "page": 1
+          },
+          {
+            "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+            "page": 1
+          }
+        ],
+        "f10": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+            "page": 1
+          },
+          {
+            "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+            "page": 1
+          }
+        ],
+        "f5": [
+          {
+            "document_id": "50ab680702433e3aefae045ca670f76a9ad81c35e1522710f090883b6036e229",
+            "page": 1
+          },
+          {
+            "document_id": "bb4d6e764cbadd7520f36c0b9025ce9477eb89c2f7a3eafc4be9935b37e6e7c3",
+            "page": 1
+          },
+          {
+            "document_id": "80b9c71a988a9360694cead188eae47ca4d5cd324fbbeb51578f7a3ba67ca552",
+            "page": 1
+          },
+          {
+            "document_id": "18f95945ab14a18e2d4c4004a1953e5c7effa7b11137a5e31dc2057c00dcae8e",
+            "page": 1
+          },
+          {
+            "document_id": "ad8947b8c5b9be3fb1b4a9f7e70acfc4cd6311f0dabd7e7d357ba2292c0fcd54",
+            "page": 1
+          },
+          {
+            "document_id": "5185b83994867334cf9cf551fb6dfb6f8eef093be2d31514b112e3ca826bf53a",
+            "page": 1
+          },
+          {
+            "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+            "page": 1
+          },
+          {
+            "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+            "page": 1
+          }
+        ]
+      },
+      "investment_derivations": []
+    }
+  ],
+  "source_assertions": [
+    {
+      "claim": "rollover_date",
+      "value": "2024-06-30",
+      "value_type": "date",
+      "account": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+      "anchors": [
+        {
+          "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+          "page": 1
+        }
+      ],
+      "observation_ids": [
+        "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684"
+      ],
+      "record_association": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684",
+      "grade": "unverified",
+      "disposition": "accepted",
+      "source_lineage_digest": "adc45cf42f29147d21b41fe45fff56126931cc8a5ae3c8455c988aadd8bd2a61",
+      "association_label": "acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041",
+      "source_account_id": "acct:plan-b",
+      "destination_account_id": "acct:plan-c",
+      "id": "i1",
+      "written": "acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · 2024-06-30"
+    },
+    {
+      "claim": "rollover_date",
+      "value": "2022-12-31",
+      "value_type": "date",
+      "account": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+      "anchors": [
+        {
+          "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+          "page": 1
+        }
+      ],
+      "observation_ids": [
+        "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85"
+      ],
+      "record_association": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85",
+      "grade": "unverified",
+      "disposition": "accepted",
+      "source_lineage_digest": "adc45cf42f29147d21b41fe45fff56126931cc8a5ae3c8455c988aadd8bd2a61",
+      "association_label": "acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023",
+      "source_account_id": "acct:plan-a",
+      "destination_account_id": "acct:plan-b",
+      "id": "i5",
+      "written": "acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · 2022-12-31"
+    },
+    {
+      "claim": "rollover_reference",
+      "value": "ROLLOVER-041",
+      "value_type": "literal_text",
+      "account": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+      "anchors": [
+        {
+          "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+          "page": 1
+        }
+      ],
+      "observation_ids": [
+        "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684"
+      ],
+      "record_association": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684",
+      "grade": "unverified",
+      "disposition": "accepted",
+      "source_lineage_digest": "adc45cf42f29147d21b41fe45fff56126931cc8a5ae3c8455c988aadd8bd2a61",
+      "association_label": "acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041",
+      "source_account_id": "acct:plan-b",
+      "destination_account_id": "acct:plan-c",
+      "id": "i2",
+      "written": "acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · Source states “ROLLOVER-041” (e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8 page 1)"
+    },
+    {
+      "claim": "rollover_reference",
+      "value": "ROLLOVER-023",
+      "value_type": "literal_text",
+      "account": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+      "anchors": [
+        {
+          "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+          "page": 1
+        }
+      ],
+      "observation_ids": [
+        "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85"
+      ],
+      "record_association": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85",
+      "grade": "unverified",
+      "disposition": "accepted",
+      "source_lineage_digest": "adc45cf42f29147d21b41fe45fff56126931cc8a5ae3c8455c988aadd8bd2a61",
+      "association_label": "acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023",
+      "source_account_id": "acct:plan-a",
+      "destination_account_id": "acct:plan-b",
+      "id": "i6",
+      "written": "acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · Source states “ROLLOVER-023” (9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f page 1)"
+    },
+    {
+      "claim": "rollover_source_account",
+      "value": "PLAN-B",
+      "value_type": "literal_text",
+      "account": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+      "anchors": [
+        {
+          "document_id": "0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd",
+          "page": 1
+        }
+      ],
+      "observation_ids": [
+        "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684"
+      ],
+      "record_association": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684",
+      "grade": "unverified",
+      "disposition": "accepted",
+      "source_lineage_digest": "adc45cf42f29147d21b41fe45fff56126931cc8a5ae3c8455c988aadd8bd2a61",
+      "association_label": "acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041",
+      "source_account_id": "acct:plan-b",
+      "destination_account_id": "acct:plan-c",
+      "id": "i3",
+      "written": "acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · Source states “PLAN-B” (0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd page 1)"
+    },
+    {
+      "claim": "rollover_source_account",
+      "value": "PLAN-A",
+      "value_type": "literal_text",
+      "account": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+      "anchors": [
+        {
+          "document_id": "850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4",
+          "page": 1
+        }
+      ],
+      "observation_ids": [
+        "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85"
+      ],
+      "record_association": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85",
+      "grade": "unverified",
+      "disposition": "accepted",
+      "source_lineage_digest": "adc45cf42f29147d21b41fe45fff56126931cc8a5ae3c8455c988aadd8bd2a61",
+      "association_label": "acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023",
+      "source_account_id": "acct:plan-a",
+      "destination_account_id": "acct:plan-b",
+      "id": "i7",
+      "written": "acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · Source states “PLAN-A” (850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4 page 1)"
+    },
+    {
+      "claim": "rollover_destination_account",
+      "value": "PLAN-C",
+      "value_type": "literal_text",
+      "account": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+      "anchors": [
+        {
+          "document_id": "e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8",
+          "page": 1
+        }
+      ],
+      "observation_ids": [
+        "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684"
+      ],
+      "record_association": "retirement-rollover:0c2613ec0bb19702ec29a32ce930b11f25abe8d43f32d5dfa9b84bc3c4003684",
+      "grade": "unverified",
+      "disposition": "accepted",
+      "source_lineage_digest": "adc45cf42f29147d21b41fe45fff56126931cc8a5ae3c8455c988aadd8bd2a61",
+      "association_label": "acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041",
+      "source_account_id": "acct:plan-b",
+      "destination_account_id": "acct:plan-c",
+      "id": "i4",
+      "written": "acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · Source states “PLAN-C” (e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8 page 1)"
+    },
+    {
+      "claim": "rollover_destination_account",
+      "value": "PLAN-B",
+      "value_type": "literal_text",
+      "account": "retirement-set:352163a6a59444efe55ec2d51556922bbb50e6a63482d559d88b313ffa9b7a42",
+      "anchors": [
+        {
+          "document_id": "9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f",
+          "page": 1
+        }
+      ],
+      "observation_ids": [
+        "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85"
+      ],
+      "record_association": "retirement-rollover:c46c4da55a7408ecb254fea9e310b6b5ca6fb8e341e392ab5a2d528265486a85",
+      "grade": "unverified",
+      "disposition": "accepted",
+      "source_lineage_digest": "adc45cf42f29147d21b41fe45fff56126931cc8a5ae3c8455c988aadd8bd2a61",
+      "association_label": "acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023",
+      "source_account_id": "acct:plan-a",
+      "destination_account_id": "acct:plan-b",
+      "id": "i8",
+      "written": "acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · Source states “PLAN-B” (9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f page 1)"
+    }
+  ],
+  "target_premises": [],
+  "gaps": [],
+  "options": [],
+  "missing": [],
+  "spoken": {
+    "may_speak": true,
+    "withheld": "",
+    "parts": [
+      "text",
+      "grade",
+      "citations"
+    ],
+    "text": "For each documented direct rollover, direct rollover amount: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\ndirect rollover amount · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 212,855.52\ndirect rollover amount · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 185,973.66.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover source outflow: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover source outflow · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 212,855.52\nrollover source outflow · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 185,973.66.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover destination inflow: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover destination inflow · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 212,855.52\nrollover destination inflow · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 185,973.66.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover checking receipts: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover checking receipts · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 0.00\nrollover checking receipts · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 0.00.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover attributed income: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover attributed income · acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 — USD 0.00\nrollover attributed income · acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 — USD 0.00.\nThis figure is for the explicitly selected retirement plans plan-a, plan-b, plan-c.\nFor each documented direct rollover, rollover date: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover date — acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · 2024-06-30\nrollover date — acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · 2022-12-31.\nFor each documented direct rollover, rollover reference: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover reference — acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · Source states “ROLLOVER-041” (e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8 page 1)\nrollover reference — acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · Source states “ROLLOVER-023” (9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f page 1).\nFor each documented direct rollover, rollover source account: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover source account — acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · Source states “PLAN-B” (0b1dbf8bd1263a3435ab6021923f376a3133aee58bd8ff2e0969752a2e8f82fd page 1)\nrollover source account — acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · Source states “PLAN-A” (850619072a4e65f81eb89d9c3847e70ec66477e6a4c13dd1013468272131bdc4 page 1).\nFor each documented direct rollover, rollover destination account: \nRead this list as unverified: nothing has checked these figures, so take them as working numbers rather than settled ones.\nrollover destination account — acct:plan-b → acct:plan-c · 2024-06-30 · ROLLOVER-041 · Source states “PLAN-C” (e8408d99c1bf4ab4a8ac8a23beec3343b6e45f6e79d9d251edaf7625c39394c8 page 1)\nrollover destination account — acct:plan-a → acct:plan-b · 2022-12-31 · ROLLOVER-023 · Source states “PLAN-B” (9170c38f5f69a1f57e78df0e145ae45b304574fa1116f4200225fa7a0bcdd67f page 1).\nRead this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+    "grade_sentence": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+    "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+    "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+  }
+}

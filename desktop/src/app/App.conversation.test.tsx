@@ -1,3 +1,4 @@
+import { documentsPageFixture } from "./documentsPage.testSupport";
 import { within } from "@testing-library/react";
 import { act, fireEvent, render, waitFor, createRef, userEvent,
   afterEach, beforeEach, describe, expect, it, vi, App,
@@ -28,7 +29,7 @@ describe("conversation questions and corrections", () => {
         const surface = payload.surface;
         const data = surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { as_of: "2026-08-18", accounts: [] }, accounts: { as_of: "2026-08-18", accounts: [] }, error: "" }
           : surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
-          : surface === "documents" ? { documents: [] }
+          : surface === "documents" ? documentsPageFixture({ documents: [] })
             : surface === "conversation" ? { turns: [], questions: questions(), total: setAside ? 1 : 2, invite: "Write an answer", answered_by_document: "A document answers this" }
               : surface === "review" ? reviewQuestionPayload(questions())
               : surface === "trust" ? trustPayload
@@ -82,7 +83,7 @@ describe("conversation questions and corrections", () => {
         const surface = payload.surface;
         const data = surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { as_of: "2026-08-18", accounts: [] }, accounts: { as_of: "2026-08-18", accounts: [] }, error: "" }
           : surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
-          : surface === "documents" ? { documents: [] }
+          : surface === "documents" ? documentsPageFixture({ documents: [] })
             : surface === "conversation" ? { turns: [], questions: [reviewBoundQuestion({ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." })], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
               : surface === "review" ? reviewQuestionPayload([{ id: "first-question", text: "Is this your account?", why: "Account identity is unresolved." }])
               : surface === "trust" ? trustPayload
@@ -143,7 +144,7 @@ describe("conversation questions and corrections", () => {
         if (surface === "conversation" && setAside && reread === "failed") throw new Error("bounded read failure");
         const data = surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { as_of: "2026-08-18", accounts: [] }, accounts: { as_of: "2026-08-18", accounts: [] }, error: "" }
           : surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
-          : surface === "documents" ? { documents: [] }
+          : surface === "documents" ? documentsPageFixture({ documents: [] })
             : surface === "conversation" ? { turns: [], questions: [reviewBoundQuestion({ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." })], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
               : surface === "review" && setAside && reread === "inconsistent" ? reviewQuestionPayload([])
               : surface === "review" ? reviewQuestionPayload([{ id: "first-question", text: "Is this your account?", why: "Account identity is unresolved." }])

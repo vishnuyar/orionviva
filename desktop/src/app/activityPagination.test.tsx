@@ -1,3 +1,4 @@
+import { documentsPageFixture } from "./documentsPage.testSupport";
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { useSessionReads } from './useSessionReads';
@@ -7,7 +8,7 @@ import { App } from './App';
 import sample from '../../../product/viva/surface/fixtures/overview-parity-v1.json';
 import { BridgeRefusal, REQUEST_REFUSED } from '../bridge/contracts';
 
-const row = { id:'invented', date:'2026-01-01', description:'Invented activity', account:'invented', account_id:'invented', account_name:'Invented account', direction:'out', exact_value:'1', currency:'USD', display:'USD 1', nature:'spending', treatment:{kind:'spending',name:''}, sentence:'', decided_by:'default', provisional:false, linked:false, category:{id:'other',label:'Other'}, subcategory:{id:'unclassified',label:'Unclassified'}, classification:{grade:'unverified',provenance:'default'}, tags:[], evidence_links:[{document_id:'invented-doc',label:'invented.pdf',relation:'attests',page:'2',region:''}], transfer:{state:'none'}, actions:[] };
+const row = { id:'invented', date:'2026-01-01', description:'Invented activity', account:'invented', account_id:'invented', account_name:'Invented account', direction:'out', exact_value:'1', currency:'USD', display:'USD 1', nature:'spending', treatment:{kind:'spending',name:''}, sentence:'', decided_by:'default', provisional:false, linked:false, category:{id:'other',label:'Other'}, subcategory:{id:'unclassified',label:'Unclassified'}, classification:{grade:'unverified',provenance:'default'}, tags:[], evidence_links:[{document_id:'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',label:'invented.pdf',relation:'attests',page:'2',region:''}], transfer:{state:'none'}, actions:[] };
 const raw = (offset:number, count=50, revision='invented-revision') => ({ sentence:'Invented recorded activity', items:Array.from({length:Math.min(count,160-offset)},(_,i)=>({...row,id:`invented-${offset+i}`})), beyond:{count:160-Math.min(count,160-offset)}, vocabularies:{categories:{items:[{id:'other',label:'Other'}],complete:true,limit:40},subcategories:{items:[{id:'unclassified',label:'Unclassified',category_id:'other'}],complete:true,limit:200},tags:{items:[],complete:true,limit:40,max_selected:40,max_label_length:80}}, page:{version:1,revision,next_cursor:offset+count<160?`cursor-${offset+count}`:null,cumulative_count:Math.min(offset+count,160),remaining_count:Math.max(0,160-offset-count)} });
 const ref = (current:any) => ({current});
 
@@ -182,7 +183,8 @@ it('loads later rows and their source links through the actual bridge client and
   const previous=window.orionVivaBridge;
   window.orionVivaBridge={request:async<T,>(frame:any)=>{
     let value:any={kind:'completed',message:'Done.',state:null,reason:null};
-    if(frame.operation==='bridge.open_demo_vault')value={state:'opened',sample:true,frame:{title:'Invented vault',detail:'All records are invented.',leave:'Leave sample'},priority_reads:['overview_accounts']};
+    if(frame.operation==='bridge.sample.prepare'||frame.operation==='bridge.sample.status')value={ state: "ready", sample_version: "five-year-life-v1", completed_documents: 794, total_documents: 794, posted_documents: 794, held_documents: 0, phase: "ready", message: "Prepared sample fixture" };
+    else if(frame.operation==='bridge.open_demo_vault')value={state:'opened',sample:true,frame:{title:'Invented vault',detail:'All records are invented.',leave:'Leave sample'},priority_reads:['overview_accounts']};
     if(frame.operation==='bridge.handshake')value={protocol:'2.0',transport:'json-lines',revision:'invented'};
     if(frame.operation==='viva.surface.capabilities')value={protocol:'2.0',capabilities:[],destinations:{overview:true,accounts:true,activity:true,documents:true,plans:true,review:true,viva:true,trust:true}};
     if(frame.operation==='viva.settings.read')value={state:'ready',locale:'en-US',currency:'USD',adapter:'',model:'',base_url:'',key_set:false,can_send:false};
@@ -190,13 +192,13 @@ it('loads later rows and their source links through the actual bridge client and
       const surface=frame.payload.surface;
       let data=reads[surface]?.result.data;
       if(surface==='overview_accounts')data={state:'ready',freshness:'current',lifecycle:'equal',revision:'invented',overview:reads.overview.result.data,accounts:reads.overview.result.data,error:''};
-      if(surface==='documents')data={...(data as object),documents:[{...(data as any).documents[0],id:'invented-doc',filename:'invented.pdf'}],holds:[]};
+      if(surface==='documents')data={...(data as object),documents:[{...(data as any).documents[0],id:'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',filename:'invented.pdf'}],holds:[]};
       if(surface==='activity'){
         const params=frame.payload.parameters;activityRequests.push(params);
         const offset=({'cursor-50':50,'cursor-100':100,'cursor-150':150} as Record<string,number>)[params.cursor]??0;
         data=raw(offset);
       }
-      value={surface,job_id:'invented',data};
+      value={surface,job_id:'invented',data:surface==='documents'?documentsPageFixture(data,frame.payload.parameters?.selected_document_id):data};
     }
     return {protocol:'1.0',request_id:frame.requestId,ok:true,result:value as T};
   }};

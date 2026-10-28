@@ -90,6 +90,9 @@ def _validate(schema: dict, args: dict, path: str = "") -> list[str]:
     """Problems with `args` against our schema subset, as sentences. Empty
     means valid. Unknown keys are problems: a misspelled filter must refuse
     rather than silently not filter."""
+    if "oneOf" in schema and "properties" not in schema:
+        accepted = [choice for choice in schema["oneOf"] if not _validate(choice,args,path)]
+        return [] if len(accepted)==1 else ["Arguments must match exactly one closed variant."]
     problems: list[str] = []
     if "properties" not in schema:
         return problems           # an open object: a map of caller-named keys
@@ -155,6 +158,7 @@ class Registry:
         self._descriptions, self.descriptions_version = descriptions(
             descriptions_version)
         self.query_executor = None
+        self.instrument_runtime = None
         self._semantic_entities: dict = {}
         self._semantic_entity_provider = None
 

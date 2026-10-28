@@ -30,6 +30,17 @@ def _page(revision, *args, **kwargs):
     return sql_account_ledger_page(revision.account_ledger_page(*args, **kwargs))
 
 
+def _check_owned_ownership(revision, account_id, movements, records, locale):
+    from viva.read_store import account_ledger as sql_ledger
+    from viva.read_store.document_index import acquisition_scope
+
+    # The exact production scope validates this registered reader and captures
+    # its account currency; a connection or duck context cannot issue witnesses.
+    with acquisition_scope(revision, account_id):
+        return sql_ledger._check_ownership(
+            revision, account_id, movements, records, locale)
+
+
 def _identity(movement):
     return (movement.key, movement.account, movement.kind, movement.date,
             movement.amount, movement.description, movement.currency,
@@ -261,9 +272,9 @@ def test_account_statement_response_refuses_utf8_limit_plus_one_before_fetch(
             revision.connection.set_trace_callback(traced.append)
             if extra:
                 with pytest.raises(ReadStoreError, match="statement response exceeds its byte bound"):
-                    sql_ledger._statements(revision.connection, "a", "en-US")
+                    sql_ledger._statements(revision, "a", "en-US")
             else:
-                assert sql_ledger._statements(revision.connection, "a", "en-US")
+                assert sql_ledger._statements(revision, "a", "en-US")
             revision.connection.set_trace_callback(None)
             bounded = [sql for sql in traced if "FROM statement_periods p" in sql
                        and "CASE WHEN length(CAST(r.response_text AS BLOB))" in sql]
@@ -289,7 +300,7 @@ def test_cross_account_ownership_response_refuses_before_fetch_and_preserves_emp
             "SELECT response_text FROM document_reads WHERE doc_id='jan' LIMIT 1"
         ).fetchone()[0]
         ownership_records = list(sql_ledger._statements(
-            revision.connection, "a", "en-US").records)
+            revision, "a", "en-US").records)
     base = json.loads(original)
     bound = sql_ledger.MAX_STATEMENT_RESPONSE_BYTES
     shell = json.dumps({**base, "padding": ""}, ensure_ascii=False)
@@ -313,8 +324,8 @@ def test_cross_account_ownership_response_refuses_before_fetch_and_preserves_emp
             with pytest.raises(
                     ReadStoreError if extra else AccountLedgerIdentityError,
                     match="byte bound" if extra else "belongs to another account"):
-                sql_ledger._check_ownership(
-                    revision.connection, "a", [], ownership_records, "en-US")
+                _check_owned_ownership(
+                    revision, "a", [], ownership_records, "en-US")
             revision.connection.set_trace_callback(None)
             bounded = [sql for sql in traced if "p.account_id<>" in sql
                        and "CASE WHEN length(CAST(r.response_text AS BLOB))" in sql]
@@ -326,8 +337,8 @@ def test_cross_account_ownership_response_refuses_before_fetch_and_preserves_emp
         "UPDATE document_reads SET response_text='' WHERE doc_id='jan'"),
         copy_current=True)
     with vault.read_store.open_reader() as revision:
-        sql_ledger._check_ownership(
-            revision.connection, "a", [], ownership_records, "en-US")
+        _check_owned_ownership(
+            revision, "a", [], ownership_records, "en-US")
 
 
 def test_account_components_collapse_only_exact_overlapping_statement_rows(tmp_path):

@@ -27,7 +27,7 @@ def replay_capture(captured, registry, *, locale="", policy=None):
         if expected_semantic and expected_semantic != actual_semantic:
             return {"replayed": False, "defects": [{
                 "tag": "semantic_request_digest_mismatch"}]}
-        families = SemanticFamilyRegistry(registry.semantic_entities())
+        families = SemanticFamilyRegistry(registry.semantic_entities(),currency_resolver=getattr(registry,"instrument_currency",None))
         if raw_semantic.get("entity_catalog_digest") != families.entity_catalog_digest:
             return {"replayed": False, "defects": [{
                 "tag": "entity_catalog_digest_mismatch"}]}

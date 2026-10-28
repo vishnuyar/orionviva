@@ -144,6 +144,115 @@ describe("installed browser transport", () => {
     expect(await bridge.pickVaultDirectory!()).toBe("/synthetic/document.pdf");
   });
 
+  it("hashes an actual HTML file selection for the authenticated campaign-only resolver", async () => {
+    const digest = vi.fn(async (_algorithm, bytes) => {
+      expect(Array.from(new Uint8Array(bytes))).toEqual([37, 80, 68, 70]);
+      return new Uint8Array(32).fill(171).buffer;
+    });
+    vi.stubGlobal("crypto", { randomUUID: () => `page-${++pageNumber}`, subtle: { digest } });
+    fetcher.mockImplementation(async (url: string) => response(url.endsWith("claim") ? { token: "session-secret" } : url.endsWith("capabilities") ? { remember: false, campaign_file_chooser: true, vault_epoch: 0, sequence: 0 } : "/original/persona.pdf"));
+    const input = document.createElement("input");
+    const create = vi.spyOn(document, "createElement").mockReturnValueOnce(input);
+    const click = vi.spyOn(input, "click").mockImplementation(() => {
+      Object.defineProperty(input, "files", { value: [{ name: "persona.pdf", arrayBuffer: async () => new Uint8Array([37, 80, 68, 70]).buffer }] });
+      input.dispatchEvent(new Event("change"));
+    });
+    try {
+      const bridge = await connectBrowser(vi.fn());
+      await expect(bridge.pickDocumentPaths!()).resolves.toEqual(["/original/persona.pdf"]);
+      expect(input.type).toBe("file");
+      expect(input.multiple).toBe(false);
+      expect(input.isConnected).toBe(false);
+      expect(digest).toHaveBeenCalledWith("SHA-256", expect.any(ArrayBuffer));
+      const [url, options] = fetcher.mock.calls.at(-1)!;
+      expect(url).toBe("/__orionviva/campaign-file");
+      expect(JSON.parse(options.body)).toEqual({ name: "persona.pdf", sha256: "ab".repeat(32) });
+      expect(options.headers.authorization).toBe("Bearer session-secret");
+      expect(options.headers["x-orionviva-page"]).toMatch(/^page-/);
+    } finally { click.mockRestore(); create.mockRestore(); }
+  });
+
+  it("cancels the HTML campaign chooser without resolving or capturing a source", async () => {
+    fetcher.mockImplementation(async (url: string) => response(url.endsWith("claim") ? { token: "session-secret" } : { remember: false, campaign_file_chooser: true, vault_epoch: 0, sequence: 0 }));
+    const input = document.createElement("input");
+    const create = vi.spyOn(document, "createElement").mockReturnValueOnce(input);
+    const click = vi.spyOn(input, "click").mockImplementation(() => { input.dispatchEvent(new Event("cancel")); });
+    try {
+      const bridge = await connectBrowser(vi.fn());
+      await expect(bridge.pickDocumentPaths!()).resolves.toEqual([]);
+      expect(input.isConnected).toBe(false);
+      expect(fetcher.mock.calls.some(([url]) => url.endsWith("campaign-file"))).toBe(false);
+    } finally { click.mockRestore(); create.mockRestore(); }
+  });
+
+  it("resolves every actual file in a campaign multiselection before returning paths", async () => {
+    const digest = vi.fn(async (_algorithm: string, bytes: ArrayBuffer) => new Uint8Array(32).fill(new Uint8Array(bytes)[0]).buffer);
+    vi.stubGlobal("crypto", { randomUUID: () => `page-${++pageNumber}`, subtle: { digest } });
+    fetcher.mockImplementation(async (url: string, options?: { body: string }) => response(url.endsWith("claim") ? { token: "session-secret" } : url.endsWith("capabilities") ? { remember: false, campaign_file_chooser: true, vault_epoch: 0, sequence: 0 } : `/original/${JSON.parse(options!.body).name}`));
+    const input = document.createElement("input"); const create = vi.spyOn(document, "createElement").mockReturnValueOnce(input);
+    const click = vi.spyOn(input, "click").mockImplementation(() => {
+      Object.defineProperty(input, "files", { value: [{ name: "first.pdf", arrayBuffer: async () => new Uint8Array([1]).buffer }, { name: "second.pdf", arrayBuffer: async () => new Uint8Array([2]).buffer }] });
+      input.dispatchEvent(new Event("change"));
+    });
+    try {
+      const bridge = await connectBrowser(vi.fn());
+      await expect(bridge.pickMultipleDocumentPaths!()).resolves.toEqual(["/original/first.pdf", "/original/second.pdf"]);
+      expect(input.multiple).toBe(true); expect(input.isConnected).toBe(false); expect(digest).toHaveBeenCalledTimes(2);
+      const selections = fetcher.mock.calls.filter(([url]) => url.endsWith("campaign-file")).map(([, options]) => JSON.parse(options.body));
+      expect(selections).toEqual([{ name: "first.pdf", sha256: "01".repeat(32) }, { name: "second.pdf", sha256: "02".repeat(32) }]);
+    } finally { click.mockRestore(); create.mockRestore(); }
+  });
+
+  it("uses a separate authenticated multiple-file route in normal browser mode", async () => {
+    const bridge = await connectBrowser(vi.fn()); fetcher.mockResolvedValueOnce(response(["/first.pdf", "/second.pdf"]));
+    await expect(bridge.pickMultipleDocumentPaths!()).resolves.toEqual(["/first.pdf", "/second.pdf"]);
+    expect(fetcher.mock.calls.at(-1)![0]).toBe("/__orionviva/pick-files");
+    fetcher.mockResolvedValueOnce(response("/backup.orionvault")); await expect(bridge.pickDocumentPaths!()).resolves.toEqual(["/backup.orionvault"]);
+    expect(fetcher.mock.calls.at(-1)![0]).toBe("/__orionviva/pick-file");
+  });
+
+  it("drains a bulk request before allowing a vault switch", async () => {
+    const bridge = await connectBrowser(vi.fn()); let finish!: (value: Response) => void;
+    fetcher.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+    const bulk = bridge.request({ requestId: "bulk-1", operation: "viva.documents.upload_many", payload: { paths: ["/first.pdf", "/second.pdf"] } });
+    const closing = bridge.closeVault!(); expect(fetcher.mock.calls.some(([url]) => url.endsWith("close"))).toBe(false);
+    await expect(bridge.request({ requestId: "next", operation: "viva.documents.upload_many", payload: { paths: ["/third.pdf"] } })).rejects.toThrow("vault_busy");
+    fetcher.mockResolvedValueOnce(response({ response: null, vault_epoch: 1 }));
+    finish(response({ response: { ok: true, result: { job_id: "chunk-1", rows: [] } }, vault_epoch: 0 }));
+    await bulk; await closing; expect(fetcher.mock.calls.at(-1)![0]).toBe("/__orionviva/close");
+  });
+
+  it("releases its authenticated page once when a failed event channel ends an outstanding bulk request", async () => {
+    const ended = vi.fn(); const bridge = await connectBrowser(ended);
+    let complete!: (value: Response) => void;
+    fetcher.mockImplementation((url: string) => url.endsWith("bridge") ? new Promise<Response>((resolve) => { complete = resolve; }) : url.endsWith("events") ? Promise.reject(new Error("synthetic event disconnect")) : Promise.resolve(response(null)));
+    const bulk = bridge.request({ requestId: "active-bulk", operation: "viva.documents.upload_many", payload: { paths: ["/first.pdf", "/second.pdf"] } });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(ended).toHaveBeenCalledOnce(); expect(sessionStorage.getItem("orionviva.browser.session")).toBeNull();
+    expect(navigator.sendBeacon).toHaveBeenCalledOnce(); expect(navigator.sendBeacon).toHaveBeenCalledWith("/__orionviva/release", JSON.stringify({ token: "session-secret", page: `page-${pageNumber}` }));
+    hide!(); expect(navigator.sendBeacon).toHaveBeenCalledOnce(); expect(ended).toHaveBeenCalledOnce();
+    complete(response({ response: { ok: true }, vault_epoch: 0 })); await bulk;
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("bridge"))).toHaveLength(1);
+  });
+
+  it.each(["throws", "not-queued"])("clears access and notifies once when release delivery %s", async (failure) => {
+    const ended = vi.fn(); await connectBrowser(ended);
+    if (failure === "throws") vi.mocked(navigator.sendBeacon).mockImplementation(() => { throw new Error("synthetic unavailable beacon"); });
+    else vi.mocked(navigator.sendBeacon).mockReturnValue(false);
+    fetcher.mockRejectedValue(new Error("synthetic disconnect"));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(ended).toHaveBeenCalledOnce(); expect(sessionStorage.getItem("orionviva.browser.session")).toBeNull();
+    expect(window.removeEventListener).toHaveBeenCalledWith("pagehide", hide);
+    hide!(); expect(navigator.sendBeacon).toHaveBeenCalledOnce(); expect(ended).toHaveBeenCalledOnce();
+  });
+
+  it("releases the current page on an explicit fetch failure without replaying the bulk request", async () => {
+    const ended = vi.fn(); const bridge = await connectBrowser(ended); fetcher.mockRejectedValueOnce(new Error("synthetic bridge disconnect"));
+    await expect(bridge.request({ requestId: "lost-bulk", operation: "viva.documents.upload_many", payload: { paths: ["/first.pdf"] } })).rejects.toMatchObject({ name: "BridgeTimeout", mayHaveWritten: true });
+    expect(navigator.sendBeacon).toHaveBeenCalledOnce(); expect(ended).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("bridge"))).toHaveLength(1);
+  });
+
   it("starts progress at the host cursor after reload and ignores delayed progress from a previous vault", async () => {
     const ended = vi.fn();
     const bridge = await connectBrowser(ended);

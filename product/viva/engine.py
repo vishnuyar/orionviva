@@ -701,7 +701,7 @@ def _finalize_new_documents(vault: Vault, posted_before: set[str]) -> None:
 
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn, *,
-           on_captured=None, before_read=None) -> dict:
+           on_captured=None, before_read=None, _bulk_audit=None) -> dict:
     """Ingest an uploaded file: capture, read, then post, park or hold.
 
     Returns the outcome — `action`, `grade`, `doc_type`, `account`,
@@ -709,7 +709,8 @@ def upload(vault: Vault, filename: str, data: bytes, read_fn, *,
     posted_before = vault.ledger.projection().posted_doc_ids()
     res = capture_and_ingest(vault.raw, vault.ledger, data, read_fn,
                              filename=filename, captured_at=_today(),
-                             on_captured=on_captured, before_read=before_read)
+                             on_captured=on_captured, before_read=before_read,
+                             _bulk_audit=_bulk_audit)
     # Every posted movement leaves ingestion with a complete two-level claim.
     _finalize_new_documents(vault, posted_before)
     projection = vault.ledger.projection()

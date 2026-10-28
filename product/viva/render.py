@@ -39,8 +39,12 @@ from .quantity import PER_HUNDRED
 # What a slot holds — what kind of thing in the world it is, never what a
 # surface is about to do with it. The same type means the same thing in a
 # question and in an answer.
+SECURITY_UNITS = "security_units"
 MONEY = "money"          # an amount and the currency it is in
 COUNT = "count"          # a number of things, never a currency
+PERCENTAGE_POINTS = "percentage_points"
+INSTRUMENT_TEXT = "instrument_text"
+INSTRUMENT_NORMALIZED = "instrument_normalized"
 RATE = "rate"            # a proportion, per hundred
 DATE = "date"            # a day some record carries
 PERIOD = "period"        # a span one account's statements attest
@@ -53,7 +57,7 @@ CAVEAT = "caveat"        # what a result said its own number does not cover
 SUPPOSED = "supposed"    # a value the person themselves put into this turn
 PROSE = "prose"          # reviewed words from a pack, placed whole
 
-TYPES = (MONEY, COUNT, RATE, DATE, PERIOD, ACCOUNT, MERCHANT, CATEGORY,
+TYPES = (SECURITY_UNITS, PERCENTAGE_POINTS, INSTRUMENT_TEXT, INSTRUMENT_NORMALIZED, MONEY, COUNT, RATE, DATE, PERIOD, ACCOUNT, MERCHANT, CATEGORY,
          DOCUMENT, ROWS, CAVEAT, SUPPOSED, PROSE)
 
 # Which quantities a hole of each type may ask for. A type says what shape a
@@ -69,10 +73,13 @@ TYPES = (MONEY, COUNT, RATE, DATE, PERIOD, ACCOUNT, MERCHANT, CATEGORY,
 QUANTITY_OF_TYPE: dict[str, frozenset] = {
     MONEY: frozenset({quantity.SPENDING, quantity.INCOME, quantity.BALANCE,
                       quantity.OWED, quantity.NET_WORTH, quantity.GROSS_FLOW,
-                      quantity.NET_MOVEMENT, quantity.MOVEMENT, quantity.REPAYMENT}),
+                      quantity.NET_MOVEMENT, quantity.MOVEMENT, quantity.REPAYMENT,
+                      quantity.DEPOSIT_CONTRACT_PRINCIPAL, quantity.LOAN_ORIGINAL_PRINCIPAL}) | frozenset(quantity.INVESTMENT_DEDICATED[1:]),
+    SECURITY_UNITS: frozenset({"security_units"}),
     COUNT: frozenset({quantity.COUNT}),
-    RATE: frozenset({quantity.RATIO}) | frozenset(quantity.RATIOS),
-    SUPPOSED: frozenset(quantity.KINDS),
+    RATE: frozenset({quantity.RATIO, quantity.INSTRUMENT_RATE}) | frozenset(quantity.RATIOS),
+    PERCENTAGE_POINTS: frozenset({quantity.ALLOCATION_PERCENTAGE_POINTS}),
+    SUPPOSED: frozenset(quantity.KINDS) - frozenset(quantity.DEDICATED),
 }
 
 # The same pairing read the other way: what a number MEANS decides what shape
@@ -126,7 +133,23 @@ class Money(_Written):
     __slots__ = ()
 
 
+class SecurityUnits(_Written):
+    __slots__ = ()
+
+
 class Count(_Written):
+    __slots__ = ()
+
+
+class PercentagePoints(_Written):
+    __slots__ = ()
+
+
+class InstrumentText(_Written):
+    __slots__ = ()
+
+
+class InstrumentNormalized(_Written):
     __slots__ = ()
 
 
@@ -401,6 +424,8 @@ def supposed(value, measures: str, *, locale: str = "") -> Supposed:
     module and the persona need not be imported in any particular order."""
     from .persona import moment
 
+    if measures in quantity.DEDICATED:
+        raise ValueError("dedicated source quantities cannot be introduced as supposed values")
     if measures == quantity.TIME:
         return Supposed(moment("supposed_time", when=str(value).strip()))
     if measures == quantity.COUNT:
@@ -433,7 +458,28 @@ def _grouped(digits: str, separator: str) -> str:
 # hold. A name the vault holds for a slice of itself is written where the
 # machine places one, and there is nothing to refer to it by.
 RENDERED: dict[str, type] = {
-    MONEY: Money, COUNT: Count, RATE: Rate, DATE: Date, PERIOD: Period,
+    SECURITY_UNITS: SecurityUnits, MONEY: Money, COUNT: Count, RATE: Rate, DATE: Date, PERIOD: Period,
+    PERCENTAGE_POINTS: PercentagePoints, INSTRUMENT_TEXT: InstrumentText,
+    INSTRUMENT_NORMALIZED: InstrumentNormalized,
     ACCOUNT: Account, MERCHANT: Merchant, CATEGORY: Category,
     DOCUMENT: Document, ROWS: Rows, CAVEAT: Caveat, SUPPOSED: Supposed,
 }
+
+
+def percentage_points(value: str, *, locale: str = "") -> PercentagePoints:
+    """Canonical signed point units, never a fraction multiplied by a hundred."""
+    import re
+    if (type(value) is not str or len(value) > 13 or not re.fullmatch(r"(?:0|[+-](?:0|[1-9][0-9]{0,2})(?:\.[0-9]{1,8})?)", value)
+            or (value not in {"0"} and (value.lstrip("+-").endswith(".0") or not any(c in "123456789" for c in value)))
+            or len(value.lstrip("+-").split(".")[0]) > 3
+            or int(value.lstrip("+-").split(".")[0]) > 100
+            or (value.lstrip("+-").startswith("100.") and any(c != "0" for c in value.split(".")[1]))):
+        raise ValueError("invalid canonical allocation percentage points")
+    point, _ = separators_for(locale)
+    return PercentagePoints(value.replace(".", point) + " percentage points")
+
+
+def security_units(value, *, locale=""):
+    from viva.investment.units import units
+    decimal, grouping = separators_for(locale)
+    return SecurityUnits(units(value, group_separator=grouping, decimal_separator=decimal))

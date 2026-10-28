@@ -1,0 +1,15 @@
+Term deposit / CD source guidance:
+- subtype is opening, periodic or maturity according to the explicit record.
+- Opening certificates can contain terms/funding without opening/closing balance
+  snapshots or a statement period. Leave absent start, end, opening, closing
+  and movements null/omitted; never fabricate a zero balance or a period.
+- Principal and total deposit balance are different facts. Preserve printed
+  credited interest separately from principal, and uncredited accrued interest
+  separately from cash balance. Never calculate either.
+- Funding, interest_credit, redemption and fee rows carry positive printed
+  magnitudes and their exact printed reference/date and counterparty identifier.
+- Copy withdrawal restriction as printed. Maturity does not imply available
+  cash: only a sourced redemption names the receiving account.
+- simple_nominal, nominal_compounded and effective_apy are distinct. Do not
+  relabel APY as a nominal rate. equal_monthly_12 is allowed only when the
+  source explicitly declares that fictional twelve-equal-month convention.

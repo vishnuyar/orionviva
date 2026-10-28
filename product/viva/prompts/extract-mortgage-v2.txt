@@ -1,0 +1,29 @@
+Mortgage source guidance:
+- Opening/closing principal, each cash payment and escrow are independent
+  components. Preserve missing component values as null rather than filling
+  them from another total; do not claim reconciliation.
+- A nominal note rate is not disclosure APR. Populate disclosure_apr only when
+  printed explicitly. Fixed-rate status and original term require their own
+  printed supporting pages. Do not infer a fixed loan from its lender/name.
+- Payment principal, interest, escrow deposit, fees, total and exact payment
+  reference/date are separate. funding_account_reference is the exact printed
+  bank account identifier when present, not a lender or borrower name.
+- Escrow has its own printed identity, balances and dated component rows.
+  Annual tax summaries are not disbursements. Keep tax property/year/reference
+  on an actual disbursement. Do not create another household cash movement.
+- continuity_reference is populated only when an explicit printed shared
+  reference declares a continuing escrow identity across loan sources. Do not
+  infer continuity from equal balances, an address or a servicer name.
+- Principal movement rows have two exclusive source representations. Use amount
+  only for an explicitly printed positive magnitude. For an explicitly signed
+  effect on the principal balance, instead copy the unchanged signed scalar in
+  signed_effect, set effect_basis to "principal_balance_effect-v1", and give
+  kind_source={"page":1} pointing to the page supporting the explicit row kind.
+  Never include amount together with the signed-effect fields. Do not remove a
+  printed minus sign or guess kind from sign, balances or a payment component.
+- Under that signed-effect convention, principal_reduction, payoff and
+  decrease_adjustment require a negative effect; advance and increase_adjustment
+  require a positive effect. A contradictory or unreadable row must remain an
+  unresolved proposal; never change its kind or scalar to make it reconcile.
+  A printed zero summary is not a principal or escrow movement. Keep actual
+  unreadable rows visible rather than hiding them in an empty list.

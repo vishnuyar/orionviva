@@ -146,16 +146,20 @@ class TrustActions:
                              state={"file": str(path)}).as_dict()
 
     def _counts(self) -> dict[str, int]:
-        """Return the diagnostic's five allowlisted operational counts."""
+        """Return only allowlisted operational counts."""
         projection = self._vault.ledger.projection()
         events = list(self._vault.events())
         from viva.questions import open_questions
         question_count = open_questions(projection, limit=1)["total"]
+        from ..acquisition import local_read
         return {
             "documents": len(projection.captured_docs()),
             "events": len(events),
             "model_calls": sum(1 for event in events
-                               if event.event_type == "ReadRecorded"),
+                               if event.event_type == "ReadRecorded"
+                               and not local_read(event.body or {})),
+            "extraction_http_responses": sum(1 for event in events
+                if event.event_type == "ModelExtractionResponseRecorded"),
             "open_document_holds": len(projection.open_holds()),
             "open_conversation_questions": question_count,
         }

@@ -50,7 +50,7 @@ export function useSessionJobs(context: Coordination) {
           || sourceIdentity.current !== subscribedSource) return;
       ++jobsGeneration.current;
       dispatch({ type: "job-progress", requestId: subscribedRequest, job });
-      if (subscribedSource && ["completed", "failed", "cancelled"].includes(job.state)) {
+      if (subscribedSource && job.operation !== "viva.documents.upload_many" && ["completed", "failed", "cancelled"].includes(job.state)) {
         ++surfaceRevision.current;
         ++destinationGeneration.current;
         const activePriority = ++priorityGeneration.current;

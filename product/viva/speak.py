@@ -245,10 +245,11 @@ def main() -> None:
 
     locale = locale_from_env()
     vault = Vault.open(vault_dir, passphrase)
-    registry = default_registry(vault.ledger.projection(), locale)
+    from .instrument_runtime import vault_revision_supplier
+    registry = default_registry(vault.ledger.projection(), locale,instrument_scope=vault_revision_supplier(vault))
     session = Session(registry, compiler_factory(spec), ledger=vault.ledger,
                       model=spec.model, resource_policy=resource_policy_from_env(),
-                      locale=locale)
+                      locale=locale,registry_factory=lambda:default_registry(vault.ledger.projection(),locale,instrument_scope=vault_revision_supplier(vault)))
 
     questions = list(sys.argv[1:])
     if questions:

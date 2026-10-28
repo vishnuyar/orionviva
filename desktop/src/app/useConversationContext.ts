@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AskActionState, AskContextMode, ConversationData, FeatureResult } from "../surface/types";
+import type { AskActionState, AskContextMode, ContinuationRecovery, ConversationData, FeatureResult } from "../surface/types";
 
 // Retain conversation context for the open vault session across composer dismissal.
 export function useConversationContext(requestId: number, askState: AskActionState, history: FeatureResult<ConversationData> | null = null, blocked = false) {
@@ -9,6 +9,7 @@ export function useConversationContext(requestId: number, askState: AskActionSta
   latest.current = { requestId, working: askState.state === "working", blocked, historyEligible };
   const [context, setContext] = useState<{ requestId: number; mode: AskContextMode }>({ requestId, mode: "new_question" });
   const pending = useRef<{ requestId: number; question: string; observedWorking: boolean } | null>(null);
+  const recovery = useRef<{ requestId: number; anchor: ContinuationRecovery } | null>(null);
   const mode = context.requestId === requestId ? context.mode : "new_question";
   useEffect(() => {
     const submission = pending.current;
@@ -28,15 +29,33 @@ export function useConversationContext(requestId: number, askState: AskActionSta
   function startNewConversation() {
     if (latest.current.requestId !== requestId || latest.current.working) return;
     pending.current = null;
+    recovery.current = null;
     setContext({ requestId, mode: "new_question" });
   }
   function continuePreviousConversation() {
     if (latest.current.requestId !== requestId || latest.current.working || latest.current.blocked || !latest.current.historyEligible) return;
     pending.current = null;
+    recovery.current = null;
     setContext({ requestId, mode: "follow_up" });
+  }
+  function clearContinuationRecovery() { recovery.current = null; }
+  function continueAllocation(turnId: string, answerId: string) {
+    const validId = (id: string) => /^[\x20-\x7e]{1,128}$/.test(id);
+    if (latest.current.requestId !== requestId || latest.current.working || latest.current.blocked || !validId(turnId) || !validId(answerId)) return;
+    const turn = turns.find((candidate) => candidate.id === turnId);
+    if (!turn?.answer?.continuationEligible || turn.answer.answerId !== answerId) return;
+    recovery.current = { requestId, anchor: { version: "allocation-continuation-v1", turn_id: turnId, answer_id: answerId } };
+    pending.current = null;
+    setContext({ requestId, mode: "follow_up" });
+  }
+  function consumeContinuationRecovery(contextMode: AskContextMode, accountingCorrection: boolean): ContinuationRecovery | undefined {
+    const selected = recovery.current;
+    recovery.current = null;
+    if (accountingCorrection || contextMode !== "follow_up" || selected?.requestId !== requestId || latest.current.requestId !== requestId || latest.current.blocked) return undefined;
+    return selected.anchor;
   }
   function questionSubmitted(question: string, accountingCorrection = false) {
     pending.current = accountingCorrection ? null : { requestId, question, observedWorking: false };
   }
-  return { contextMode: mode, canContinuePreviousConversation: historyEligible && !blocked, continuePreviousConversation, startNewConversation, questionSubmitted };
+  return { clearContinuationRecovery, continueAllocation, consumeContinuationRecovery, contextMode: mode, canContinuePreviousConversation: historyEligible && !blocked, continuePreviousConversation, startNewConversation, questionSubmitted };
 }

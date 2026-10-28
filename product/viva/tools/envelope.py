@@ -108,7 +108,7 @@ PAYLOAD_TARGET = 5000
 # beside the figure it belongs to, the same way what a figure does not cover is
 # placed, so it is a property of the machine rather than something a planner is
 # asked to read and remember.
-MODEL_FACING_FIGURE = ("id", "value", "currency", "quantity", "kind", "grade",
+MODEL_FACING_FIGURE = ("claim", "id", "value", "currency", "quantity", "kind", "grade",
                        "dated", "exactness", "what")
 
 # Every grade a figure may carry, weakest-last, so composition takes the maximum
@@ -182,8 +182,12 @@ def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
                          + ", ".join(MEASURES))
     copied_subject = None
     if subject is not None:
-        allowed = ({"kind", "value"}, {"grouping"}, {"account_id"}, {"merchant"}, {"goal_id"})
-        if (not isinstance(subject, dict) or set(subject) not in allowed
+        allowed = ({"kind", "value"}, {"grouping"}, {"account_id"}, {"account_id", "security_id"}, {"merchant"}, {"goal_id"})
+        account_set=isinstance(subject,dict) and set(subject) in ({'account_set_id','set_type','member_ids'},{'account_set_id','set_type','member_ids','relationship_id','source_account_id','destination_account_id'})
+        if account_set:
+            from ..retirement_funding.contracts import valid_subject
+            valid_subject(subject)
+        if not account_set and (not isinstance(subject, dict) or set(subject) not in allowed
                 or any(not isinstance(item, str) or not item.strip()
                        or len(item.encode("utf-8")) > 4096 for item in subject.values())):
             raise ValueError("a figure subject must have a closed, named shape")
@@ -208,15 +212,16 @@ ENTITY_ACCOUNT = "account"
 ENTITY_MERCHANT = "merchant"
 ENTITY_CATEGORY = "category"
 ENTITY_DOCUMENT = "document"
+ENTITY_SECURITY = "security"
 
 ENTITY_KINDS = (ENTITY_ACCOUNT, ENTITY_MERCHANT, ENTITY_CATEGORY,
-                ENTITY_DOCUMENT)
+                ENTITY_DOCUMENT, ENTITY_SECURITY)
 
 # The letter each kind's ids are stamped with, so what a thing IS travels in
 # its identity rather than as a field repeated on every remaining call of the
 # turn. The same economy figure ids already make.
 ENTITY_MARKS = {ENTITY_ACCOUNT: "a", ENTITY_MERCHANT: "m",
-                ENTITY_CATEGORY: "k", ENTITY_DOCUMENT: "d"}
+                ENTITY_CATEGORY: "k", ENTITY_DOCUMENT: "d", ENTITY_SECURITY: "s"}
 
 
 def entity(kind: str, **attrs) -> dict:
@@ -254,10 +259,12 @@ BY_UNTIL = "until"            # one edge: the day it runs to
 BY_SUBCATEGORY = "subcategory"
 BY_TAG = "tag"
 BY_CURRENCY = "currency"
+BY_ACCOUNT_SET = "account_set"
+BY_SECURITY = "security"
 BY_KIND = "kind"
 
 SELECTED_KINDS = (BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT, BY_PERIOD, BY_SINCE,
-                  BY_UNTIL, BY_SUBCATEGORY, BY_TAG, BY_CURRENCY, BY_KIND)
+                  BY_UNTIL, BY_SUBCATEGORY, BY_TAG, BY_CURRENCY, BY_KIND, BY_SECURITY, BY_ACCOUNT_SET)
 
 # The one member that takes two days rather than one.
 _TWO_ENDED = (BY_PERIOD,)
@@ -454,6 +461,8 @@ def _named(item) -> dict:
     choice the model does not make."""
     if not isinstance(item, dict):
         return {"id": "", "label": str(item)}
+    if item.get('kind') == ENTITY_SECURITY:
+        return {"id": item.get("id", ""), "label": str(item.get('security_id') or '')}
     return {"id": item.get("id", ""),
             "label": str(item.get("account") or item.get("example")
                          or item.get("label") or item.get("doc_type")
@@ -466,7 +475,7 @@ def _stated(fig: dict) -> dict:
     saying, is omitted rather than sent."""
     out = {}
     for key in MODEL_FACING_FIGURE:
-        value = fig[key]
+        value = fig.get(key, "") if key == "claim" else fig[key]
         if value != "" and value != UNSAID.get(key, ""):
             out[key] = value
     out["records"] = len(fig["record_ids"])
@@ -512,11 +521,17 @@ class ToolResult:
     refusal: str = ""                           # machine tag when ok is False
     text: str = ""                              # one honest sentence
 
+    instrument_assertions: list = field(default_factory=list)
+    instrument_selection: object = None
+    instrument_premises: list = field(default_factory=list)
+
     def to_dict(self) -> dict:
         """What the model is shown, which is less than this result holds. A
         figure's `record_ids` stay behind — an answer cites the figure by id and
         the runner resolves the records — and only their count travels."""
-        return {"tool": self.tool, "ok": self.ok, "id": self.id,
+        return {**({"instrument_premises": [dict(a) for a in self.instrument_premises]} if self.instrument_premises else {}),
+                **({"instrument_assertions": [dict(a) for a in self.instrument_assertions]} if self.instrument_assertions else {}),
+                "tool": self.tool, "ok": self.ok, "id": self.id,
                 "data": self.data,
                 "figures": [_stated(f) for f in self.figures],
                 "identifiers": [_named(i) for i in self.identifiers],
@@ -541,3 +556,35 @@ def refusal(tool: str, reason: str, text: str, **extra) -> ToolResult:
     if extra:
         result.data = dict(extra)
     return result
+
+
+def scoped_grade_sentence(grade, figures=(), target_premises=(), source_assertions=()):
+    """Scope standing only from the evidence actually delivered in an answer."""
+    from ..persona import moment,STOOD_BEHIND_MOMENT
+    if not grade:return ""
+    target=any(p.get("kind")=="user_stated" for p in target_premises)
+    hypothetical=any(f.get("kind")==HYPOTHETICAL for f in figures)
+    if not target and not hypothetical:return moment(STOOD_BEHIND_MOMENT+grade)
+    noun="figures" if any(f.get("kind")==FINANCIAL and f.get("grade") for f in figures) else "assertions" if any(a.get("grade") for a in source_assertions) else ""
+    if not noun:return ""
+    category="mixed" if target and hypothetical else "target" if target else "hypothetical"
+    return moment("source_grade_"+noun+"_"+category+"_"+grade)
+
+
+def scope_saved_grade(answer):
+    """Re-scope the last canonical grade line in authenticated saved delivery."""
+    from ..persona import moment,STOOD_BEHIND_MOMENT
+    grade=answer.get("grade","")
+    if not grade:return
+    line=scoped_grade_sentence(grade,answer.get("figures",()),answer.get("target_premises",()),answer.get("source_assertions",()))
+    old=moment(STOOD_BEHIND_MOMENT+grade)
+    if line==old:return
+    text=answer.get("text","")
+    before,found,after=text.rpartition(old)
+    if found:answer["text"]=before+line+after
+    answer["grade_sentence"]=line
+    spoken=answer.get("spoken")
+    if isinstance(spoken,dict):
+        spoken=dict(spoken);spoken["grade_sentence"]=line
+        if spoken.get("text")==text:spoken["text"]=answer.get("text",text)
+        answer["spoken"]=spoken

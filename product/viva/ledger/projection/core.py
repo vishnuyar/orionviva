@@ -115,6 +115,17 @@ class ProjectionCore:
     def __init__(self, events: Iterable[Event], as_of: str | None = None,
                  resolve_keys=None) -> None:
         self.as_of = as_of
+        self._instrument_families = {}
+        self._instrument_observations = {}
+        self._instrument_bank_references = {}
+        self._instrument_cash_dependencies = {}
+        self._instrument_source_reads = {}
+        self._instrument_account_refs = {}
+        self._instrument_effect_keys = set()
+        self._instrument_effect_records = {}
+        self._instrument_allocations = {}
+        self._instrument_cash_roles = {}
+        self._instrument_component_states = {}
         # How a descriptor becomes the key its merchant knowledge is filed
         # under. None means "normalize the descriptor", which is right wherever
         # no grammar has named a brand. See `merchant_keys`.
@@ -123,7 +134,11 @@ class ProjectionCore:
         self._mkeys_of: dict = {}
         self._acct: dict[str, _AccountState] = {}
         # Ingest read-model, maintained incrementally alongside balances.
-        self._captured: dict[str, str] = {}     # doc_id -> model's doc_type
+        self._captured: dict[str, str] = {}     # raw capture identity only
+        self._classified_types: dict[str, dict] = {}
+        self._classification_responses: dict[tuple, list] = {}
+        self._capture_event_ids: dict[str, str] = {}
+        self._classification_revision = (0, '')
         # What the file was called where it came from, kept beside the type so a
         # document can be listed under a name its owner recognises rather than
         # under the address its own bytes decide.
@@ -132,6 +147,7 @@ class ProjectionCore:
         # Every document some model was asked about at all, whether or not the
         # reply parsed. A document in this set was read; one outside it was
         # never read, and the two are different things to tell a person.
+        self._acquisitions: dict[str, dict] = {}
         self._read_attempted: set[str] = set()  # doc_ids with any ReadRecorded
         # And those whose reading declared itself usable. The reading says so
         # about itself; whether anything was later done with it is a different
@@ -204,6 +220,7 @@ class ProjectionCore:
         self._declined: dict[str, dict] = {}
         # Durable turns in arrival order and proposals with immutable input data.
         self._conversation_turns: list[dict] = []
+        self._delivered_allocation_answers = {}
         self._conversation_turn_index: dict[str, int] = {}
         self._conversation_proposals: dict[str, dict] = {}
         # Save-up goals preserve complete term snapshots and every reservation
@@ -218,7 +235,14 @@ class ProjectionCore:
         # account is opened. Recognizes an internal movement when no transfer
         # link was formed.
         self._own_tokens_cache: dict[str, set[str]] | None = None
+        from ..instruments import fold_change, observations_as_of, visible_events
+        events = tuple(events)
+        complete_history = {}
         for event in events:
+            if event.event_type == "InstrumentObservationRecorded":
+                fold_change(complete_history, event)
+        self._instrument_observations = observations_as_of(complete_history, as_of)
+        for event in visible_events(events, as_of):
             self.apply(event)
 
     def apply(self, event: Event) -> None:
@@ -229,6 +253,7 @@ class ProjectionCore:
         if self.as_of is not None and event.occurred_at > self.as_of:
             return          # ISO dates sort lexically; skip the future
         self._apply(event)
+        self._classification_revision = (self._classification_revision[0] + 1, event.event_id)
 
     def _state(self, account: str) -> _AccountState:
         return self._acct.setdefault(account, _AccountState())
@@ -236,8 +261,71 @@ class ProjectionCore:
     def _apply(self, event: Event) -> None:
         et = event.event_type
         did = event.provenance.doc_id
+        effect_key = event.body.get("instrument_effect_key", event.body.get("instrument_declaration_key"))
+        if effect_key is not None:
+            if type(effect_key) is not str or not effect_key:
+                raise ValueError("instrument effect key must be nonempty text")
+            if effect_key in self._instrument_effect_keys:
+                raise ValueError("duplicate instrument effect identity")
+            self._instrument_effect_keys.add(effect_key)
+            self._instrument_effect_records[effect_key] = event
 
-        if et == "AccountOpened":
+        if et == "FinancialAccountReferenceObserved":
+            from ..instruments import reference_event
+            from ...ingest.instrument_contracts import Source
+            reference_event(event.body.get("account_id"), event.body.get("reference"), event.occurred_at,
+                            Source(did, event.provenance.page), scope=event.body.get("scope"),
+                            identity_page_count=event.body.get("identity_page_count"))
+            if set(event.body) - {"account_id", "reference", "scope", "instrument_declaration_key", "identity_page_count"}:
+                raise ValueError("unknown source-reference fields")
+            self._instrument_account_refs.setdefault(event.body["account_id"], []).append({
+                "reference": event.body["reference"], "scope": event.body["scope"], "doc_id": did,
+                "page": event.provenance.page, "identity_page_count": event.body.get("identity_page_count")})
+
+        elif et == "InstrumentFamilyDeclared":
+            from ..instruments import family_event
+            from ...ingest.instrument_contracts import Source
+            family_event(event.body.get("account_id"), event.body.get("family"), event.occurred_at, Source(did, event.provenance.page))
+            if set(event.body) - {"account_id", "family", "instrument_declaration_key"}:
+                raise ValueError("instrument family declaration has unknown fields")
+            self._instrument_families.setdefault(event.body["account_id"], []).append({
+                "family": event.body["family"], "event_id": event.event_id, "doc_id": did, "effective": event.occurred_at})
+
+        elif et == "InstrumentObservationRecorded":
+            from ..instruments import fold_change
+            from ..instruments import decode_change
+            change = decode_change(event.body.get("record"))
+            if change.observation_id not in self._instrument_observations:
+                fold_change(self._instrument_observations, event)
+            from ...ingest.mortgage_known_allocation import KnownPaymentAllocation,validate_core_binding
+            for key,allocation in tuple(self._instrument_allocations.items()):
+                if type(allocation) is KnownPaymentAllocation:
+                    try:
+                        validate_core_binding(allocation,self)
+                    except ValueError:
+                        del self._instrument_allocations[key]
+
+        elif et in {"InstrumentPaymentAllocated", "InstrumentKnownPaymentAllocated"}:
+            from ...ingest.instrument_effects import allocation_from_event
+            from ...ingest.mortgage_known_allocation import known_allocation_from_event
+            allocation = known_allocation_from_event(event) if et == "InstrumentKnownPaymentAllocated" else allocation_from_event(event)
+            if et == "InstrumentKnownPaymentAllocated":
+                from ...ingest.mortgage_known_allocation import validate_source_binding, validate_core_binding
+                validate_source_binding(allocation, self._instrument_observations,
+                    self._instrument_cash_dependencies.get(allocation.receipt.cash_event_id),
+                    self._instrument_source_reads.get(allocation.payment.reference.source.doc_id))
+                validate_core_binding(allocation,self)
+            prior = self._instrument_allocations.get(allocation.movement_key)
+            if prior is not None and prior != allocation:
+                raise ValueError("conflicting live payment allocations")
+            self._instrument_allocations[allocation.movement_key] = allocation
+
+        elif et == "InstrumentComponentStateRecorded":
+            from ...ingest.instrument_effects import component_state_from_event
+            state = component_state_from_event(event)
+            self._instrument_component_states[state.observation_id] = state
+
+        elif et == "AccountOpened":
             account = event.body["account_id"]
             self._account_open_counts[account] = self._account_open_counts.get(account, 0) + 1
             st = self._state(account)
@@ -294,12 +382,29 @@ class ProjectionCore:
                 st.opening_date = event.occurred_at
                 st.opening_prov = event.provenance
 
+        elif et == "ModelExtractionResponseRecorded":
+            body = event.body
+            key = tuple(body.get(field) for field in ('doc_id', 'extraction_id', 'phase', 'phase_attempt'))
+            self._classification_responses.setdefault(key, []).append(event)
+
         elif et == "DocumentCaptured":
             self._captured[event.body["doc_id"]] = event.body.get("doc_type", "")
+            self._capture_event_ids[event.body['doc_id']] = event.event_id
             self._captured_names[event.body["doc_id"]] = event.body.get(
                 "filename", "")
 
         elif et == "ReadRecorded":
+            from .coverage import classified_claim
+            key = tuple(event.body.get(field) for field in ('doc_id', 'extraction_id', 'phase', 'phase_attempt'))
+            claim = classified_claim(event, self._classification_responses.get(key, ()))
+            if claim is not None:
+                self._classified_types.setdefault(event.body['doc_id'], {})[event.event_id] = claim
+            if event.body.get('phase','extract')=='extract' and event.body.get('doc_id'):
+                self._instrument_source_reads[event.body['doc_id']]=event
+            from ...acquisition import local_read
+            if local_read(event.body):
+                self._acquisitions[event.body["doc_id"]] = dict(event.body["acquisition"])
+
             # The reply a model gave for a document, kept verbatim so a reader
             # above this layer can recover what the document declared about
             # itself. Later replies win, so a document re-read after a prompt
@@ -314,7 +419,11 @@ class ProjectionCore:
                 if (event.body.get("phase", "extract") == "extract"
                         and event.body.get("parse_ok")):
                     self._read_parsed.add(doc)
-                    self._replies[doc] = event.body.get("response_text", "")
+                    if "acquisition" in event.body:
+                        from ...sample.curation import decode_retained_input
+                        self._replies[doc] = decode_retained_input(event.body)
+                    else:
+                        self._replies[doc] = event.body.get("response_text", "")
 
         elif et == "StatementHeld":
             # Legacy activity-reason holds map to the independent activity gate.
@@ -442,31 +551,33 @@ class ProjectionCore:
                 self._categories.pop(movement, None)
 
         elif et == "RulingRecorded":
-            key = (event.body["scope"], event.body["subject"])
+            ruling = dict(event.body)
+            key = (ruling["scope"], ruling["subject"])
             # The date travels with the ruling: an attribute stated in
             # September must not change what an earlier point on the net-worth
-            # curve says about itself.
-            event.body.setdefault("occurred_at", event.occurred_at)
+            # curve says about itself. Defaults belong to this projection
+            # view; canonical event input must retain its committed bytes.
+            ruling.setdefault("occurred_at", event.occurred_at)
             prior = self._rulings.get(key)
             # Same precedence as every other overlay: a verified ruling wins and
             # is never overwritten by a model's later guess.
-            if prior is None or event.body.get("grade") == VERIFIED or prior.get("grade") != VERIFIED:
-                self._rulings[key] = event.body
-            if event.body["scope"] == SCOPE_ACCOUNT:
+            if prior is None or ruling.get("grade") == VERIFIED or prior.get("grade") != VERIFIED:
+                self._rulings[key] = ruling
+            if ruling["scope"] == SCOPE_ACCOUNT:
                 self._own_tokens_cache = None
-            if event.body["scope"] == SCOPE_ATTRIBUTE:
-                self._attribute_history.append(dict(event.body))
+            if ruling["scope"] == SCOPE_ATTRIBUTE:
+                self._attribute_history.append(dict(ruling))
             # Label aliases are maintained here rather than derived per lookup:
             # `derived_category` is the funnel every aggregate reads through, so
             # a per-lookup derivation would rebuild the map on every call.
-            scope = event.body["scope"]
-            if scope in (SCOPE_CATEGORY, SCOPE_TAG) and event.body.get("same_as"):
+            scope = ruling["scope"]
+            if scope in (SCOPE_CATEGORY, SCOPE_TAG) and ruling.get("same_as"):
                 target = (self._category_alias_map if scope == SCOPE_CATEGORY
                           else self._tag_alias_map)
-                target[event.body["subject"]] = event.body["same_as"]
+                target[ruling["subject"]] = ruling["same_as"]
                 if scope == SCOPE_CATEGORY:
-                    raw_subject = event.body["subject"]
-                    raw_same_as = event.body["same_as"]
+                    raw_subject = ruling["subject"]
+                    raw_same_as = ruling["same_as"]
                     subject = subcategory_identity(raw_subject)
                     same_as = subcategory_identity(raw_same_as)
                     # A fold whose two sides share one identity is already
@@ -510,6 +621,19 @@ class ProjectionCore:
                     "answer": dict(event.body.get("answer") or {}),
                     "proposal_id": event.body.get("proposal_id", ""),
                     "settled_event_id": event.event_id})
+
+            answer=event.to_dict()["body"].get("answer")
+            if event.body.get("outcome")=="completed" and isinstance(answer,dict) and answer.get("answered") is True and "allocation_selection_manifest" in answer:
+                from ...allocation_continuation import SelectionManifest
+                try:
+                    records=answer["allocation_selection_manifest"]
+                    if type(records) is not list or not 1<=len(records)<=4:raise ValueError("invalid selection count")
+                    manifests=tuple(SelectionManifest.from_dict(m) for m in records)
+                    key=(turn_id,answer["answer_id"])
+                    if any((m.turn_id,m.answer_id)!=key for m in manifests) or key in self._delivered_allocation_answers:raise ValueError("invalid selection anchor")
+                    self._delivered_allocation_answers[key]=manifests
+                    while len(self._delivered_allocation_answers)>8:self._delivered_allocation_answers.pop(next(iter(self._delivered_allocation_answers)))
+                except (ValueError,TypeError,KeyError):pass
 
         elif et == "ConversationProposalRecorded":
             proposal_id = event.body.get("proposal_id", "")
@@ -713,6 +837,21 @@ class ProjectionCore:
                 bucket[instrument] = record
 
         elif et == "TransactionRecorded":
+            reference = event.body.get("source_reference", "")
+            counterparty = event.body.get("counterparty_reference", "")
+            if type(reference) is not str or type(counterparty) is not str:
+                raise ValueError("financial references must be text")
+            self._instrument_bank_references[event.event_id] = (reference, counterparty)
+            if reference and counterparty and event.provenance.doc_id and type(event.provenance.page) is int and event.provenance.page >= 1:
+                from ...ingest.mortgage_known_allocation import body_digest
+                from ...ingest.instrument_contracts import Source
+                self._instrument_cash_dependencies[event.event_id] = (body_digest(event.body), Source(did,event.provenance.page))
+            role = event.body.get("instrument_role")
+            if role is not None:
+                from ..instruments import INSTRUMENT_ROLES
+                if role not in INSTRUMENT_ROLES:
+                    raise ValueError("unknown instrument cash role")
+                self._instrument_cash_roles[event.event_id] = role
             postings = list(postings_of(event))
             # A normal transaction has one currency even though one of its
             # legs is a synthetic income/expense account. Infer it only from
@@ -750,3 +889,11 @@ class ProjectionCore:
                 # so reconciliation is opening + period == closing.
                 if p.account != EQUITY_OPENING:
                     st.period_deltas.append(p.amount)
+
+            from ...ingest.mortgage_known_allocation import KnownPaymentAllocation,validate_core_binding
+            for key,allocation in tuple(self._instrument_allocations.items()):
+                if type(allocation) is KnownPaymentAllocation:
+                    try:
+                        validate_core_binding(allocation,self)
+                    except ValueError:
+                        del self._instrument_allocations[key]

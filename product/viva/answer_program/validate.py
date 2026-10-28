@@ -78,8 +78,12 @@ class ProgramValidator:
             self._validate_node(node, path, positions, add)
 
         depths: dict[str, int] = {}
+        retirement_sources=set()
         importance = {node.id: node.importance for node in program.nodes}
         for index, node in enumerate(program.nodes):
+            if node.tool=='read_retirement_funding' or any(dep in retirement_sources for dep in node.depends_on):retirement_sources.add(node.id)
+            if (node.kind=='compute' or node.tool=='compute') and node.id in retirement_sources:
+                add('dedicated_authority_required',f'nodes[{index}]','Retirement relationship and employee claims cannot enter generic arithmetic.')
             known_depths = [depths.get(dep, 0) for dep in node.depends_on]
             depths[node.id] = 1 + (max(known_depths) if known_depths else 0)
             for dep in node.depends_on:
@@ -95,6 +99,25 @@ class ProgramValidator:
                         f"nodes[{index}].depends_on",
                         "required work may depend only on required work")
 
+        reports = [node for node in program.nodes if node.tool == "read_account_balance_report"]
+        if reports:
+            from ..tools.account_balances import selected_accounts
+            try:
+                if len(reports) != 1 or program.question_kind != "selected_account_balances":
+                    raise ValueError("selected report requires one closed-family producer")
+                accounts = selected_accounts(reports[0].args)
+                identities = [node for node in program.nodes if node.kind == "resolve_entity"]
+                if (len(program.nodes) != len(accounts) + 1 or len(identities) != len(accounts)
+                        or {node.phrase for node in identities} != set(accounts)
+                        or any(node.entity_kind != "account" or node.depends_on != (reports[0].id,)
+                            or node.importance != "required" for node in identities)
+                        or reports[0].importance != "required"):
+                    raise ValueError("selected report requires exactly its selected identity resolver nodes")
+                capability = self.manifest.get("read_account_balance_report")
+                if capability.bounds.get("max_accounts") != 7 or capability.bounds.get("max_authority_invocations") != 14:
+                    raise ValueError("selected report finite authority contract differs")
+            except (ValueError, TypeError, AttributeError) as error:
+                add("invalid_selected_report", "nodes", str(error), False)
         self._validate_bindings(program, positions, add)
         cost = self._cost(program, depths)
         self._validate_cost(cost, add)
@@ -580,6 +603,49 @@ class ProgramValidator:
                         or selector.entity_kind or selector.entity_ref or selector.currency):
                     add("invalid_measurement_date_source", path,
                         "measurement date requires one selected account measurement")
+            from ..instrument_claims import CLAIMS,CLAIM_RELATIONSHIPS,INVESTMENT_CLAIMS,RETIREMENT_CLAIMS
+            if selector.claim and selector.claim not in CLAIMS and selector.claim!="allocation_target":
+                add("unknown_instrument_claim",path,"The selector claim is not declared.")
+            if tool=="read_instrument_details" and binding.reference_kind=="allocation_target":
+                if selector.claim!="allocation_target" or selector.quantity!="ratio" or slot.type!=render.SUPPOSED or selector.entity_ref!={"id":node.args.get("account")} or not node.args.get("target_premise_ref"):
+                    add("target_role_proof_required",path,"Target display requires the current allocation authority's resolved premise.")
+            elif tool == "read_account_balance_report" and binding.reference_kind == "instrument_normalized":
+                accounts = {value for key, value in node.args.items() if key.startswith("account_")}
+                if (selector.claim != "availability_restriction" or slot.type != render.INSTRUMENT_NORMALIZED
+                        or selector.entity_ref.get("id") not in accounts or set(selector.entity_ref) != {"id"}
+                        or selector.cardinality != "one" or selector.quantity or selector.scope
+                        or selector.currency or selector.order or selector.limit is not None):
+                    add("selected_restriction_subject_mismatch", path,
+                        "Only an exact selected member's recorded availability restriction is reachable.")
+            elif tool in ("read_instrument_details","read_investment_evidence","read_retirement_funding"):
+                contract=CLAIMS.get(selector.claim)
+                if contract is None or (contract.reference_kind!=binding.reference_kind and not (contract.value_type=="number" and binding.reference_kind=="read_figures")):
+                    add("instrument_claim_required",path,"Instrument bindings require the exact declared claim and reference kind.")
+                elif slot.type not in (contract.render_type, render.ROWS) or (contract.quantity and selector.quantity!=contract.quantity):
+                    add("instrument_claim_type_mismatch",path,"Instrument claim, quantity and renderer must agree.")
+                if binding.reference_kind in {"instrument_date","instrument_text","instrument_normalized"} and slot.type==render.ROWS:
+                    if selector.cardinality!="all" or selector.order or selector.limit is not None or selector.currency or selector.quantity or selector.scope:
+                        add("invalid_source_assertion_group_selector",path,"Source rows require all exact-claim source assertions without magnitude, ordering or truncation.")
+                if tool=="read_investment_evidence" and selector.claim not in INVESTMENT_CLAIMS:
+                    add("investment_claim_unreachable",path,"Investment bindings require investment claims.")
+                expected_subject=({"role":CLAIM_RELATIONSHIPS[selector.claim]} if selector.claim in CLAIM_RELATIONSHIPS else {"id":node.args.get("account")})
+                if tool=="read_investment_evidence" and node.args.get("view")=="positions" and set(selector.entity_ref)=={"id","security_id"}:
+                    security=selector.entity_ref.get("security_id")
+                    if type(security) is not str or not security or len(security)>256 or selector.cardinality!="one" or set(selector.scope)!={"account","security"}:
+                        add("investment_security_boundary",path,"A single holding requires its account-local security identity and exact scope.")
+                    expected_subject={"id":node.args.get("account"),"security_id":security}
+                if tool=="read_retirement_funding":
+                    from ..retirement_funding.contracts import Request
+                    try:expected_subject=Request.from_dict(node.args).subject
+                    except ValueError:expected_subject={}
+                    if selector.claim not in RETIREMENT_CLAIMS:
+                        add("retirement_claim_unreachable",path,"Retirement bindings require a finite retirement claim.")
+                if selector.entity_ref!=expected_subject:
+                    add("instrument_subject_mismatch",path,"Instrument bindings require their canonical selected account.")
+                if contract and contract.render_type=="money" and selector.currency!=node.args.get("currency"):
+                    add("instrument_currency_mismatch",path,"Instrument monetary binding requires its selected currency.")
+            elif selector.claim:
+                add("instrument_claim_unreachable",path,"Only the instrument authority emits these claims.")
             capability = self.manifest.get(tool) if tool else None
             if capability and binding.reference_kind not in capability.emits.get(
                     "reference_kinds", []):
@@ -596,31 +662,37 @@ class ProgramValidator:
 
     @staticmethod
     def _reference_kinds_for(slot_type: str) -> tuple[str, ...]:
-        if slot_type in (render.MONEY, render.COUNT, render.RATE):
+        if slot_type in (render.SECURITY_UNITS, render.MONEY, render.COUNT, render.RATE, render.PERCENTAGE_POINTS):
             return ("figure",)
         if slot_type == render.SUPPOSED:
-            return ("supposed",)
+            return ("supposed", "allocation_target")
         if slot_type in ENTITY_SLOTS:
             return ("entity",)
         if slot_type == render.DATE:
-            return ("date", "date_of", "measurement_date_of")
+            return ("date", "date_of", "measurement_date_of", "instrument_date")
+        if slot_type == render.INSTRUMENT_TEXT:
+            return ("instrument_text",)
+        if slot_type == render.INSTRUMENT_NORMALIZED:
+            return ("instrument_normalized",)
         if slot_type == render.PERIOD:
             return ("period",)
         if slot_type == render.ROWS:
-            return ("read", "read_figures", "read_labels")
+            return ("read", "read_figures", "read_labels", "instrument_date", "instrument_text", "instrument_normalized")
         return ()
 
     def _cost(self, program, depths) -> dict:
         counts = {kind: sum(1 for node in program.nodes
                             if node.importance == kind)
                   for kind in ("required", "supporting", "optional")}
-        figures = evidence = 0
+        figures = evidence = authority_invocations = 0
         durations: dict[str, int] = {}
         for node in program.nodes:
             tool = node.tool or ("compute" if node.kind == "compute" else "")
             capability = self.manifest.get(tool) if tool else None
             if capability is not None:
                 figures += int(capability.bounds.get("max_figures", 0))
+                if tool == "read_account_balance_report":
+                    authority_invocations += int(capability.bounds.get("max_authority_invocations", 0))
                 evidence += int(capability.bounds.get("max_payload_bytes", 0))
                 own_ms = int(capability.bounds.get("max_execution_ms", 0))
             elif node.kind == "financial_query":
@@ -634,6 +706,7 @@ class ProgramValidator:
                 (durations.get(dep, 0) for dep in node.depends_on), default=0)
         return {**counts, "dependency_depth": max(depths.values(), default=0),
                 "max_figures": figures, "max_evidence_bytes": evidence,
+                **({"max_authority_invocations": authority_invocations} if authority_invocations else {}),
                 "max_execution_ms": max(durations.values(), default=0)}
 
     def _query_output_bound(self, raw_query) -> int:

@@ -17,16 +17,34 @@ complete AnswerProgram. The already-built runtime then validates the whole
 program before any financial read and executes, binds, and renders it through
 the same one grounded path.
 
-The active compact artifacts are `semantic-request-v17`,
-`semantic-request-retry-v15`, and `semantic-request-schema-v14`; exact-model
+The active compact artifacts are `semantic-request-v21`,
+`semantic-request-retry-v19`, and `semantic-request-schema-v19`; exact-model
 publication uses `semantic-request-admission-v9`. This version binds the exact
 transport, socket path, logical URL and adapter through the shared endpoint
 identity; it rejects v8 profiles without conversion. Availability thresholds
 remain unchanged.
 The active selection catalog adds eight everyday analysis meanings and six
 measurement/projection meanings and three scenario meanings to the original six. Fixed code-owned reads and arithmetic implement those meanings;
-the active descriptions are `tools-v25`. The prior admission profile does not
+the active descriptions are `tools-v29`. The prior admission profile does not
 qualify the expanded surface.
+
+The fixed `selected_account_balances` family requires contiguous selectors for
+two to seven distinct canonical accounts, each grounded independently before
+financial reads. One report plus existing typed account resolver nodes fits
+seven accounts in eight nodes and charges fourteen financial authority
+invocations. Code always discloses amount, date, source, restriction and closure
+dispositions; missing fields retain partial status, and accepted records do not
+establish closure. Singleton paths and generic numerical/source meanings remain
+unchanged. The report shares one immutable financial revision and the existing
+two-second financial acquisition/producer/stamped-serialization deadline.
+Existing precompile retirement-label metadata acquisition is separate and keeps
+its own existing bound. This does not establish whole-candidate qualification.
+
+The fixed `instrument_monthly_loan_payments` family grounds one account and an
+explicit inclusive period. Code composes the existing monthly principal and
+payment/escrow reads, with separate source-bound claims for principal repayment,
+payment total, interest and escrow funding. Missing required evidence refuses
+the answer; the composition does not infer an allocation between sources.
 
 Retained v12 and retry v10 align scenario numerical, date, currency and
 account proof derivations with the existing validator; projection horizons quote

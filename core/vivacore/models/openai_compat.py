@@ -22,7 +22,8 @@ import httpx
 
 from .spec import ModelSpec
 from .base import (AdapterError, CONTINUE_INSTRUCTION, ChatTurn, PageImage,
-                   Turn, elide_images, run_to_completion)
+                   Turn, elide_images, run_to_completion,
+                   admit_extraction_transport, retain_extraction_response)
 
 
 class OpenAICompatAdapter:
@@ -80,10 +81,13 @@ class OpenAICompatAdapter:
             if c.json_mode and attempt == 0:
                 # First turn only: a continuation turn emits a raw fragment
                 # rather than a whole object, so json_mode is off for those.
+                messages.insert(0, {"role": "system",
+                                    "content": "Return a valid JSON object."})
                 body["response_format"] = {"type": "json_object"}
             if is_openrouter:
                 body["usage"] = {"include": True}
 
+            admit_extraction_transport("openai_compatible", c.model, attempt)
             started = time.monotonic()
             try:
                 resp = self._post(body, headers)
@@ -94,6 +98,7 @@ class OpenAICompatAdapter:
                     f"[{c.name}] HTTP failure calling {self.url} after "
                     f"{time.monotonic() - started:.1f}s (timeout {c.timeout_s}s, "
                     f"attempt {attempt + 1}): {e}") from e
+            retain_extraction_response("openai_compatible", c.model, attempt, resp)
             latency = time.monotonic() - started
             if resp.status_code != 200:
                 raise AdapterError(

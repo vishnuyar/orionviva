@@ -154,7 +154,7 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
         if (candidate and held_balance is not None
                 and item.facts.opening_amount == held_balance):
             identity_bridges.append((candidate, item.facts))
-    from .ingest.registry import account_kind_for
+    from .ingest.statement_projector import _resolve
     for h in held:
         f = h.facts
         amount = abs(getattr(f, "closing_amount", getattr(f, "total", 0)))
@@ -162,10 +162,7 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
         identity_refs = {"doc_id": h.doc_id}
         if h.reason == "gap":
             # Suppress a gap already spanned by an adjacent identity-held statement.
-            resolution = proj.resolve(
-                f.institution, f.account_number, f.account_ref,
-                f.account_names, kind=account_kind_for(f.doc_type),
-                doc_id=f.doc_id)
+            resolution = _resolve(proj, f)
             gap_account = resolution.account_id
             if any(candidate == gap_account
                    and bridge.closing_amount == f.opening_amount

@@ -43,3 +43,14 @@ describe("Review center", () => {
     expect(large.getByLabelText("1250 actionable review items")).toHaveTextContent("999+");
   });
 });
+
+it("shows truthful source attention totals without inventing Question actions", () => {
+  const id = "a".repeat(64); const open = vi.fn(); const question = vi.fn();
+  const result: ReviewData = { ...data, actionableCount: 0, shownCount: 0, remainingCount: 0, groups: [], types: [], documentAttention: { state: "ready", totalDocuments: 51, shownCount: 1, remainingCount: 50, unavailableReason: null, documents: [{ documentId: id, filename: "partial.pdf", components: [{ component: "payment:PAY-X", kind: "payment", label: "Payment PAY-X", disposition: "held", reasonCode: "unmatched_counterpart", reason: "A unique counterpart is unresolved.", sourcePages: [{ documentId: id, page: 2, label: "Source page 2" }] }] }] } };
+  const view = render(<Review result={{ state: "ready", data: result }} onOpenQuestion={question} onOpenTransaction={vi.fn()} onOpenSourceDocument={open} />);
+  expect(view.getByText("No questions waiting")).toBeInTheDocument();
+  expect(view.getByText("Showing 1 of 51 documents with unresolved source sections.")).toBeInTheDocument();
+  expect(view.getByText("50 more documents have unresolved source sections. Select a document in Documents to inspect its current sections.")).toBeInTheDocument();
+  fireEvent.click(view.getByRole("button", { name: "Source page 2" }));
+  expect(open).toHaveBeenCalledWith(id, 2); expect(question).not.toHaveBeenCalled();
+});

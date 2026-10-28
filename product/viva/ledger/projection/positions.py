@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from time import monotonic
 
 from ..events import GRADES, Provenance
 from . import balances as balances_view
@@ -171,8 +172,75 @@ def _cash_term(core: ProjectionCore, st, account: str, as_of: str):
     return amount, st.currency, date, grade, doc
 
 
+class CaptureLimit(ValueError):
+    """The finite source capture exceeded a resource bound."""
+
+
+class SourceCapture:
+    """Bounded terms selected by the same current-value calculation."""
+
+    def __init__(self, account, balance_answer, deadline):
+        self.account = account
+        self.balance_answer = balance_answer
+        self.deadline = deadline
+        self.terms = []
+        self.pairs = set()
+        self.cash_reused = False
+
+    def check(self):
+        if monotonic() >= self.deadline:
+            raise CaptureLimit("account value source deadline")
+
+    def before_position(self, selected_size):
+        self.check()
+        if selected_size + len(self.terms) >= 1000:
+            raise CaptureLimit("account value term bound")
+
+    def add(self, role, component, amount, currency, dated, grade, provenance):
+        self.check()
+        if len(self.terms) >= 1000:
+            raise CaptureLimit("account value term bound")
+        pair = (provenance.doc_id, provenance.page)
+        if pair not in self.pairs and len(self.pairs) >= 128:
+            raise CaptureLimit("account value source page bound")
+        self.pairs.add(pair)
+        self.terms.append(dict(account=self.account, role=role, component=component,
+            amount=str(amount), currency=currency, dated=dated, grade=grade,
+            document=provenance.doc_id, page=provenance.page))
+
+
+def _bounded_snapshot(st, capture, *, cash):
+    newest = ""
+    for history in st.position_history.values():
+        for observation in history:
+            capture.check()
+            if bool(observation.get("is_cash")) == cash:
+                newest = max(newest, observation.get("as_of") or "")
+    selected = {}
+    if not newest:
+        return selected
+    snapshot_pairs = set()
+    for name, history in st.position_history.items():
+        chosen = None
+        for observation in history:
+            capture.check()
+            if (observation.get("as_of") == newest
+                    and bool(observation.get("is_cash")) == cash):
+                chosen = observation
+        if chosen is not None:
+            capture.before_position(len(selected))
+            provenance = chosen["provenance"]
+            pair = (provenance.doc_id, provenance.page)
+            if (pair not in capture.pairs and pair not in snapshot_pairs
+                    and len(capture.pairs | snapshot_pairs) >= 128):
+                raise CaptureLimit("account value source page bound")
+            snapshot_pairs.add(pair)
+            selected[name] = chosen
+    return selected
+
+
 def composed_values(core: ProjectionCore, account: str,
-                    as_of: str = "") -> list[ComposedValue]:
+                    as_of: str = "", *, source_capture=None) -> list[ComposedValue]:
     """What an account is worth, as one figure per currency, as of a date.
 
     A brokerage account is one thing a person owns, so its cash and the
@@ -194,16 +262,37 @@ def composed_values(core: ProjectionCore, account: str,
     if st is None or not st.seen:
         raise UnknownAccountError(account)
     terms = []
-    cash = _cash_term(core, st, account, as_of)
+    if source_capture is not None:
+        capture = source_capture
+        capture.check()
+        ba = capture.balance_answer
+        if (as_of or capture.account != account
+                or not isinstance(ba, balances_view.BalanceAnswer)
+                or ba.account != account or ba.currency != st.currency):
+            raise ValueError("account value cash association")
+        cash = (ba.amount, st.currency, ba.dated, ba.grade, ba.provenance.doc_id)
+        capture.cash_reused = True
+        capture.add("cash", "cash", *cash[:4], ba.provenance)
+    else:
+        cash = _cash_term(core, st, account, as_of)
     if cash is not None:
         terms.append(cash)
     # Every measurement is its own term, carrying its own day and its own
     # grade, because those are what the date and the grade of the sum are read
     # off.
-    for p in (list(snapshot_positions(st, as_of, cash=True).values())
-              + list(snapshot_positions(st, as_of).values())):
-        terms.append((p["market_value"], p["currency"] or st.currency,
-                      p["as_of"], p["grade"], ""))
+    if source_capture is None:
+        for p in (list(snapshot_positions(st, as_of, cash=True).values())
+                  + list(snapshot_positions(st, as_of).values())):
+            terms.append((p["market_value"], p["currency"] or st.currency,
+                          p["as_of"], p["grade"], ""))
+    else:
+        for is_cash in (True, False):
+            for name, p in _bounded_snapshot(st, capture, cash=is_cash).items():
+                capture.add("position_cash" if is_cash else "holding", name,
+                    p["market_value"], p["currency"] or st.currency,
+                    p["as_of"], p["grade"], p["provenance"])
+                terms.append((p["market_value"], p["currency"] or st.currency,
+                              p["as_of"], p["grade"], ""))
     groups: dict[str, dict] = {}
     for amount, currency, date, grade, doc in terms:
         g = groups.setdefault(currency, {"amount": Decimal("0"), "dates": set(),

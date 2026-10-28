@@ -1,3 +1,4 @@
+import { documentsPageFixture } from "./documentsPage.testSupport";
 import { act, fireEvent, render, waitFor, createRef, userEvent,
   afterEach, beforeEach, describe, expect, it, vi, App,
   ConversationDialogShell, moments, sampleVault, SAVED_NO_READER,
@@ -387,12 +388,12 @@ describe("vault", () => {
           : surface === "overview"
           ? overview
           : surface === "documents"
-            ? { documents: [{ id: "live-document", doc_type: "statement", resolved: false, raw_available: true }] }
+            ? { documents: [{ id: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", doc_type: "statement", resolved: false, raw_available: true }] }
             : surface === "conversation"
               ? { turns: [], questions: [reviewBoundQuestion({ id: "live-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." })], total: 1, tail: { count: 0, amount: "0" }, pending: { count: 0 }, invite: "Write an answer", answered_by_document: "A document answers this" }
               : surface === "review" ? reviewQuestionPayload([{ id: "live-question", text: "Is this your account?", why: "Account identity is unresolved." }])
               : surface === "trust" ? trustPayload : activityPayload;
-        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data: surface === "documents" ? documentsPageFixture(data, (payload.parameters as Record<string, string>)?.selected_document_id) : data } as T };
       },
     };
 
@@ -433,7 +434,7 @@ describe("vault", () => {
 
       await user.click(getByRole("button", { name: "Statements" }));
       expect(getByRole("heading", { name: "statement" })).toBeInTheDocument();
-      expect(getAllByText(/live-document/).length).toBeGreaterThan(0);
+      expect(getAllByText(/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/).length).toBeGreaterThan(0);
       expect(queryByText("Capture queue")).not.toBeInTheDocument();
       expect(queryByRole("button", { name: /choose a/i })).not.toBeInTheDocument();
       expect(queryByText("Document capture unavailable")).not.toBeInTheDocument();
@@ -454,7 +455,7 @@ describe("vault", () => {
       expect(getByRole("heading", { name: "Your financial picture", level: 1 })).toBeInTheDocument();
       expect(queryByRole("button", { name: "Overview" })).not.toBeInTheDocument();
       expect(queryByText("Private checking")).not.toBeInTheDocument();
-      expect(queryByText("live-document")).not.toBeInTheDocument();
+      expect(queryByText("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")).not.toBeInTheDocument();
       expect(queryByText("Is this your account?")).not.toBeInTheDocument();
     } finally {
       window.orionVivaBridge = previousBridge;
@@ -522,7 +523,7 @@ describe("vault", () => {
               : payload.surface === "activity"
                 ? activityPayload
               : { turns: [], questions: [], total: 0 };
-        return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data: payload.surface === "documents" ? documentsPageFixture(data, (payload.parameters as Record<string, string>)?.selected_document_id) : data } as T };
       },
     };
 
@@ -1040,4 +1041,38 @@ describe("guarded destination recovery focus", () => {
       vi.useRealTimers();
     }
   });
+});
+
+describe("five-year sample preparation entry",()=>{
+ const complete={state:"ready",sample_version:"five-year-life-v1",completed_documents:794,total_documents:794,posted_documents:793,held_documents:1,phase:"ready",message:"Ready fixture"};
+ it("shows genuine supplied progress, waits for readiness, and reopens through the ordinary entry",async()=>{
+  const restore=installSampleBridge();const base=window.orionVivaBridge!;const operations:string[]=[];let prepared=false;let releaseStatus:((value:unknown)=>void)|undefined;
+  window.orionVivaBridge={...base,request:async<T,>(frame:{requestId:string;operation:string;payload:Record<string,unknown>})=>{
+   operations.push(frame.operation);
+   if(frame.operation==="bridge.sample.prepare")return {protocol:"2.0",request_id:frame.requestId,ok:true,result:(prepared?complete:{...complete,state:"preparing",completed_documents:17,posted_documents:16,held_documents:1,phase:"capturing"}) as T};
+   if(frame.operation==="bridge.sample.status"){const value=await new Promise((resolve)=>{releaseStatus=resolve;});return {protocol:"2.0",request_id:frame.requestId,ok:true,result:value as T};}
+   return base.request<T>(frame);
+  }};
+  try{
+   const view=render(<App/>);fireEvent.click(view.getByRole("button",{name:"Try sample data"}));
+   await waitFor(()=>expect(view.getByRole("status")).toHaveTextContent("17 of 794 documents processed · 16 posted · 1 held."));
+   expect(view.getByRole("status")).toHaveTextContent("Preparing Alex Morgan’s five-year sample");expect(operations).not.toContain("bridge.open_demo_vault");
+   await waitFor(()=>expect(releaseStatus).toBeTypeOf("function"),{timeout:2500});prepared=true;await act(async()=>releaseStatus!(complete));
+   await waitFor(()=>expect(view.getAllByRole("button",{name:sampleFrame.leave})[0]).toBeInTheDocument());
+   expect(operations.indexOf("bridge.open_demo_vault")).toBeGreaterThan(operations.indexOf("bridge.sample.status"));
+   fireEvent.click(view.getAllByRole("button",{name:sampleFrame.leave})[0]);await waitFor(()=>expect(view.getByRole("button",{name:"Try sample data"})).toBeInTheDocument());
+   fireEvent.click(view.getByRole("button",{name:"Try sample data"}));await waitFor(()=>expect(view.getAllByRole("button",{name:sampleFrame.leave})[0]).toBeInTheDocument());
+   expect(operations.filter((operation)=>operation==="bridge.sample.prepare")).toHaveLength(2);expect(operations.filter((operation)=>operation==="bridge.sample.status")).toHaveLength(1);expect(operations.filter((operation)=>operation==="bridge.open_demo_vault")).toHaveLength(2);
+  }finally{restore();}
+ });
+ it("keeps incomplete preparation outside the financial shell",async()=>{
+  const restore=installSampleBridge();const base=window.orionVivaBridge!;const operations:string[]=[];
+  window.orionVivaBridge={...base,request:async<T,>(frame:{requestId:string;operation:string;payload:Record<string,unknown>})=>{operations.push(frame.operation);if(frame.operation==="bridge.sample.prepare")return {protocol:"2.0",request_id:frame.requestId,ok:true,result:{...complete,state:"failed",completed_documents:17,posted_documents:16,held_documents:1,phase:"failed",message:"Failure fixture"} as T};return base.request<T>(frame);}};
+  try{const view=render(<App/>);fireEvent.click(view.getByRole("button",{name:"Try sample data"}));await waitFor(()=>expect(view.getByText("The five-year sample is not ready. Preparation could not be completed. Try again to check it.")).toBeInTheDocument());expect(operations).not.toContain("bridge.open_demo_vault");expect(view.queryByRole("button",{name:sampleFrame.leave})).toBeNull();}finally{restore();}
+ });
+ it("does not poll or open from a preparation reply arriving after unmount",async()=>{
+  const restore=installSampleBridge();const base=window.orionVivaBridge!;const operations:string[]=[];let resolvePreparation:((value:unknown)=>void)|undefined;
+  window.orionVivaBridge={...base,request:async<T,>(frame:{requestId:string;operation:string;payload:Record<string,unknown>})=>{operations.push(frame.operation);if(frame.operation==="bridge.sample.prepare"){const value=await new Promise((resolve)=>{resolvePreparation=resolve;});return {protocol:"2.0",request_id:frame.requestId,ok:true,result:value as T};}return base.request<T>(frame);}};
+  try{const view=render(<App/>);fireEvent.click(view.getByRole("button",{name:"Try sample data"}));await waitFor(()=>expect(resolvePreparation).toBeTypeOf("function"));view.unmount();await act(async()=>resolvePreparation!({...complete,state:"preparing",completed_documents:0,posted_documents:0,held_documents:0,phase:"validating"}));expect(operations).toEqual(["bridge.sample.prepare"]);}finally{restore();}
+ });
 });

@@ -67,7 +67,7 @@ def undecomposed(core: ProjectionCore, currency: str | None = None,
     accounts: set[str] = set()
     docs: set[str] = set()
     for m in movements_view.movements(core):
-        if m.nature != movements_view.MIXED or not movements_view.is_expense(m):
+        if m.nature != movements_view.MIXED or m.component_spending is not None or not movements_view.is_expense(m):
             continue
         if currency is not None and m.currency != currency:
             continue

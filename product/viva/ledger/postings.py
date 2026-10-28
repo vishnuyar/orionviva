@@ -223,7 +223,8 @@ def _require_balanced(postings: list[Posting]) -> list[Posting]:
 def simple_transaction(account: str, amount: Decimal | str, description: str,
                        occurred_at: str, tags: list[str] | None = None,
                        provenance=None, account_grade: str = VERIFIED,
-                       kind: str = "depository") -> Event:
+                       kind: str = "depository", source_reference: str = "",
+                       counterparty_reference: str = "") -> Event:
     """A single-category movement on ``account``.
 
     ``amount`` is the signed effect on the account's printed balance. The named
@@ -242,7 +243,13 @@ def simple_transaction(account: str, amount: Decimal | str, description: str,
         Posting(account, amt, account_grade),
         Posting(counter, -amt, UNVERIFIED),
     ])
-    return transaction_recorded(postings, description, occurred_at, tags, provenance)
+    if type(source_reference) is not str or type(counterparty_reference) is not str:
+        raise ValueError("source references must be printed text")
+    event = transaction_recorded(postings, description, occurred_at, tags, provenance)
+    if source_reference or counterparty_reference:
+        event.body["source_reference"] = source_reference
+        event.body["counterparty_reference"] = counterparty_reference
+    return event
 
 
 def split_transaction(account: str, amount: Decimal | str,

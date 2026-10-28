@@ -58,6 +58,16 @@ describe("the host shim", () => {
     expect(opened).toHaveBeenCalledWith({ directory: false, multiple: false, title: "Choose a file" });
   });
 
+  it("offers separate multiple selection and preserves the single backup picker", async () => {
+    const transport = install();
+    opened.mockResolvedValueOnce(["/chosen/first.pdf", "/chosen/second.pdf"]);
+    await expect(transport.pickMultipleDocumentPaths?.()).resolves.toEqual(["/chosen/first.pdf", "/chosen/second.pdf"]);
+    expect(opened).toHaveBeenLastCalledWith({ directory: false, multiple: true, title: "Choose documents" });
+    opened.mockResolvedValueOnce("/chosen/backup.orionvault");
+    await expect(transport.pickDocumentPaths?.()).resolves.toEqual(["/chosen/backup.orionvault"]);
+    expect(opened).toHaveBeenLastCalledWith({ directory: false, multiple: false, title: "Choose a file" });
+  });
+
   it("hands back nothing when the picker was closed with nothing chosen", async () => {
     opened.mockResolvedValue(null);
     const transport = install();

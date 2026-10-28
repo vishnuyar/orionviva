@@ -73,7 +73,7 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
             continue
         if not _movement_passes(proj, m, filters):
             continue
-        amount = abs(m.amount)
+        amount = movements_view.counted_spending_amount(m)
         total += amount
         count += 1
         currencies.add(m.currency)

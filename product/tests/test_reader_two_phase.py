@@ -45,7 +45,7 @@ def test_classify_uses_only_the_first_page_and_records_a_phase():
     assert phase.model == "configured-route"
     assert phase.resolved_model == "m"
     assert phase.usage_reported
-    assert phase.prompt_version == "classify-v2+untrusted-frame-v1"
+    assert phase.prompt_version == "classify-v3+untrusted-frame-v1"
     from viva.ingest import prompt_library
     assert prompt_library.resolve(phase.prompt_version)
     assert phase.parse_ok and phase.cost_usd == 0.01

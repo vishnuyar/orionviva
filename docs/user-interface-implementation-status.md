@@ -139,8 +139,8 @@ to a new question; busy and accounting-explanation modes cannot activate it.
 Historical turns remain saved. Question ideas only populate the draft;
 planning is expandable. Review can mark/open the next recorded item after a
 confirmed resolution and a ready queue. No urgency field or generic answer undo
-is invented. Document-specific post-import navigation remains absent because
-the upload receipt does not expose a resulting document identity. Local saved-original
+is invented. Single-document post-import navigation remains absent because
+the single-upload receipt does not expose a resulting document identity. Local saved-original
 viewing now has a separate bounded read operation; its supported formats and
 platform limits are described in [Local saved-original previews](original-source-preview.md).
 
@@ -148,6 +148,37 @@ Numerical figure evidence renders typed exact values, subjects, boundaries,
 numerical sources, observed starts, local activity and hypothetical premises.
 Legacy and malformed receipts remain distinct from ready receipts. See
 [numerical answer receipts](numerical-answer-receipts.md) for the contract.
+
+## Bulk document extraction
+
+The source interface offers multiple-document selection with a session queue of
+up to 1,000 files. It submits sequential chunks of up to three documents to
+`viva.documents.upload_many`. Three independent workers can read prepared
+immutable pages through the configured model. The coordinator retains and
+acknowledges each completed response before that worker makes its next transport
+attempt, then
+settles financial updates serially after all reads in the chunk finish.
+Duplicate document bytes share one model read. Single-document upload and the
+backup chooser retain their separate paths.
+
+Each selected file has a visible outcome, including review, refusal, failure and
+cancellation. Stop denies new calls and drains calls already in flight. When the
+host receives an authenticated page release or revocation, it stops admission for
+that page’s owned bulk request; network loss alone does not prove that delivery. Unstarted
+files must be selected again after closing the session; saved originals and
+durable receipts remain in the vault. This is source implementation evidence;
+actual browser multiselection, paid extraction and the complete persona question
+journey remain separate acceptance checks.
+
+The active persona pack is `pack-v62`. It preserves the response-receipt
+disclosures introduced in pack v61 and all earlier released packs. Its required
+answer refusal says, “I do not have enough supported information to answer that
+question.” This wording covers an incomplete supported answer without claiming
+that no part of the question was established. Scoped extraction
+retains exact completed HTTP responses before decoding, including failed or
+orphaned responses. Trust distinguishes unavailable provider usage from measured
+zero and does not double-count linked aggregate charges. These receipts do not
+establish capture of outgoing requests or exact rendered page images.
 
 ## Backup and recovery usability
 
@@ -202,6 +233,8 @@ name. The destination shown to people is **Transactions**.
 | `bridge.handshake` | yes | before a vault opens | yes |
 | `bridge.open_demo_vault` | no | explicit sidecar open branch | yes |
 | `bridge.open_vault` | no | explicit sidecar open branch | yes |
+| `bridge.sample.prepare` | yes | sample preparation handler | yes |
+| `bridge.sample.status` | yes | sample preparation status handler | yes |
 | `viva.activity.add_tags` | yes | opened vault | yes |
 | `viva.activity.assign_category` | yes | opened vault | yes |
 | `viva.activity.assign_classification` | yes | opened vault | yes |
@@ -220,6 +253,7 @@ name. The destination shown to people is **Transactions**.
 | `viva.documents.recover` | yes | opened vault | yes |
 | `viva.documents.rescan` | yes | opened vault | yes |
 | `viva.documents.upload` | yes | opened vault | yes |
+| `viva.documents.upload_many` | yes | opened vault | yes |
 | `viva.lifecycle.read` | yes | before a vault opens | yes |
 | `viva.maintenance.diagnose` | yes | opened vault | yes |
 | `viva.maintenance.run` | yes | opened vault | yes |
@@ -285,3 +319,5 @@ absent, unavailable, or failed. Trust keeps its existing failure message; model
 proposal and confirmation remain required.
 
 Recovery outcomes use persona `pack-v45`, preserving the previous released packs.
+
+Saved-original new reading: supported selected-document details expose a checked, versioned eligibility advisory. The Statements screen allows an explicit session selection of at most three eligible originals, displays their names, stable IDs, and additional-cost disclosure, and consumes a separate confirmation before dispatch. Results retain selected identity; unknown outcomes never resubmit or restore confirmation automatically. Older or malformed optional metadata hides the action. Focused inert frontend checks are recorded separately; this is not paid qualification or installation evidence.

@@ -6,9 +6,11 @@ The model selects a reviewed meaning and supplies quoted parameters. Code choose
 
 ## Reviewed meanings
 
-The original six meanings remain available. The analysis pack adds spending by category, merchant and account; spending comparison; movement search; attributed period income; period surplus; and supported recurring spending. Comparison follows the requested claims: percentage change appears only when requested, uses the signed baseline denominator, and preserves both totals and the absolute change when the baseline is zero; only the undefined percentage is omitted and explained. Movement search preserves the bounded records and distinguishes a fully covered empty population from missing coverage. Attributed income excludes separately disclosed unexplained incoming money. Recurring spending reports the existing observed historical total, with the supported-pattern count and historical sources; it does not normalize that total to a monthly rate.
+The original six meanings remain available. The analysis pack adds spending by category, merchant and account; spending comparison; movement search; attributed period income; period surplus; and supported recurring spending. Comparison follows the requested claims: percentage change appears only when requested, uses the signed baseline denominator, and preserves both totals and the absolute change when the baseline is zero; only the undefined percentage is omitted and explained. Movement search preserves the bounded records and distinguishes a fully covered empty population from missing coverage. Attributed income excludes separately disclosed unexplained incoming money. Recurring spending reports the existing observed historical total, with the supported-pattern count and historical sources; it does not normalize that total to a monthly rate. Both canonical and SQL-backed rhythm reads exclude movements with the exact authenticated instrument cash roles `principal` and `escrow_deposit`. This exclusion does not classify other movements by their sign, description or general nature.
 
 The measurement and projection pack adds recorded cash, account value history, statement period coverage, known remainder, upcoming obligations and goal progress. The scenario pack adds savings, loan payoff and cash flow. Broad account inventory remains unavailable for runtime model selection.
+
+The fixed `instrument_monthly_loan_payments` family combines the existing monthly loan-principal and payment/escrow reads for one grounded account and inclusive period. Principal repayment, payment total, interest and escrow funding remain distinct source-bound claims. Required missing evidence refuses the answer; the family does not infer missing payment allocations or supply other loan fields.
 
 | Read boundary | Fixed views and limits |
 |---|---|
@@ -86,11 +88,27 @@ financial runtime, prompt or interface behavior.
 
 The historical v14 candidate used semantic selection v14, retry v12, semantic schema v11, `answer-program-schema-v3` and tools v25. Those prompts clarify contiguous source quotes and ordinary month/year periods; scenario date proofs retain complete role clauses. Schema v11 changes only 27 request-version labels from v13 to v14; earlier prompts and schemas remain immutable. Qualification005 admitted all 123 cases on their first attempts for its original frozen candidate. Its record remains immutable. The earlier source-inspection packaging repair preserved its 56 admitted raw sources and 13 admission contracts; that historical equality did not itself accept a new artifact. That net-worth and Overview change had a strict 60-source inventory and requires fresh exact-candidate qualification and complete host/sidecar binding. Qualification007 and qualification008 were not admitted. That v14 candidate had public model-free verification and matching rebuilt source/artifact evidence, but no paid qualification. Its formal browser acceptance was NOT READY: four passed, one failed, six incomplete and seventeen not verified. Retained-vault browser Witness, including the repaired Q06 retest, remains pending. Native packaging includes the exact authenticated new and reused numerical/source authority bytes. The normal authority digest is scoped to declared execution paths; whole-candidate binding remains separate.
 
-Current resources are selection v17, retry v15, semantic schema v14 and
-`answer-program-schema-v4`, with tools v25. Qualification037 and qualification039 were NOT_ADMITTED;
-the current source repair has no ordinary current-candidate admission and has
-answered zero retained-vault questions. Retained-vault execution remains
-conditional on ordinary admission and applicable artifact/profile binding.
+Current resources are `semantic-request-v21`, `semantic-request-retry-v19`,
+`semantic-request-schema-v19` and `answer-program-schema-v7`, with `tools-v29`
+and `pack-v62`. Qualification037 and qualification039 were NOT_ADMITTED.
+Qualification and browser Witness results apply only to their recorded exact
+candidate. Earlier first-39-document browser smoke evidence does not qualify
+these changed resources or establish completion of the 794-document,
+39-question persona journey. Current-candidate qualification, retained-vault
+execution and the full persona journey require their own recorded evidence and
+applicable artifact/profile binding.
+
+The selected-account candidate adds a bounded report for two to seven
+individually grounded accounts. One finite report retains each amount’s dates,
+grade and complete cash/holding source pages; recorded restrictions remain
+source-bound, and unavailable fields keep partial status. Closure is not inferred.
+The seven-account maximum uses fourteen financial authority invocations, at most
+32 money figures, seven restriction assertions and seven per-account disposition rows, with a 50,000-byte
+complete stamped ToolResult bound. Financial acquisition, production and stamped
+serialization share one immutable financial revision and the existing two-second
+deadline. Existing precompile metadata acquisition remains separate. This does
+not establish qualification, retained-vault acceptance, annual-family completion
+or release readiness.
 
 Model-free checks do not publish a runtime qualification. Any further exact-model run needs a concrete funded plan: 123 initial quality attempts, with the existing two-attempt spending ceiling of 246 calls distinguished from each case's first-attempt quality limit. Existing minimum availability and zero financial-integrity thresholds remain unchanged. No new spending is authorized by this implementation.
 

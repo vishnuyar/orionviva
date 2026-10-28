@@ -33,6 +33,9 @@ class Turn:
     validation: dict = field(default_factory=dict)
     execution: dict = field(default_factory=dict)
     prior_context_digest: str = ""
+    instrument_execution: object | None = None
+    instrument_read: bool = False
+    delivery_identity: tuple | None = None
 
     @property
     def said(self) -> str:
@@ -61,8 +64,10 @@ class Session:
     def __init__(self, registry, compiler_factory, ledger=None, model: str = "",
                  resource_policy: AnswerResourcePolicy | None = None,
                  session_id: str = "", today=None, locale: str = "",
-                 prior_turns=(), breadth_feedback=None):
+                 prior_turns=(), breadth_feedback=None, registry_factory=None,
+                 reference_today=None):
         self._registry = registry
+        self._registry_factory=registry_factory
         self._compiler_factory = compiler_factory
         self._ledger = ledger
         self._model = model
@@ -74,25 +79,42 @@ class Session:
         self._locale = locale
         self._session_id = session_id or uuid.uuid4().hex[:12]
         self._today = today or (lambda: datetime.date.today().isoformat())
+        self._reference_today = reference_today or self._today
         self.feedback = breadth_feedback or BreadthFeedback()
         # Restored turns supply text context; new turns bind current tool evidence.
         self._prior_turns = [(str(question), str(answer))
                              for question, answer in prior_turns]
         self.turns: list[Turn] = []
+        self.instrument_context=None
 
     def ask(self, question: str) -> Turn:
+        if self._registry_factory is not None:
+            self._registry=self._registry_factory()
+            self._manifest=CapabilityManifest.from_registry(self._registry)
+            self._validator=ProgramValidator(self._manifest,self._policy)
         prior = self._prior_turns + [(t.question, t.said) for t in self.turns]
         context = QuestionContext(
-            question=question, prior_turns=tuple(prior), today=self._today(),
+            question=question, prior_turns=tuple(prior), today=self._reference_today(),
             locale=self._locale, currency_convention=self._locale,
             capability_manifest_version=self._manifest.manifest_version,
             capability_manifest_digest=self._manifest.digest,
             shape_version=ANSWER_PROGRAM_VERSION,
-            resource_policy_version=self._policy.policy_version)
+            resource_policy_version=self._policy.policy_version,
+            question_id=uuid.uuid4().hex,
+            allocation_selection_ids=(self.instrument_context.current_selection_ids if self.instrument_context else ()))
         compiler = self._compiler_factory(self._validator, self._manifest,
                                           self._policy)
         if hasattr(compiler, "set_entity_catalog"):
             compiler.set_entity_catalog(self._registry.semantic_entities())
+        if hasattr(compiler,"set_instrument_currency_resolver"):
+            compiler.set_instrument_currency_resolver(getattr(self._registry,"instrument_currency",None))
+        if self.instrument_context is not None:
+            if hasattr(compiler,"set_instrument_context"):compiler.set_instrument_context(self.instrument_context)
+            scope=getattr(self._registry,"instrument_runtime",None)
+            if scope is not None:
+                scope.current_question_id=context.question_id
+                scope.target_premises=self.instrument_context.targets
+                scope.target_validator=self.instrument_context.validate_target
         runtime = AnswerProgramRuntime(
             compiler, ProgramExecutor(
                 self._registry, self._policy,
@@ -101,7 +123,7 @@ class Session:
         answered = runtime.answer(context)
         validation = answered.compilation.validation
         turn = Turn(
-            question=question, result=answered.result,
+            question=question, result=answered.result, instrument_execution=answered.execution,
             exchanges=list(answered.compilation.exchanges),
             outcome=answered.outcome,
             semantic_request=(answered.compilation.semantic_outcome.to_dict()
@@ -116,6 +138,10 @@ class Session:
             prior_context_digest=hashlib.sha256(json.dumps(
                 prior, sort_keys=True, separators=(",", ":")).encode()
                                                 ).hexdigest()[:16])
+        scope=getattr(self._registry,"instrument_runtime",None)
+        turn.instrument_read=any(n.get("tool") in ("read_instrument_details","read_investment_evidence","read_retirement_funding") for n in turn.program.get("nodes",()))
+        expected=getattr(getattr(scope,"supplier",None),"expected_projection_identity",None)
+        if turn.instrument_read and expected is not None:turn.delivery_identity=expected[:2]
         self.turns.append(turn)
         self.feedback.observe(answered)
         if self._ledger is not None:
@@ -171,7 +197,7 @@ class Session:
                        "shape": turn.result.shape,
                        "bindings": turn.result.bindings,
                        "verdict": turn.result.to_dict()}
-            self._ledger.append(read_recorded(
+            record=self._ledger.append(read_recorded(
                 doc_id=f"speak:{self._session_id}:{n}:{i}",
                 model=self._model, prompt_version=COMPILER_VERSION,
                 input_mode=ex.modality,
@@ -182,6 +208,9 @@ class Session:
                 occurred_at=self._today(), phase="speak",
                 resolved_model=ex.resolved_model,
                 usage_reported=ex.usage_reported))
+            if turn.delivery_identity is not None:
+                count,head=turn.delivery_identity
+                turn.delivery_identity=((count+1,record["record_hash"]) if record.get("seq")==count and record.get("prev_hash")==head else None)
 
 
 

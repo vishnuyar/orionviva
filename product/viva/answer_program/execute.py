@@ -57,14 +57,41 @@ class ProgramExecutor:
         self.max_workers = max(1, max_workers)
 
     def execute(self, program: AnswerProgram, question: str) -> ExecutionResult:
+        runtime=getattr(self.registry,"instrument_runtime",None)
+        if runtime is not None and any(node.tool in {"read_instrument_details", "read_account_balance_report"} or (node.tool in {"read_investment_evidence","read_retirement_funding"} and runtime.supplier is not None) for node in program.nodes):
+            deadline=time.monotonic()+self.policy.max_execution_ms/1000
+            with runtime.execution(deadline,question=question):
+                if runtime.revision is None or not runtime.source_is_current():
+                    return self._source_unavailable(program,question)
+                execution=self._execute(program,question,deadline_override=deadline)
+                selected = any(node.tool == "read_account_balance_report" for node in program.nodes)
+                current = getattr(self.registry, "selected_balance_source_current", lambda: False)
+                return execution if (runtime.source_is_current() and (not selected or current())) else self._source_unavailable(program,question)
+        return self._execute(program,question)
+
+    def _selected_report_unavailable(self, program, question, produced, tag, text, payload_bytes):
+        failed = refusal("read_account_balance_report", tag, text,
+            trace=copy.deepcopy(produced.data["trace"]), complete_payload_bytes=payload_bytes)
+        return ExecutionResult(EvidenceGraph(question), [failed],
+            {node.id:NodeExecution(node.id, "refused" if node.tool == "read_account_balance_report" else "dependency_blocked",
+                tool=node.tool, refusal=tag if node.tool == "read_account_balance_report" else "dependency_failed")
+             for node in program.nodes})
+
+    def _source_unavailable(self,program,question):
+        return ExecutionResult(EvidenceGraph(question),
+            [refusal("read_instrument_details","current_data_unavailable","The current source changed or is unavailable.")],
+            {node.id:NodeExecution(node.id,"refused",tool=node.tool,refusal="current_data_unavailable") for node in program.nodes})
+
+    def _execute(self, program: AnswerProgram, question: str, *, deadline_override=None) -> ExecutionResult:
         graph = EvidenceGraph(question)
+        graph.ground.instrument_token=getattr(getattr(self.registry,"instrument_runtime",None),"run_token",None)
         transcript: list[ToolResult] = []
         records: dict[str, NodeExecution] = {}
         results: dict[str, ToolResult] = {}
         fingerprints: dict[str, str] = {}
         pending = list(program.nodes)
         started = time.monotonic()
-        deadline = started + self.policy.max_execution_ms / 1000
+        deadline = deadline_override or (started + self.policy.max_execution_ms / 1000)
         deadline_exceeded = False
         evidence_limit_exceeded = False
         figure_limit_exceeded = False
@@ -130,13 +157,22 @@ class ProgramExecutor:
             actual = [(node, args, fingerprint) for node, args, fingerprint, marker
                       in calls if marker is None]
             completed = {}
-            if actual:
+            # SQLCipher connections remain on their creating thread. Instrument
+            # nodes share one pinned immutable revision across all DAG waves.
+            parallel=[item for item in actual if item[0].tool not in {"read_instrument_details","read_investment_evidence","read_retirement_funding","read_account_balance_report"}]
+            for node,args,fingerprint in actual:
+                if node.tool in {"read_instrument_details","read_investment_evidence","read_retirement_funding","read_account_balance_report"}:
+                    began=time.monotonic()
+                    result=(refusal(node.tool,"execution_deadline","The admitted execution deadline expired.")
+                            if began>=deadline else self._run_node(node,args,graph,records))
+                    completed[node.id]=(node,result,fingerprint,int((time.monotonic()-began)*1000))
+            if parallel:
                 pool = ThreadPoolExecutor(max_workers=min(self.max_workers,
-                                                          len(actual)))
+                                                          len(parallel)))
                 futures = {node.id: (node, fingerprint, time.monotonic(),
                                      pool.submit(self._run_node, node, args,
                                                  graph, records))
-                           for node, args, fingerprint in actual}
+                           for node, args, fingerprint in parallel}
                 timed_out = False
                 for node_id, (node, fingerprint, began, future) in futures.items():
                     remaining = max(0, deadline - time.monotonic())
@@ -156,13 +192,31 @@ class ProgramExecutor:
                          in calls if marker == 0]
             for node, result, fingerprint, elapsed in [
                     *(completed[node.id] for node, _, _ in actual), *immediate]:
+                if result.ok:
+                    try:graph.stamp(node.id, result)
+                    except ValueError:
+                        from ..instrument_claims import DEDICATED_QUANTITIES
+                        if not (result.instrument_assertions or result.instrument_premises or any(f.get("claim") or f.get("quantity") in DEDICATED_QUANTITIES for f in result.figures)):raise
+                        result=refusal(node.tool or node.kind,"instrument_authority_required","The result has no valid current-run instrument authority.")
+                    if result.ok and node.tool == "read_account_balance_report":
+                        from ..tools.account_balances import complete_bytes
+                        runtime = self.registry.instrument_runtime
+                        source_deadline = min(runtime.deadline, runtime.started + 2)
+                        payload_bytes = complete_bytes(result)
+                        if payload_bytes > 50_000 or time.monotonic() >= source_deadline:
+                            return self._selected_report_unavailable(program, question, result,
+                                "resource_limit", "The complete selected-account report exceeds its read bound.", payload_bytes)
+                        if not self.registry.selected_balance_source_current():
+                            return self._selected_report_unavailable(program, question, result,
+                                "current_data_unavailable", "The selected account source changed during serialization.", payload_bytes)
+                        if time.monotonic() >= source_deadline:
+                            return self._selected_report_unavailable(program, question, result,
+                                "resource_limit", "The complete selected-account report exceeds its read bound.", payload_bytes)
+                    if result.ok and fingerprint:
+                        fingerprints[fingerprint] = node.id
                 results[node.id] = result
                 transcript.append(result)
                 status = "completed" if result.ok else "refused"
-                if result.ok:
-                    graph.stamp(node.id, result)
-                    if fingerprint:
-                        fingerprints[fingerprint] = node.id
                 # Stamping assigns stable ids to figures and identifiers.  A
                 # symbolic value may therefore be exported only afterwards.
                 values = self._values(result)

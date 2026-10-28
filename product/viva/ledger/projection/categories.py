@@ -302,7 +302,7 @@ def spending_by_category(core: ProjectionCore,
         # and cannot filter on. It is the same default the finer view takes, so
         # the two agree about how much is unnamed.
         cat = (derived_category(core, m) or {}).get("category") or "Uncategorized"
-        out[cat] = out.get(cat, Decimal("0")) + abs(m.amount)
+        out[cat] = out.get(cat, Decimal("0")) + movements_view.counted_spending_amount(m)
     return out
 
 
@@ -321,7 +321,7 @@ def spending_by_subcategory(core: ProjectionCore,
         ruling = derived_category(core, m) or {}
         label = (ruling.get("subcategory") or ruling.get("category")
                  or "Uncategorized")
-        out[label] = out.get(label, Decimal("0")) + abs(m.amount)
+        out[label] = out.get(label, Decimal("0")) + movements_view.counted_spending_amount(m)
     return out
 
 
@@ -351,7 +351,7 @@ def spending_by_category_then_subcategory(
         category = ruling.get("category") or "Uncategorized"
         sub = (ruling.get("subcategory") or "").strip()
         within = out.setdefault(category, {})
-        within[sub] = within.get(sub, Decimal("0")) + abs(m.amount)
+        within[sub] = within.get(sub, Decimal("0")) + movements_view.counted_spending_amount(m)
     return out
 
 
@@ -470,7 +470,7 @@ def spending_by_tag(core: ProjectionCore, currency: str | None = None) -> dict:
             continue
         if currency is not None and m.currency != currency:
             continue
-        amount = abs(m.amount)
+        amount = movements_view.counted_spending_amount(m)
         total += amount
         tags = tags_of(core, m)
         if not tags:

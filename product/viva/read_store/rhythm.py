@@ -159,7 +159,8 @@ def _movement_rows(connection, as_of: str):
     posting_columns = (
         "t.source_sequence", "p.posting_index", "p.account_id", "t.occurred_at",
         "p.amount_text", "p.grade", "t.description", "t.provenance_doc_id",
-        "t.provenance_page", "t.provenance_region", "t.provenance_note")
+        "t.provenance_page", "t.provenance_region", "t.provenance_note",
+        "COALESCE(r.role,'')")
     selected, bounds = scalar_selected(
         posting_columns, ("t.source_sequence", "p.posting_index",
                           "t.provenance_page"))
@@ -167,6 +168,7 @@ def _movement_rows(connection, as_of: str):
         connection,
         f"SELECT {selected} "
         "FROM transactions t JOIN postings p ON p.source_sequence=t.source_sequence "
+        "LEFT JOIN instrument_cash_roles r ON r.source_sequence=t.source_sequence "
         "WHERE t.occurred_at>=? AND t.occurred_at<=? ORDER BY t.occurred_at,"
         "t.source_sequence,p.posting_index",
         (*bounds, lower, as_of), MAX_RHYTHM_POSTING_ROWS,
@@ -202,7 +204,7 @@ def _movement_rows(connection, as_of: str):
         ("depository", "liability", "investment")))
     resolved = resolve_keys(resolver_inputs, profile_for=profile_for)
     counts, out = {}, []
-    for seq, posting, account, occurred, amount, grade, description, doc, page, region, note in rows:
+    for seq, posting, account, occurred, amount, grade, description, doc, page, region, note, role in rows:
         state = accounts.get(account, {})
         kind, currency = state.get("kind", ""), state.get("currency", "")
         if kind not in ("depository", "liability", "investment"):
@@ -220,7 +222,8 @@ def _movement_rows(connection, as_of: str):
                     "description": description, "doc_id": doc, "page": page,
                     "region": region, "note": note, "brand": brand,
                     "structural": structural,
-                    "descriptor": descriptor, "person": bool(person)})
+                    "descriptor": descriptor, "person": bool(person),
+                    "instrument_role": role})
     return out
 
 
@@ -290,7 +293,8 @@ def _rhythms(connection, *, as_of: str, limit: int, result_label: str):
                for key, known in candidate_rows.items()}
     groups = {}
     for row in rows:
-        if row["key"] in linked or row["person"] or not row["merchant"]:
+        if (row["instrument_role"] in {"principal", "escrow_deposit"} or row["key"] in linked
+                or row["person"] or not row["merchant"]):
             continue
         try:
             direction = IN if money_effect(row["kind"], row["amount"]) > 0 else OUT

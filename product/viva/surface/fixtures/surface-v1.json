@@ -52,6 +52,16 @@
       "state": "ready"
     },
     {
+      "capability_id": "documents.library",
+      "contract": "DocumentsPage.v1",
+      "id": "documents.library.ready",
+      "payload": {
+        "capability_id": "documents.library",
+        "contract": "DocumentsPage.v1"
+      },
+      "state": "ready"
+    },
+    {
       "capability_id": "documents.preview",
       "contract": "DocumentPreview.v1",
       "id": "documents.preview.ready",
@@ -1634,6 +1644,7 @@
     {
       "actions": [
         "upload",
+        "upload_many",
         "cancel",
         "recover"
       ],
@@ -1669,6 +1680,24 @@
       "id": "documents.jobs",
       "maturity": "stable",
       "owner": "viva.desktop_bridge.jobs",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "while the sidecar holds an open vault",
+      "contract": "DocumentsPage.v1",
+      "destination": "documents",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "documents.library.ready"
+      ],
+      "id": "documents.library",
+      "maturity": "stable",
+      "owner": "viva.surface.documents_page",
       "reason": null,
       "trust_effect": [
         "reads_data"

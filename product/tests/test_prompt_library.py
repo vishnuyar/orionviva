@@ -62,7 +62,7 @@ def test_a_missing_version_raises_rather_than_defaulting():
 
 def test_classify_prompt_carries_its_version():
     text, version = pl.classify_prompt()
-    assert version == "classify-v2" and "doc_type" in text
+    assert version == "classify-v3" and "doc_type" in text
     assert "pay_stub" in text                          # v2 knows pay stubs
 
 
@@ -387,7 +387,7 @@ def test_semantic_v10_is_pinned_and_preserves_prior_prompt_bytes():
     from vivacore import promptstore
     text = promptstore.load(PACKAGE / 'prompts', 'semantic-request-v10')
     released = manifest.manifest(PACKAGE)['released']
-    assert manifest.active(PACKAGE, 'semantic_request') == 'semantic-request-v17'
+    assert manifest.active(PACKAGE, 'semantic_request') == 'semantic-request-v21'
     assert hashlib.sha256(text.encode()).hexdigest()[:16] == released['semantic-request-v10']
     for version in ('semantic-request-v9', 'semantic-request-retry-v8'):
         previous = promptstore.load(PACKAGE / 'prompts', version)
@@ -418,3 +418,19 @@ def test_current_claim_and_recorded_start_guidance_is_immutable_and_generic():
         assert 'follow-up may inherit its grounded account subject' in current
         old = versions.path_of(PACKAGE, 'semantic-request-v16' if role == 'semantic_request' else 'semantic-request-retry-v14').read_text()
         assert 'measurement_date alone' not in old
+
+
+def test_monthly_loan_guidance_is_versioned_without_changing_predecessors():
+    import json
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    for family,active,previous in [('semantic_request','semantic-request-v21','semantic-request-v19'),('semantic_request_retry','semantic-request-retry-v19','semantic-request-retry-v17')]:
+        assert manifest.active(PACKAGE,family)==active
+        current=manifest.path_of(PACKAGE,active).read_text()
+        predecessor=manifest.path_of(PACKAGE,previous).read_bytes()
+        assert current.startswith(predecessor.decode())
+        assert hashlib.sha256(predecessor).hexdigest()[:16]==manifest.pin(PACKAGE,previous)
+        assert 'instrument_monthly_loan_payments' in current
+        assert 'genuinely supplied numbered prior-turn proofs' in current
+        assert 'Missing or held evidence stays unavailable' in current
+    snapshot=manifest.path_of(PACKAGE,manifest.active(PACKAGE,'semantic_request_schema')).read_bytes()
+    assert json.loads(snapshot)==SemanticFamilyRegistry().output_schema()

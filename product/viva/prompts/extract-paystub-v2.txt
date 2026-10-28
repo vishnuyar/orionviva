@@ -1,0 +1,5 @@
+This document records one payroll period. Preserve its printed source identity,
+current-period gross/net and the complete ordered employee deduction population.
+Copy the independently printed period bounds and pay date with actual pages
+under payroll-source-v2. Missing references or periods remain null; no historical
+reading is upgraded and no retirement funding relationship is inferred.

@@ -38,9 +38,74 @@ from .pipeline_models import *
 
 from .statement_projector import (_period_already_posted,
                                   _account_for_resolution,
-                                  _record_stronger_identity)
+                                  _record_stronger_identity, _resolve,
+                                  _record_source_identity)
+
+def _observe_investment_source(ledger, facts, account):
+    if facts.investment_source is None:
+        return ""
+    from viva.investment.projector import heal
+    from viva.investment.contracts import EvidenceError
+    try:
+        heal(ledger, facts, account)
+    except EvidenceError:
+        # Cash is already committed. Never retry it for an evidence-only failure.
+        log.warning("Investment source evidence remains unavailable for %s", facts.doc_id[:12])
+        return " Some investment source evidence remains unavailable for this statement."
+    return ""
+
 
 def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
+    # An interrupted evidence append may follow already committed cash. A typed
+    # same-capture retry validates existing measurements and source cash first.
+    if facts.investment_source is not None:
+        from viva.investment.events import STATEMENT
+        from viva.investment.projector import heal
+        from viva.investment.contracts import EvidenceError
+        previous = next((e for e in ledger.events() if e.event_type in (STATEMENT,"PositionObserved")
+                         and e.provenance.doc_id == facts.doc_id), None)
+        if previous is None:
+            identity = _resolve(ledger.projection(), facts)
+            if identity.verdict == "same":
+                previous = next((e for e in ledger.events() if e.event_type == STATEMENT
+                    and e.body["statement"]["account"]["value"] == identity.account_id
+                    and e.body["statement"]["end"]["value"] == facts.as_of), None)
+        if previous is not None:
+            account = (previous.body["statement"]["account"]["value"] if previous.event_type == STATEMENT
+                       else previous.body["account_id"])
+            try:
+                heal(ledger, facts, account)
+            except EvidenceError:
+                pass
+            else:
+                return IngestResult(doc_id=facts.doc_id,action=DUPLICATE,
+                    doc_type=facts.doc_type,account=account,
+                    message="Already posted; the retained investment source evidence is current.")
+    result = _post_brokerage_cash_and_snapshot(ledger, facts)
+    if result.action in (POSTED, DUPLICATE) and facts.investment_source is not None:
+        account = result.account
+        if account is None:
+            identity = _resolve(ledger.projection(), facts)
+            if identity.verdict == "same":
+                account = identity.account_id
+        if account:
+            result.message += _observe_investment_source(ledger, facts, account)
+    return result
+
+
+def _source_cash_page(facts, name, expected):
+    """A new source field supplies a page only for the same accepted amount."""
+    if facts.investment_source is None:
+        return None
+    source = dict(facts.investment_source.headers).get(name)
+    if source is None or type(source.page) is not int:
+        return None
+    from vivacore.verify.normalize import parse_amount
+    parsed = parse_amount(source.raw, 'en-US', facts.currency)
+    return source.page if parsed.ok and parsed.decimal() == expected else None
+
+
+def _post_brokerage_cash_and_snapshot(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     """Verify a brokerage statement's internal tally and, only if it holds,
     record its holdings as measurements.
 
@@ -93,9 +158,7 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     # cash held for this account from the previous statement is carried forward
     # — the forward-stitching rule applied to brokerage cash.
     proj0 = ledger.projection()
-    identity = proj0.resolve(
-        facts.institution, facts.account_number, facts.account_ref,
-        facts.account_names, kind=INVESTMENT, doc_id=facts.doc_id)
+    identity = _resolve(proj0, facts)
     if identity.verdict == "ambiguous":
         ledger.append(statement_held(
             facts.doc_id, facts.to_dict(),
@@ -174,7 +237,7 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
         if seeding:
             ledger.append(opening_balance_observed(
                 account, opening_cash, when,
-                facts.provenance(f"opening cash (from {opening_from})")))
+                facts.provenance(f"opening cash (from {opening_from})", page=_source_cash_page(facts, "opening_cash", opening_cash))))
         for a in facts.activity:
             ledger.append(brokerage_activity_transaction(
                 account, a.kind, a.amount, a.description, a.date or when,
@@ -183,13 +246,26 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     # Cash: the attested balance at the statement date — the closing of the
     # flow, or a lone snapshot on a holdings-only statement.
     ledger.append(closing_balance_observed(
-        account, facts.cash, when, facts.provenance("cash balance")))
+        account, facts.cash, when, facts.provenance("cash balance", page=_source_cash_page(facts, "closing_cash", facts.cash))))
     # Holdings: dated measurements, not postings.
     for p in facts.positions:
         ledger.append(position_observed(
             account, p.instrument, p.units, p.market_value, facts.currency, when,
             cost_basis=p.cost_basis, grade=CORROBORATED,
-            provenance=facts.provenance(f"position {p.instrument}")))
+            provenance=facts.provenance(f"position {p.instrument}", page=p.page)))
+    for position in facts.positions:
+        if position.classification is not None:
+            from .instrument_observations import ObservationChange, ObservationKind, Operation
+            from .instrument_contracts import SourcedDate
+            from ..ledger.instruments import append_change
+            from hashlib import sha256
+            source = position.classification.instrument.source
+            identifier = sha256((facts.doc_id + "|classification|" + position.instrument).encode()).hexdigest()
+            if identifier not in ledger.projection().core._instrument_observations:
+                append_change(ledger, ObservationChange(identifier, account + "|" + position.instrument,
+                    ObservationKind.POSITION_CLASSIFICATION, SourcedDate(when, source), Operation.CREATE,
+                    source, position.classification))
+    _record_source_identity(ledger, facts, account, when)
     if activity_finding is not None:
         # Snapshot posting and activity quarantine remain independently visible.
         ledger.append(brokerage_activity_held(
@@ -231,6 +307,7 @@ def apply_brokerage_activity_correction(
     corrected movements and closes the durable activity hold.
     """
     outcome: list[IngestResult] = []
+    accepted_sources = []
 
     def decide(projection):
         body = next((item for item in projection.open_activity_holds()
@@ -262,10 +339,7 @@ def apply_brokerage_activity_correction(
                 doc_id, corrected.to_dict(), finding.to_dict(), corrected.as_of,
                 Provenance(doc_id=doc_id)),)
 
-        identity = projection.resolve(
-            corrected.institution, corrected.account_number,
-            corrected.account_ref, corrected.account_names, kind=INVESTMENT,
-            doc_id=corrected.doc_id)
+        identity = _resolve(projection, corrected)
         if identity.verdict == "ambiguous":
             raise ValueError("corrected brokerage statement has ambiguous account identity")
         account = identity.account_id
@@ -278,6 +352,7 @@ def apply_brokerage_activity_correction(
             for item in corrected.activity]
         events.append(brokerage_activity_resolved(
             doc_id, corrected.as_of, Provenance(doc_id=doc_id)))
+        accepted_sources.append((corrected, account))
         outcome.append(IngestResult(
             doc_id=doc_id, action=POSTED, doc_type=corrected.doc_type,
             account=account, grade="verified", reconciliation=recon,
@@ -287,6 +362,8 @@ def apply_brokerage_activity_correction(
 
     # Movements and their resolution event append under one writer lock.
     ledger.append_atomically(decide)
+    for corrected, account in accepted_sources:
+        outcome[0].message += _observe_investment_source(ledger, corrected, account)
     return outcome[0]
 
 

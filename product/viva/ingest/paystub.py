@@ -22,6 +22,7 @@ from decimal import Decimal
 from vivacore.verify.normalize import parse_amount, parse_date
 
 from ..ledger.events import Provenance
+from ..investment.payroll_extraction import PayrollSourceExtraction
 
 # The universal deduction buckets. Jurisdiction is an attribute, not a bucket.
 TAX = "tax"
@@ -52,7 +53,7 @@ class Deduction:
 class PayStubFacts:
     doc_id: str
     doc_type: str
-    doc_type_confidence: float
+    doc_type_confidence: float | None
     employer: str
     currency: str
     pay_date: str
@@ -64,6 +65,14 @@ class PayStubFacts:
     employee_names: list[str] = field(default_factory=list)
     gross_page: int | None = None
     net_page: int | None = None
+    payroll_source: PayrollSourceExtraction | None = None
+    acquisition: dict | None = None
+
+    def __post_init__(self):
+        from ..acquisition import classification
+        classification(self.doc_id, self.doc_type_confidence, self.acquisition)
+        from ..retirement_funding.payroll_v2 import PayrollSourceExtractionV2
+        if self.payroll_source is not None and type(self.payroll_source) not in (PayrollSourceExtraction,PayrollSourceExtractionV2):raise ValueError("typed payroll source extension required")
 
     def provenance(self, note: str = "") -> Provenance:
         return Provenance(doc_id=self.doc_id, note=note)
@@ -72,6 +81,7 @@ class PayStubFacts:
         return {
             "doc_id": self.doc_id, "doc_type": self.doc_type,
             "doc_type_confidence": self.doc_type_confidence,
+            **({"acquisition": dict(self.acquisition)} if self.acquisition is not None else {}),
             "employer": self.employer, "currency": self.currency,
             "pay_date": self.pay_date, "period_start": self.period_start,
             "period_end": self.period_end,
@@ -79,20 +89,23 @@ class PayStubFacts:
             "deductions": [d.to_dict() for d in self.deductions],
             "employee_names": list(self.employee_names),
             "gross_page": self.gross_page, "net_page": self.net_page,
+            **({"payroll_source": self.payroll_source.to_dict()} if self.payroll_source is not None else {}),
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "PayStubFacts":
+        from ..investment.payroll_extraction import parse
         return cls(
             doc_id=d["doc_id"], doc_type=d.get("doc_type", "pay_stub"),
             doc_type_confidence=d.get("doc_type_confidence", 0.0),
+            acquisition=d.get("acquisition"),
             employer=d.get("employer", ""), currency=d["currency"],
             pay_date=d.get("pay_date", ""), period_start=d.get("period_start", ""),
             period_end=d.get("period_end", ""),
             gross=Decimal(d["gross"]), net=Decimal(d["net"]),
             deductions=[Deduction.from_dict(x) for x in d.get("deductions", [])],
             employee_names=list(d.get("employee_names", [])),
-            gross_page=d.get("gross_page"), net_page=d.get("net_page"))
+            gross_page=d.get("gross_page"), net_page=d.get("net_page"),payroll_source=parse(d.get("payroll_source")))
 
 
 def _find_json(text: str) -> str | None:
@@ -150,12 +163,15 @@ def from_paystub_json(text: str, doc_id: str, locale: str,
     pay_date, err = _date(data.get("pay_date_raw"), locale)
     if err:
         return None, f"pay_date {err}"
+    period_v2=type(data.get('payroll_source')) is dict and data['payroll_source'].get('schema')=='payroll-source-v2'
     p_start, err = _date(data.get("period_start_raw"), locale)
     if err:
-        return None, f"period_start {err}"
+        if period_v2:p_start=''
+        else:return None, f"period_start {err}"
     p_end, err = _date(data.get("period_end_raw"), locale)
     if err:
-        return None, f"period_end {err}"
+        if period_v2:p_end=''
+        else:return None, f"period_end {err}"
 
     if not isinstance(data.get("deductions"), list):
         return None, "missing 'deductions' array"
@@ -179,6 +195,9 @@ def from_paystub_json(text: str, doc_id: str, locale: str,
     else:
         names = []
 
+    from ..investment.payroll_extraction import parse as parse_payroll_source
+    try:payroll_source=parse_payroll_source(data.get("payroll_source"))
+    except ValueError as exc:return None,"payroll source: "+str(exc)
     facts = PayStubFacts(
         doc_id=doc_id,
         doc_type=str(data.get("doc_type", "pay_stub")).strip().lower() or "pay_stub",
@@ -188,5 +207,5 @@ def from_paystub_json(text: str, doc_id: str, locale: str,
         pay_date=pay_date, period_start=p_start, period_end=p_end,
         gross=gross, net=net, deductions=deductions,
         employee_names=names,
-        gross_page=data.get("gross_page"), net_page=data.get("net_page"))
+        gross_page=data.get("gross_page"), net_page=data.get("net_page"),payroll_source=payroll_source)
     return facts, None

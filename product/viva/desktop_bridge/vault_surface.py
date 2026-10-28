@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import secrets
 from collections.abc import Mapping
 from typing import Any
@@ -36,6 +37,7 @@ class OpenedVaultSurfaceProvider:
         self._vault = vault
         self._jobs = jobs
         # Session-local cursor authentication binds account, revision and anchor.
+        self._documents_session = secrets.token_hex(16)
         self._cursor_secret = (secrets.token_bytes(32)
                                if cursor_secret is None else cursor_secret)
         if not isinstance(self._cursor_secret, bytes) \
@@ -48,6 +50,10 @@ class OpenedVaultSurfaceProvider:
         if surface not in self._READS:
             raise BridgeRequestError(f"unsupported surface: {surface!r}")
         params = _parameters(surface, parameters)
+        if getattr(self._vault,'_sample_reference_day',''):
+            from ..sample.activation import reference_day
+            if surface in {'overview','overview_accounts','accounting','spending','plans'}:
+                params.setdefault('read_on',reference_day(self._vault))
         if surface == "overview":
             return self._overview(params)
         if surface == "accounting":
@@ -57,6 +63,10 @@ class OpenedVaultSurfaceProvider:
         if surface == "spending":
             return self._spending(params)
         if surface == "documents":
+            if params:
+                from .documents_page import read_documents_page
+                return read_documents_page(self._vault, self._cursor_secret, params,
+                                           session_scope=self._documents_session)
             return self._documents()
         if surface == "jobs":
             return self._job_registry()
@@ -82,12 +92,21 @@ class OpenedVaultSurfaceProvider:
             raise BridgeRequestError("current read store is not caught up")
         try:
             locale = locale_from_env()
+            from time import monotonic
+            from ..read_store.instrument_review import document_attention
+            started=monotonic()
             with store.open_reader() as revision:
-                return review(
+                result=review(
                     revision.review_projection(locale=locale), locale,
                     limit=parameters.get("limit", DEFAULT_LIMIT),
                     as_of=parameters.get("as_of", ""),
                     jurisdiction=parameters.get("jurisdiction", ""))
+                attention = document_attention(revision)
+                if attention["state"] != "ready" or attention["total_documents"] != 0:
+                    result["document_attention"] = attention
+                if monotonic()-started>2 or len(json.dumps(result,separators=(",",":"),ensure_ascii=True).encode())>100000:
+                    raise BridgeRequestError("review resource_limit")
+                return result
         except Exception:
             raise BridgeRequestError("current read store could not answer review") from None
 
@@ -352,6 +371,9 @@ def _now() -> str:
 
 
 def _parameters(surface: str, parameters: Mapping[str, Any]) -> dict[str, Any]:
+    if surface == "documents" and parameters:
+        from .documents_page import validate_documents_parameters
+        return validate_documents_parameters(parameters)
     # `as_of` selects value time; `read_on` selects the picture date.
     allowed_by_surface = {
         "overview": {"as_of", "read_on"},

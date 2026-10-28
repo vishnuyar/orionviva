@@ -1,0 +1,28 @@
+Term deposit / CD source guidance:
+- subtype is opening, periodic or maturity according to the explicit record.
+- Opening certificates can contain terms/funding without opening/closing balance
+  snapshots or a statement period. Leave absent start, end, opening, closing
+  and movements null/omitted; never fabricate a zero balance or a period.
+- Principal and total deposit balance are different facts. Preserve printed
+  credited interest separately from principal, and uncredited accrued interest
+  separately from cash balance. Never calculate either.
+- Funding, interest_credit, redemption and fee rows carry positive printed
+  magnitudes and their exact printed reference/date and counterparty identifier.
+- Copy withdrawal restriction as the complete printed withdrawal restriction/disclosure wording
+  for this deposit into terms.withdrawal_restriction with its actual rendered page.
+  If a Restriction text field or full applicable clause is printed alongside a
+  short status/code, copy that full printed text rather than the short status/code.
+  Preserve its principal/credited-interest scope, timing, conditions and any
+  named destination. Do not summarize, expand, paraphrase, merge separate clauses,
+  append a destination from another field or invent legal/financial equivalence.
+  If only a restriction token is printed and no full clause is supplied, retain
+  that literal and page without expanding it into an unprinted condition.
+  If no restriction is printed, use existing null/omission. If genuinely competing full clauses
+  cannot map unambiguously to this account/period and one text field, leave it
+  unresolved using null/omission; do not choose or concatenate a new condition.
+  There is no independent restriction enum field: do not emit one. Copy the
+  complete clause even if later evidence limits refuse; never shorten it to fit.
+  Maturity does not imply available cash: only a sourced redemption names the receiving account.
+- simple_nominal, nominal_compounded and effective_apy are distinct. Do not
+  relabel APY as a nominal rate. equal_monthly_12 is allowed only when the
+  source explicitly declares that fictional twelve-equal-month convention.

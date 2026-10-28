@@ -24,6 +24,7 @@ pub struct Session {
     vault_epoch: u64,
     sequence: u64,
     events: VecDeque<(u64, Value)>,
+    bulk_ticket: Option<Arc<super::BulkStopTicket>>,
 }
 
 pub struct BrowserState {
@@ -33,6 +34,9 @@ pub struct BrowserState {
     remember: bool,
     #[cfg(test)]
     test_selections: Option<(String, String, String)>,
+    // Only the ignored source campaign advertises an HTML file chooser.
+    #[cfg(test)]
+    campaign_sources: Option<std::collections::HashMap<String, (String, std::path::PathBuf)>>,
 }
 
 impl Default for BrowserState {
@@ -44,6 +48,8 @@ impl Default for BrowserState {
             remember: cfg!(any(target_os = "macos", target_os = "windows")),
             #[cfg(test)]
             test_selections: None,
+            #[cfg(test)]
+            campaign_sources: None,
         }
     }
 }
@@ -244,14 +250,51 @@ impl BrowserState {
         Ok(())
     }
 
-    fn release(&self, token: &str, page: &str) {
+    fn register_bulk(&self, token: &str, page: &str) -> Result<Arc<super::BulkStopTicket>, String> {
+        let mut session = self
+            .session
+            .lock()
+            .map_err(|_| "Browser session unavailable".to_string())?;
+        if !session.active
+            || token.is_empty()
+            || token != session.token
+            || page.is_empty()
+            || page != session.page
+            || session.bulk_ticket.is_some()
+        {
+            return Err("Browser bulk ownership unavailable".to_string());
+        }
+        let ticket = Arc::new(super::BulkStopTicket::default());
+        session.bulk_ticket = Some(Arc::clone(&ticket));
+        Ok(ticket)
+    }
+
+    fn finish_bulk(&self, ticket: &Arc<super::BulkStopTicket>) {
         if let Ok(mut session) = self.session.lock() {
-            if !token.is_empty()
-                && token == session.token
-                && !page.is_empty()
-                && page == session.page
+            if session
+                .bulk_ticket
+                .as_ref()
+                .is_some_and(|active| Arc::ptr_eq(active, ticket))
             {
-                session.page.clear();
+                session.bulk_ticket = None;
+            }
+        }
+    }
+
+    fn take_release_ticket(&self, token: &str, page: &str) -> Option<Arc<super::BulkStopTicket>> {
+        let mut session = self.session.lock().ok()?;
+        if !token.is_empty() && token == session.token && !page.is_empty() && page == session.page {
+            session.page.clear();
+            session.bulk_ticket.take()
+        } else {
+            None
+        }
+    }
+
+    fn release(&self, token: &str, page: &str) {
+        if let Some(ticket) = self.take_release_ticket(token, page) {
+            if let Err(error) = ticket.stop() {
+                eprintln!("unable to stop browser-owned bulk admission: {error}");
             }
         }
     }
@@ -268,17 +311,24 @@ impl BrowserState {
         Ok(())
     }
     fn revoke(&self) -> Result<(), String> {
-        let mut session = self
-            .session
-            .lock()
-            .map_err(|_| "Browser session unavailable")?;
-        session.launch.clear();
-        session.token.clear();
-        session.page.clear();
-        session.events.clear();
-        session.revoked = true;
-        if session.operations == 0 {
-            *session = Session::default();
+        let ticket = {
+            let mut session = self
+                .session
+                .lock()
+                .map_err(|_| "Browser session unavailable")?;
+            session.launch.clear();
+            session.token.clear();
+            session.page.clear();
+            session.events.clear();
+            session.revoked = true;
+            let ticket = session.bulk_ticket.take();
+            if session.operations == 0 {
+                *session = Session::default();
+            }
+            ticket
+        };
+        if let Some(ticket) = ticket {
+            ticket.stop()?;
         }
         Ok(())
     }
@@ -619,7 +669,29 @@ fn handle<R: tauri::Runtime>(app: &AppHandle<R>, stream: &mut TcpStream, port: u
     } else {
         None
     };
-    let result = dispatch(app, &request.path, body);
+    let ticket = if request.path == "/__orionviva/bridge"
+        && body.pointer("/frame/operation").and_then(Value::as_str)
+            == Some("viva.documents.upload_many")
+    {
+        match state.register_bulk(token, &request.page) {
+            Ok(ticket) => Some(ticket),
+            Err(_) => {
+                respond(
+                    stream,
+                    409,
+                    "application/json",
+                    json!({"error":"vault_busy"}).to_string().as_bytes(),
+                );
+                return;
+            }
+        }
+    } else {
+        None
+    };
+    let result = dispatch(app, &request.path, body, ticket.clone());
+    if let Some(ticket) = ticket {
+        state.finish_bulk(&ticket);
+    }
     let epoch = vault_permit.as_ref().map(|permit| permit.epoch);
     drop(vault_permit);
     if state.enter_page(token, &request.page).is_err() {
@@ -650,20 +722,84 @@ fn handle<R: tauri::Runtime>(app: &AppHandle<R>, stream: &mut TcpStream, port: u
     }
 }
 
+#[cfg(test)]
+fn campaign_sha256(path: &std::path::Path) -> Result<String, String> {
+    let output = std::process::Command::new("/usr/bin/shasum")
+        .args(["-a", "256", "--"])
+        .arg(path)
+        .output()
+        .map_err(|_| "Campaign source verification failed".to_string())?;
+    if !output.status.success() {
+        return Err("Campaign source verification failed".into());
+    }
+    let text = std::str::from_utf8(&output.stdout)
+        .map_err(|_| "Campaign source verification failed".to_string())?;
+    let digest = text
+        .get(..64)
+        .ok_or("Campaign source verification failed")?;
+    if !digest
+        .bytes()
+        .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+    {
+        return Err("Campaign source verification failed".into());
+    }
+    Ok(digest.into())
+}
+
+#[cfg(test)]
+fn campaign_selected_source(
+    sources: &std::collections::HashMap<String, (String, std::path::PathBuf)>,
+    body: &Value,
+) -> Result<Value, String> {
+    let object = body.as_object().ok_or("Invalid campaign selection")?;
+    if object.len() != 2 || !object.contains_key("name") || !object.contains_key("sha256") {
+        return Err("Invalid campaign selection".into());
+    }
+    let name = body
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or("Invalid campaign selection")?;
+    let digest = body
+        .get("sha256")
+        .and_then(Value::as_str)
+        .ok_or("Invalid campaign selection")?;
+    let (expected, path) = sources.get(name).ok_or("Select an original persona PDF")?;
+    if digest != expected
+        || path
+            .symlink_metadata()
+            .map_err(|_| "Campaign source unavailable")?
+            .file_type()
+            .is_symlink()
+        || path
+            .canonicalize()
+            .map_err(|_| "Campaign source unavailable")?
+            != *path
+        || campaign_sha256(path)? != *expected
+    {
+        return Err("Selected bytes do not match the original persona PDF".into());
+    }
+    Ok(json!(path.to_string_lossy()))
+}
+
 fn dispatch<R: tauri::Runtime>(
     app: &AppHandle<R>,
     path: &str,
     body: Value,
+    ticket: Option<Arc<super::BulkStopTicket>>,
 ) -> Result<Value, String> {
     match path {
         "/__orionviva/close" => {
             super::close_active_vault(app)?;
             Ok(Value::Null)
         }
-        "/__orionviva/bridge" => super::request_bridge(
+        "/__orionviva/bridge" => super::request_bridge_with_owner(
             app,
             &app.state::<super::BridgeState>(),
             body.get("frame").cloned().ok_or("Frame required")?,
+            super::spawn_bridge,
+            super::deadline_policy,
+            || {},
+            ticket,
         ),
         "/__orionviva/current" => {
             let active = app.state::<super::BridgeState>();
@@ -705,11 +841,57 @@ fn dispatch<R: tauri::Runtime>(
         "/__orionviva/capabilities" => {
             let state = app.state::<BrowserState>();
             let session = state.session.lock().map_err(|_| "Browser unavailable")?;
-            Ok(
-                json!({"remember": state.remember, "backup_save": true, "vault_epoch": session.vault_epoch, "sequence": session.sequence}),
+            let capabilities = json!({"remember": state.remember, "backup_save": true, "vault_epoch": session.vault_epoch, "sequence": session.sequence});
+            #[cfg(test)]
+            let capabilities = if state.campaign_sources.is_some() {
+                let mut capabilities = capabilities;
+                capabilities["campaign_file_chooser"] = json!(true);
+                capabilities
+            } else {
+                capabilities
+            };
+            Ok(capabilities)
+        }
+        #[cfg(test)]
+        "/__orionviva/campaign-file" => {
+            let state = app.state::<BrowserState>();
+            campaign_selected_source(
+                state
+                    .campaign_sources
+                    .as_ref()
+                    .ok_or("Campaign chooser unavailable")?,
+                &body,
             )
         }
+        "/__orionviva/pick-files" => {
+            #[cfg(test)]
+            if app.state::<BrowserState>().campaign_sources.is_some() {
+                return Err("Use the campaign browser file chooser".into());
+            }
+            let selected = app
+                .dialog()
+                .file()
+                .set_title("Choose documents")
+                .blocking_pick_files();
+            let paths = selected
+                .unwrap_or_default()
+                .into_iter()
+                .map(|file| {
+                    file.into_path()
+                        .map(|path| path.to_string_lossy().into_owned())
+                        .map_err(|_| "Local file required".to_string())
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            if paths.len() > 1000 {
+                return Err("Selection over limit".into());
+            }
+            Ok(json!(paths))
+        }
         "/__orionviva/pick-folder" | "/__orionviva/pick-file" | "/__orionviva/save-backup" => {
+            #[cfg(test)]
+            if app.state::<BrowserState>().campaign_sources.is_some() {
+                return Err("Use the campaign browser file chooser or path form".into());
+            }
             #[cfg(test)]
             if let Some((folder, file, backup)) = &app.state::<BrowserState>().test_selections {
                 return Ok(json!(if path.ends_with("pick-folder") {
@@ -762,6 +944,292 @@ fn dispatch<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn authenticated_browser_revoke_stops_its_active_bulk_admission() {
+        let (app, bridge) = crate::tests::bulk_fixture(
+            "IFS= read -r line; while IFS= read -r rest; do :; done",
+            &[],
+        );
+        app.manage(BrowserState::default());
+        let state = app.state::<BrowserState>();
+        let launch = state.activate().unwrap();
+        let token = state.claim(&launch, "bulk-page").unwrap();
+        let permit = state.enter_page(&token, "bulk-page").unwrap();
+        let ticket = state.register_bulk(&token, "bulk-page").unwrap();
+        let reader = bridge.clone();
+        let owner = std::thread::spawn(move || {
+            crate::request_process_owned(
+                &reader,
+                "bulk-owner",
+                &crate::tests::bulk_frame("bulk-owner"),
+                crate::DeadlinePolicy {
+                    first: std::time::Duration::from_secs(5),
+                    silence: std::time::Duration::from_secs(5),
+                    cap: std::time::Duration::from_secs(5),
+                },
+                Some(ticket),
+            )
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while bridge.bulk.lock().unwrap().request_id.is_none()
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::yield_now();
+        }
+        state.revoke().unwrap();
+        let stopped = bridge.closed.load(std::sync::atomic::Ordering::SeqCst);
+        bridge.begin_bulk_drain().unwrap();
+        let _ = owner.join().unwrap();
+        drop(permit);
+        assert!(
+            stopped,
+            "browser revocation left admitted bulk phase admission open"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_release_before_binding_denies_dispatch_without_writing() {
+        let folder = crate::tests::bulk_folder("prebinding");
+        let writes = folder.join("writes");
+        let _ = std::fs::remove_file(&writes);
+        let script = r#"while IFS= read -r line; do printf '%s\n' "$line" >> "$1"; id=$(printf '%s\n' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p'); printf '{"request_id":"%s","ok":true}\n' "$id"; done"#;
+        let (_app, mut bridge) = crate::tests::bulk_fixture(script, &[&writes]);
+        let state = BrowserState::default();
+        let launch = state.activate().unwrap();
+        let token = state.claim(&launch, "page").unwrap();
+        let permit = state.enter_page(&token, "page").unwrap();
+        assert!(state.register_bulk("foreign", "page").is_err());
+        assert!(state.register_bulk(&token, "foreign").is_err());
+        let ticket = state.register_bulk(&token, "page").unwrap();
+        assert!(state.register_bulk(&token, "page").is_err());
+        state.release(&token, "page");
+        assert!(crate::request_process_owned(
+            &bridge,
+            "reused-id",
+            &crate::tests::bulk_frame("reused-id"),
+            crate::deadline_policy(Some("viva.documents.upload_many")),
+            Some(ticket)
+        )
+        .unwrap_err()
+        .starts_with("Bulk admission refused:"));
+        assert!(bridge.pending.lock().unwrap().is_empty());
+        assert!(!bridge.closed.load(std::sync::atomic::Ordering::SeqCst));
+        let sentinel = json!({"request_id":"sentinel","operation":"bridge.handshake","payload":{}})
+            .to_string();
+        crate::request_process(
+            &bridge,
+            "sentinel",
+            &sentinel,
+            crate::deadline_policy(Some("bridge.handshake")),
+        )
+        .unwrap();
+        let written = std::fs::read_to_string(&writes).unwrap();
+        assert_eq!(written.lines().count(), 1);
+        assert!(written.contains("sentinel"));
+        assert!(!written.contains("upload_many"));
+        bridge.shutdown().unwrap();
+        drop(permit);
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_the_authenticated_release_stops_bulk_and_permits_stay_owned_until_exit() {
+        let folder = crate::tests::bulk_folder("release");
+        let release = folder.join("release");
+        let eof = folder.join("eof");
+        let receipt = folder.join("receipt");
+        for path in [&release, &eof, &receipt] {
+            let _ = std::fs::remove_file(path);
+        }
+        let script = r#"IFS= read -r line; while IFS= read -r rest; do :; done; : > "$2"; while [ ! -f "$1" ]; do sleep 0.01; done; printf retained > "$3"; printf '{"request_id":"bulk-owner","ok":true}\n'"#;
+        let (_app, bridge) = crate::tests::bulk_fixture(script, &[&release, &eof, &receipt]);
+        let state = BrowserState::default();
+        let launch = state.activate().unwrap();
+        let token = state.claim(&launch, "page").unwrap();
+        let permit = state.enter_page(&token, "page").unwrap();
+        let vault = state.enter_vault(0, false).unwrap();
+        let ticket = state.register_bulk(&token, "page").unwrap();
+        let reader = bridge.clone();
+        let owned_ticket = Arc::clone(&ticket);
+        let owner = std::thread::spawn(move || {
+            crate::request_process_owned(
+                &reader,
+                "bulk-owner",
+                &crate::tests::bulk_frame("bulk-owner"),
+                crate::deadline_policy(Some("viva.documents.upload_many")),
+                Some(owned_ticket),
+            )
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while bridge.bulk.lock().unwrap().request_id.is_none()
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::yield_now();
+        }
+        state.release("foreign", "page");
+        state.release(&token, "foreign");
+        assert!(!ticket.stopped.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!bridge.closed.load(std::sync::atomic::Ordering::SeqCst));
+        state.release(&token, "page");
+        crate::tests::bulk_barrier(&eof);
+        assert!(bridge.status().unwrap().is_none());
+        assert!(!owner.is_finished());
+        assert!(state.finish().is_err());
+        assert!(state.enter_close().is_err());
+        assert!(state.enter_vault(0, true).is_err());
+        std::fs::write(&release, b"release").unwrap();
+        assert!(owner
+            .join()
+            .unwrap()
+            .unwrap_err()
+            .contains("Outcome unknown"));
+        assert!(receipt.exists());
+        assert!(bridge.status().unwrap().is_some());
+        drop(vault);
+        drop(permit);
+        state.finish().unwrap();
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delayed_old_browser_ticket_cannot_stop_a_new_owner_with_the_same_child_and_id() {
+        let folder = crate::tests::bulk_folder("stale-ticket");
+        let started = folder.join("started");
+        let release = folder.join("release");
+        for path in [&started, &release] {
+            let _ = std::fs::remove_file(path);
+        }
+        let script = r#"count=0; while IFS= read -r line; do count=$((count+1)); if [ "$count" -gt 1 ]; then : > "$1"; while [ ! -f "$2" ]; do sleep 0.01; done; fi; printf '{"request_id":"same-id","ok":true}\n'; done"#;
+        let (_app, mut bridge) = crate::tests::bulk_fixture(script, &[&started, &release]);
+        let state = BrowserState::default();
+        let launch = state.activate().unwrap();
+        let token = state.claim(&launch, "old-page").unwrap();
+        let old_permit = state.enter_page(&token, "old-page").unwrap();
+        let old = state.register_bulk(&token, "old-page").unwrap();
+        crate::request_process_owned(
+            &bridge,
+            "same-id",
+            &crate::tests::bulk_frame("same-id"),
+            crate::deadline_policy(Some("viva.documents.upload_many")),
+            Some(Arc::clone(&old)),
+        )
+        .unwrap();
+        let delayed = state.take_release_ticket(&token, "old-page").unwrap();
+        state.resume(&token, "new-page").unwrap();
+        let new_permit = state.enter_page(&token, "new-page").unwrap();
+        let new = state.register_bulk(&token, "new-page").unwrap();
+        let reader = bridge.clone();
+        let owned = Arc::clone(&new);
+        let owner = std::thread::spawn(move || {
+            crate::request_process_owned(
+                &reader,
+                "same-id",
+                &crate::tests::bulk_frame("same-id"),
+                crate::deadline_policy(Some("viva.documents.upload_many")),
+                Some(owned),
+            )
+        });
+        crate::tests::bulk_barrier(&started);
+        delayed.stop().unwrap();
+        state.finish_bulk(&old);
+        assert!(!bridge.closed.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!new.stopped.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(state
+            .session
+            .lock()
+            .unwrap()
+            .bulk_ticket
+            .as_ref()
+            .is_some_and(|active| Arc::ptr_eq(active, &new)));
+        assert!(bridge
+            .bulk
+            .lock()
+            .unwrap()
+            .ticket
+            .as_ref()
+            .is_some_and(|active| Arc::ptr_eq(active, &new)));
+        assert!(bridge.status().unwrap().is_none());
+        std::fs::write(&release, b"release").unwrap();
+        owner.join().unwrap().unwrap();
+        state.finish_bulk(&new);
+        bridge.shutdown().unwrap();
+        drop(new_permit);
+        drop(old_permit);
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_private_browser_ticket_cannot_be_reused_for_another_invocation() {
+        let script =
+            r#"while IFS= read -r line; do printf '{"request_id":"same-id","ok":true}\n'; done"#;
+        let (_app, mut bridge) = crate::tests::bulk_fixture(script, &[]);
+        let ticket = Arc::new(crate::BulkStopTicket::default());
+        crate::request_process_owned(
+            &bridge,
+            "same-id",
+            &crate::tests::bulk_frame("same-id"),
+            crate::deadline_policy(Some("viva.documents.upload_many")),
+            Some(Arc::clone(&ticket)),
+        )
+        .unwrap();
+        assert!(crate::request_process_owned(
+            &bridge,
+            "same-id",
+            &crate::tests::bulk_frame("same-id"),
+            crate::deadline_policy(Some("viva.documents.upload_many")),
+            Some(ticket)
+        )
+        .unwrap_err()
+        .starts_with("Bulk admission refused:"));
+        assert!(!bridge.closed.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(bridge.pending.lock().unwrap().is_empty());
+        bridge.shutdown().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stale_browser_ticket_cannot_stop_a_native_bulk_invocation() {
+        let folder = crate::tests::bulk_folder("native-owner");
+        let started = folder.join("started");
+        let release = folder.join("release");
+        for path in [&started, &release] {
+            let _ = std::fs::remove_file(path);
+        }
+        let script = r#"count=0; while IFS= read -r line; do count=$((count+1)); if [ "$count" -gt 1 ]; then : > "$1"; while [ ! -f "$2" ]; do sleep 0.01; done; fi; printf '{"request_id":"same-id","ok":true}\n'; done"#;
+        let (_app, mut bridge) = crate::tests::bulk_fixture(script, &[&started, &release]);
+        let old = Arc::new(crate::BulkStopTicket::default());
+        crate::request_process_owned(
+            &bridge,
+            "same-id",
+            &crate::tests::bulk_frame("same-id"),
+            crate::deadline_policy(Some("viva.documents.upload_many")),
+            Some(Arc::clone(&old)),
+        )
+        .unwrap();
+        let reader = bridge.clone();
+        let owner = std::thread::spawn(move || {
+            crate::request_process(
+                &reader,
+                "same-id",
+                &crate::tests::bulk_frame("same-id"),
+                crate::deadline_policy(Some("viva.documents.upload_many")),
+            )
+        });
+        crate::tests::bulk_barrier(&started);
+        old.stop().unwrap();
+        assert!(!bridge.closed.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(bridge.bulk.lock().unwrap().ticket.is_none());
+        std::fs::write(&release, b"release").unwrap();
+        owner.join().unwrap().unwrap();
+        bridge.shutdown().unwrap();
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
     #[test]
     fn explicit_desktop_close_excludes_peer_requests_and_handoff() {
         let state = BrowserState::default();
@@ -879,12 +1347,21 @@ mod tests {
     fn current_epoch_close_waits_without_claiming_the_vault_changed() {
         let state = BrowserState::default();
         let reading = state.enter_vault(0, false).unwrap();
-        assert_eq!(state.enter_vault(0, true).err().as_deref(), Some("vault_busy"));
+        assert_eq!(
+            state.enter_vault(0, true).err().as_deref(),
+            Some("vault_busy")
+        );
         assert_eq!(state.session.lock().unwrap().vault_epoch, 0);
         drop(reading);
         let closing = state.enter_vault(0, true).unwrap();
-        assert_eq!(state.enter_vault(1, false).err().as_deref(), Some("vault_busy"));
-        assert_eq!(state.enter_vault(0, false).err().as_deref(), Some("vault_changed"));
+        assert_eq!(
+            state.enter_vault(1, false).err().as_deref(),
+            Some("vault_busy")
+        );
+        assert_eq!(
+            state.enter_vault(0, false).err().as_deref(),
+            Some("vault_changed")
+        );
         drop(closing);
         assert!(state.enter_vault(1, false).is_ok());
     }

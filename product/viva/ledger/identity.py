@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 import secrets
 
 
@@ -189,3 +190,20 @@ def names_overlap(a: list[str], b: list[str]) -> bool:
     A = {normalize_name(x) for x in (a or []) if str(x).strip()}
     B = {normalize_name(x) for x in (b or []) if str(x).strip()}
     return bool(A & B)
+
+
+@dataclass(frozen=True)
+class SourceAccountIdentity:
+    """Exact account-reference claim bound to a validated source page."""
+    reference: str
+    doc_id: str
+    page: int
+    page_count: int
+
+    def eligible(self) -> bool:
+        return (type(self.reference) is str and bool(self.reference.strip())
+                and self.reference.strip().casefold() != "unknown"
+                and type(self.doc_id) is str and bool(self.doc_id)
+                and type(self.page) is int and type(self.page_count) is int
+                and 1 <= self.page <= self.page_count <= 200
+                and not identity_number_key(self.reference, self.reference))

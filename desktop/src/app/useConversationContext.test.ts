@@ -53,3 +53,27 @@ it("requires an explicit current-vault opt-in to resume readable saved Ask histo
   view.rerender({ requestId: 2, state: idle, blocked: true });
   act(() => view.result.current.continuePreviousConversation()); expect(view.result.current.contextMode).toBe("new_question");
 });
+
+it("carries an opaque allocation anchor only after explicit saved-turn selection and consumes it once", () => {
+  const history = { state: "ready" as const, data: { turns: [{ id: "saved-turn", kind: "ask" as const, occurredAt: "", prompt: "Review allocation", said: "", questionId: "", outcome: "completed" as const, message: "Saved allocation answer", reason: "", answer: { answerId: "answer-opaque", continuationEligible: true, text: "Saved allocation answer", refusal: "" } as import("../surface/types").TurnView, proposal: null }], questions: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } } };
+  const view = renderHook(({ requestId }) => useConversationContext(requestId, idle, history), { initialProps: { requestId: 1 } });
+  act(() => view.result.current.continuePreviousConversation());
+  expect(view.result.current.consumeContinuationRecovery("follow_up", false)).toBeUndefined();
+  act(() => view.result.current.continueAllocation("saved-turn", "wrong-answer"));
+  expect(view.result.current.consumeContinuationRecovery("follow_up", false)).toBeUndefined();
+  act(() => view.result.current.continueAllocation("saved-turn", "answer-opaque"));
+  expect(view.result.current.contextMode).toBe("follow_up");
+  expect(view.result.current.consumeContinuationRecovery("follow_up", false)).toEqual({ version: "allocation-continuation-v1", turn_id: "saved-turn", answer_id: "answer-opaque" });
+  expect(view.result.current.consumeContinuationRecovery("follow_up", false)).toBeUndefined();
+  act(() => view.result.current.continueAllocation("saved-turn", "answer-opaque"));
+  act(() => view.result.current.startNewConversation());
+  expect(view.result.current.consumeContinuationRecovery("follow_up", false)).toBeUndefined();
+  act(() => view.result.current.continueAllocation("saved-turn", "answer-opaque"));
+  act(() => view.result.current.clearContinuationRecovery());
+  expect(view.result.current.consumeContinuationRecovery("follow_up", false)).toBeUndefined();
+  const obsoleteSelection = view.result.current.continueAllocation;
+  act(() => view.result.current.continueAllocation("saved-turn", "answer-opaque"));
+  view.rerender({ requestId: 2 });
+  act(() => obsoleteSelection("saved-turn", "answer-opaque"));
+  expect(view.result.current.consumeContinuationRecovery("follow_up", false)).toBeUndefined();
+});

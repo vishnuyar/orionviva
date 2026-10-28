@@ -1,7 +1,7 @@
 """Re-parse a stored model read with today's code — offline, and free.
 
-Every model read is stored verbatim as a `ReadRecorded` event, so a document's
-response text is already in the vault. With no argument this lists the stored
+Aggregate model reads are stored as `ReadRecorded` events. Scoped extraction
+HTTP responses also retain their exact bytes as nonfinancial audit records. With no argument this lists the stored
 reads; given a doc_id prefix it prints that read's metadata and re-runs today's
 parser and identity check over the stored text, reporting what would happen now:
 POST, HOLD or PARK.
@@ -124,6 +124,22 @@ def main() -> None:
     captured = {e.body["doc_id"]: e.body for e in events
                 if e.event_type == "DocumentCaptured"}
     reads = [e for e in events if e.event_type == "ReadRecorded"]
+    from ..extraction_responses import RESPONSE_EVENT, summary
+    responses = [event for event in events if event.event_type == RESPONSE_EVENT
+                 and (not wanted or event.body.get("doc_id", "").startswith(wanted))]
+    for event in responses:
+        metadata = summary(event)
+        print(f"HTTP response {event.event_id}  doc={metadata['doc_id']}  "
+              f"phase={metadata['phase']}  attempt={metadata['phase_attempt']}  "
+              f"transport={metadata['transport_attempt']}  "
+              f"reported_cost_usd={metadata['cost_usd']}  "
+              f"reported_input={metadata['input_tokens']}  "
+              f"reported_output={metadata['output_tokens']}")
+        if show_raw:
+            import base64
+            raw = base64.b64decode(event.body["response_bytes_base64"], validate=True)
+            print(f"  exact response bytes: {raw!r}")
+
 
     if not wanted:
         print(f"stored reads: {len(reads)} (pass a doc_id prefix to diagnose one)\n")
@@ -131,13 +147,19 @@ def main() -> None:
             b = e.body
             did = b.get("doc_id", "")
             cap = captured.get(did, {})
+            from ..acquisition import local_read
+            if local_read(b):
+                print(f"  {did[:12]}  local-curation-v1  parse_ok={b.get('parse_ok')}  {cap.get('filename','')}")
+                continue
             print(f"  {did[:12]}  {b.get('phase','extract'):<8} "
                   f"{cap.get('doc_type','?'):<22} {b.get('prompt_version',''):<38} "
-                  f"parse_ok={str(b.get('parse_ok')):<5} ${b.get('cost_usd',0):.4f}  "
+                  f"parse_ok={str(b.get('parse_ok')):<5} {_cost_label(b)}  "
                   f"{cap.get('filename','')}")
         return
 
     matches = [e for e in reads if e.body.get("doc_id", "").startswith(wanted)]
+    if not matches and responses:
+        return
     if not matches:
         raise SystemExit(f"No stored read whose doc_id starts with {wanted!r}.")
 
@@ -162,10 +184,14 @@ def main() -> None:
                     break
         print("=" * 78)
         print(f"doc {did[:12]}  {cap.get('filename','')}  ({doc_type})")
-        print(f"  phase={b.get('phase','extract')}  model={b.get('model')}  "
-              f"prompt={b.get('prompt_version')}")
-        print(f"  cost=${b.get('cost_usd',0):.4f}  parse_ok_at_the_time="
-              f"{b.get('parse_ok')}  error={b.get('parse_error')}")
+        from ..acquisition import local_read
+        if local_read(b):
+            print(f"  acquisition=local-curation-v1  parse_ok_at_the_time={b.get('parse_ok')}")
+        else:
+            print(f"  phase={b.get('phase','extract')}  model={b.get('model')}  "
+                  f"prompt={b.get('prompt_version')}")
+            print(f"  cost={_cost_label(b)}  parse_ok_at_the_time="
+                  f"{b.get('parse_ok')}  error={b.get('parse_error')}")
         text = b.get("response_text") or ""
         print(f"  response: {len(text)} chars")
         if b.get("phase") == "classify":
@@ -177,6 +203,12 @@ def main() -> None:
             print("-" * 78)
         print()
         _parse_and_check(doc_type, text, did, locale, currency)
+
+
+
+def _cost_label(body):
+    value = body.get("cost_usd")
+    return "unavailable" if value is None else f"${value:.4f}"
 
 
 if __name__ == "__main__":

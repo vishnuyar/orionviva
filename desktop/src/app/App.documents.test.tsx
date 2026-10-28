@@ -1,3 +1,4 @@
+import { documentsPageFixture } from "./documentsPage.testSupport";
 import { act, fireEvent, render, waitFor, createRef, userEvent,
   afterEach, beforeEach, describe, expect, it, vi, App,
   ConversationDialogShell, moments, sampleVault, SAVED_NO_READER,
@@ -9,7 +10,7 @@ beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("documents", () => {
-  it("sends one document per gesture, reads the vault again, and says only what the vault said", async () => {
+  it("keeps single-file upload and submits a multiple-file drop as one bounded chunk", async () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     const operations: Array<{ operation: string; payload: Record<string, unknown> }> = [];
@@ -19,6 +20,7 @@ describe("documents", () => {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         operations.push({ operation, payload });
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+        if (operation === "viva.documents.upload_many") return { protocol: "1.0", request_id: "bulk", ok: true, result: { job_id: "chunk-1", rows: (payload.paths as string[]).map((_, ordinal) => ({ ordinal, document_id: `saved-${ordinal}`, action: ordinal === 0 ? "awaiting" : "posted", disposition: "read", reason: null })) } as T };
         if (operation === "viva.documents.upload") {
           captured = true;
           return { protocol: "1.0", request_id: "upload", ok: true, result: { kind: "completed", message: SAVED_NO_READER, state: null, reason: null } as T };
@@ -28,14 +30,14 @@ describe("documents", () => {
         const data = surface === "overview_accounts" ? { state: "ready", freshness: "current", lifecycle: "equal", revision: "g-one", overview: { as_of: "2026-08-18", accounts: [] }, accounts: { as_of: "2026-08-18", accounts: [] }, error: "" }
           : surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? (captured
-            ? { documents: [{ id: "captured-identity", doc_type: "statement", filename: "quarter-close.pdf", resolved: false, raw_available: true, reading: "never_read" }], reading_sentence: SAVED_NO_READER }
+            ? { documents: [{ id: "c".repeat(64), doc_type: "statement", filename: "quarter-close.pdf", resolved: false, raw_available: true, reading: "never_read" }], reading_sentence: SAVED_NO_READER }
             : { documents: [], reading_sentence: "" })
             : surface === "conversation" ? { turns: [], questions: [], total: 0, invite: "", answered_by_document: "" }
               : surface === "review" ? reviewEmptyPayload
                 : surface === "trust" ? trustPayload
                 : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
                   : activityPayload;
-        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data: surface === "documents" ? documentsPageFixture(data, (payload.parameters as Record<string, string>)?.selected_document_id) : data } as T };
       },
       pickDocumentPaths: async () => ["/chosen/first.pdf"],
       subscribeToDroppedPaths: async (handler: (paths: readonly string[]) => void) => { listen = handler; return () => { listen = null; }; },
@@ -56,9 +58,13 @@ describe("documents", () => {
 
       // Capture sends one path, then rereads every destination and the job registry.
       await waitFor(() => expect(container.querySelector(".document-library")).toHaveTextContent("quarter-close.pdf"));
-      expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(9).fill("viva.surface.read")]);
+      const selectedReads = operations.filter((frame) => (frame.payload.parameters as Record<string, unknown> | undefined)?.selected_document_id);
+      expect(selectedReads).toHaveLength(1);
+      expect(selectedReads[0].payload).toMatchObject({ surface: "documents", parameters: { contract_version: "documents-page-v1", selected_document_id: "c".repeat(64) } });
+      const ordinaryReads = operations.filter((frame) => !selectedReads.includes(frame));
+      expect(ordinaryReads.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(9).fill("viva.surface.read")]);
       expect(operations[0].payload).toEqual({ path: "/chosen/first.pdf" });
-      expect(operations.slice(1).map((frame) => frame.payload.surface).sort()).toEqual(["activity", "conversation", "documents", "jobs", "overview_accounts", "overview_accounts", "plans", "review", "trust"]);
+      expect(ordinaryReads.slice(1).map((frame) => frame.payload.surface).sort()).toEqual(["activity", "conversation", "documents", "jobs", "overview_accounts", "overview_accounts", "plans", "review", "trust"]);
       expect(getAllByText(SAVED_NO_READER).length).toBeGreaterThan(0);
 
       // A dropped path is the same request from the same screen: a path
@@ -69,15 +75,12 @@ describe("documents", () => {
       await waitFor(() => expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(9).fill("viva.surface.read")]));
       expect(operations[0].payload).toEqual({ path: "/dropped/second.pdf" });
 
-      // More than one document in one gesture is refused in this window,
-      // before anything is sealed, and nothing is sent.
       operations.length = 0;
       await act(async () => { listen?.(["/dropped/third.pdf", "/dropped/fourth.pdf"]); });
-      expect(operations).toEqual([]);
-      const refusal = container.querySelector(".notice");
-      expect(refusal).toHaveTextContent("This takes one document at a time. Nothing was added.");
-      expect(refusal).toHaveAttribute("data-kind", "refused");
-      expect(refusal).toHaveClass("notice-refused");
+      await waitFor(() => expect(getByText("Held: awaiting counterpart")).toBeInTheDocument());
+      expect(operations.filter((frame) => frame.operation === "viva.documents.upload_many")).toEqual([{ operation: "viva.documents.upload_many", payload: { paths: ["/dropped/third.pdf", "/dropped/fourth.pdf"] } }]);
+      expect(operations.filter((frame) => frame.operation === "viva.documents.upload")).toEqual([]);
+      expect(getByText("Posted")).toBeInTheDocument();
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -112,7 +115,7 @@ describe("documents", () => {
         const surface = payload.surface;
         if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };
-        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data: surface === "documents" ? documentsPageFixture(data, (payload.parameters as Record<string, string>)?.selected_document_id) : data } as T };
       },
       pickDocumentPaths: () => picker(),
     };
@@ -150,7 +153,7 @@ describe("documents", () => {
         const surface = payload.surface;
         if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };
-        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data: surface === "documents" ? documentsPageFixture(data, (payload.parameters as Record<string, string>)?.selected_document_id) : data } as T };
       },
       subscribeToDroppedPaths: async (handler: (paths: readonly string[]) => void) => { listen = handler; return () => { listen = null; }; },
     };
@@ -191,7 +194,7 @@ describe("documents", () => {
         const surface = payload.surface;
         if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };
-        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data: surface === "documents" ? documentsPageFixture(data, (payload.parameters as Record<string, string>)?.selected_document_id) : data } as T };
       },
       // A shim that lost its cap. The refusal is at the door both gestures
       // pass through, so nothing is sealed here either.
@@ -263,7 +266,7 @@ describe("documents", () => {
         const surface = payload.surface;
         if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };
-        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data: surface === "documents" ? documentsPageFixture(data, (payload.parameters as Record<string, string>)?.selected_document_id) : data } as T };
       },
       subscribeToDroppedPaths: async (handler: (paths: readonly string[]) => void) => { listen = handler; return () => { listen = null; }; },
     };

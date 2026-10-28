@@ -93,15 +93,25 @@ def dispatch_frame(
         return _error_frame(request_id, "operation_not_allowed", operation)
     if not CURRENT_PROTOCOL.accepts(request_protocol):
         return _error_frame(request_id, "protocol_not_supported", request["protocol"])
+    payload=request["payload"]
+    parameters=payload.get("parameters") if isinstance(payload,dict) else None
+    documents_page=(operation=="viva.surface.read" and payload.get("surface")=="documents"
+        and isinstance(parameters,dict) and parameters.get("contract_version")=="documents-page-v1")
+    def bounded_response(encoded):
+        if not documents_page or len(encoded.encode("utf-8"))<=100000:return encoded
+        limited=_error_frame(request_id,"resource_limit","Documents response exceeds its byte bound")
+        return limited if len(limited.encode("utf-8"))<=100000 else _error_frame("unknown","resource_limit","Documents response exceeds its byte bound")
     try:
         result = handler(request["payload"])
     except ValueError as exc:
-        return _error_frame(request_id, "invalid_request", str(exc))
+        if documents_page and str(exc)=="resource_limit":
+            return bounded_response(_error_frame(request_id,"resource_limit","Documents response exceeds its resource bound"))
+        return bounded_response(_error_frame(request_id, "invalid_request", str(exc)))
     except Exception as exc:  # noqa: BLE001 - the bridge must not die on handler failure.
-        return _error_frame(request_id, "handler_failed", str(exc))
-    return encode_frame({
+        return bounded_response(_error_frame(request_id, "handler_failed", str(exc)))
+    return bounded_response(encode_frame({
         "protocol": CURRENT_PROTOCOL.wire(),
         "request_id": request_id,
         "ok": True,
         "result": result,
-    })
+    }))

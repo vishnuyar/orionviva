@@ -1640,3 +1640,13 @@ a declared account measurement read with a unique account/quantity selector may
 supply it. Both binders verify the same-run measurement and its date/evidence;
 its amount stays supporting execution evidence and is absent from delivered
 figures and written values. Ordinary date bindings retain same-clause grounding.
+
+
+Numerical receipts admit at most 128 figures in one answer and at most 128 from
+each producing tool. This is a general receipt-capacity policy. It preserves
+the existing 32-receipt limit, 262,144-byte per-receipt and 524,288-byte total
+receipt limits, 500 source-record bound, exact same-run typed producer matching,
+source checks, grades and all execution deadlines. A count below 128 does not
+guarantee receipt delivery: the existing byte and source guards still apply.
+This capacity does not establish complete annual-family delivery or change its
+separate tool, binder, financial-source or qualification requirements.

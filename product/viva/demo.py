@@ -33,21 +33,9 @@ def demo_home(base: Path | None = None) -> Path:
 
 
 def open_demo_vault(base: Path | None = None) -> tuple[Any, bool]:
-    """Return the opened sample vault and whether this call created it."""
-    from .vault import Vault, holds_a_vault
-
-    home = demo_home(base)
-    if holds_a_vault(home):
-        vault, made = Vault.open(home, DEMO_PASSPHRASE, create=False), False
-        try:
-            _prepare_demo_read_store(vault)
-        except Exception:
-            vault.close()
-            raise
-    else:
-        home.mkdir(parents=True, exist_ok=True)
-        vault, made = build_demo_vault(home), True
-    return vault, made
+    """Open only the checked, versioned five-year original-document sample."""
+    from .sample.activation import open_ready
+    return open_ready(base)
 
 
 def _prepare_demo_read_store(vault) -> None:

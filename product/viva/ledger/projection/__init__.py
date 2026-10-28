@@ -76,6 +76,8 @@ class LedgerProjection:
     def __init__(self, events: Iterable[Event], as_of: str | None = None,
                  resolve_keys=None) -> None:
         from .measurements import MeasurementSources
+        self.__source_events = list(events)
+        events = tuple(self.__source_events)
         sources = MeasurementSources()
         def with_source_context():
             for event in events:
@@ -84,6 +86,13 @@ class LedgerProjection:
                 yield event
         self._core = ProjectionCore(with_source_context(), as_of, resolve_keys)
         self._core._measurement_sources = sources
+
+    @property
+    def _source_events(self) -> list[Event]:
+        # Exposing mutable source events ends the owner's claim to this basis.
+        from ..ledger import _revoke_projection
+        _revoke_projection(self)
+        return self.__source_events
 
     @property
     def core(self) -> ProjectionCore:
@@ -98,6 +107,14 @@ class LedgerProjection:
 
     def apply(self, event: Event) -> None:
         """Fold one event into the projection (respecting an as_of horizon)."""
+        from ..ledger import _revoke_projection
+        _revoke_projection(self)
+        self.__source_events.append(event)
+        if (event.event_type == "InstrumentObservationRecorded" and event.body.get("record", {}).get("prior_id")) or (
+                event.event_type == 'ReadRecorded' and any(hasattr(allocation,'receipt')
+                    for allocation in self._core._instrument_allocations.values())):
+            self._core = LedgerProjection(self._source_events, self.as_of, self._core._resolve_keys)._core
+            return
         if self.as_of is None or event.occurred_at <= self.as_of:
             self._core._measurement_sources.apply(event)
         self._core.apply(event)
@@ -145,6 +162,16 @@ class LedgerProjection:
     def account_info(self, account: str) -> AccountInfo:
         return _accounts.account_info(self._core, account)
 
+    def instrument_allocations(self):
+        return dict(self._core._instrument_allocations)
+
+    def instrument_component_states(self):
+        return dict(self._core._instrument_component_states)
+
+    def account_restrictions(self):
+        from ..instruments import account_restrictions
+        return account_restrictions(self._core)
+
     def account_infos(self) -> list[AccountInfo]:
         return _accounts.account_infos(self._core)
 
@@ -156,9 +183,11 @@ class LedgerProjection:
 
     def resolve(self, institution: str, account_number: str, account_ref: str,
                 names: list[str], kind: str = "depository",
-                doc_id: str = "") -> Resolution:
+                doc_id: str = "", *, currency: str = "",
+                source_identity=None) -> Resolution:
         return _accounts.resolve(self._core, institution, account_number,
-                                 account_ref, names, kind, doc_id)
+                                 account_ref, names, kind, doc_id,
+                                 currency=currency, source_identity=source_identity)
 
     def _own_account_tokens(self) -> dict[str, set[str]]:
         return _accounts.own_account_tokens(self._core)
@@ -198,6 +227,9 @@ class LedgerProjection:
 
     def captured_docs(self) -> dict[str, str]:
         return _coverage.captured_docs(self._core)
+
+    def document_acquisitions(self) -> dict[str, dict]:
+        return {key: dict(value) for key, value in self._core._acquisitions.items()}
 
     def captured_filenames(self) -> dict[str, str]:
         return _coverage.captured_filenames(self._core)
@@ -496,8 +528,9 @@ class LedgerProjection:
         return _positions.account_value(self._core, account)
 
     def composed_values(self, account: str,
-                        as_of: str = "") -> list[ComposedValue]:
-        return _positions.composed_values(self._core, account, as_of)
+                        as_of: str = "", *, source_capture=None) -> list[ComposedValue]:
+        return _positions.composed_values(self._core, account, as_of,
+                                         source_capture=source_capture)
 
     def unrealized_gain(self, account: str | None = None) -> Decimal | None:
         return _positions.unrealized_gain(self._core, account)

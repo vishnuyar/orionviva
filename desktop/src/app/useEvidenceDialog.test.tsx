@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from "react";
+import { useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -244,4 +244,72 @@ describe("evidence dialog behavior", () => {
       frames.restore();
     }
   });
+});
+
+function DisclosureHarness({children, closeHidden=false}: {children:ReactNode; closeHidden?:boolean}) {
+ const drawer=useRef<HTMLElement>(null);const close=useRef<HTMLButtonElement>(null);const title=useRef<HTMLHeadingElement>(null);
+ useEvidenceDialog({open:true,drawerRef:drawer,initialFocusRef:close,pageTitleRef:title,onDismiss:vi.fn()});
+ return <><h1 ref={title} tabIndex={-1}>Disclosure page</h1><aside ref={drawer} role="dialog" aria-label="Disclosure evidence" tabIndex={-1}><button ref={close} hidden={closeHidden}>Disclosure close</button>{children}</aside></>;
+}
+function pressTab(element:HTMLElement,shiftKey=false){element.focus();const event=new KeyboardEvent("keydown",{key:"Tab",shiftKey,bubbles:true,cancelable:true});element.dispatchEvent(event);return event;}
+describe("native evidence disclosures",()=>{
+ it.each([false,true])("allows native forward traversal from first summary when open=%s",(open)=>{
+  const view=render(<DisclosureHarness><details open={open}><summary>Source collection</summary><button>Disclosure source</button></details><button>Following action</button></DisclosureHarness>);
+  const summary=view.getByText("Source collection");const event=pressTab(summary);expect(event.defaultPrevented).toBe(false);expect(summary).toHaveFocus();
+ });
+ it("wraps backward to closed summary rather than its hidden descendant",()=>{
+  const view=render(<DisclosureHarness><details><summary>Source collection</summary><button>Hidden final source</button></details></DisclosureHarness>);
+  const close=view.getByRole("button",{name:"Disclosure close"});const summary=view.getByText("Source collection");const event=pressTab(close,true);expect(event.defaultPrevented).toBe(true);expect(summary).toHaveFocus();expect(view.getByText("Hidden final source")).not.toHaveFocus();
+ });
+});
+describe("native disclosure boundaries",()=>{
+ it("leaves default movement between ordinary controls and a summary to the browser",()=>{
+  const view=render(<DisclosureHarness><button>Before collection</button><details><summary>Collection summary</summary><button>Closed content</button></details><button>After collection</button></DisclosureHarness>);
+  for(const name of ["Before collection","Collection summary","After collection"]){const node=view.getByText(name);const event=pressTab(node,name==="After collection");expect(event.defaultPrevented).toBe(false);expect(node).toHaveFocus();}
+  const event=pressTab(view.getByText("After collection"));expect(event.defaultPrevented).toBe(true);expect(view.getByText("Disclosure close")).toHaveFocus();
+ });
+ it("recomputes boundary targets when a disclosure opens and closes",()=>{
+  const view=render(<DisclosureHarness><details><summary>Dynamic collection</summary><button>Dynamic source</button></details></DisclosureHarness>);
+  const close=view.getByText("Disclosure close");const summary=view.getByText("Dynamic collection");const details=summary.parentElement!;const source=view.getByText("Dynamic source");
+  pressTab(close,true);expect(summary).toHaveFocus();details.setAttribute("open","");pressTab(close,true);expect(source).toHaveFocus();
+  const forward=pressTab(source);expect(forward.defaultPrevented).toBe(true);expect(close).toHaveFocus();details.removeAttribute("open");pressTab(close,true);expect(summary).toHaveFocus();
+  const summaryForward=pressTab(summary);expect(summaryForward.defaultPrevented).toBe(true);expect(close).toHaveFocus();
+ });
+ it("excludes descendants hidden by every closed details ancestor",()=>{
+  const view=render(<DisclosureHarness><details><summary>Outer summary</summary><details open><summary>Inner summary</summary><button>Nested source</button></details></details></DisclosureHarness>);
+  const close=view.getByText("Disclosure close");const outer=view.getByText("Outer summary").parentElement!;const inner=view.getByText("Inner summary").parentElement!;
+  pressTab(close,true);expect(view.getByText("Outer summary")).toHaveFocus();outer.setAttribute("open","");pressTab(close,true);expect(view.getByText("Nested source")).toHaveFocus();
+  inner.removeAttribute("open");pressTab(close,true);expect(view.getByText("Inner summary")).toHaveFocus();outer.removeAttribute("open");pressTab(close,true);expect(view.getByText("Outer summary")).toHaveFocus();
+ });
+ it("retains exposed controls inside the first summary subtree of a closed ancestor",()=>{
+  const view=render(<DisclosureHarness><details><summary>Linked summary <a href="#source">Summary link</a></summary><button>Unexposed source</button></details></DisclosureHarness>);
+  pressTab(view.getByText("Disclosure close"),true);expect(view.getByRole("link",{name:"Summary link"})).toHaveFocus();
+ });
+ it("uses the first direct summary even when another child precedes it and ignores later default summaries",()=>{
+  const view=render(<DisclosureHarness><details><span>Introduction</span><summary>First native summary</summary><summary>Later summary</summary><button>Closed source</button></details></DisclosureHarness>);
+  pressTab(view.getByText("Disclosure close"),true);expect(view.getByText("First native summary")).toHaveFocus();
+  view.getByText("First native summary").parentElement!.setAttribute("open","");view.getByText("Closed source").setAttribute("hidden","");pressTab(view.getByText("Disclosure close"),true);expect(view.getByText("First native summary")).toHaveFocus();
+ });
+ it.each(["-1","-2"," -3 "])("does not target a native summary with negative tabindex %s",(tabIndex)=>{
+  const view=render(<DisclosureHarness><button>Prior eligible action</button><details><summary>Excluded summary</summary><button>Closed source</button></details></DisclosureHarness>);
+  view.getByText("Excluded summary").setAttribute("tabindex",tabIndex);pressTab(view.getByText("Disclosure close"),true);expect(view.getByText("Prior eligible action")).toHaveFocus();
+ });
+ it.each(["hidden","inert","aria-hidden","display","visibility","disabled"])("retains %s exclusion on native summaries",(reason)=>{
+  const view=render(<DisclosureHarness><button>Prior eligible action</button><details><summary>Excluded summary</summary><button>Closed source</button></details></DisclosureHarness>);
+  const summary=view.getByText("Excluded summary");
+  if(reason==="display")summary.style.display="none";else if(reason==="visibility")summary.style.visibility="hidden";else summary.setAttribute(reason,reason==="aria-hidden"?"true":"");
+  pressTab(view.getByText("Disclosure close"),true);expect(view.getByText("Prior eligible action")).toHaveFocus();
+ });
+ it("falls back to the dialog when all summaries and actions are ineligible and recaptures outside focus",()=>{
+  const view=render(<DisclosureHarness closeHidden><details><summary tabIndex={-2}>Excluded first summary</summary><summary>Later default summary</summary><button>Hidden source</button></details></DisclosureHarness>);
+  const drawer=view.getByRole("dialog",{name:"Disclosure evidence"});expect(drawer).toHaveFocus();const event=pressTab(drawer);expect(event.defaultPrevented).toBe(true);expect(drawer).toHaveFocus();fireEvent.focus(view.getByText("Disclosure page"));expect(drawer).toHaveFocus();
+ });
+ it("does not invent a stop for summary-less details or a standalone summary",()=>{
+  const view=render(<DisclosureHarness><button>Prior eligible action</button><details><button>Hidden source</button></details><summary>Standalone summary</summary></DisclosureHarness>);
+  pressTab(view.getByText("Disclosure close"),true);expect(view.getByText("Prior eligible action")).toHaveFocus();
+ });
+ it("preserves explicit sequential tabindex on a later summary without changing ordinary native-control policy",()=>{
+  const view=render(<DisclosureHarness><details open><summary>First native summary</summary><summary tabIndex={0}>Explicit later summary</summary></details><button tabIndex={-2}>Ordinary native action</button></DisclosureHarness>);
+  pressTab(view.getByText("Disclosure close"),true);expect(view.getByText("Ordinary native action")).toHaveFocus();view.getByText("Ordinary native action").setAttribute("hidden","");pressTab(view.getByText("Disclosure close"),true);expect(view.getByText("Explicit later summary")).toHaveFocus();
+ });
 });

@@ -23,6 +23,7 @@ _CAVEATS = {
     "income_interrupted": "current_period_income_interrupted",
 }
 _EXCLUSIONS = {
+    "account_restricted": "current_period_exclusion_restricted",
     "account_not_depository": "current_period_exclusion_not_depository",
     "account_not_issuer": "current_period_exclusion_not_issuer",
     "account_currency_unstated": "current_period_exclusion_currency_unstated",

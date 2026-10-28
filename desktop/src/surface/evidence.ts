@@ -1,4 +1,4 @@
-import type { AccountView, CurrentPeriodSliceView, DocumentsData, EvidenceLink, FeatureResult, FigureGrade, FigureMeasure, FigureView, ProofPresentation, SurfaceDocument, SurfaceSnapshot, TurnFigure, UnmeasuredAccount, NumericalFigure, NumericalReceipt } from "./types";
+import type { AccountView, CurrentPeriodSliceView, DocumentsData, DocumentDetailResolution, EvidenceLink, FeatureResult, FigureGrade, FigureMeasure, FigureView, ProofPresentation, SurfaceDocument, SurfaceSnapshot, TurnFigure, UnmeasuredAccount, NumericalFigure, NumericalReceipt } from "./types";
 
 export type GradePresentation = { grade: FigureGrade; label: string; description: string };
 
@@ -33,7 +33,7 @@ export type FigurePrecision =
 // did not, in which case the composed forms below stand in.
 export type EvidenceFigureView = Readonly<{ numericalQuestion?: string; numerical?: NumericalFigure; numericalReceipts?: readonly NumericalReceipt[]; receiptState?: "ready" | "unavailable" | "legacy"; id: string; label: string; actionLabel: string; heading: string; variant: "net-worth" | "account-balance" | "account-liability" | "account-unknown" | "activity-income" | "activity-spending" | "current-period" | "conversation"; display: string; measure: FigureMeasure | null; currency: FieldAvailability<string>; grade: GradePresentation; precision: FigurePrecision; asOf: FieldAvailability<string>; coverage: FieldAvailability<readonly string[]>; unmeasured: readonly UnmeasuredAccount[]; evidenceDates: FieldAvailability<readonly string[]>; recordIds: FieldAvailability<readonly string[]>; accountIds: FieldAvailability<readonly string[]>; provenance: FieldAvailability<string>; caveats: readonly string[]; evidenceLinks: readonly EvidenceLink[] }>;
 export type EvidenceFigureResolution = { state: "ready"; figure: EvidenceFigureView } | { state: "missing" } | { state: "conflicted" };
-export type EvidenceTargetResolution = { state: "ready"; document: SurfaceDocument } | { state: "missing_identity" } | { state: "documents_unavailable" } | { state: "missing_document" } | { state: "conflicted_identity" };
+export type EvidenceTargetResolution = { state: "ready"; document: SurfaceDocument } | { state: "missing_identity" } | { state: "documents_unavailable" } | { state: "pending" } | { state: "missing_document" } | { state: "conflicted_identity" };
 
 const missingAmount = "Amount unavailable from this preview read.";
 function field(value: string | null | undefined): FieldAvailability<string> { return value && value.trim() ? { state: "supplied", value } : { state: "unavailable" }; }
@@ -95,13 +95,28 @@ export function resolveEvidenceFigure(snapshot: SurfaceSnapshot, figureId: strin
   if (matches.length > 1) return { state: "conflicted" };
   return { state: "ready", figure: matches[0] };
 }
-export function resolveEvidenceTarget(result: FeatureResult<DocumentsData>, targetDocumentId: string): EvidenceTargetResolution {
+export function resolveEvidenceTarget(result: FeatureResult<DocumentsData>, targetDocumentId: string, independentDetail?: DocumentDetailResolution): EvidenceTargetResolution {
+  if (independentDetail?.id === targetDocumentId) {
+    if (independentDetail.state === "ready" && independentDetail.document?.id === targetDocumentId) return { state: "ready", document: independentDetail.document };
+    if (independentDetail.state === "missing") return { state: "missing_document" };
+    if (independentDetail.state === "conflicted_identity") return { state: "conflicted_identity" };
+    if (independentDetail.state === "pending") return { state: "pending" };
+  }
   if (!targetDocumentId.trim()) return { state: "missing_identity" };
   const data = dataOf(result); if (!data) return { state: "documents_unavailable" };
+  if (data.contractVersion === "documents-page-v1") {
+    const detail = data.selectedDocument;
+    if (detail?.id === targetDocumentId) {
+      if (detail.state === "ready" && detail.document?.id === targetDocumentId) return { state: "ready", document: detail.document };
+      if (detail.state === "missing") return { state: "missing_document" };
+      if (detail.state === "conflicted_identity") return { state: "conflicted_identity" };
+      if (detail.state === "unavailable") return { state: "documents_unavailable" };
+    }
+  }
   const matches = data.documents.filter((document) => document.id === targetDocumentId);
-  if (!matches.length) return { state: "missing_document" };
-  if (matches.length > 1) return { state: "conflicted_identity" };
-  return { state: "ready", document: matches[0] };
+  if (!matches.length) return { state: data.contractVersion === "documents-page-v1" ? "pending" : "missing_document" };
+  if (matches.length > 1 || matches[0]?.identityConflict) return { state: "conflicted_identity" };
+  return data.contractVersion === "documents-page-v1" || matches[0]?.detailRequiresLookup ? { state: "pending" } : { state: "ready", document: matches[0] };
 }
 
 export function documentById(documents: SurfaceDocument[], id: string): SurfaceDocument | undefined {

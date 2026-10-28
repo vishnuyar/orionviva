@@ -264,6 +264,7 @@ def current_period(revision, *, today: str, horizon_days: int = 30,
     evidence = evidence_as_of or today
     balances = revision._goal_account_balances(as_of=evidence, limit=MAX_CURRENT_PERIOD_ACCOUNTS)
     reserved = revision._goal_reservations_by_account(as_of=evidence)
+    restrictions = revision.account_restrictions(as_of=evidence)
     by_currency, exclusions = {}, []
     for account_id in sorted(balances):
         row = balances[account_id]
@@ -271,7 +272,8 @@ def current_period(revision, *, today: str, horizon_days: int = 30,
             continue
         reason = ("account_not_depository" if row["kind"] != "depository" else
                   "account_not_issuer" if row["origin"] != "issued" else
-                  "account_currency_unstated" if not row["currency"] else "")
+                  "account_currency_unstated" if not row["currency"] else
+                  "account_restricted" if account_id in restrictions else "")
         if reason:
             exclusions.append(ProjectionExclusion("account", account_id, reason,
                                                   row["currency"], account_ids=(account_id,)))
@@ -348,6 +350,11 @@ def current_period(revision, *, today: str, horizon_days: int = 30,
             remaining -= amount
             if not remaining: break
     for item in expected:
+        if any(account in restrictions for account in item[9]):
+            exclusions.append(ProjectionExclusion(
+                item[0], item[1], "account_restricted", item[5],
+                item[7], item[8], item[9]))
+            continue
         if item[5] in by_currency: by_currency[item[5]]["expected"].append(item)
     slices = []
     for currency, bucket in sorted(by_currency.items()):

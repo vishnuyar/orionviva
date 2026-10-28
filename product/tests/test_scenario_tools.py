@@ -409,7 +409,7 @@ def test_packaged_schemas_include_all_reviewed_scenario_contracts_and_repayment(
     from viva.answer_program.intents import SemanticFamilyRegistry
     from viva.answer_program.schema import _generated_program_json_schema,program_json_schema
     from viva.tools.registry import PACKAGE
-    assert versions.active(PACKAGE,'semantic_request_schema')=='semantic-request-schema-v14'
+    assert versions.active(PACKAGE,'semantic_request_schema')=='semantic-request-schema-v19'
     assert json.loads(versions.path_of(PACKAGE,versions.active(PACKAGE,'semantic_request_schema')).read_text())==SemanticFamilyRegistry().output_schema()
     assert program_json_schema()==_generated_program_json_schema()
     assert 'repayment' in json.dumps(program_json_schema())

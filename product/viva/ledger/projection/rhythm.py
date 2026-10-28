@@ -181,15 +181,20 @@ def _flows_by_merchant(core: ProjectionCore) -> dict:
     The rail is not in the key: a rhythm is confirmed at the counterparty, so
     the movements a hypothesis is measured over are the same movements a ruling
     would speak about. Movements a live transfer link proves are between the
-    person's own accounts are absent, and so is any movement whose date will
-    not parse.
+    person's own accounts are absent, as are authenticated instrument principal
+    movements and escrow deposits and any movement whose date will not parse.
 
     Movements a slot declared a person on are absent too, whatever they do:
     with no flow there is no hypothesis, no question and no subject a ruling
     could be written under.
     """
+    internal_keys = {key for key, _account, _state, line in movements_view._enumerated(core)
+                     if core._instrument_cash_roles.get(line.transaction_id)
+                     in {"principal", "escrow_deposit"}}
     groups: dict[tuple, list] = {}
     for m in movements_view.movements(core):
+        if m.key in internal_keys:
+            continue
         if getattr(m, "linked", False):
             continue
         if merchants_view.is_person(core, m):

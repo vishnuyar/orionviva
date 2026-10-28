@@ -1,0 +1,334 @@
+"""Locked-prefix noncash observation append and immutable replay validation."""
+from dataclasses import dataclass,replace
+from decimal import Decimal, localcontext
+from viva.ledger.events import Event,Provenance
+from viva.ledger.postings import brokerage_activity_transaction,brokerage_cash_effect
+from viva.ledger.projection import LedgerProjection
+from .contracts import *
+
+STATEMENT='InvestmentActivityStatementObserved'
+ROW='InvestmentActivityRowObserved'
+CHANGE='InvestmentEvidenceChanged'
+
+@dataclass(frozen=True)
+class LockedEventPrefix:
+ event_count: int
+ last_event_id: str
+ prefix_digest: str
+
+
+def _json_primitives(value):
+ # The authenticated event wire is already JSON. Avoid allocating a second
+ # recursive dataclass encoding, but retain its exact semantics for all other
+ # Python values through the original canonical encoder below.
+ kind=type(value)
+ if value is None or kind in (str,int,bool):return True
+ if kind is float:return math.isfinite(value)
+ if kind in (tuple,list):return all(_json_primitives(item) for item in value)
+ if kind is dict:return all(type(key) is str and _json_primitives(item) for key,item in value.items())
+ return False
+
+
+def prefix(events):
+ values=tuple(e.to_dict() for e in events)
+ if _json_primitives(values):
+  encoded=json.dumps(values,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False).encode('utf-8')
+  identity=sha256(encoded).hexdigest()
+ else:identity=digest(values)
+ return LockedEventPrefix(len(events),events[-1].event_id if events else '',identity)
+
+
+def accepted(*fields):
+ return all(type(f) is Field and f.status=='accepted' and f.grade!='conflicted' for f in fields)
+
+
+def all_fields(value):
+ if type(value) is Field: return (value,)
+ if is_dataclass(value): return tuple(f for item in fields(value) for f in all_fields(getattr(value,item.name)))
+ if type(value) is tuple: return tuple(f for item in value for f in all_fields(item))
+ return ()
+
+
+def validate_cash(statement,row,events_by_id,copy_row=None,copy_source_document=None):
+ event=events_by_id.get(row.cash_event_id)
+ if event is None or event.event_type!='TransactionRecorded' or digest(event.body)!=row.cash_body_digest:
+  raise EvidenceError('cash dependency missing or changed')
+ if event.occurred_at!=row.date.value:raise EvidenceError('cash date mismatch')
+ if copy_row is None:
+  if event.provenance.doc_id!=row.amount.document:raise EvidenceError('cash/source lineage mismatch')
+ elif (event.provenance.doc_id!=(copy_source_document or copy_row.amount.document) or row.cash_event_id!=copy_row.cash_event_id or row.cash_body_digest!=copy_row.cash_body_digest):
+  raise EvidenceError('corroborating cash/source lineage mismatch')
+ expected=brokerage_activity_transaction(statement.account.value,row.kind.value,row.amount.value,row.description,row.date.value,
+  instrument=row.instrument.value if row.instrument else '',realized_gain=row.realized_gain.value if row.realized_gain is not None and accepted(row.realized_gain) else None).body
+ from .identity import number
+ def normalized(body):
+  body={k:v for k,v in body.items() if k!='description'}
+  body['postings']=[{**p,'amount':number(p['amount'],True)} for p in body['postings']]
+  return body
+ if row.kind.value=='sell' and (row.realized_gain is None or not accepted(row.realized_gain)):
+  from viva.ledger.postings import ASSET_INVESTMENTS,INCOME_CAPITAL_GAINS
+  legs=event.body.get('postings',())
+  cash=[p for p in legs if p.get('account')==statement.account.value]
+  counters=[p for p in legs if p.get('account')!=statement.account.value]
+  if len(cash)!=1 or decimal(cash[0]['amount'],True)!=decimal(row.amount.value) or not counters or len(counters)>2 or len({p.get('account') for p in counters})!=len(counters) or any(p.get('account') not in (ASSET_INVESTMENTS,INCOME_CAPITAL_GAINS) for p in counters) or ASSET_INVESTMENTS not in {p.get('account') for p in counters} or sum((decimal(p['amount'],True) for p in legs),Decimal(0))!=0:
+   raise EvidenceError('sale proceeds cash dependency mismatch')
+ elif normalized(event.body)!=normalized(expected): raise EvidenceError('cash activity components mismatch')
+ if not accepted(row.date,row.kind,row.amount): raise EvidenceError('required cash fields unavailable')
+ if row.instrument is not None and not accepted(row.instrument): raise EvidenceError('security identifier unavailable')
+ return event
+
+
+def validate_funding(statement,row,by_id,resolve_reference,effective_as_of="9999-12-31",*,_context=None):
+ if row.kind.value!='contribution': return
+ if not accepted(row.funding_role_source) or row.funding_role_source.value!=row.funding_role:
+  raise EvidenceError('funding role source unavailable')
+ if row.funding_role=='reinvestment': return
+ witness=row.funding_witness
+ if row.funding_role=='unknown' or witness is None:
+  raise EvidenceError('funding witness unavailable')
+ if not accepted(row.funding_role_source,row.funding_reference,row.counterpart_reference,witness.reference,witness.counterpart_reference):
+  raise EvidenceError('funding source fields unavailable')
+ if row.funding_role_source.value!=row.funding_role or row.funding_role!=witness.role or row.funding_reference.value!=witness.reference.value or row.counterpart_reference.value!=witness.counterpart_reference.value:
+  raise EvidenceError('funding reference disagreement')
+ if witness.payroll_dependency is not None:
+  from .payroll import validate_payroll_funding
+  validate_payroll_funding(statement,row,by_id,effective_as_of,_context=_context)
+  return
+ if witness.role in ('other_broker','retirement_rollover'):
+  from .funding import bind_investment
+  fields={'printed_reference':row.funding_reference,'counterpart_reference':row.counterpart_reference,'date':row.date,'amount':row.amount,'funding_role':row.funding_role_source}
+  rebound=bind_investment(fields,tuple(by_id.values()),destination_account=statement.account.value,destination_reference=replace(statement.account,value=statement.account.raw),currency=statement.currency.value,effective_as_of=effective_as_of,_context=_context,preferred_witness=witness)
+  if not rebound or rebound['funding_witness']!=witness:raise EvidenceError('investment funding witness is changed or ambiguous')
+ elif resolve_reference(row.counterpart_reference)!=witness.counterpart_account:
+  raise EvidenceError('funding counterpart identity mismatch')
+ event=by_id.get(witness.transaction_id)
+ if event is None or event.event_type!='TransactionRecorded' or digest(event.body)!=witness.transaction_digest:
+  raise EvidenceError('funding cash dependency missing or changed')
+ accounts=[e for e in by_id.values() if e.event_type=='AccountOpened' and e.body.get('account_id')==witness.counterpart_account]
+ if not accounts or accounts[-1].body.get('currency')!=statement.currency.value:
+  raise EvidenceError('funding account currency unavailable')
+ required_kind='investment' if witness.role in ('other_broker','retirement_rollover') else 'depository'
+ if accounts[-1].body.get('kind')!=required_kind:raise EvidenceError('funding account role mismatch')
+ if witness.source_row_event_id:
+  source_row=by_id.get(witness.source_row_event_id)
+  if source_row is None or source_row.event_type!=ROW:raise EvidenceError('funding source row unavailable')
+  source_statement=next((e for e in by_id.values() if e.event_type==STATEMENT and e.body.get('observation_id')==source_row.body.get('statement_id')),None)
+  if source_statement is None or witness.source_row_event_id not in source_statement.body.get('row_event_ids',()):raise EvidenceError('funding source coverage unavailable')
+  source=decode_statement(source_statement.body['statement']);opposing=decode_row(source_row.body['row'])
+  if not source.disposition.startswith('accepted_complete') or source.account.value!=witness.counterpart_account or source.currency.value!=statement.currency.value:raise EvidenceError('funding source coverage mismatch')
+  if opposing.cash_event_id!=event.event_id or opposing.cash_body_digest!=witness.transaction_digest or opposing.kind.value!='withdrawal' or not accepted(opposing.funding_reference) or opposing.funding_reference.value!=witness.reference.value:raise EvidenceError('funding source row/cash mismatch')
+ elif event.body.get('source_reference')!=witness.reference.value or witness.role in ('other_broker','retirement_rollover'):
+  raise EvidenceError('funding printed reference not linked to cash')
+ if event.body.get('counterparty_reference') and (not statement.account.raw or event.body['counterparty_reference']!=statement.account.raw):raise EvidenceError('funding destination reference mismatch')
+ if event.provenance.doc_id!=witness.reference.document or event.occurred_at!=row.date.value:
+  raise EvidenceError('funding lineage mismatch')
+ legs=[p for p in event.body.get('postings',()) if p.get('account')==witness.counterpart_account]
+ if len(legs)!=1 or Decimal(legs[0]['amount'])!=decimal(row.amount.value).copy_negate():
+  raise EvidenceError('funding counterpart cash mismatch')
+
+
+def validate_statement(statement,events,resolve_reference=lambda field: None,known=None,verify_funding=True):
+ if type(statement) is not Statement: raise EvidenceError('typed statement required')
+ by_id={e.event_id:e for e in events}
+ if len(by_id)!=len(events): raise EvidenceError('duplicate committed event ID')
+ for field in (statement.account,statement.currency,statement.start,statement.end,statement.opening_cash,statement.closing_cash,statement.explicit_empty,statement.printed_reference,statement.as_of):
+  if field is not None and field.document!=statement.account.document:raise EvidenceError('header field belongs to another source capture')
+ for row in statement.rows:
+  for name in ('date','kind','amount','instrument','realized_gain','printed_reference','namespace','funding_reference','counterpart_reference','funding_role_source'):
+   field=getattr(row,name)
+   if field is not None and field.document!=statement.account.document:raise EvidenceError('row field belongs to another source capture')
+ for position in statement.positions:
+  if any(field is not None and field.document!=statement.account.document for field in (position.identifier,position.units,position.value,position.basis,position.label)):raise EvidenceError('position field belongs to another source capture')
+ if not accepted(statement.account,statement.currency,statement.start,statement.end): raise EvidenceError('header evidence unavailable')
+ account_events=[e for e in events if e.event_type=='AccountOpened' and e.body.get('account_id')==statement.account.value]
+ if not account_events or account_events[-1].body.get('kind')!='investment' or account_events[-1].body.get('currency')!=statement.currency.value:
+  raise EvidenceError('canonical investment account/currency unavailable')
+ for position in statement.positions:
+  if not position.position_event_id or not position.position_body_digest:raise EvidenceError('position dependency unavailable')
+  if position.position_event_id:
+   observed=by_id.get(position.position_event_id)
+   if observed is None or observed.event_type!='PositionObserved' or digest(observed.body)!=position.position_body_digest:raise EvidenceError('position dependency missing or changed')
+   permitted_document=position.identifier.document
+   if statement.corroborates is not None:
+    known=_validated_statements(events,resolve_reference) if known is None else known
+    prior_source=next((source for source in known if source.observation_id==statement.corroborates),None)
+    prior_position=next((p for p in prior_source.positions if p.security_id==position.security_id),None) if prior_source else None
+    if prior_position is None or not prior_position.position_event_id:raise EvidenceError('copy position dependency mismatch')
+    if (prior_position.position_event_id,prior_position.position_body_digest)==(position.position_event_id,position.position_body_digest):permitted_document=observed.provenance.doc_id
+    elif observed.provenance.doc_id!=position.identifier.document:raise EvidenceError('copy position dependency mismatch')
+   if observed.provenance.doc_id!=permitted_document or observed.occurred_at!=statement.end.value or observed.body.get('account_id')!=statement.account.value or observed.body.get('currency')!=statement.currency.value:raise EvidenceError('position dependency scope mismatch')
+   if observed.body.get('instrument') not in {position.identifier.value,position.label.value if position.label else ''}:raise EvidenceError('position source label mismatch')
+   for field,key in ((position.units,'units'),(position.value,'market_value'),(position.basis,'cost_basis')):
+    if field is not None and accepted(field) and (observed.body.get(key) in (None,'') or decimal(field.value,True)!=decimal(observed.body[key],True)):raise EvidenceError('position measurement dependency mismatch')
+  if not accepted(position.identifier) or position.security_id!=security_identity(statement.account.value,position.identifier.value):
+   raise EvidenceError('security identity is not local to the accepted account and identifier')
+ copy_rows={};copy_documents={}
+ if statement.corroborates is not None:
+  from .identity import match_copy_rows,cash_source_document
+  known=_validated_statements(events,resolve_reference) if known is None else known
+  prior=next((s for s in known if s.observation_id==statement.corroborates),None)
+  if prior is None or prior.account.document==statement.account.document:raise EvidenceError('corroborating source unavailable')
+  copy_rows=match_copy_rows(statement,prior)
+  copy_documents={identifier:cash_source_document(prior,row,known) for identifier,row in copy_rows.items()}
+ if statement.disposition.startswith('accepted_complete'):
+  if not accepted(statement.opening_cash,statement.closing_cash): raise EvidenceError('cash coverage unavailable')
+  if statement.disposition=='accepted_complete_empty':
+   if statement.rows or not accepted(statement.explicit_empty) or statement.explicit_empty.value!='true': raise EvidenceError('explicit empty coverage unavailable')
+  elif not statement.rows: raise EvidenceError('empty rows do not establish coverage')
+  with localcontext() as ctx:
+   ctx.prec=128
+   total=decimal(statement.opening_cash.value)
+   for row in statement.rows:
+    validate_cash(statement,row,by_id,copy_rows.get(row.observation_id),copy_documents.get(row.observation_id))
+    if verify_funding and row.funding_status=='accepted':validate_funding(statement,row,by_id,resolve_reference)
+    total+=brokerage_cash_effect(row.kind.value,row.amount.value)
+   if total!=decimal(statement.closing_cash.value): raise EvidenceError('cash coverage does not reconcile')
+ return by_id
+
+
+def certify_funding(statement,events,resolve_reference):
+ by_id={e.event_id:e for e in events};rows=[]
+ for row in statement.rows:
+  status='unavailable'
+  if row.kind.value=='contribution' and row.funding_role!='unknown':
+   try:validate_funding(statement,row,by_id,resolve_reference)
+   except EvidenceError:status='conflicted'
+   else:status='accepted'
+  rows.append(replace(row,funding_status=status))
+ return replace(statement,rows=tuple(rows))
+
+
+def append_statement(ledger,statement,resolve_reference=lambda field: None,changes=()):
+ return append_from_source(ledger,lambda events:statement,resolve_reference,changes)
+
+
+def append_from_source(ledger,build_statement,resolve_reference=lambda field:None,changes=()):
+ """Append only evidence records after checking the store's locked event tuple."""
+ with ledger._lock:
+  complete=[]
+  def decide(events):
+   statement=build_statement(events)
+   if statement is None:
+    complete.extend(events);return ()
+   current_changes=changes(events,statement) if callable(changes) else changes
+   from .identity import bind_corroborating_copy
+   from .lifecycle import SourceIndex,SourceChange,CHANGE
+   known=_validated_statements(events,resolve_reference)
+   index=SourceIndex(events,known)
+   if type(current_changes) is not tuple or len(current_changes)>2 or len({c.facet for c in current_changes})!=len(current_changes) or any(type(c) is not SourceChange or c.replacement_id!=statement.observation_id for c in current_changes):raise EvidenceError("invalid local source revision batch")
+   active=tuple(selection.statement for selection in index.project("activity",statement.end.value,resolve_reference) if selection.status=="accepted")
+   prior={e.body.get('observation_id'):e for e in events if e.event_type==STATEMENT}
+   if not current_changes and statement.observation_id not in prior:statement=bind_corroborating_copy(statement,active,events)
+   statement=certify_funding(statement,events,resolve_reference)
+   validate_statement(statement,events,resolve_reference,known)
+   witness=prefix(events)
+   if statement.observation_id in prior:
+    if prior[statement.observation_id].body.get('statement')!=encode(statement): raise EvidenceError('observation ID collision')
+    attached=prior[statement.observation_id].body.get('source_change_event_ids',[])
+    by_id={event.event_id:event for event in events}
+    if [by_id[event_id].body['change'] for event_id in attached]!=[encode(change) for change in current_changes]:raise EvidenceError('source observation decision collision')
+    complete.extend(events);return ()
+   for change in current_changes:index.validate_new(change,statement)
+   by_observation={e.body.get('row',{}).get('observation_id') for e in events if e.event_type==ROW}
+   if any(r.observation_id in by_observation for r in statement.rows): raise EvidenceError('row observation ID collision')
+   additions=tuple(Event(ROW,statement.end.value,{'statement_id':statement.observation_id,'row':encode(row)},Provenance(doc_id=row.amount.document,page=row.amount.page)) for row in statement.rows)
+   change_events=tuple(Event(CHANGE,change.effective,{'change':encode(change),'statement_event_id':''}) for change in current_changes)
+   statement_event=Event(STATEMENT,statement.end.value,{'schema_version':'investment-evidence-v1','observation_id':statement.observation_id,'statement':encode(statement),'prefix':encode(witness),'row_event_ids':[e.event_id for e in additions],'source_change_event_ids':[e.event_id for e in change_events]},Provenance(doc_id=statement.account.document,page=statement.account.page))
+   for event in change_events:event.body['statement_event_id']=statement_event.event_id
+   additions+=(statement_event,*change_events)
+   complete.extend(events);complete.extend(additions)
+   return additions
+  records=ledger.store.append_atomically(decide)
+  ledger._proj=LedgerProjection(complete,resolve_keys=ledger._resolve_keys)
+  ledger._projection_identity=ledger.store._cached_identity()
+  return records
+
+
+def decode_field(data):
+ if type(data) is not dict or set(data)!={f.name for f in fields(Field)}: raise EvidenceError('invalid stored source field')
+ return Field(**data)
+
+
+def decode_row(data):
+ if type(data) is not dict or set(data)!={f.name for f in fields(Row)}: raise EvidenceError('invalid stored row')
+ data=dict(data)
+ for name in ('date','kind','amount','instrument','realized_gain','printed_reference','namespace','funding_reference','counterpart_reference','funding_role_source'):
+  if data[name] is not None: data[name]=decode_field(data[name])
+ if data['funding_witness'] is not None:
+  w=dict(data['funding_witness'])
+  if 'payroll_dependency' not in w:w['payroll_dependency']=None
+  if w['payroll_dependency'] is not None:
+   from .payroll import decode_dependency
+   w['payroll_dependency']=decode_dependency(w['payroll_dependency'])
+  w['reference']=decode_field(w['reference']);w['counterpart_reference']=decode_field(w['counterpart_reference'])
+  data['funding_witness']=FundingWitness(**w)
+ return Row(**data)
+
+
+def decode_statement(data):
+ if type(data) is not dict or set(data)!={f.name for f in fields(Statement)}: raise EvidenceError('invalid stored statement')
+ data=dict(data)
+ for name in ('account','currency','start','end','opening_cash','closing_cash','explicit_empty','printed_reference','as_of'):
+  if data[name] is not None: data[name]=decode_field(data[name])
+ data['rows']=tuple(decode_row(r) for r in data['rows'])
+ positions=[]
+ for p in data['positions']:
+  p=dict(p)
+  for name in ('identifier','units','value','basis','label'):
+   if p[name] is not None:p[name]=decode_field(p[name])
+  positions.append(Position(**p))
+ data['positions']=tuple(positions)
+ return Statement(**data)
+
+
+def _validated_statements(events,resolve_reference=lambda field:None):
+ """Replay only atomic observations whose dependency prefixes still exist."""
+ by_id={e.event_id:e for e in events};out=[];observation_ids=set();row_ids=set()
+ for index,event in enumerate(events):
+  if event.event_type!=STATEMENT: continue
+  body=event.body
+  if body.get('schema_version')!='investment-evidence-v1': raise EvidenceError('unknown source observation version')
+  witness=body.get('prefix',{});count=witness.get('event_count')
+  if type(count) is not int or not 0<=count<=index or encode(prefix(events[:count]))!=witness:
+   raise EvidenceError('source dependency prefix mismatch')
+  statement=decode_statement(body['statement'])
+  if statement.observation_id in observation_ids or any(row.observation_id in row_ids for row in statement.rows):raise EvidenceError('duplicate permanent source observation identity')
+  observation_ids.add(statement.observation_id);row_ids.update(row.observation_id for row in statement.rows)
+  if statement.observation_id!=body.get('observation_id'): raise EvidenceError('source observation identity mismatch')
+  ids=body.get('row_event_ids')
+  if type(ids) is not list or len(ids)!=len(statement.rows) or len(set(ids))!=len(ids): raise EvidenceError('row dependency closure mismatch')
+  for row,event_id in zip(statement.rows,ids):
+   observed=by_id.get(event_id)
+   if observed is None or observed not in events[count:index] or observed.event_type!=ROW or observed.body!={'statement_id':statement.observation_id,'row':encode(row)}:
+    raise EvidenceError('missing atomic row observation')
+  change_ids=body.get('source_change_event_ids',[])
+  if type(change_ids) is not list or len(change_ids)>2 or len(set(change_ids))!=len(change_ids):raise EvidenceError('invalid atomic source change closure')
+  for offset,event_id in enumerate(change_ids,1):
+   if index+offset>=len(events) or events[index+offset].event_id!=event_id or events[index+offset].event_type!=CHANGE or events[index+offset].body.get('statement_event_id')!=event.event_id:raise EvidenceError('missing atomic source revision decision')
+  validate_statement(statement,events[:count],resolve_reference,tuple(out),verify_funding=False)
+  out.append(statement)
+ return tuple(out)
+
+
+def source_index(events,resolve_reference=lambda field:None):
+ from .lifecycle import SourceIndex
+ return SourceIndex(events,_validated_statements(events,resolve_reference))
+
+
+def committed_statements(events,resolve_reference=lambda field:None,effective_as_of="9999-12-31",facet="activity"):
+ selected=source_index(events,resolve_reference).project(facet,effective_as_of,resolve_reference)
+ return tuple(replace(s.statement,disposition="conflicted") if s.status in ("pending","dependency_unavailable") and facet=="activity" else s.statement for s in selected)
+
+
+def retract_source(ledger,change,resolve_reference=lambda field:None):
+ from .lifecycle import SourceChange,CHANGE
+ if type(change) is not SourceChange or change.replacement_id is not None:raise EvidenceError('typed source retraction required')
+ with ledger._lock:
+  complete=[]
+  def decide(events):
+   index=source_index(events,resolve_reference);index.validate_new(change)
+   event=Event(CHANGE,change.effective,{'change':encode(change),'statement_event_id':None,'prefix':encode(prefix(events))})
+   complete.extend(events);complete.append(event);return (event,)
+  records=ledger.store.append_atomically(decide)
+  ledger._proj=LedgerProjection(complete,resolve_keys=ledger._resolve_keys);ledger._projection_identity=ledger.store._cached_identity()
+  return records

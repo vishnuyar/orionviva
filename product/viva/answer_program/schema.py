@@ -14,7 +14,7 @@ from ..query.schema import financial_query_json_schema
 from ..tools.shape import (MAGNITUDE_TYPES, MEASURED_TYPES, PLAIN_TYPES, SCOPES,
                            Shape, quantities_of, read_shape)
 
-QUESTION_CONTEXT_VERSION = "question-context-v1"
+QUESTION_CONTEXT_VERSION = "question-context-v2"
 # The program schema and compiler prompt are separately versioned release
 # artifacts. Improving model instructions must not silently mint a new wire
 # contract.
@@ -28,7 +28,7 @@ NODE_KINDS = ("tool_read", "resolve_entity", "compute", "financial_query",
               "conditional")
 IMPORTANCE = ("required", "supporting", "optional")
 CARDINALITIES = ("one", "all")
-REFERENCE_KINDS = ("figure", "entity", "period", "date", "date_of", "measurement_date_of", "read",
+REFERENCE_KINDS = ("allocation_target", "instrument_date", "instrument_text", "instrument_normalized", "figure", "entity", "period", "date", "date_of", "measurement_date_of", "read",
                    "read_figures", "read_labels", "supposed")
 
 
@@ -66,10 +66,21 @@ class QuestionContext:
     shape_version: str = ""
     resource_policy_version: str = RESOURCE_POLICY_VERSION
     context_version: str = QUESTION_CONTEXT_VERSION
+    question_id: str = ""
+    allocation_selection_ids: tuple[str,...] = ()
+
+    def __post_init__(self):
+        from ..instrument_claims import bounded_id
+        if self.question_id:bounded_id(self.question_id,"current question")
+        values=self.allocation_selection_ids
+        if type(values) is not tuple or len(values)>32 or len(set(values))!=len(values):raise ContractError("invalid current allocation selection IDs")
+        for value in values:bounded_id(value,"current allocation selection")
 
     def to_dict(self) -> dict:
         return {
             "context_version": self.context_version,
+            "question_id": self.question_id,
+            "allocation_selection_ids": list(self.allocation_selection_ids),
             "question": self.question,
             "prior_turns": [{"question": q, "answer": a}
                             for q, a in self.prior_turns],
@@ -88,10 +99,11 @@ class QuestionContext:
         fields = ("context_version", "question", "prior_turns", "today", "locale",
                   "currency_convention", "capability_manifest_version",
                   "capability_manifest_digest", "program_version", "shape_version",
-                  "resource_policy_version")
+                  "resource_policy_version", "question_id", "allocation_selection_ids")
         _strict(data, fields, fields, "QuestionContext")
         if data["context_version"] != QUESTION_CONTEXT_VERSION:
             raise ContractError("unsupported QuestionContext version")
+        if type(data["allocation_selection_ids"]) is not list:raise ContractError("current allocation selection IDs must be an array")
         prior = data["prior_turns"]
         if not isinstance(prior, list):
             raise ContractError("QuestionContext.prior_turns must be an array")
@@ -108,7 +120,9 @@ class QuestionContext:
                    program_version=str(data["program_version"]),
                    shape_version=str(data["shape_version"]),
                    resource_policy_version=str(data["resource_policy_version"]),
-                   context_version=str(data["context_version"]))
+                   context_version=str(data["context_version"]),
+                   question_id=str(data["question_id"]),
+                   allocation_selection_ids=tuple(data["allocation_selection_ids"]))
 
 
 @dataclass(frozen=True)
@@ -202,6 +216,7 @@ class ProgramNode:
 @dataclass(frozen=True)
 class BindingSelector:
     quantity: str = ""
+    claim: str = ""
     scope: tuple[str, ...] = ()
     entity_kind: str = ""
     entity_ref: dict = field(default_factory=dict)
@@ -212,7 +227,7 @@ class BindingSelector:
 
     def to_dict(self) -> dict:
         out = {"cardinality": self.cardinality}
-        for name in ("quantity", "entity_kind", "currency", "order"):
+        for name in ("quantity", "claim", "entity_kind", "currency", "order"):
             if getattr(self, name):
                 out[name] = getattr(self, name)
         if self.scope:
@@ -225,7 +240,7 @@ class BindingSelector:
 
     @classmethod
     def from_dict(cls, data: dict) -> "BindingSelector":
-        fields = ("quantity", "scope", "entity_kind", "entity_ref", "currency",
+        fields = ("quantity", "claim", "scope", "entity_kind", "entity_ref", "currency",
                   "order", "limit", "cardinality")
         _strict(data, fields, ("cardinality",), "binding.selector")
         if data["cardinality"] not in CARDINALITIES:
@@ -238,7 +253,7 @@ class BindingSelector:
         if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool)
                                   or limit <= 0):
             raise ContractError("selector.limit must be a positive integer")
-        return cls(quantity=str(data.get("quantity", "")), scope=scope,
+        return cls(quantity=str(data.get("quantity", "")), claim=str(data.get("claim", "")), scope=scope,
                    entity_kind=str(data.get("entity_kind", "")),
                    entity_ref=dict(entity_ref), currency=str(data.get("currency", "")),
                    order=str(data.get("order", "")), limit=limit,
@@ -381,6 +396,7 @@ def _generated_program_json_schema() -> dict[str, Any]:
             "required": ["id", "kind", "depends_on", "importance"]}
     selector = {"type": "object", "additionalProperties": False,
                 "properties": {"quantity": {"type": "string"},
+                               "claim": {"type": "string"},
                                "scope": {"type": "array",
                                          "items": {"type": "string"}},
                                "entity_kind": {"type": "string"},

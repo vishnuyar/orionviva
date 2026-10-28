@@ -255,6 +255,10 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "approx_amount":            frozenset({"amount"}),
     "approx_count":             frozenset({"count"}),
     "approx_rate":              frozenset({"rate"}),
+    "approx_percentage_points": frozenset({"points"}),
+    "gap_percentage_points": frozenset(),
+    "gap_instrument_text": frozenset(),
+    "gap_instrument_normalized": frozenset(),
     # A figure the person themselves put into the turn rests on their premise
     # and on no record of theirs, and it is written saying so. A stretch of
     # time they named is not a figure at all, and is not written as one.
@@ -275,6 +279,8 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # imply the whole. One line per way a set can fall short of what the figure
     # claims to measure.
     "boundary_accounts":           frozenset({"counted", "held"}),
+    "boundary_selected_account_set": frozenset({"plans"}),
+    "card_boundary_selected_account_set": frozenset({"plans"}),
     "boundary_selected_account":   frozenset({"account"}),
     "boundary_selected_category":  frozenset({"category"}),
     "boundary_selected_merchant":  frozenset({"merchant"}),
@@ -287,6 +293,8 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "boundary_selected_subcategory": frozenset({"subcategory"}),
     "boundary_selected_tag":         frozenset({"tag"}),
     "boundary_selected_currency":    frozenset({"currency"}),
+    "boundary_selected_security": frozenset({"security"}),
+    "card_boundary_selected_security": frozenset({"security"}),
     "boundary_selected_kind":        frozenset({"kind"}),
     "boundary_unmeasured":         frozenset({"account"}),
     # A gap no account can name: a document read and not posted may be about an
@@ -386,6 +394,30 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # than the whole of what it covers.
     #
     # A run states this for an answer, over every money figure the answer stated.
+    'source_grade_figures_target_verified': frozenset(),
+    'source_grade_figures_target_corroborated': frozenset(),
+    'source_grade_figures_target_unverified': frozenset(),
+    'source_grade_figures_target_conflicted': frozenset(),
+    'source_grade_figures_hypothetical_verified': frozenset(),
+    'source_grade_figures_hypothetical_corroborated': frozenset(),
+    'source_grade_figures_hypothetical_unverified': frozenset(),
+    'source_grade_figures_hypothetical_conflicted': frozenset(),
+    'source_grade_figures_mixed_verified': frozenset(),
+    'source_grade_figures_mixed_corroborated': frozenset(),
+    'source_grade_figures_mixed_unverified': frozenset(),
+    'source_grade_figures_mixed_conflicted': frozenset(),
+    'source_grade_assertions_target_verified': frozenset(),
+    'source_grade_assertions_target_corroborated': frozenset(),
+    'source_grade_assertions_target_unverified': frozenset(),
+    'source_grade_assertions_target_conflicted': frozenset(),
+    'source_grade_assertions_hypothetical_verified': frozenset(),
+    'source_grade_assertions_hypothetical_corroborated': frozenset(),
+    'source_grade_assertions_hypothetical_unverified': frozenset(),
+    'source_grade_assertions_hypothetical_conflicted': frozenset(),
+    'source_grade_assertions_mixed_verified': frozenset(),
+    'source_grade_assertions_mixed_corroborated': frozenset(),
+    'source_grade_assertions_mixed_unverified': frozenset(),
+    'source_grade_assertions_mixed_conflicted': frozenset(),
     "stood_behind_verified":     frozenset(),
     "stood_behind_corroborated": frozenset(),
     "stood_behind_unverified":   frozenset(),
@@ -491,6 +523,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # finished, and an identity nothing ever minted. They are told apart
     # because a stop that quietly succeeds against nothing tells a person
     # their work ended when nothing was ever asked.
+    "jobs_stopping_reads":             frozenset(),
     "jobs_stopped":                    frozenset(),
     "jobs_stopped_capture":            frozenset(),
     "jobs_already_settled":            frozenset(),
@@ -531,6 +564,13 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # rather than being described by the nearest one. The last two are absences
     # the read carries rather than a screen composing them: what this record
     # does not cover, and that nothing outside this machine holds a hash of it.
+    "outbound_extraction_response_count": frozenset({"count"}),
+    "outbound_extraction_orphan_count": frozenset({"count"}),
+    "outbound_extraction_unknown_cost_count": frozenset({"count"}),
+    "outbound_extraction_response_input": frozenset({"count"}),
+    "outbound_extraction_response_output": frozenset({"count"}),
+    "outbound_extraction_unknown_usage_count": frozenset({"count"}),
+    "outbound_extraction_known_cost": frozenset({"amount"}),
     "outbound_none":                   frozenset(),
     "outbound_some":                   frozenset(),
     "outbound_scope":                  frozenset(),
@@ -721,6 +761,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "current_period_conflicted_balance": frozenset(),
     "current_period_income_interrupted": frozenset(),
     "current_period_exclusion_not_depository": frozenset(),
+    "current_period_exclusion_restricted": frozenset(),
     "current_period_exclusion_not_issuer": frozenset(),
     "current_period_exclusion_currency_unstated": frozenset(),
     "current_period_exclusion_income_unqualified": frozenset(),

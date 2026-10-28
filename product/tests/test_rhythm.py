@@ -1194,3 +1194,199 @@ def test_requested_every_sentence_of_a_rhythm_question_comes_from_the_pack(tmp_p
             say("rhythm_prior_period_monthly"), say("rhythm_ask")]
     assert q["text"] == " ".join(said)
     assert q["why"] == say("rhythm_why_prior")
+
+
+def _principal_public_facts(source_id, *, advance=False):
+    import copy
+    import hashlib
+    import json
+    from pathlib import Path
+    from viva.rebuild import _parse_claim
+    from viva.normalization_context import ExtractionNormalizationContext, encode_context
+    from vivacore.verify.normalize import RULES_VERSION
+
+    fixture = Path(__file__).resolve().parents[1] / 'viva/sample_data/five-year-life-v1/readings.json'
+    readings = json.loads(fixture.read_text())['readings']
+    row = next(row for row in readings if row['document_id'] == source_id)
+    payload = copy.deepcopy(row['envelope']['parser_input'])
+    if advance:
+        payload['principal_movements'][0]['kind'] = 'advance'
+    doc_id = (hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+              if advance else row['document_sha256'])
+    body = {'response_text': json.dumps(payload), 'normalization_context': encode_context(
+        ExtractionNormalizationContext(1, RULES_VERSION, row['locale'], row['currency']))}
+    facts, error, _context = _parse_claim(row['doc_type'], body, doc_id, None, None, page_count=1)
+    assert facts is not None and error is None
+    return facts
+
+
+def _principal_recurrence_events(*, advance=False, mode='principal'):
+    from viva.ingest.instrument_projector import _flow
+    from viva.ledger.events import Posting, Provenance, transaction_recorded
+    from viva.ledger.merchants import normalize_merchant
+
+    account = 'Liabilities:PUBLIC_LOAN' if mode == 'principal' else 'Assets:PUBLIC_CHECKING'
+    kind = 'liability' if mode == 'principal' else 'depository'
+    events = [account_opened(account, kind, 'Public relationship', 'USD', '2021-01-01'),
+              account_opened('Transfers:Instrument', 'equity', 'Public counterpart', 'USD', '2021-01-01')]
+    if mode == 'payroll':
+        for source_id in ('D0001', 'D0015', 'D0028'):
+            facts = _principal_public_facts(source_id)
+            events.append(transaction_recorded(
+                [Posting(account, facts.net), Posting('Income:PUBLIC_PAYROLL', -facts.net)],
+                'PUBLIC_PAYROLL', facts.pay_date,
+                provenance=Provenance(doc_id=facts.doc_id, page=facts.net_page)))
+    else:
+        for source_id in ('D0012', 'D0025', 'D0038'):
+            facts = _principal_public_facts(source_id, advance=advance)
+            row = facts.payload.principal_movements[0]
+            if mode == 'principal':
+                amount = row.amount.value if advance else -row.amount.value
+                events.append(_flow(account, amount, 'PUBLIC_PRINCIPAL', row.dated.value,
+                                    row.amount.source, 'principal', kind=kind))
+            else:
+                events.append(transaction_recorded(
+                    [Posting(account, Decimal('-25')), Posting('Expenses:PUBLIC_SERVICE', Decimal('25'))],
+                    'PUBLIC_SERVICE', row.dated.value,
+                    provenance=Provenance(doc_id=facts.doc_id, page=row.amount.source.page)))
+    description = 'PUBLIC_PAYROLL' if mode == 'payroll' else 'PUBLIC_PRINCIPAL' if mode == 'principal' else 'PUBLIC_SERVICE'
+    events.append(merchant_enriched(normalize_merchant(description), 'Public category',
+        occurred_at='2021-01-01', by='public-fixture', attributes={
+            'counterparty_kind': 'business', 'billing': 'standing', 'billing_period': 'monthly'}))
+    if mode == 'settlement':
+        projection = LedgerProjection(events)
+        for movement in projection.movements():
+            events.append(ruling_recorded('movement', movement.key, movement.date, by='human',
+                legs=[{'major': 'liability', 'account': 'Liabilities:PUBLIC_OTHER'}]))
+    return events
+
+
+@pytest.mark.parametrize('advance', [False, True])
+def test_principal_source_movements_never_create_recurrence_or_quiet_findings(advance):
+    import copy
+    from dataclasses import asdict
+    from viva.ledger.accounting import financial_statements
+
+    events = _principal_recurrence_events(advance=advance)
+    original = copy.deepcopy(events)
+    projection = LedgerProjection(events)
+    movements = [asdict(movement) for movement in projection.movements()]
+    balance = projection.running_balance('Liabilities:PUBLIC_LOAN')
+    report = financial_statements(projection)
+    assert len(movements) == 3 and all(m['nature'] == 'settlement' for m in movements)
+    assert all(event.body['instrument_role'] == 'principal' for event in events
+               if event.event_type == 'TransactionRecorded')
+    assert balance == sum((movement['amount'] for movement in movements), Decimal('0'))
+    assert projection.rhythm_hypotheses() == []
+    assert not any(f.kind in ('income_interrupted', 'expected_outflow_missing', 'recurring_obligation')
+                   for f in projection.findings('2021-05-20'))
+    assert projection.obligations('2021-04-28') == []
+    assert [asdict(movement) for movement in projection.movements()] == movements
+    assert projection.running_balance('Liabilities:PUBLIC_LOAN') == balance
+    assert financial_statements(projection) == report
+    assert events == original
+
+
+@pytest.mark.parametrize('mode', ['payroll', 'expense', 'settlement'])
+def test_nonprincipal_recurrence_retains_real_income_expense_and_settlement(mode):
+    events = _principal_recurrence_events(mode=mode)
+    projection = LedgerProjection(events)
+    assert not projection.core._instrument_cash_roles
+    assert len(projection.rhythm_hypotheses()) == 1
+    hypothesis = projection.rhythm_hypotheses()[0]
+    assert hypothesis.count == 3 and hypothesis.direction == ('in' if mode == 'payroll' else 'out')
+    findings = projection.findings('2021-05-20')
+    expected = 'income_interrupted' if mode == 'payroll' else 'expected_outflow_missing'
+    assert any(f.kind == expected for f in findings)
+    if mode == 'settlement':
+        assert all(movement.nature == 'settlement' for movement in projection.movements())
+
+
+def _escrow_dispatched_store(tmp_path, *, mixed=False):
+    from viva.ingest.instrument_projector import post_instrument
+    from viva.ledger.events import document_captured
+    from viva.ledger.merchants import normalize_merchant
+
+    store = EventStore.open(tmp_path / 'escrow-events.jsonl', 'public escrow recurrence')
+    ledger = Ledger(store)
+    for source_id in ('D0012', 'D0025', 'D0038'):
+        facts = _principal_public_facts(source_id)
+        ledger.append(document_captured(facts.doc_id, source_id + '.pdf', 1,
+                                       facts.doc_type, 1.0, '2021-01-01'))
+        assert post_instrument(ledger, facts).action in {'posted', 'awaiting'}
+    if mixed:
+        for mode in ('payroll', 'expense'):
+            events = _principal_recurrence_events(mode=mode)
+            for event in events:
+                ledger.append(event)
+    for description in {m.description for m in ledger.projection().movements()}:
+        ledger.append(merchant_enriched(normalize_merchant(description), 'Public category',
+            occurred_at='2021-01-01', by='public-fixture', attributes={
+                'counterparty_kind': 'business', 'billing': 'standing', 'billing_period': 'monthly'}))
+    return store
+
+
+@pytest.mark.parametrize('mixed', [False, True])
+def test_full_dispatched_escrow_deposits_never_create_income_or_obligation(tmp_path, mixed):
+    import copy
+    from dataclasses import asdict
+    from viva.ledger.accounting import financial_statements
+    from viva.ledger.projection.movements import _enumerated
+
+    store = _escrow_dispatched_store(tmp_path, mixed=mixed)
+    events = list(store.events())
+    original = copy.deepcopy(events)
+    projection = LedgerProjection(events)
+    keys = {key for key, _account, _state, line in _enumerated(projection.core)
+            if projection.core._instrument_cash_roles.get(line.transaction_id) in
+            {'principal', 'escrow_deposit'}}
+    assert len(keys) == 6
+    deposits = [event for event in events if event.event_type == 'TransactionRecorded'
+                and event.body.get('instrument_role') == 'escrow_deposit']
+    assert len(deposits) == 3
+    restrictions = projection.account_restrictions()
+    assert any(row.family == 'escrow' and row.restriction == 'restricted_escrow'
+               and row.status == 'accepted' for row in restrictions.values())
+    before = ([asdict(m) for m in projection.movements()], financial_statements(projection),
+              {a: projection.running_balance(a) for a in projection.accounts()}, restrictions)
+    hypotheses = projection.rhythm_hypotheses()
+    assert len(hypotheses) == (2 if mixed else 0)
+    assert not any(keys.intersection(h.movements) for h in hypotheses)
+    findings = projection.findings('2021-05-20')
+    assert sum(f.kind == 'income_interrupted' for f in findings) == (1 if mixed else 0)
+    assert sum(f.kind == 'expected_outflow_missing' for f in findings) == (1 if mixed else 0)
+    assert len(projection.obligations('2021-04-28')) == (1 if mixed else 0)
+    assert before == ([asdict(m) for m in projection.movements()], financial_statements(projection),
+                      {a: projection.running_balance(a) for a in projection.accounts()},
+                      projection.account_restrictions())
+    assert events == original
+
+
+def _other_instrument_role_events(role):
+    import hashlib
+    from viva.ingest.instrument_contracts import Source
+    from viva.ingest.instrument_projector import _flow
+
+    incoming = role in {'term_interest', 'term_redemption'}
+    events = [account_opened('Assets:PUBLIC_ROLE', 'depository', 'Public role', 'USD', '2021-01-01')]
+    for dated in ('2021-01-28', '2021-02-28', '2021-03-28'):
+        source = Source(hashlib.sha256(('synthetic-role-' + role + dated).encode()).hexdigest(), 1)
+        events.append(_flow('Assets:PUBLIC_ROLE', Decimal('25') if incoming else Decimal('-25'),
+                            'PUBLIC_ROLE', dated, source, role))
+    events.append(merchant_enriched('public role', 'Public category', occurred_at='2021-01-01',
+        by='public-fixture', attributes={'counterparty_kind': 'business',
+        'billing': 'standing', 'billing_period': 'monthly'}))
+    return events
+
+
+@pytest.mark.parametrize('role', ['term_interest', 'term_fee', 'refinance_fee',
+                                  'escrow_tax', 'escrow_insurance', 'escrow_adjustment',
+                                  'term_funding', 'term_redemption'])
+def test_other_closed_instrument_roles_keep_existing_recurrence(role):
+    projection = LedgerProjection(_other_instrument_role_events(role))
+    hypotheses = projection.rhythm_hypotheses()
+    incoming = role in {'term_interest', 'term_redemption'}
+    assert len(hypotheses) == 1 and hypotheses[0].count == 3
+    assert hypotheses[0].direction == ('in' if incoming else 'out')
+    expected = 'income_interrupted' if incoming else 'expected_outflow_missing'
+    assert any(f.kind == expected for f in projection.findings('2021-05-20'))

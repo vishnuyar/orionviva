@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BridgeRefusal, BridgeTimeout, OPEN_REFUSALS } from "../bridge/contracts";
+import { BridgeRefusal, BridgeTimeout, OPEN_REFUSALS, type SamplePreparation } from "../bridge/contracts";
 import { privateSource, sampleSource } from "../surface/sources";
 import type { SessionCoordination } from "./useSessionState";
 import type { useSessionReads } from "./useSessionReads";
@@ -50,6 +50,9 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
     sourceIdentity,
   } = context;
   const opening = useRef(false);
+  const [samplePreparation, setSamplePreparation] = useState<SamplePreparation | null>(null);
+  const samplePreparationGeneration = useRef(0);
+  useEffect(() => () => { samplePreparationGeneration.current += 1; }, []);
   const [closingVault, setClosingVault] = useState(false);
   const [rememberedVaultDirectory, setRememberedVaultDirectory] = useState("");
   const [automaticOpenTimedOut, setAutomaticOpenTimedOut] = useState(false);
@@ -89,6 +92,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
   }, [hostBridge]);
 
   return {
+    samplePreparation,
     rememberedVaultDirectory,
     automaticOpenTimedOut,
     hostAvailable: Boolean(hostBridge),
@@ -100,6 +104,7 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
     closingVault,
     async openVault(vaultDirectory: string, passphrase: string, create: boolean) {
       if (!hostBridge || opening.current) return false;
+      setSamplePreparation(null);
       opening.current = true;
       sourceIdentity.current?.endPreview?.();
       const nextRequestId = ++requestId.current;
@@ -147,17 +152,33 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
       activityFocus.current = "";
       ++surfaceRevision.current;
       dispatch({ type: "opening", requestId: nextRequestId });
+      const preparationGeneration = ++samplePreparationGeneration.current;
+      const currentPreparation = () => preparationGeneration === samplePreparationGeneration.current && requestId.current === nextRequestId;
+      setSamplePreparation(null);
       let frame;
       try {
+        if (hostBridge.prepareSampleVault) {
+          let preparation = await hostBridge.prepareSampleVault();
+          while (currentPreparation()) {
+            setSamplePreparation(preparation);
+            if (preparation.state === "failed") throw new Error("sample_preparation_failed");
+            if (preparation.state === "ready") break;
+            if (!hostBridge.readSamplePreparation) throw new Error("sample_preparation_unavailable");
+            await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+            if (!currentPreparation()) break;
+            preparation = await hostBridge.readSamplePreparation();
+          }
+          if (!currentPreparation()) { opening.current = false; return false; }
+        }
         frame = await hostBridge.openSampleVault();
       } catch (failure) {
         // Sample-open failures omit directory-specific sidecar messages.
-        const said = failure instanceof BridgeTimeout && failure.mayHaveWritten ? "Opening the sample vault stopped answering and may already have changed which vault is active. Close and reopen the sample vault before continuing. OrionViva did not retry the open." : "";
-        if (requestId.current === nextRequestId) dispatch({ type: "open-failed", requestId: nextRequestId, said });
+        const said = failure instanceof BridgeTimeout && failure.mayHaveWritten ? "Opening the sample vault stopped answering and may already have changed which vault is active. Close and reopen the sample vault before continuing. OrionViva did not retry the open." : "The five-year sample is not ready. Preparation could not be completed. Try again to check it.";
+        if (currentPreparation()) dispatch({ type: "open-failed", requestId: nextRequestId, said });
         opening.current = false;
         return false;
       }
-      if (requestId.current !== nextRequestId) { opening.current = false; return false; }
+      if (!currentPreparation()) { opening.current = false; return false; }
       // A sample vault requires its sidecar-supplied frame before opening the shell.
       if (!frame) { dispatch({ type: "open-failed", requestId: nextRequestId, said: "" }); opening.current = false; return false; }
       const source = sampleSource(hostBridge, frame);
@@ -194,6 +215,8 @@ export function useVaultLifecycle(context: Coordination, { readOpenedSource }: P
       } finally { opening.current = false; setClosingVault(false); }
     },
     resetDemo() {
+      samplePreparationGeneration.current += 1;
+      setSamplePreparation(null);
       sourceIdentity.current?.endPreview?.();
       const nextRequestId = ++requestId.current;
       sourceIdentity.current = null;

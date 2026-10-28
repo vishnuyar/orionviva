@@ -199,6 +199,7 @@ def test_all_desktop_routes_trace_only_capped_or_identity_scoped_sql_reads(
     bounded_without_literal_limit = (
         "FROM account_entities e WHERE e.account_id=",  # one existence result
         "SELECT COUNT(*) FROM movements",  # one aggregate result
+        "SELECT COUNT(*) FROM document_library d WHERE EXISTS(SELECT 1 FROM instrument_component_states s INDEXED BY instrument_components_by_document, json_each(",  # exact revision-wide attention count; one scalar, guarded JSON + current frontier
         "FROM accounts a WHERE a.event_type=",  # bounded account-id IN set
         "FROM balance_observations b WHERE b.event_type=",  # same IN set
         "FROM postings p JOIN transactions t ON t.source_sequence=p.source_sequence",

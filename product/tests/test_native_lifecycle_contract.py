@@ -8,6 +8,7 @@ CI. They intentionally assert behaviour, not a particular process wrapper.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).parents[2]
@@ -19,13 +20,8 @@ def _source() -> str:
     return HOST.read_text()
 
 
-def _function_body(source: str, name: str) -> str:
-    """Return a Rust function body without assuming its internal layout."""
-    start = source.find(f"fn {name}")
-    assert start >= 0, f"native host is missing {name}"
-    opening = source.find("{", start)
-    assert opening >= 0, f"{name} has no function body"
-
+def _block_end(source: str, opening: int) -> int:
+    assert opening >= 0 and source[opening] == "{", "missing lexical block"
     depth = 0
     for index in range(opening, len(source)):
         if source[index] == "{":
@@ -33,8 +29,43 @@ def _function_body(source: str, name: str) -> str:
         elif source[index] == "}":
             depth -= 1
             if depth == 0:
-                return source[opening:index + 1]
-    raise AssertionError(f"{name} has an unclosed function body")
+                return index + 1
+    raise AssertionError("unclosed lexical block")
+
+
+def _function_body(source: str, name: str) -> str:
+    """Require the named owner, never a prefix match or missing helper."""
+    matches = list(re.finditer(r"\bfn\s+" + re.escape(name) + r"(?=\s*[<(])", source))
+    assert len(matches) == 1, f"native host must declare exactly one {name}"
+    opening = source.find("{", matches[0].end())
+    assert opening >= 0, f"{name} has no function body"
+    return source[opening:_block_end(source, opening)]
+
+
+def _compact(source: str) -> str:
+    return re.sub(r"\s+", "", source)
+
+
+def _request_owner(source: str) -> str:
+    wrapper = _compact(_function_body(source, "request_bridge_with"))
+    assert wrapper == (
+        "{request_bridge_with_owner(app,state,frame,spawn,policy,"
+        "before_failed_identity_clear,None,)}"
+    ), "compatibility wrapper must delegate without a bulk ticket"
+    return _function_body(source, "request_bridge_with_owner")
+
+
+def _assert_write_uncertainty(branch: str, label: str) -> None:
+    compact = _compact(branch)
+    declaration = (
+        'letuncertainty=ifoperation_may_have_written(operation){'
+        '"Outcomeunknown;checkthevaultbeforetryingagain."}else{""};'
+    )
+    position = compact.find(declaration)
+    assert position >= 0, f"{label} must declare its own write uncertainty"
+    assert "{uncertainty}" in compact[position + len(declaration):], (
+        f"{label} must include its uncertainty in the returned error"
+    )
 
 
 def test_native_host_gracefully_reaps_the_owned_sidecar_on_shutdown():
@@ -54,21 +85,48 @@ def test_native_host_gracefully_reaps_the_owned_sidecar_on_shutdown():
 
 def test_native_host_discards_a_broken_child_and_supports_explicit_recovery():
     source = _source()
-    request = _function_body(source, "request_bridge_with")
+    request = _request_owner(source)
     restart = _function_body(source, "restart")
+    compact = _compact(request)
 
-    # A dead child can fail on write, flush, read, or invalid output. The host
-    # must clear the cached process before the user initiates recovery. It must
-    # not automatically replay a request because a write could have reached
-    # the sidecar before the failure was observed.
+    # Inspect the actual owner; an uncertain write must never be replayed.
     assert "shutdown_current(&mut process)" in request
     assert "bridge_restart" in source
     assert "shutdown_current(&mut process)" in restart
     assert "ensure_bridge(app, &mut process, spawn, &state.next_generation)" in request
-    assert "request_process(&bridge" in request
-    assert "can_replay_after_recovery" in request
-    assert "claim_read_recovery" in request
-    assert "operation_may_have_written" in request
+    assert "request_process_owned(&bridge,&request_id,&encoded,policy(operation),ticket.clone(),)" in compact
+    assert "letcleanup_error=ifis_current{shutdown_current(&mutprocess).err()}else{None};" in compact
+    assert "Arc::ptr_eq(&current.child,&bridge.child)" in compact
+    assert "letwill_recover=cleanup_error.is_none()&&attempt==0&&can_replay_after_recovery(operation,recovery.as_ref())&&claim_read_recovery(&state.read_recovery_claimed);" in compact
+    # Each actual result arm owns its warning; a token in the other arm cannot
+    # satisfy the stale-success or failed-request uncertainty contract.
+    success_start = request.find("Ok(response) => {")
+    assert success_start >= 0, "successful response arm is required"
+    success_open = request.find("{", success_start)
+    success_end = _block_end(request, success_open)
+    success = request[success_open:success_end]
+    stale_condition = success.find("if !current.as_ref().is_some_and(")
+    assert stale_condition >= 0, "stale-generation success guard is required"
+    stale_body = success.find("}) {", stale_condition)
+    assert stale_body >= 0, "stale-generation success body is unreadable"
+    stale_open = stale_body + 3
+    stale = success[stale_open:_block_end(success, stale_open)]
+    _assert_write_uncertainty(stale, "stale-generation success")
+    assert 'interruptedgeneration.{uncertainty}' in _compact(stale)
+
+    failure_start = request.find("Err(error) => {", success_end)
+    assert failure_start >= 0, "failed response arm is required"
+    failure_open = request.find("{", failure_start)
+    failure = request[failure_open:_block_end(request, failure_open)]
+    _assert_write_uncertainty(failure, "failed request")
+    assert 'returnErr(matchcleanup_error{' in _compact(failure)
+    assert "ifwill_recover{continue;}" in compact
+    assert _compact(_function_body(source, "operation_can_reopen_vault_and_replay")) == (
+        '{operation==Some("viva.surface.read")}'
+    )
+    assert _compact(_function_body(source, "can_replay_after_recovery")) == (
+        "{operation_can_reopen_vault_and_replay(operation)&&active.is_some_and(recovery_is_exact)}"
+    )
 
 
 def test_native_host_matches_only_the_current_non_event_response():
@@ -93,13 +151,33 @@ def test_native_host_matches_only_the_current_non_event_response():
 def test_native_host_does_not_leave_the_cached_child_after_eof():
     source = _source()
     router = _function_body(source, "route_stdout")
-    recovery = _function_body(source, "request_bridge_with")
+    recovery = _request_owner(source)
+    finish = _function_body(source, "finish_router_failure")
 
     eof = router.find("if read == 0")
     assert eof >= 0, "EOF from the sidecar must be handled explicitly"
-    eof_branch = router[eof:router.find("}", eof) + 1]
-    assert "interrupt_pending" in eof_branch
+    opening = router.find("{", eof)
+    eof_branch = _compact(router[opening:_block_end(router, opening)])
+    assert "finish_router_failure(stdout,bridge," in eof_branch
+    assert "return;" in eof_branch
     assert "shutdown_current(&mut process)" in recovery
+
+    condition = "if bridge.begin_bulk_drain().unwrap_or(false)"
+    start = finish.find(condition)
+    assert start >= 0, "router failure must retain bulk drain ownership"
+    assert _compact(finish[:start]) == "{", "bulk drain precedes interruption"
+    opening = finish.find("{", start)
+    end = _block_end(finish, opening)
+    bulk = finish[opening:end]
+    consume = bulk.find("std::io::copy(&mut stdout, &mut std::io::sink())")
+    drop = bulk.find("drop(stdout)")
+    shutdown = bulk.find("bridge.shutdown()")
+    assert 0 <= consume < drop < shutdown, "bulk stdout must drain and drop before shutdown waits"
+    assert "interrupt_pending" not in bulk, "bulk receipts drain before ordinary interruption"
+    ordinary_opening = finish.find("{", end)
+    assert _compact(finish[end:ordinary_opening]) == "else", "ordinary failure branch is required"
+    ordinary = finish[ordinary_opening:_block_end(finish, ordinary_opening)]
+    assert 0 <= ordinary.find("interrupt_pending(&bridge.pending, reason)") < ordinary.find("bridge.shutdown()")
 
 
 def test_native_host_reaps_an_exited_child_before_starting_a_replacement():
@@ -116,24 +194,32 @@ def test_native_host_reaps_an_exited_child_before_starting_a_replacement():
 
 
 def test_native_waiting_occurs_after_releasing_the_process_lifecycle_lock():
-    request = _function_body(_source(), "request_bridge_with")
+    request = _request_owner(_source())
     bridge_scope = request.find("let bridge = {")
-    lock_end = request.find("\n        };", bridge_scope)
-    wait = request.find("request_process(&bridge")
-    assert bridge_scope >= 0 and lock_end > bridge_scope and wait > lock_end
-    assert "state.lock()?" in request[bridge_scope:lock_end]
-    # The guard is scoped to the bridge clone and is dropped before the wait.
-    # Moving request_process inside this block is the counterfactual this gate
-    # rejects.
-    assert "request_process(&bridge" not in request[bridge_scope:lock_end]
+    assert bridge_scope >= 0, "owned bridge clone scope is required"
+    opening = request.find("{", bridge_scope)
+    lock_end = _block_end(request, opening)
+    assert "state.lock()?" in request[opening:lock_end]
+    assert "ensure_bridge(app, &mut process, spawn, &state.next_generation)" in request[opening:lock_end]
+    waits = list(re.finditer(r"\brequest_process_owned\s*\(", request))
+    assert waits, "owned response wait must remain visible"
+    assert all(wait.start() > lock_end for wait in waits), "response wait holds the lifecycle lock"
+    for response_wait in ("request_process", "reopen_sample_vault", "reopen_remembered_vault"):
+        assert not re.search(r"\b" + response_wait + r"\s*\(", request[opening:lock_end])
 
 
 def test_active_identity_is_generation_bound_at_success_and_failure():
     source = _source()
-    request = _function_body(source, "request_bridge_with")
+    request = _request_owner(source)
     clear = _function_body(source, "clear_active_vault_after_failure")
-    assert "generation: bridge.generation" in request
-    assert "clear_active_vault_after_failure(&state.active_vault, bridge.generation)" in request
-    assert "active.generation == failed_generation" in clear
-    # Counterfactual: unconditional clearing must not satisfy this gate.
-    assert "active.vault = ActiveVault::None" in clear
+    compact = _compact(request)
+    assert compact.count("generation:bridge.generation,") == 2
+    assert "live.generation==bridge.generation&&Arc::ptr_eq(&live.child,&bridge.child)&&!*terminal&&!live.closed.load(Ordering::SeqCst)" in compact
+    assert "clear_active_vault_after_failure(&state.active_vault,bridge.generation)?;" in compact
+    assert "before_failed_identity_clear();" in compact
+    condition = clear.find("if active.generation == failed_generation")
+    assert condition >= 0, "failure clearing must compare the failed generation"
+    opening = clear.find("{", condition)
+    guarded = clear[opening:_block_end(clear, opening)]
+    assert "active.vault = ActiveVault::None" in guarded
+    assert clear.count("active.vault = ActiveVault::None") == 1

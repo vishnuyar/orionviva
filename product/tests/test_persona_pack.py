@@ -454,7 +454,7 @@ def test_merchant_record_pack_promotes_only_outbound_disclosures():
     root = pathlib.Path(persona.__file__).resolve().parent
     prior = json.loads((root / "pack-v52" / "moments.json").read_text())
     current = json.loads((root / "pack-v53" / "moments.json").read_text())
-    assert persona.ACTIVE_PACK == "pack-v53"
+    assert persona.ACTIVE_PACK == "pack-v62"
     assert set(current) - set(prior) == {"outbound_phase_merchant_enrich"}
     assert {key for key in prior if prior[key] != current[key]} == {
         "outbound_none", "outbound_some", "outbound_scope", "outbound_cost",
@@ -462,3 +462,43 @@ def test_merchant_record_pack_promotes_only_outbound_disclosures():
         "settings_model_keyless_confirmed", "settings_model_cleared"}
     for name in ("phrasings.json", "tone.md"):
         assert (root / "pack-v53" / name).read_bytes() == (root / "pack-v52" / name).read_bytes()
+
+
+def test_bulk_pack_adds_only_truthful_drain_copy():
+    root=pathlib.Path(persona.__file__).resolve().parent
+    prior=json.loads((root/'pack-v59'/'moments.json').read_text())
+    current=json.loads((root/'pack-v60'/'moments.json').read_text())
+    assert set(current)-set(prior)=={'jobs_stopping_reads'}
+    assert {key:current[key] for key in prior}==prior
+    assert persona.slots_of(current['jobs_stopping_reads'])==set()
+    for name in ('phrasings.json','tone.md'):
+        assert (root/'pack-v59'/name).read_bytes()==(root/'pack-v60'/name).read_bytes()
+
+
+def test_response_disclosure_pack_adds_only_reviewed_slots_and_copy():
+    root=pathlib.Path(persona.__file__).resolve().parent
+    prior=json.loads((root/"pack-v60"/"moments.json").read_text())
+    current=json.loads((root/"pack-v61"/"moments.json").read_text())
+    added={"outbound_extraction_response_count","outbound_extraction_orphan_count",
+           "outbound_extraction_unknown_cost_count","outbound_extraction_response_input",
+           "outbound_extraction_response_output","outbound_extraction_unknown_usage_count",
+           "outbound_extraction_known_cost"}
+    assert set(current)-set(prior)==added
+    assert {key:current[key] for key in prior}==prior
+    for name in added:
+        assert persona.slots_of(current[name])=={("amount" if name.endswith("known_cost") else "count")}
+    for name in ("phrasings.json","tone.md"):
+        assert (root/"pack-v61"/name).read_bytes()==(root/"pack-v60"/name).read_bytes()
+
+
+def test_incomplete_refusal_pack_changes_only_the_reviewed_slot_free_moment():
+    root = pathlib.Path(persona.__file__).resolve().parent
+    prior = json.loads((root / "pack-v61" / "moments.json").read_text())
+    current = json.loads((root / "pack-v62" / "moments.json").read_text())
+    assert current.keys() == prior.keys()
+    assert {key for key in prior if current[key] != prior[key]} == {"refusal_nothing_established"}
+    assert current["refusal_nothing_established"] == "I do not have enough supported information to answer that question."
+    assert persona.slots_of(current["refusal_nothing_established"]) == set()
+    for name in ("phrasings.json", "tone.md"):
+        assert (root / "pack-v62" / name).read_bytes() == (root / "pack-v61" / name).read_bytes()
+    assert manifest.fingerprint(root / "pack-v62") == FROZEN_PACKS["pack-v62"]

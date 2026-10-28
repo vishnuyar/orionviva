@@ -83,6 +83,17 @@ class DocumentActions:
     def __init__(self, vault: Any, jobs: JobRegistry | None = None) -> None:
         self._vault = vault
         self._jobs = jobs if jobs is not None else JobRegistry()
+        self._active_bulk=None
+
+    def upload_many(self,payload):
+        from .bulk_documents import BulkDocuments
+        operation=BulkDocuments(self._vault,self._jobs)
+        self._active_bulk=operation
+        try:return operation.run(payload)
+        finally:self._active_bulk=None
+
+    def stop_bulk(self):
+        if self._active_bulk is not None:self._active_bulk.stop()
 
     def upload(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Capture one file into the vault, and read nothing.
@@ -230,6 +241,9 @@ class DocumentActions:
                                  reason=JOB_OVER,
                                  state={"job": before.as_dict()}).as_dict()
         record = self._jobs.cancel(job_id)
+        if before.operation=='viva.documents.upload_many':
+            return ActionOutcome('completed',moment('jobs_stopping_reads'),
+                                 state={'job':record.as_dict()}).as_dict()
         return ActionOutcome("completed", moment("jobs_stopped"),
                              state={"job": record.as_dict()}).as_dict()
 

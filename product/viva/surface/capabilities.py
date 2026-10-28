@@ -237,6 +237,15 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         entrypoint="viva.speak",
     ),
     _surface(
+        "documents.library",
+        "viva.surface.documents_page",
+        CapabilityDestination.DOCUMENTS,
+        "while the sidecar holds an open vault",
+        "DocumentsPage.v1",
+        (),
+        (TrustEffect.READS_DATA,),
+    ),
+    _surface(
         "documents.preview",
         "viva.source_preview",
         CapabilityDestination.DOCUMENTS,
@@ -251,7 +260,7 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         CapabilityDestination.DOCUMENTS,
         "when a local document is selected or dropped",
         "DocumentIngestResult.v1",
-        ("upload", "cancel", "recover"),
+        ("upload", "upload_many", "cancel", "recover"),
         (
             TrustEffect.READS_DATA,
             TrustEffect.WRITES_EVENT,

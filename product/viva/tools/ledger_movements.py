@@ -467,3 +467,11 @@ def list_movements(proj, args: dict, today: str = "") -> ToolResult:
 
 
 __all__ = ['_query_balances', '_matching_rows', '_query_transactions', 'LIST_MOVEMENTS_PARAMS', 'ROW_FIELDS', 'LIST_TOOL', 'NARROWING', '_as_tool', 'list_movements']
+
+
+def _captured_balance(proj, account, deadline):
+    """Reuse one exact cash answer while selecting bounded current value terms."""
+    from ..ledger.projection.positions import SourceCapture
+    answer = proj.balance(account)
+    capture = SourceCapture(account, answer, deadline)
+    return answer, proj.composed_values(account, source_capture=capture), capture

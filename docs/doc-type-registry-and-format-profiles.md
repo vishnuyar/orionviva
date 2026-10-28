@@ -24,6 +24,21 @@
 1. The extraction shape is fixed by us and lives as versioned prompt data, not as code and not as a model's choice.
 2. The model fills the shape; it never decides what to extract.
 
+The brokerage and retirement aliases now use profile `brk-v7`, composed from
+`brokerage-base-v7` and the unchanged `brokerage-v2` fragment. Ordinary extraction
+requests the existing closed `investment-source-v2` extension: printed account,
+period and security references, corresponding holdings/activity rows and their
+per-field source pages. Unknown references and unprinted activity assertions
+stay absent. The parser still accepts historical reads without the extension
+and `investment-source-v1`; every older prompt resolves to its original bytes.
+The request copies a separately printed holding identifier exactly into both
+ordinary and source fields. Activity correspondence uses only that activity
+row's printed security token; a holding cannot supply an unprinted activity
+identifier. Names remain labels and descriptions retain their printed wording.
+Missing identifiers remain missing, so evidence can still be unavailable.
+This prompt promotion grants no financial authority. Live source correspondence
+and exact-candidate qualification remain required before a release claim.
+
 ### ING-34 — A profile may be model-authored, but is ratified before it is used
 **State:** unmet
 **Code:** none found
@@ -149,3 +164,48 @@ agreement or a human ratifies, and the result is frozen and versioned.
 - No test pins ING-36 — that a registry row can never hold personal data is true by inspection and unchecked by the build.
 - The format commons as a sharing channel over these profiles is designed and unbuilt; see [format-commons.md](format-commons.md).
 - Divergent families beyond pay stub and brokerage — tax forms, insurance declarations — will test whether "a new type is a registry row" survives a shape with no arithmetic identity at all.
+
+## Saved classification and raw capture identity
+
+A captured original retains the type known when it was sealed. A later successful
+ordinary classify phase can supply an effective routing type when that raw type is
+absent or unknown. The saved classifier is parsed with the same rules as a live
+read, including instrument aliases and confidence rejection. Authenticated scoped
+claims require completed transport and the exact preceding response population;
+a phase-sink-only producer can legitimately have an empty population. Wholly
+unscoped ordinary historical records remain supported; partial scoped records
+and local-curated acquisitions cannot use that allowance.
+
+Agreeing canonical claims supply one type. Contradictory eligible claims leave
+the effective type unknown. A failed later phase does not erase an earlier usable
+classification. Known raw capture types remain authoritative. This changes no
+figure, read status, grade, posting, or hold. The derived classification records
+retain each claim identity and its response links rather than selecting a model
+confidence for multiple claims.
+
+Type consumers share that effective meaning, including account evidence and
+knowledge-arrival checks. Newly posted balance documents use their effective
+type for the existing merchant-sync branch. Recovering historical metadata does
+not replay skipped merchant or model writes: historical enrichment remains an
+acceptance gap until an independently authorized existing path is witnessed.
+
+Canonicalization preserves the live reader's family-specific behavior. Instrument
+aliases collapse to their profile type. Other aliases retain the reader's label;
+for example, distinct non-instrument labels can remain contradictory claims even
+when their registry profile is shared. No universal alias-normalization policy is
+introduced by the derived view.
+
+Brokerage ordinary and typed source cash-effect strings now request the same
+printed row text, including signs, parentheses, separators and precision.
+Unsigned print stays unsigned; deterministic ordinary parsing retains its
+existing magnitude interpretation. Earlier base-v6 and older prompt bytes and
+recorded readings remain unchanged. This request clarification does not prove
+that a model copied a source faithfully.
+
+The term-deposit profile is `term-deposit-v2`, composed from unchanged
+`term-deposit-base-v1` and new `term-deposit-v2`. The existing textual restriction
+field requests the complete applicable printed disclosure when it appears
+alongside a short code. Token-only print remains literal; absent or ambiguous
+clauses remain unresolved. It does not infer availability, legal meaning or an
+account relationship. Historical v1 fragments and literal proposals remain
+readable. Refinance/property-tax profiles and the mortgage selector are unchanged.

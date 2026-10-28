@@ -25,6 +25,7 @@ from .pipeline import (IngestResult, heal_gaps, post_brokerage, post_statement)
 from .registry import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, account_kind_for,
                        identity_of_facts)
 from .statement import StatementFacts
+from .statement_projector import _resolve
 
 log = logging.getLogger(__name__)
 
@@ -89,10 +90,7 @@ def held_items(source) -> list[HeldItem]:
             facts = BrokerageFacts.from_dict(fdict)
         else:
             continue                      # reported by other_holds() instead
-        resolution = proj.resolve(
-            facts.institution, facts.account_number, facts.account_ref,
-            facts.account_names, kind=account_kind_for(facts.doc_type),
-            doc_id=facts.doc_id)
+        resolution = _resolve(proj, facts)
         held_bal = None
         if (identity == BALANCE_IDENTITY
                 and resolution.verdict == "same"):

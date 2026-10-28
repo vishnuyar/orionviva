@@ -57,10 +57,35 @@ def test_schema_successor_and_predecessors_preserve_the_contract():
     active = json.loads(versions.path_of(PACKAGE, versions.active(PACKAGE, 'semantic_request_schema')).read_text())
     expected = json.loads(current)
     for branch in expected['oneOf']:
-        branch['properties']['request_version']['enum'] = ['semantic-request-v17']
+        branch['properties']['request_version']['enum'] = ['semantic-request-v21']
+        if 'catalog_digest' in branch['properties']:
+            branch['properties']['catalog_digest']['enum'] = [SemanticFamilyRegistry().catalog_digest]
         if branch['properties']['outcome']['enum'] == ['clarify']:
             branch['properties'].pop('scenario_family')
-    assert active == expected == SemanticFamilyRegistry().output_schema()
+    # Original family contracts remain exact; dedicated source families are
+    # additive, with their finite names checked independently below.
+    def source_family(branch):
+        return branch['properties'].get('family',{}).get('enum',[''])[0]
+    selected = [branch for branch in active['oneOf']
+                if source_family(branch) == 'selected_account_balances']
+    assert len(selected) == 1
+    assert selected[0]['properties']['family']['enum'] == ['selected_account_balances']
+    assert selected[0]['properties']['parameters'] == {
+        'type': 'object',
+        'properties': {f'account_phrase_{i}': {'type': 'string', 'minLength': 1}
+                       for i in range(1, 8)},
+        'required': ['account_phrase_1', 'account_phrase_2'],
+        'additionalProperties': False,
+    }
+    legacy=[branch for branch in active['oneOf']
+            if not source_family(branch).startswith(('instrument_','investment_','retirement_'))
+            and source_family(branch) != 'selected_account_balances']
+    assert {**active,'oneOf':legacy} == expected
+    added={branch['properties']['family']['enum'][0] for branch in active['oneOf'] if branch['properties'].get('family',{}).get('enum',[''])[0].startswith('instrument_')}
+    assert added=={'instrument_terms','instrument_period_components','instrument_maturities','instrument_refinances','instrument_tax_payments','instrument_allocation','instrument_allocation_target','instrument_monthly_loan_principal','instrument_monthly_payment_escrow','instrument_annual_summary','instrument_deposit_annual_components','instrument_deposit_transactions','instrument_monthly_loan_payments'}
+    assert {source_family(branch) for branch in active['oneOf'] if source_family(branch).startswith('investment_')} == {'investment_positions','investment_activity_totals','investment_account_report','investment_account_report_first_years','investment_account_report_remaining_years'}
+    assert {source_family(branch) for branch in active['oneOf'] if source_family(branch).startswith('retirement_')} == {'retirement_annual_employee_contributions','retirement_direct_rollovers','retirement_funding_report'}
+    assert active == SemanticFamilyRegistry().output_schema()
 
 
 @pytest.mark.parametrize('fragment', [

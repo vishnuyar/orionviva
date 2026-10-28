@@ -152,6 +152,8 @@ def reserved_by_account(core) -> dict[str, Decimal]:
 
 def account_stake(core, account_id: str, currency: str) -> dict:
     """Exact current reservation basis, even when the account is excluded."""
+    from ..instruments import account_restrictions
+    restrictions = account_restrictions(core)
     account = core._acct.get(account_id)
     if account is None or not account.seen:
         return {"account_id": account_id, "present": False}
@@ -161,6 +163,7 @@ def account_stake(core, account_id: str, currency: str) -> dict:
               "account_not_issuer" if account.origin != ISSUED else
               "account_currency_unstated" if not account.currency else
               "account_currency_differs" if account.currency != currency else
+              "account_restricted" if account_id in restrictions else
               "account_balance_conflicted" if answer.grade == CONFLICTED else "")
     return {
         "account_id": account_id, "present": True,
@@ -175,6 +178,8 @@ def account_stake(core, account_id: str, currency: str) -> dict:
 
 def _availability(core, currency: str) -> tuple[
         tuple[GoalAccountAvailability, ...], tuple[GoalAccountExclusion, ...]]:
+    from ..instruments import account_restrictions
+    restrictions = account_restrictions(core)
     reserved = reserved_by_account(core)
     available = []
     excluded = []
@@ -186,7 +191,8 @@ def _availability(core, currency: str) -> tuple[
         reason = ("account_not_depository" if account.kind != "depository" else
                   "account_not_issuer" if account.origin != ISSUED else
                   "account_currency_unstated" if not account.currency else
-                  "account_currency_differs" if account.currency != currency else "")
+                  "account_currency_differs" if account.currency != currency else
+                  "account_restricted" if account_id in restrictions else "")
         answer = balances_view.balance(core, account_id)
         if not reason and answer.grade == CONFLICTED:
             reason = "account_balance_conflicted"

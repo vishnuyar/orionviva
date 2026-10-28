@@ -33,6 +33,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
 from .. import render
+from ..acquisition import local_read
 from ..persona import moment
 from .models import PanelState
 
@@ -65,8 +66,20 @@ def outbound(events: Iterable[Any], locale: str = "") -> dict[str, Any]:
     ``events`` is the vault's own event stream. Only the model-call events are
     read; everything else is passed over, so this stays a fold rather than a
     projection with a second opinion about what a vault holds."""
-    calls = [event for event in events if getattr(event, "event_type", "") == READ_RECORDED]
-    if not calls:
+    from ..extraction_responses import RESPONSE_EVENT, summary
+
+    events = list(events)
+    responses = {}
+    for event in events:
+        if getattr(event, "event_type", "") == RESPONSE_EVENT:
+            metadata = getattr(event, "response_summary", None)
+            if metadata is None:
+                metadata = summary(event)
+            responses[metadata["response_id"]] = metadata
+    calls = [event for event in events
+             if getattr(event, "event_type", "") == READ_RECORDED
+             and not local_read(getattr(event, "body", {}) or {})]
+    if not calls and not responses:
         return _nothing_left()
 
     phases = Counter(_phase(call) for call in calls)
@@ -114,7 +127,8 @@ def outbound(events: Iterable[Any], locale: str = "") -> dict[str, Any]:
                                first=render.date(days[0]),
                                last=render.date(days[-1])),
         } if days else None),
-        "cost": _cost(calls, locale),
+        "cost": (_response_cost(calls, responses, locale) if responses
+                 else _cost(calls, locale)),
         # The absences, carried by the read. Neither is a caveat a screen
         # writes: the first says what a complete list of model calls is a
         # complete list of, and the second says plainly that no third party
@@ -122,7 +136,7 @@ def outbound(events: Iterable[Any], locale: str = "") -> dict[str, Any]:
         "absences": [
             {"id": "scope", "sentence": moment("outbound_scope")},
             {"id": "anchoring", "sentence": moment("outbound_no_anchor")},
-        ],
+        ] + (_response_rows(calls, responses) if responses else []),
     }
 
 
@@ -256,3 +270,43 @@ def _cost(calls: list[Any], locale: str) -> dict[str, Any] | None:
         "measured_calls": measured,
         "sentence": moment("outbound_cost", amount=amount),
     }
+
+
+def _response_rows(calls, responses):
+    linked = {identifier for call in calls
+              for identifier in (getattr(call, "body", {}) or {}).get(
+                  "transport_receipt_ids", [])}
+    values = list(responses.values())
+    counts = {
+        "outbound_extraction_response_count": len(values),
+        "outbound_extraction_orphan_count": sum(
+            row["response_id"] not in linked for row in values),
+        "outbound_extraction_unknown_cost_count": sum(
+            row["cost_usd"] is None for row in values),
+        "outbound_extraction_response_input": sum(
+            row["input_tokens"] for row in values if row["input_tokens"] is not None),
+        "outbound_extraction_response_output": sum(
+            row["output_tokens"] for row in values if row["output_tokens"] is not None),
+        "outbound_extraction_unknown_usage_count": sum(
+            row["input_tokens"] is None or row["output_tokens"] is None for row in values),
+    }
+    return [{"id": name, "sentence": moment(name, count=render.count(count))}
+            for name, count in counts.items()]
+
+
+def _response_cost(calls, responses, locale):
+    legacy = [call for call in calls
+              if "transport_receipt_ids" not in (getattr(call, "body", {}) or {})]
+    previous = _cost(legacy, locale)
+    total = Decimal(previous["exact_value"]) if previous else Decimal("0")
+    measured = previous["measured_calls"] if previous else 0
+    for row in responses.values():
+        if row["cost_usd"] is not None:
+            total += Decimal(row["cost_usd"])
+            measured += 1
+    if not measured:
+        return None
+    amount = render.money(total, COST_CURRENCY, locale=locale)
+    return {"exact_value": str(total), "currency": COST_CURRENCY,
+            "display": str(amount), "measured_calls": measured,
+            "sentence": moment("outbound_extraction_known_cost", amount=amount)}

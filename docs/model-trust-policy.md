@@ -14,7 +14,7 @@
 2. Models extract, parse and converse; they never certify.
 3. Confidence is an output of verification, never a model's self-report.
 
-**Exception:** assertion 3 is true of a figure's *grade* and not of the classify pass. `product/viva/prompts/classify-v2.txt:4` asks the model for `doc_type_confidence`, and `product/viva/ingest/reader.py:256` reads it straight through onto the result. What ING-1 holds is the narrower rule that keeps it safe: that number is stored as a claim and never becomes, gates or modifies any grade ([extraction-and-confidence.md](extraction-and-confidence.md), ING-1).
+**Exception:** assertion 3 is true of a figure's *grade* and not of the classify pass. The active `product/viva/prompts/classify-v3.txt` asks the model for `doc_type_confidence`, and `product/viva/ingest/reader.py` reads it straight through onto the result. What ING-1 holds is the narrower rule that keeps it safe: that number is stored as a claim and never becomes, gates or modifies any grade ([extraction-and-confidence.md](extraction-and-confidence.md), ING-1).
 
 ### VOICE-91 — the model that reads a document has no tools and no write access
 **State:** enforced-with-exception

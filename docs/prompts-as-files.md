@@ -55,7 +55,7 @@
 
 ### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
 **State:** enforced
-**Code:** product/viva/prompts/semantic-request-v17.txt, product/viva/prompts/semantic-request-retry-v15.txt
+**Code:** product/viva/prompts/semantic-request-v21.txt, product/viva/prompts/semantic-request-retry-v19.txt
 **Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
 1. The repair prompt receives every compact-contract defect and asks for one complete replacement semantic request.
@@ -156,8 +156,8 @@ has since been bumped.
 - `FROZEN_SPEAK_PROMPTS` is the one frozen map still kept by hand; it is one comprehension away from deriving from `released` like the other four.
 - User-editable prompts, as content-addressed new versions rather than edits.
 
-The active semantic selection prompt is `semantic-request-v17` with retry
-`semantic-request-retry-v15`; all earlier released bytes remain retained. The
+The active semantic selection prompt is `semantic-request-v21` with retry
+`semantic-request-retry-v19`; all earlier released bytes remain retained. The
 catalog includes eight everyday analysis meanings, six measurement/projection
 meanings and three scenario meanings alongside the original six. Retained v12
 and retry v10 align scenario numerical, date, currency and account proof
@@ -172,8 +172,24 @@ including valid aliases. Recorded values and calculated answers remain
 prohibited. Code owns calculations, closed read arguments and answer binding.
 Program schema v3 adds the closed repayment quantity while v2 remains unchanged.
 
-The active tool descriptions are `tools-v25`, and the selection schema is
-`semantic-request-schema-v14`. Qualification002 remains failed; diagnostic003
+The active tool descriptions are `tools-v29`, and the selection schema is
+`semantic-request-schema-v19`. These resources include the reviewed instrument,
+investment and retirement source capabilities. Retained selection v20, retry v18 and
+schema v18 added `instrument_monthly_loan_payments`: one grounded account and
+period select existing monthly principal and payment/escrow reads for the
+requested principal repayment, payment total, interest and escrow funding
+claims. Missing required source evidence refuses the answer. Their program
+contract is `answer-program-schema-v7`, and the active persona pack is `pack-v62`.
+The selected-account candidate adds `selected_account_balances`: two to seven
+individually grounded account selectors lower to one finite report and existing
+account resolvers. Amounts retain dates, grades and complete source pages;
+unavailable fields, including closure status, keep the answer partial. The
+report is bounded to seven accounts, fourteen financial authority invocations,
+32 money figures, seven restriction assertions and seven per-account disposition rows. Its complete
+stamped ToolResult must fit 50,000 bytes. Earlier qualification records do not
+qualify these changed resources.
+The five-year sample copy introduced in pack v59 remains retained.
+Qualification002 remains failed; diagnostic003
 did not admit a model. Qualification004 was not admitted: 116 of 123 graded
 cases and 49 of 50 supplemental cases passed. Qualification005 admitted all
 123 cases on their first attempts for its original frozen v13 candidate. Retained

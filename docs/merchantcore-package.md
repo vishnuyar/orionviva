@@ -230,7 +230,7 @@ reader, not to the merchant record, because a merchant has many locations.
 
 ## Open
 
-The active persona pack is `pack-v53`. The product's automatic enrichment path and explicit enrichment command use
+The active persona pack is `pack-v59`. The product's automatic enrichment path and explicit enrichment command use
 `viva.enrich.recorded_model_extractor`. Each extraction turn, continuation, or
 failure inside the shared driver appends a `ReadRecorded` event with phase
 `merchant_enrich` to the encrypted local vault. The original prompt and available

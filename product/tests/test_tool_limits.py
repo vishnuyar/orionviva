@@ -66,6 +66,9 @@ def test_what_a_read_costs_does_not_grow_with_the_ledger():
     assert large < PAYLOAD_TARGET
 
 
+# The selected report requires individually grounded identities and an owned
+# authenticated financial revision. Its full seven-account stamped payload is
+# measured below; byte-boundary counterfactuals live in its owning test module.
 # The tools whose arguments no schema can enumerate, against what bounds each
 # one instead. `list_movements` is the one read allowed past the budget and is
 # held by its own row cap; the other two take a value only a run can supply — a
@@ -73,7 +76,7 @@ def test_what_a_read_costs_does_not_grow_with_the_ledger():
 # — and each answers about exactly one of them. Every entry is measured by
 # `test_what_the_sweep_cannot_enumerate_is_bounded_some_other_way`, so leaving
 # a tool out of the sweep costs a bound rather than nothing.
-UNENUMERABLE = ("list_movements", "get_provenance", "compute")
+UNENUMERABLE = ("list_movements", "get_provenance", "compute", "read_account_balance_report")
 
 
 def _every_declared_call(registry) -> list:
@@ -143,7 +146,7 @@ def test_the_sweep_reaches_every_tool_or_says_which_it_does_not():
         + str(sorted(named - swept - set(UNENUMERABLE))))
 
 
-def test_what_the_sweep_cannot_enumerate_is_bounded_some_other_way():
+def test_what_the_sweep_cannot_enumerate_is_bounded_some_other_way(tmp_path):
     """Every name in `UNENUMERABLE` has a bound of its own, measured here
     against the largest input this vault can hand it: the capped read on every
     movement it holds, and the two run-supplied tools on a value a read actually
@@ -164,6 +167,16 @@ def test_what_the_sweep_cannot_enumerate_is_bounded_some_other_way():
         "compute": registry.call(
             "compute", {"expression": "a", "inputs": {"a": "f1"}}, figures=book),
     }
+    from test_selected_account_balances import _actual_selected_wire
+    from viva.tools.account_balances import complete_bytes
+    actual = _actual_selected_wire(tmp_path, component_padding=317)
+    report = next(item for item in actual.answered.execution.transcript
+                  if item.tool == "read_account_balance_report")
+    measured["read_account_balance_report"] = report
+    assert report.ok and len(report.figures) == 7
+    assert report.data["trace"]["authority_invocations"] == 14
+    assert complete_bytes(report) <= 50_000
+    assert actual.answered.execution.graph.size_bytes <= 250_000
     assert set(measured) == set(UNENUMERABLE), (
         "an unenumerable tool with nothing measuring it: "
         + str(sorted(set(UNENUMERABLE) - set(measured))))

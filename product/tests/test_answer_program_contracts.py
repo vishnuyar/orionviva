@@ -661,7 +661,7 @@ def test_session_capture_records_program_validation_execution_and_outcome(claims
             "financial_query_schema", "capability_manifest", "persona",
             "tools"} <= set(
                 payload["prompt_versions"])
-    assert payload["prompt_versions"]["tools"].startswith("tools-v25@")
+    assert payload["prompt_versions"]["tools"].startswith("tools-v29@")
 
 
 def test_the_frozen_admission_corpus_has_35_exact_turns_and_paraphrases():
@@ -1691,9 +1691,9 @@ def test_promoted_semantic_prompt_invalidates_old_profiles(monkeypatch):
                         lambda _measured: report)
     profile = admitted_profile(object(), manifest=manifest)
 
-    assert versions.active(PACKAGE, "semantic_request") == "semantic-request-v17"
+    assert versions.active(PACKAGE, "semantic_request") == "semantic-request-v21"
     assert versions.active(PACKAGE, "semantic_request_retry") == \
-        "semantic-request-retry-v15"
+        "semantic-request-retry-v19"
     assert profile.prompt_digest == current_contract_digests(
         manifest, AnswerResourcePolicy())["compiler_prompt"]
     assert profile.prompt_digest != promptstore.digest(
@@ -1822,7 +1822,7 @@ def _identity_test_profile(monkeypatch):
 def test_current_report_rejects_a_synthetic_profile_with_the_historical_persona_contract(monkeypatch):
     profile, _manifest, report = _identity_test_profile(monkeypatch)
     assert not validate_admission_report(report, profile)
-    assert versions.active(PACKAGE, "persona_pack") == "pack-v53"
+    assert versions.active(PACKAGE, "persona_pack") == "pack-v62"
     historical = versions.fingerprint(versions.path_of(PACKAGE, "pack-v49"))
     assert profile.persona_pack_digest != historical
     historical_profile = replace(profile, persona_pack_digest=historical)

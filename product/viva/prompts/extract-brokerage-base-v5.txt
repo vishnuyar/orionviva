@@ -1,0 +1,145 @@
+You are reading one brokerage / investment / retirement account statement. Return
+ONLY a JSON object, no prose.
+
+Extract exactly this shape:
+
+{
+  "doc_type_confidence": 0.0-1.0,
+  "account_number": "the account number AS PRINTED (full or masked); '' if none",
+  "institution": "the brokerage / custodian name, e.g. 'Fidelity', 'Vanguard', 'Zerodha'",
+  "account_names": ["each account-holder name printed on the statement"],
+  "account_ref": "a short human label for the account (e.g. 'Fidelity Roth ...1234')",
+  "as_of_raw": "the statement / valuation (period end) date AS PRINTED",
+  "opening_cash_raw": "the cash / sweep balance at the START of the period AS PRINTED, if shown, else ''",
+  "cash_raw": "the cash / sweep balance at the END of the period AS PRINTED (0 if none)",
+  "total_raw": "the TOTAL account value at period end AS PRINTED (positions + cash)",
+  "positions": [
+    {"instrument": "the ticker or fund/security name AS PRINTED", "units_raw": "the quantity / shares held AS PRINTED", "market_value_raw": "this holding's market value AS PRINTED", "cost_basis_raw": "this holding's cost basis AS PRINTED if shown, else ''", "page": <page number>, "classification": {"exposure":"bond|equity|cash|other|unknown", "vehicle":"mutual_fund|etf|individual_security|other|unknown", "exposure_page":<printed classification page or null>, "vehicle_page":<printed classification page or null>}}
+  ],
+  "activity": [
+    {"date_raw": "AS PRINTED", "kind": "contribution|withdrawal|dividend|interest|fee|buy|sell", "amount_raw": "the POSITIVE cash amount AS PRINTED", "instrument": "the security for a buy/sell/dividend, else ''", "realized_gain_raw": "for a SELL, the realized gain/loss AS PRINTED if shown, else ''", "description": "AS PRINTED"}
+  ]
+}
+
+Universal rules:
+- Copy amounts, quantities, and dates EXACTLY as printed. Do not reformat, convert,
+  or do math. Cost basis and realized gain: copy only if printed, else '' — never
+  compute or invent them.
+- Positions are the HOLDINGS at period end. Their identity: (sum of position market
+  values) + end cash = total account value.
+- "activity" is the period's CASH movements, each classified by "kind":
+    - "contribution"/"withdrawal" — money moved IN/OUT of the account (from/to a bank)
+    - "dividend"/"interest"       — income paid into the account
+    - "fee"                       — a fee/commission charged
+    - "buy"/"sell"                — a security purchased/sold (cash out/in)
+  If the statement shows opening cash, the activity must satisfy:
+  opening_cash + (contributions + dividends + interest + sells)
+               − (withdrawals + fees + buys) = end cash. List EVERY cash line so it
+  does. If opening cash or an activity list is not shown, omit "opening_cash_raw"
+  and/or "activity" — the holdings snapshot alone is still valid.
+- Include only SETTLED cash activity in that equation. Exclude pending trades or
+  settlements, sweep transfers already represented by the opening/end cash line,
+  duplicate dividend-reinvestment summary lines, and transaction-cost or
+  proceeds summaries that repeat the cash effect of an included trade.
+- Include margin interest actually charged during the period as kind "fee". Do
+  not omit it merely because the statement labels it interest expense.
+- If a value is genuinely unreadable, write it as best you can see it — never invent
+  a figure to make things add up.
+
+- classification is optional. Exposure and vehicle are separate: a source may
+  explicitly call an instrument a bond mutual fund (bond exposure, mutual_fund
+  vehicle). Populate a known class only from an explicit printed classification
+  and its actual rendered source page. Do not infer a class from ticker, fund
+  name, issuer, product familiarity or a target allocation. Unknown/absent
+  classification remains unknown; it is not inferred from portfolio weights.
+
+
+Printed investment source evidence:
+Add "investment_source" as a sibling in the ordinary JSON object above. Emit the
+following closed shape, using the actual corresponding holdings and settled
+activity in place of the example entries. Include every listed key; add no keys.
+
+{
+  "investment_source": {
+    "schema": "investment-source-v2",
+    "headers": {
+      "account_reference": null,
+      "currency": null,
+      "period_start": null,
+      "period_end": null,
+      "as_of": null,
+      "opening_cash": null,
+      "closing_cash": null,
+      "activity_complete": null,
+      "no_activity": null
+    },
+    "positions": [
+      {"identifier": null, "label": null, "units": null,
+       "market_value": null, "cost_basis": null}
+    ],
+    "rows": [
+      {"printed_row_reference": null, "date": null, "kind": null,
+       "amount": null, "security_identifier": null,
+       "reported_realized_gain": null, "printed_reference": null,
+       "counterpart_reference": null, "funding_role": null}
+    ]
+  }
+}
+
+Every non-null ordinary source field is exactly {"raw": "copied source text",
+"page": null}, with page replaced by the actual rendered page number when
+available. Retain null when field text is absent. An unreadable or unavailable
+field may use blank raw and null page; never substitute a guessed value or a
+page-one default. Preserve the source's dates, quantities, amounts, signs and
+precision as printed; do not normalize or calculate them. Local deterministic
+normalizers interpret the raw text. Unknown means missing knowledge, never the
+literal identifier UNKNOWN unless those characters are actually a usable
+printed identifier. Do not copy the descriptive example text into a reading.
+
+headers.account_reference is the exact PRINTED account identifier, full or
+masked, not the friendly account_ref label. currency is the printed currency.
+period_start and period_end require their own printed dates; do not infer a
+period start from the valuation date or reconstruct an account number. as_of,
+opening_cash and closing_cash copy their corresponding printed fields only.
+
+Provide one source positions entry for EACH ordinary holding, in the SAME ORDER,
+and one source rows entry for EACH ordinary settled cash activity, in the SAME
+ORDER. Preserve duplicate printed lines and their multiplicity in both arrays.
+Use empty arrays when the corresponding ordinary holdings or activity are
+absent; this is not an explicit no-activity assertion. Keep the same settlement,
+sweep, duplicate reinvestment and repeated-summary exclusions in both arrays.
+Do not truncate either array or invent balancing entries to fit the response.
+
+positions.identifier and rows.security_identifier are exact printed security
+identifiers. positions.label copies the separately printed security name. Never
+invent a ticker or identifier from a fund name or background familiarity.
+printed_row_reference is the identifier of the printed activity ROW;
+printed_reference is the explicitly printed movement/funding reference;
+counterpart_reference is the explicitly printed OTHER account/source reference.
+Keep these distinct. If a reference is not printed, retain null. Row order,
+ordinals, names, date/amount similarity and another document do not manufacture
+a reference. reported_realized_gain is printed gain/loss only, never computed
+from a sale, basis, unit price or other figures.
+
+funding_role is null or exactly {"raw": "printed role wording", "page": null,
+"role": "unknown"}. Its closed role values are own_bank, other_broker,
+retirement_rollover, external_party, reinvestment, unknown. Set a known role
+only when explicit wording on its actual rendered source page supports that
+category; raw/page carry that wording. Use unknown when the wording does not
+support the distinction, or null when there is no corresponding printed field.
+Do not infer the role from a name, amount, reference similarity or prior account
+knowledge. A role claim never certifies counterpart cash, allocations or funding;
+existing local evidence matching must decide whether an opposing source exists.
+
+activity_complete and no_activity must remain null unless the statement
+EXPLICITLY PRINTS the relevant assertion. Copy that assertion text and its real
+page. Empty activity arrays, missing activity sections, unchanged cash and
+balanced arithmetic are NOT printed no-activity assertions. Never emit raw true
+merely because no rows were found.
+
+Do not output canonical account ids, derived observation/row ids, cash event ids,
+body digests, grade, acceptance status or verification claims. These are derived
+locally, never supplied by a model. Source text remains a claim until the
+existing deterministic gates accept it. Keep the ordinary position exposure and
+vehicle classifications separate and source-backed as specified above; do not
+infer them from this source extension, a ticker, name or target allocation.

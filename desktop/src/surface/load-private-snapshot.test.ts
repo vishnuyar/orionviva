@@ -1,10 +1,11 @@
+import { documentsPageFixture } from "./documentsPage.testSupport";
 import { describe, expect, it, vi } from "vitest";
 import { BridgeTimeout } from "../bridge/contracts";
 import type { BridgeClient, JobProgressListener, SurfaceName } from "../bridge/contracts";
-import { loadCoherentSnapshot, loadPrivateDestination, loadPrivateSnapshot, loadPrioritySnapshot, loadSecondarySnapshot, loadStartupSecondarySnapshot, privateActivityActions, privateDocumentActions, privateJobStream, privateSettingsActions, privateTransferActions, privateTrustActions } from "./load-private-snapshot";
+import { privateDocumentsPageReader, loadCoherentSnapshot, loadPrivateDestination, loadPrivateSnapshot, loadPrioritySnapshot, loadSecondarySnapshot, loadStartupSecondarySnapshot, privateActivityActions, privateDocumentActions, privateJobStream, privateSettingsActions, privateTransferActions, privateTrustActions } from "./load-private-snapshot";
 import { privateSource } from "./sources";
 
-const read = (surface: SurfaceName, data: unknown) => Promise.resolve({ surface, job_id: `job-${surface}`, data });
+const read = (surface: SurfaceName, data: unknown) => Promise.resolve({ surface, job_id: `job-${surface}`, data: surface === "documents" ? documentsPageFixture(data) : data });
 
 it("keeps read correlation out of the job stream while retaining named job progress", async () => {
   let emit: JobProgressListener = () => { throw new Error("not subscribed"); };
@@ -35,7 +36,7 @@ it("waits for asynchronous publication before reading a coherent document snapsh
           ? { state: "degraded", freshness: "unavailable", lifecycle: "rebuilding", revision: "", overview: null, accounts: null, error: "read_store_unavailable" }
           : { state: "ready", freshness: "current", lifecycle: "caught_up", revision: "g-published", overview: { accounts: [] }, accounts: { accounts: [] }, error: "" });
       },
-      readDocuments: () => { documents += 1; return read("documents", { documents: [{ id: "synthetic", filename: "synthetic.txt" }] }); },
+      readDocuments: () => { documents += 1; return read("documents", { documents: [{ id: "a".repeat(64), filename: "synthetic.txt" }] }); },
     });
     const pending = loadCoherentSnapshot(source);
     await vi.advanceTimersByTimeAsync(0);
@@ -268,7 +269,7 @@ describe("private conversation surface", () => {
     expect(priority.snapshot.overview.state).toBe("ready");
     expect(plans.plans?.state).toBe("ready");
     expect(aggregateSettled).toBe(false);
-    releaseDocuments?.({ surface: "documents", job_id: "blocked-documents", data: { documents: [] } });
+    releaseDocuments?.({ surface: "documents", job_id: "blocked-documents", data: documentsPageFixture({ documents: [] }) });
     expect((await aggregate).documents.state).toBe("ready");
   });
 
@@ -331,4 +332,12 @@ describe("private conversation surface", () => {
     const rejected = Object.assign(client(), { uploadDocument: async () => { throw new Error("offline"); } });
     await expect(privateDocumentActions(rejected).upload("/statement.pdf")).resolves.toEqual({ state: "unanswered" });
   });
+});
+
+it("never falls back to an empty legacy request after an unsupported page response", async () => {
+  const calls: unknown[] = [];
+  const candidate = Object.assign(client(), { readDocuments: async (request: unknown) => { calls.push(request); return { surface: "documents" as const, job_id: "test", data: { documents: [] } }; } });
+  const result = await privateDocumentsPageReader(candidate)({ contract_version: "documents-page-v1" });
+  expect(result).toEqual({ state: "unavailable", reason: "documents_contract_unavailable" });
+  expect(calls).toEqual([{ contract_version: "documents-page-v1" }]);
 });

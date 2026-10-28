@@ -39,7 +39,7 @@ describe("bridge transport framing", () => {
     expect(frames.map((frame) => frame.operation)).toEqual(["bridge.open_vault", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
     expect(frames[0].payload).toEqual({ vault_directory: "/vault", passphrase: "secret", create: false });
     expect(frames[1].payload).toEqual({ surface: "overview", parameters: { page: 1 }, job_id: "desktop-overview-2" });
-    expect(frames[2].payload).toEqual({ surface: "documents", parameters: {}, job_id: "desktop-documents-3" });
+    expect(frames[2].payload).toEqual({ surface: "documents", parameters: { contract_version: "documents-page-v1" }, job_id: "desktop-documents-3" });
     expect(frames[3].payload).toEqual({ surface: "conversation", parameters: { limit: 2 }, job_id: "desktop-conversation-4" });
     expect(frames[4].payload).toEqual({ surface: "spending", parameters: { period: "custom", granularity: "subcategory", account_id: "acct:checking", currency: "USD", start_date: "2026-08-01", end_date: "2026-08-31" }, job_id: "desktop-spending-5" });
     expect(frames[5].payload).toEqual({ surface: "account_ledger", parameters: { account_id: "acct:checking", cursor: "opaque-cursor", limit: 25 }, job_id: "desktop-account_ledger-6" });
@@ -238,4 +238,41 @@ describe("saved original framing", () => {
     expect(frames).toHaveLength(1);
     expect(frames[0]).toMatchObject({ operation: "viva.documents.preview.read", payload: { document_id: "a".repeat(64), page: 2 } });
   });
+});
+
+it("sends only the explicitly supplied opaque saved-answer recovery anchor", async () => {
+  const frames: BridgeRequest[] = [];
+  const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
+    frames.push(frame); return { protocol: "2.1", request_id: frame.requestId, ok: true, result: {} as T };
+  } });
+  await client.askViva("What about a different target?", true, false, "follow_up");
+  expect(frames[0].payload).not.toHaveProperty("continuation_recovery");
+  const anchor = { version: "allocation-continuation-v1" as const, turn_id: "turn-opaque", answer_id: "answer-opaque" };
+  await client.askViva("What about a different target?", true, false, "follow_up", undefined, anchor);
+  expect(frames[1].payload).toEqual({ question: "What about a different target?", mirrored: true, plan_request: false, context_mode: "follow_up", continuation_recovery: anchor });
+});
+
+describe("five-year sample preparation protocol",()=>{
+ const ready = { state:"ready",sample_version:"five-year-life-v1",completed_documents:794,total_documents:794,posted_documents:793,held_documents:1,phase:"ready",message:"Synthetic sample ready" };
+ it("prepares and reads progress without directory, passphrase or financial parameters",async()=>{
+  const requests:BridgeRequest[]=[];
+  const client=createHostBridgeClient({request:async<T>(frame:BridgeRequest)=>{requests.push(frame);return {protocol:"2.0",request_id:frame.requestId,ok:true,result:ready as T};}});
+  expect(await client.prepareSampleVault!()).toEqual(ready);expect(await client.readSamplePreparation!()).toEqual(ready);
+  expect(requests.map(({operation,payload})=>({operation,payload}))).toEqual([{operation:"bridge.sample.prepare",payload:{}},{operation:"bridge.sample.status",payload:{}}]);
+ });
+ it.each(["version","total","fraction","negative","oversized","unknown field","ready count","phase mismatch","state","missing field"])("refuses unreadable preparation %s",async(bad)=>{
+  const value:Record<string,unknown>={...ready};
+  if(bad==="version")value.sample_version="old-sample";if(bad==="total")value.total_documents=793;if(bad==="fraction")value.completed_documents=1.5;if(bad==="negative")value.held_documents=-1;if(bad==="oversized")value.posted_documents=795;if(bad==="unknown field")value.directory="unused";if(bad==="ready count")value.completed_documents=793;if(bad==="phase mismatch")value.phase="capturing";if(bad==="state")value.state="opened";if(bad==="missing field")delete value.message;
+  const client=createHostBridgeClient({request:async<T>(frame:BridgeRequest)=>({protocol:"2.0",request_id:frame.requestId,ok:true,result:value as T})});
+  await expect(client.prepareSampleVault!()).rejects.toBeInstanceOf(BridgeUnreadable);
+ });
+});
+
+it("sends explicit new-reading consent and opaque selected confirmations without paths", async () => {
+ const frames: BridgeRequest[] = [];
+ const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => { frames.push(frame); return { protocol: "2.0", request_id: frame.requestId, ok: true, result: {} as T }; } });
+ await client.readRetainedDocuments!([{ documentId: "a".repeat(64), confirmationToken: "opaque.token" }]);
+ expect(frames[0].operation).toBe("viva.documents.upload_many");
+ expect(frames[0].payload).toEqual({ retained_documents: [{ document_id: "a".repeat(64), confirmation_token: "opaque.token" }], confirm_reading: true });
+ await client.uploadDocuments!(["/ordinary.pdf"]); expect(frames[1].payload).toEqual({ paths: ["/ordinary.pdf"] });
 });

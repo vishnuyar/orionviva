@@ -1,0 +1,634 @@
+[
+  {
+    "kind": "completed",
+    "message": "deposit contract principal: USD 1,000.00. That counts only what is on 98ea813bcab\u2022\u2022\u2022\u20226774dccecf23b39fd6. deposit nominal rate: 5.25%. That counts only what is on 98ea813bcab\u2022\u2022\u2022\u20226774dccecf23b39fd6. Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+    "state": {
+      "job_id": "viva.conversation.ask-1",
+      "state": "ready",
+      "question": "Give instrument:98ea813bcab8976774dccecf23b39fd6 terms as of 2021-01-31",
+      "text": "deposit contract principal: USD 1,000.00. That counts only what is on 98ea813bcab\u2022\u2022\u2022\u20226774dccecf23b39fd6. deposit nominal rate: 5.25%. That counts only what is on 98ea813bcab\u2022\u2022\u2022\u20226774dccecf23b39fd6. Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+      "answered": true,
+      "status": "answered",
+      "outcome_tag": "",
+      "refusal": "",
+      "grade": "corroborated",
+      "grade_sentence": "Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+      "figures": [
+        {
+          "value": "1000",
+          "quantity": "deposit_contract_principal",
+          "kind": "financial",
+          "currency": "USD",
+          "dated": "2021-01-31",
+          "grade": "corroborated",
+          "boundary": {
+            "whole": false,
+            "accounts": {
+              "counted": 1,
+              "held": 1
+            },
+            "selected": [
+              {
+                "kind": "account",
+                "value": "instrument:98ea813bcab8976774dccecf23b39fd6"
+              }
+            ],
+            "cut": [
+              {
+                "kind": "account",
+                "value": "instrument:98ea813bcab8976774dccecf23b39fd6"
+              }
+            ]
+          },
+          "subject": {
+            "account_id": "instrument:98ea813bcab8976774dccecf23b39fd6"
+          },
+          "id": "f1",
+          "written": "USD 1,000.00",
+          "what": "deposit contract principal \u00b7 2021-01-31",
+          "record_ids": [
+            "77462109bb9d327de266f4e7f1f6bad7112bea3210d0fb2f3822b09b2d3660fb"
+          ],
+          "evidence_id": "conversation:m_G-WqKpwNWuHUHl0SwUx2Xh:f1",
+          "evidence_links": [
+            {
+              "document_id": "77462109bb9d327de266f4e7f1f6bad7112bea3210d0fb2f3822b09b2d3660fb",
+              "label": "",
+              "relation": "attests",
+              "page": ""
+            }
+          ],
+          "receipt_ids": [
+            "conversation:m_G-WqKpwNWuHUHl0SwUx2Xh:numerical:0"
+          ]
+        },
+        {
+          "value": "0.0525",
+          "quantity": "instrument_rate",
+          "kind": "financial",
+          "currency": "",
+          "dated": "2021-01-31",
+          "grade": "corroborated",
+          "boundary": {
+            "whole": false,
+            "accounts": {
+              "counted": 1,
+              "held": 1
+            },
+            "selected": [
+              {
+                "kind": "account",
+                "value": "instrument:98ea813bcab8976774dccecf23b39fd6"
+              }
+            ],
+            "cut": [
+              {
+                "kind": "account",
+                "value": "instrument:98ea813bcab8976774dccecf23b39fd6"
+              }
+            ]
+          },
+          "subject": {
+            "account_id": "instrument:98ea813bcab8976774dccecf23b39fd6"
+          },
+          "id": "f2",
+          "written": "5.25%",
+          "what": "deposit nominal rate \u00b7 2021-01-31",
+          "record_ids": [
+            "77462109bb9d327de266f4e7f1f6bad7112bea3210d0fb2f3822b09b2d3660fb"
+          ],
+          "evidence_id": "conversation:m_G-WqKpwNWuHUHl0SwUx2Xh:f2",
+          "evidence_links": [
+            {
+              "document_id": "77462109bb9d327de266f4e7f1f6bad7112bea3210d0fb2f3822b09b2d3660fb",
+              "label": "",
+              "relation": "attests",
+              "page": ""
+            }
+          ],
+          "receipt_ids": [
+            "conversation:m_G-WqKpwNWuHUHl0SwUx2Xh:numerical:0"
+          ]
+        }
+      ],
+      "numerical_receipts": [
+        {
+          "schema_version": 1,
+          "id": "conversation:m_G-WqKpwNWuHUHl0SwUx2Xh:numerical:0",
+          "figure_ids": [
+            "f1",
+            "f2"
+          ],
+          "source_records": [
+            {
+              "record_id": "77462109bb9d327de266f4e7f1f6bad7112bea3210d0fb2f3822b09b2d3660fb",
+              "kind": "document",
+              "document_id": "77462109bb9d327de266f4e7f1f6bad7112bea3210d0fb2f3822b09b2d3660fb"
+            }
+          ],
+          "premises": [],
+          "observed_inputs": [],
+          "local_inputs": [],
+          "context": [
+            {
+              "label": "Instrument view",
+              "value": "terms"
+            },
+            {
+              "label": "Selected account",
+              "value": "instrument:98ea813bcab8976774dccecf23b39fd6"
+            },
+            {
+              "label": "Valuation currency",
+              "value": "USD"
+            },
+            {
+              "label": "Authenticated read revision",
+              "value": "g-8d2008542602432e872b3e42234d3a1d"
+            }
+          ],
+          "caveats": []
+        }
+      ],
+      "source_assertions": [],
+      "target_premises": [],
+      "gaps": [],
+      "options": [],
+      "missing": [],
+      "spoken": {
+        "may_speak": true,
+        "withheld": "",
+        "parts": [
+          "text",
+          "grade",
+          "citations"
+        ],
+        "text": "deposit contract principal: USD 1,000.00. That counts only what is on 98ea813bcab\u2022\u2022\u2022\u20226774dccecf23b39fd6. deposit nominal rate: 5.25%. That counts only what is on 98ea813bcab\u2022\u2022\u2022\u20226774dccecf23b39fd6. Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+        "grade_sentence": "Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+        "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+        "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+      },
+      "answer_id": "-wi8jsVyHTIO7apFSXJ66_6L"
+    },
+    "reason": null
+  },
+  {
+    "kind": "completed",
+    "message": "loan original principal: USD 630,000.00. That counts only what is on 64fc\u2022\u2022\u2022\u20220554f6805c0a3b3dd6a26c7ca. loan note rate: 5.25%. That counts only what is on 64fc\u2022\u2022\u2022\u20220554f6805c0a3b3dd6a26c7ca. Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+    "state": {
+      "job_id": "viva.conversation.ask-2",
+      "state": "ready",
+      "question": "Give instrument:64fc7450554f6805c0a3b3dd6a26c7ca terms as of 2021-01-31",
+      "text": "loan original principal: USD 630,000.00. That counts only what is on 64fc\u2022\u2022\u2022\u20220554f6805c0a3b3dd6a26c7ca. loan note rate: 5.25%. That counts only what is on 64fc\u2022\u2022\u2022\u20220554f6805c0a3b3dd6a26c7ca. Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+      "answered": true,
+      "status": "answered",
+      "outcome_tag": "",
+      "refusal": "",
+      "grade": "corroborated",
+      "grade_sentence": "Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+      "figures": [
+        {
+          "value": "630000",
+          "quantity": "loan_original_principal",
+          "kind": "financial",
+          "currency": "USD",
+          "dated": "2021-01-31",
+          "grade": "corroborated",
+          "boundary": {
+            "whole": false,
+            "accounts": {
+              "counted": 1,
+              "held": 1
+            },
+            "selected": [
+              {
+                "kind": "account",
+                "value": "instrument:64fc7450554f6805c0a3b3dd6a26c7ca"
+              }
+            ],
+            "cut": [
+              {
+                "kind": "account",
+                "value": "instrument:64fc7450554f6805c0a3b3dd6a26c7ca"
+              }
+            ]
+          },
+          "subject": {
+            "account_id": "instrument:64fc7450554f6805c0a3b3dd6a26c7ca"
+          },
+          "id": "f1",
+          "written": "USD 630,000.00",
+          "what": "loan original principal \u00b7 2021-01-31",
+          "record_ids": [
+            "1fc98ba5293d8f25516b9adb46a848576b220ebfff80b30966a8c7146c6bbd5f"
+          ],
+          "evidence_id": "conversation:LOCKJejCBiBwgefvny5tO--6:f1",
+          "evidence_links": [
+            {
+              "document_id": "1fc98ba5293d8f25516b9adb46a848576b220ebfff80b30966a8c7146c6bbd5f",
+              "label": "",
+              "relation": "attests",
+              "page": ""
+            }
+          ],
+          "receipt_ids": [
+            "conversation:LOCKJejCBiBwgefvny5tO--6:numerical:0"
+          ]
+        },
+        {
+          "value": "0.0525",
+          "quantity": "instrument_rate",
+          "kind": "financial",
+          "currency": "",
+          "dated": "2021-01-31",
+          "grade": "corroborated",
+          "boundary": {
+            "whole": false,
+            "accounts": {
+              "counted": 1,
+              "held": 1
+            },
+            "selected": [
+              {
+                "kind": "account",
+                "value": "instrument:64fc7450554f6805c0a3b3dd6a26c7ca"
+              }
+            ],
+            "cut": [
+              {
+                "kind": "account",
+                "value": "instrument:64fc7450554f6805c0a3b3dd6a26c7ca"
+              }
+            ]
+          },
+          "subject": {
+            "account_id": "instrument:64fc7450554f6805c0a3b3dd6a26c7ca"
+          },
+          "id": "f2",
+          "written": "5.25%",
+          "what": "loan note rate \u00b7 2021-01-31",
+          "record_ids": [
+            "1fc98ba5293d8f25516b9adb46a848576b220ebfff80b30966a8c7146c6bbd5f"
+          ],
+          "evidence_id": "conversation:LOCKJejCBiBwgefvny5tO--6:f2",
+          "evidence_links": [
+            {
+              "document_id": "1fc98ba5293d8f25516b9adb46a848576b220ebfff80b30966a8c7146c6bbd5f",
+              "label": "",
+              "relation": "attests",
+              "page": ""
+            }
+          ],
+          "receipt_ids": [
+            "conversation:LOCKJejCBiBwgefvny5tO--6:numerical:0"
+          ]
+        }
+      ],
+      "numerical_receipts": [
+        {
+          "schema_version": 1,
+          "id": "conversation:LOCKJejCBiBwgefvny5tO--6:numerical:0",
+          "figure_ids": [
+            "f1",
+            "f2"
+          ],
+          "source_records": [
+            {
+              "record_id": "1fc98ba5293d8f25516b9adb46a848576b220ebfff80b30966a8c7146c6bbd5f",
+              "kind": "document",
+              "document_id": "1fc98ba5293d8f25516b9adb46a848576b220ebfff80b30966a8c7146c6bbd5f"
+            }
+          ],
+          "premises": [],
+          "observed_inputs": [],
+          "local_inputs": [],
+          "context": [
+            {
+              "label": "Instrument view",
+              "value": "terms"
+            },
+            {
+              "label": "Selected account",
+              "value": "instrument:64fc7450554f6805c0a3b3dd6a26c7ca"
+            },
+            {
+              "label": "Valuation currency",
+              "value": "USD"
+            },
+            {
+              "label": "Authenticated read revision",
+              "value": "g-c9bf9700dd264528bba98098a07c0e80"
+            }
+          ],
+          "caveats": []
+        }
+      ],
+      "source_assertions": [],
+      "target_premises": [],
+      "gaps": [],
+      "options": [],
+      "missing": [],
+      "spoken": {
+        "may_speak": true,
+        "withheld": "",
+        "parts": [
+          "text",
+          "grade",
+          "citations"
+        ],
+        "text": "loan original principal: USD 630,000.00. That counts only what is on 64fc\u2022\u2022\u2022\u20220554f6805c0a3b3dd6a26c7ca. loan note rate: 5.25%. That counts only what is on 64fc\u2022\u2022\u2022\u20220554f6805c0a3b3dd6a26c7ca. Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+        "grade_sentence": "Read this answer as corroborated: the available records support what it rests on; this is a step below verified.",
+        "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+        "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+      },
+      "answer_id": "PmZwlDwNuu7hH6LqSIZVzxWK"
+    },
+    "reason": null
+  },
+  {
+    "kind": "completed",
+    "message": "The actual allocation is 60%; compared with your stated target of 50% (your figure), the difference is +10 percentage points. That counts only what is on PLAN. The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+    "state": {
+      "job_id": "viva.conversation.ask-4",
+      "state": "ready",
+      "question": "How far is my bond allocation from my 50% target?",
+      "text": "The actual allocation is 60%; compared with your stated target of 50% (your figure), the difference is +10 percentage points. That counts only what is on PLAN. The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+      "answered": true,
+      "status": "answered",
+      "outcome_tag": "",
+      "refusal": "",
+      "grade": "corroborated",
+      "grade_sentence": "The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+      "figures": [
+        {
+          "value": "0.6",
+          "quantity": "ratio_of_balance",
+          "kind": "financial",
+          "currency": "",
+          "dated": "2025-12-31",
+          "grade": "corroborated",
+          "boundary": {
+            "whole": false,
+            "accounts": {
+              "counted": 1,
+              "held": 1
+            },
+            "selected": [
+              {
+                "kind": "account",
+                "value": "PLAN"
+              }
+            ],
+            "cut": [
+              {
+                "kind": "account",
+                "value": "PLAN"
+              }
+            ]
+          },
+          "subject": {
+            "account_id": "PLAN"
+          },
+          "id": "f4",
+          "written": "60%",
+          "what": "allocation exposure bond weight \u00b7 2025-12-31",
+          "record_ids": [
+            "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151"
+          ],
+          "evidence_id": "conversation:aSTNyKIErMBhMFG8HuBy8wxu:f4",
+          "evidence_links": [
+            {
+              "document_id": "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151",
+              "label": "synthetic.pdf",
+              "relation": "attests",
+              "page": ""
+            }
+          ],
+          "receipt_ids": [
+            "conversation:aSTNyKIErMBhMFG8HuBy8wxu:numerical:0"
+          ]
+        },
+        {
+          "value": "+10",
+          "quantity": "allocation_percentage_points",
+          "kind": "hypothetical",
+          "currency": "",
+          "dated": "2025-12-31",
+          "grade": "",
+          "boundary": {
+            "whole": false,
+            "accounts": {
+              "counted": 1,
+              "held": 1
+            },
+            "selected": [
+              {
+                "kind": "account",
+                "value": "PLAN"
+              }
+            ],
+            "cut": [
+              {
+                "kind": "account",
+                "value": "PLAN"
+              }
+            ]
+          },
+          "subject": {
+            "account_id": "PLAN"
+          },
+          "id": "f13",
+          "written": "+10 percentage points",
+          "what": "allocation percentage points \u00b7 2025-12-31",
+          "record_ids": [
+            "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151"
+          ],
+          "evidence_id": "conversation:aSTNyKIErMBhMFG8HuBy8wxu:f13",
+          "evidence_links": [
+            {
+              "document_id": "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151",
+              "label": "synthetic.pdf",
+              "relation": "attests",
+              "page": ""
+            }
+          ],
+          "receipt_ids": [
+            "conversation:aSTNyKIErMBhMFG8HuBy8wxu:numerical:0"
+          ]
+        }
+      ],
+      "numerical_receipts": [
+        {
+          "schema_version": 1,
+          "id": "conversation:aSTNyKIErMBhMFG8HuBy8wxu:numerical:0",
+          "figure_ids": [
+            "f4",
+            "f13"
+          ],
+          "source_records": [
+            {
+              "record_id": "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151",
+              "kind": "document",
+              "document_id": "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151"
+            }
+          ],
+          "premises": [
+            {
+              "parameter": "allocation_target",
+              "role": "user-stated allocation target",
+              "raw": "my 50% target",
+              "modeled": "50/100",
+              "unit": "fraction",
+              "currency": "",
+              "source": "current_question",
+              "quote": "my 50% target",
+              "derivation": "exact positive target-role grammar"
+            }
+          ],
+          "observed_inputs": [],
+          "local_inputs": [],
+          "context": [
+            {
+              "label": "Instrument view",
+              "value": "allocation"
+            },
+            {
+              "label": "Selected account",
+              "value": "PLAN"
+            },
+            {
+              "label": "Valuation currency",
+              "value": "USD"
+            },
+            {
+              "label": "Authenticated read revision",
+              "value": "g-83fe5a6eb4054b79bedfc6797088bbb1"
+            },
+            {
+              "label": "Allocation comparison operation",
+              "value": "100*(exposure_market_value/cash_inclusive_market_value-user_target_fraction)"
+            },
+            {
+              "label": "Accepted exposure market-value numerator",
+              "value": "60"
+            },
+            {
+              "label": "Numerator source figure",
+              "value": "93b6f9e76689af68fe5e68a423f9f49d12a1be5b503be4fc3e4b4980806e610c"
+            },
+            {
+              "label": "Accepted cash-inclusive market-value denominator",
+              "value": "100"
+            },
+            {
+              "label": "Denominator source figure",
+              "value": "0a666eebc0d8dbf35ff22ff98918faa8574edd5e8b3453bc82ca8a99380ea5c0"
+            },
+            {
+              "label": "Display-only rounded allocation weight",
+              "value": "6506afdddf8f2a61b06a74b4771be7e9d47543c6e25875ba9c26d2ce4a54cbcb"
+            },
+            {
+              "label": "Current target receipt",
+              "value": "dfJz0qACn3aCMk3CkdPjHa4eM4MAVoLt"
+            },
+            {
+              "label": "Exposure",
+              "value": "bond"
+            },
+            {
+              "label": "Snapshot date",
+              "value": "2025-12-31"
+            },
+            {
+              "label": "Arithmetic convention",
+              "value": "Exact rational rounded directly to eight fractional percentage-point digits, HALF_EVEN"
+            }
+          ],
+          "caveats": []
+        }
+      ],
+      "source_assertions": [],
+      "target_premises": [
+        {
+          "receipt_id": "dfJz0qACn3aCMk3CkdPjHa4eM4MAVoLt",
+          "question_id": "982cf25e5ec54627be5f32e9aea5f4a9",
+          "account": "PLAN",
+          "currency": "USD",
+          "exposure": "bond",
+          "as_of": "2025-12-31",
+          "target_numerator": 50,
+          "target_denominator": 100,
+          "target_role_span": [
+            35,
+            48
+          ],
+          "exposure_span": [
+            14,
+            18
+          ],
+          "target_role_text": "my 50% target",
+          "exposure_text": "bond",
+          "percent_unit": "%",
+          "continuation_receipt_id": "QISYUHaSSEEymXwdnswEQXfROgX6jN9x",
+          "dependencies": [
+            "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151BOND-HOLDING",
+            "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151EQUITY-HOLDING",
+            "balance:2",
+            "position:3",
+            "position:5"
+          ],
+          "id": "u1",
+          "claim": "allocation_target",
+          "kind": "user_stated",
+          "question_digest": "a42246c0652e0d5bf5713ec64c3a3b5cf0b0cb564842537c0fb8be8131b0486b",
+          "written": "50% (your figure)"
+        }
+      ],
+      "gaps": [],
+      "options": [],
+      "missing": [],
+      "spoken": {
+        "may_speak": true,
+        "withheld": "",
+        "parts": [
+          "text",
+          "grade",
+          "citations"
+        ],
+        "text": "The actual allocation is 60%; compared with your stated target of 50% (your figure), the difference is +10 percentage points. That counts only what is on PLAN. The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+        "grade_sentence": "The sourced financial figures are corroborated. User-stated targets and hypothetical results have no bank evidence grade.",
+        "citation_sentence": "What that figure rests on is on the screen beside this. I cannot read a document aloud, and a document read aloud would not be evidence anyway.",
+        "local_only": "Speaking and listening happen on this machine or not at all. Sending your voice to somebody else's computer would be a new way for your things to leave here, and that is a decision nobody has made, so I do not offer it."
+      },
+      "answer_id": "RTiLkVuG2gI2jvcDk94FAXtQ",
+      "allocation_selection_manifest": [
+        {
+          "version": "allocation-continuation-v1",
+          "turn_id": "aSTNyKIErMBhMFG8HuBy8wxu",
+          "answer_id": "RTiLkVuG2gI2jvcDk94FAXtQ",
+          "account": "PLAN",
+          "currency": "USD",
+          "snapshot_date": "2025-12-31",
+          "axis": "exposure",
+          "exposure": "bond",
+          "revision": "g-83fe5a6eb4054b79bedfc6797088bbb1",
+          "dependencies": [
+            "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151BOND-HOLDING",
+            "51f29ea565951b25785bcecabc97ffda5b04097f3806d2369523d018aa32c151EQUITY-HOLDING",
+            "balance:2",
+            "position:3",
+            "position:5"
+          ],
+          "source_commitment": "19f808a4acf6be8812417f6a5aceaf70020c008a2d7f91a5b6bf21b8eaf1f04b",
+          "binding_identity": "f31f49a8df793f80592554a9bb2540f679e8a66364e85f43189011a392a3de4c"
+        }
+      ],
+      "allocation_selection_ids": [
+        "y2vmYKlg2Zu8p45ZGVU-E8nqC6sEah7K"
+      ],
+      "continuation_eligible": true
+    },
+    "reason": null
+  }
+]

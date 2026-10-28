@@ -241,6 +241,8 @@ def current_period(core: ProjectionCore, today: str,
         raise ValueError("current-period horizon must be 1 to 366 calendar days")
     end = start + timedelta(days=horizon_days)
 
+    from ..instruments import account_restrictions
+    restrictions = account_restrictions(core)
     by_currency: dict[str, dict] = {}
     exclusions: list[ProjectionExclusion] = []
     for account in sorted(core._acct):
@@ -251,7 +253,8 @@ def current_period(core: ProjectionCore, today: str,
             continue
         reason = ("account_not_depository" if state.kind != "depository" else
                   "account_not_issuer" if state.origin != ISSUED else
-                  "account_currency_unstated" if not state.currency else "")
+                  "account_currency_unstated" if not state.currency else
+                  "account_restricted" if account in restrictions else "")
         if reason:
             exclusions.append(ProjectionExclusion(
                 kind="account", identity=account, reason=reason,
@@ -302,6 +305,12 @@ def current_period(core: ProjectionCore, today: str,
     exclusions.extend(goal_exclusions)
     expected = incoming + outgoing + goal_steps
     for item in expected:
+        if any(account in restrictions for account in item.account_ids):
+            exclusions.append(ProjectionExclusion(
+                kind=item.kind, identity=item.subject, reason="account_restricted",
+                currency=item.currency, evidence_dates=item.evidence_dates,
+                record_ids=item.record_ids, account_ids=item.account_ids))
+            continue
         if item.currency not in by_currency:
             continue
         bucket = by_currency[item.currency]

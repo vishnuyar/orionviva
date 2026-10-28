@@ -1,5 +1,5 @@
 import { BridgeRefusal, BridgeUnreadable } from "./contracts";
-import type { BridgeClient, BridgeTransport, DeclineReason, SampleFrame, SurfaceName, SurfaceParameters, SurfaceReadResult } from "./contracts";
+import type { BridgeClient, BridgeTransport, DeclineReason, SamplePreparation, SampleFrame, SurfaceName, SurfaceParameters, SurfaceReadResult } from "./contracts";
 
 // The frame's words, read off the reply that opened the sample vault. Every
 // field must be there and be a sentence: a frame drawn with a blank line in it
@@ -15,6 +15,21 @@ function sampleFrame(result: unknown): SampleFrame | null {
   if (typeof said.detail !== "string" || !said.detail.trim()) return null;
   if (typeof said.leave !== "string" || !said.leave.trim()) return null;
   return { title: said.title, detail: said.detail, leave: said.leave };
+}
+
+function samplePreparation(result: unknown): SamplePreparation {
+  const operation = "bridge.sample.status";
+  if (typeof result !== "object" || result === null || Array.isArray(result)) throw new BridgeUnreadable(operation);
+  const value = result as Record<string, unknown>;
+  const fields = ["state", "sample_version", "completed_documents", "total_documents", "posted_documents", "held_documents", "phase", "message"];
+  if (Object.keys(value).length !== fields.length || !fields.every((field) => Object.hasOwn(value, field)) || value.sample_version !== "five-year-life-v1" || value.total_documents !== 794) throw new BridgeUnreadable(operation);
+  if (!["completed_documents", "posted_documents", "held_documents"].every((field) => typeof value[field] === "number" && Number.isSafeInteger(value[field]) && value[field] >= 0 && value[field] <= 794)) throw new BridgeUnreadable(operation);
+  if (typeof value.message !== "string" || value.message.length > 1000) throw new BridgeUnreadable(operation);
+  const preparing = value.state === "preparing" && ["validating", "capturing", "checking"].includes(String(value.phase));
+  const ready = value.state === "ready" && value.phase === "ready" && value.completed_documents === 794;
+  const failed = value.state === "failed" && value.phase === "failed";
+  if (!preparing && !ready && !failed) throw new BridgeUnreadable(operation);
+  return value as SamplePreparation;
 }
 
 export function createHostBridgeClient(transport: BridgeTransport): BridgeClient {
@@ -47,6 +62,8 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     ...(transport.openRememberedVault ? { openRememberedVault: transport.openRememberedVault } : {}),
     ...(transport.closeVault ? { closeVault: transport.closeVault } : {}),
     ...(transport.rememberVault ? { rememberVault: transport.rememberVault } : {}),
+    prepareSampleVault: async () => samplePreparation(await request("bridge.sample.prepare", {})),
+    readSamplePreparation: async () => samplePreparation(await request("bridge.sample.status", {})),
     openSampleVault: async () => {
       const opened = await request<{ surfaces?: unknown; priority_reads?: unknown }>("bridge.open_demo_vault", {});
       if (Array.isArray(opened.priority_reads) || Array.isArray(opened.surfaces)) {
@@ -57,6 +74,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     ...(transport.pickBackupSavePath ? { pickBackupSavePath: transport.pickBackupSavePath } : {}),
     ...(transport.pickVaultDirectory ? { pickVaultDirectory: transport.pickVaultDirectory } : {}),
     ...(transport.pickDocumentPaths ? { pickDocumentPaths: transport.pickDocumentPaths } : {}),
+    ...(transport.pickMultipleDocumentPaths ? { pickMultipleDocumentPaths: transport.pickMultipleDocumentPaths } : {}),
     ...(transport.subscribeToDroppedPaths ? { subscribeToDroppedPaths: transport.subscribeToDroppedPaths } : {}),
     ...(transport.subscribeToJobProgress ? { subscribeToJobProgress: transport.subscribeToJobProgress } : {}),
     readOverview: (parameters) => read("overview", parameters),
@@ -65,7 +83,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
       return read("overview_accounts", refresh ? { refresh: 1 } : {});
     },
     readSpending: (parameters) => read("spending", parameters),
-    readDocuments: () => read("documents"),
+    readDocuments: (parameters = { contract_version: "documents-page-v1" }) => read("documents", parameters),
     readDocumentPreview: (documentId, page) => request("viva.documents.preview.read", { document_id: documentId, page }),
     readConversation: (parameters) => read("conversation", parameters),
     readReview: (parameters) => read("review", parameters),
@@ -104,7 +122,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     writeDiagnostic: (file: string) => request("viva.maintenance.diagnose", { file }),
     exportVault: (archive: string) => request("viva.vault.export", { archive }),
     restoreVault: (archive: string, directory: string, passphrase: string) => request("viva.vault.restore", { archive, directory, passphrase }),
-    askViva: (question: string, mirrored: boolean, planRequest = false, contextMode?: import("../surface/types").AskContextMode, movementIds?: readonly string[]) => request("viva.conversation.ask", { question, mirrored, plan_request: planRequest, ...(contextMode ? { context_mode: contextMode } : {}), ...(movementIds?.length ? { movement_ids: [...movementIds] } : {}) }),
+    askViva: (question: string, mirrored: boolean, planRequest = false, contextMode?: import("../surface/types").AskContextMode, movementIds?: readonly string[], continuationRecovery?: import("../surface/types").ContinuationRecovery) => request("viva.conversation.ask", { question, mirrored, plan_request: planRequest, ...(contextMode ? { context_mode: contextMode } : {}), ...(movementIds?.length ? { movement_ids: [...movementIds] } : {}), ...(continuationRecovery ? { continuation_recovery: continuationRecovery } : {}) }),
     undoAccountingCorrection: (correctionId: string) => request("viva.conversation.ask", { question: "Undo accounting correction", mirrored: true, undo_correction_id: correctionId }),
     readAccounting: (start: string, end: string) => read("accounting", { start, end }),
     answerQuestion: (questionId: string, said: string) => request("viva.conversation.answer", { question_id: questionId, said }),
@@ -114,6 +132,8 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     // sidecar's to mint, so this side never sends one and the field set alone
     // refuses one that was sent.
     uploadDocument: (path: string) => request("viva.documents.upload", { path }),
+    readRetainedDocuments: (documents: readonly { documentId: string; confirmationToken: string }[]) => request("viva.documents.upload_many", { retained_documents: documents.map((document) => ({ document_id: document.documentId, confirmation_token: document.confirmationToken })), confirm_reading: true }),
+    uploadDocuments: (paths: readonly string[]) => request("viva.documents.upload_many", { paths: [...paths] }),
     recoverDocument: (jobId: string) => request("viva.documents.recover", { job_id: jobId, confirm_reading: true }),
   };
 }

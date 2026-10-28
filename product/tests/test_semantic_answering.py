@@ -477,7 +477,10 @@ def test_interpretation_catalog_contains_labels_but_no_financial_results():
     catalog = admission_registry().semantic_entities()
 
     assert set(catalog) == {
-        "version", "accounts", "categories", "counterparties", "coverage"}
+        "version", "accounts", "categories", "counterparties", "coverage",
+        "retirement_plan_sets"}
+    assert catalog['retirement_plan_sets'] == []
+    assert catalog['coverage']['retirement_plan_sets'] == {'count':0,'complete':False}
     assert all(set(item) == {"id", "name", "institution", "kind"}
                for item in catalog["accounts"])
     assert all(set(item) == {"id", "label"}

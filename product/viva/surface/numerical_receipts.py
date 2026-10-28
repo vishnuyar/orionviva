@@ -5,7 +5,7 @@ import copy
 import json
 from decimal import Decimal, InvalidOperation
 
-MAX_FIGURES=100
+MAX_FIGURES=128
 MAX_RECEIPTS=32
 MAX_RECORDS=500
 MAX_SCALAR=4096
@@ -68,15 +68,74 @@ def typed_figure(figure):
         out['boundary']=copy.deepcopy(boundary)
     subject=figure.get('subject')
     if subject is not None:
-        allowed=({'kind','value'},{'grouping'},{'account_id'},{'merchant'},{'goal_id'})
-        if not isinstance(subject,dict) or set(subject) not in allowed:raise ValueError('unknown subject')
+        allowed=({'kind','value'},{'grouping'},{'account_id'},{'account_id','security_id'},{'merchant'},{'goal_id'})
+        retirement=isinstance(subject,dict) and 'account_set_id' in subject
+        if retirement:
+            from ..retirement_funding.contracts import valid_subject
+            valid_subject(subject)
+        elif not isinstance(subject,dict) or set(subject) not in allowed:raise ValueError('unknown subject')
+        if set(subject)=={'account_id','security_id'} and any(not isinstance(value,str) or not value.strip() or len(value)>256 for value in subject.values()):raise ValueError('invalid account-local security subject')
         if set(subject)=={'grouping'} and subject['grouping'] not in ('category','merchant','account'):raise ValueError('unknown grouping')
         if set(subject)=={'kind','value'}:
             from ..tools.envelope import SELECTED_KINDS
             if subject['kind'] not in SELECTED_KINDS:raise ValueError('unknown subject kind')
-        out['subject']={name:scalar(value) for name,value in subject.items()}
+        out['subject']={name:(strings(value,3) if name=='member_ids' and retirement else scalar(value)) for name,value in subject.items()}
     return out
 
+
+
+def _investment_anchors(data):
+    if data.get('source_fields',{}).get('schema')=='investment-source-fields-v2':
+        from ..investment.lineage import expand_anchors
+        return expand_anchors(data)
+    return data.get('anchors')
+
+
+def _investment_provenance(data,figures):
+    if 'figure_sources' in data:
+        from ..investment.lineage import lineage_digest
+        expected=lineage_digest(data)
+        if any(fig.get('source_lineage_digest')!=expected for fig in figures):raise ValueError('investment source field lineage changed')
+    anchors=_investment_anchors(data)
+    if not isinstance(anchors,dict) or len(anchors)>5000:raise ValueError('investment anchors unavailable')
+    pairs=set();out={}
+    for anchor in anchors.values():
+        if not isinstance(anchor,dict) or set(anchor)!={'document','page','anchor'}:raise ValueError('invalid investment source anchor')
+        document=scalar(anchor['document']);scalar(anchor['anchor'])
+        if not document or type(anchor['page']) is not int or not 1<=anchor['page']<=200:raise ValueError('invalid investment source page')
+        pairs.add((document,anchor['page']))
+    if len(pairs)>512:raise ValueError('investment source page bound')
+    for fig in figures:
+        identities=strings(fig.get('anchor_ids'),5000)
+        if not identities or any(identity not in anchors for identity in identities):raise ValueError('missing investment figure anchor')
+        selected=sorted({(anchors[identity]['document'],anchors[identity]['page']) for identity in identities})
+        if {document for document,page in selected}!=set(strings(fig.get('record_ids'))):raise ValueError('investment source records mismatch')
+        subject=fig.get('subject',{})
+        if subject.get('account_id')!=data.get('account'):raise ValueError('investment selected account mismatch')
+        out[scalar(fig['id'])]=[dict(document_id=document,page=page) for document,page in selected]
+    return out
+
+
+def _investment_derivations(data,figures):
+    anchors=_investment_anchors(data);out=[]
+    for fig in figures:
+        if fig.get('quantity')!='disposed_cost_basis':continue
+        operands=fig.get('operands')
+        if not isinstance(operands,list) or len(operands)>1000:raise ValueError('investment operands unavailable')
+        rows=[]
+        for operand in operands:
+            if not isinstance(operand,dict) or set(operand)!={'row','operation','proceeds','reported_realized_gain','anchor_ids'} or operand['operation']!='proceeds_minus_reported_realized_gain':raise ValueError('unsupported investment derivation')
+            values={name:scalar(operand[name]) for name in ('proceeds','reported_realized_gain')}
+            if any(not Decimal(value).is_finite() for value in values.values()):raise ValueError('nonfinite investment operand')
+            identities=strings(operand['anchor_ids'],2)
+            if len(identities)!=2 or any(identity not in anchors or identity not in fig.get('anchor_ids',[]) for identity in identities):raise ValueError('investment operand source unavailable')
+            pages=sorted({(anchors[identity]['document'],anchors[identity]['page']) for identity in identities})
+            row_id=scalar(operand['row'])
+            if 'source_identities' in data:
+                row_id=scalar(data['source_identities']['rows'][row_id])
+            rows.append(dict(row_id=row_id,**values,source_pages=[dict(document_id=document,page=page) for document,page in pages]))
+        out.append(dict(figure_id=scalar(fig['id']),operation='proceeds_minus_reported_realized_gain',rows=rows))
+    return out
 
 def _source_registry(projection, requested):
     sources={record:dict(record_id=record,kind='unavailable',document_id=None) for record in requested}
@@ -212,6 +271,84 @@ def numerical_receipts(turn, projection, turn_id):
             caveats=strings([item['text'] if isinstance(item,dict) and set(item)=={'text'} else item for item in row.get('caveats',[])],100)
             identity=f'conversation:{turn_id}:numerical:{position}'
             context=_context(data)
+            investment_provenance=None
+            investment_derivations=None
+            if row.get('tool')=='read_account_balance_report':
+                from ..tools.account_balances import receipt_provenance
+                execution = getattr(turn, 'instrument_execution', None)
+                original_reads = getattr(execution, 'transcript', ())
+                original = original_reads[position] if position < len(original_reads) else None
+                token = getattr(getattr(getattr(execution, 'graph', None), 'ground', None),
+                                'instrument_token', None)
+                if (original is None or original.tool != row.get('tool')
+                        or original.id != row.get('id')):
+                    raise ValueError('selected account receipt lacks its actual execution producer')
+                investment_provenance = receipt_provenance(data, figures,
+                    producer=original, run_token=token,
+                    origin=getattr(getattr(turn, 'result', None), '_selected_report_origin', None))
+                investment_derivations = []
+                context.append(dict(label='Read day', value=scalar(data.get('read_day'))))
+                for disposition in data.get('rows', []):
+                    if disposition.get('account') not in data.get('source_fields', {}).get('selected_accounts', []):
+                        raise ValueError('selected account disposition membership changed')
+                    if any(disposition.get(field) not in {'accepted', 'unavailable', 'conflicted'}
+                            for field in ('amount', 'date', 'source', 'restriction', 'closure')):
+                        raise ValueError('selected account disposition changed')
+            if row.get('tool')=='read_investment_evidence':
+                investment_provenance=_investment_provenance(data,figures)
+                investment_derivations=_investment_derivations(data,figures)
+                dispositions=data.get('dispositions',[])
+                if not isinstance(dispositions,list) or len(dispositions)>64:raise ValueError('investment dispositions unavailable')
+                allowed_claims={'security_units','holding_cost_basis','investment_contribution','investment_dividend','sale_proceeds','disposed_cost_basis','realized_gain','balance','count'}
+                for disposition in dispositions:
+                    if not isinstance(disposition,dict) or disposition.get('claim') not in allowed_claims or disposition.get('status') not in {'unavailable','conflicted','incomplete','unsupported_units'}:raise ValueError('invalid investment disposition')
+                    context.append(dict(label='Investment evidence limit',value=disposition['claim'].replace('_',' ')+': '+disposition['status'].replace('_',' ')+'.'))
+                for label,key in (('Investment view','view'),('Selected account','account'),('Valuation currency','currency'),('Authenticated read revision','revision')):
+                    context.append(dict(label=label,value=scalar(data.get(key))))
+                if any(fig.get('quantity')=='disposed_cost_basis' for fig in figures):
+                    context.append(dict(label='Disposed-basis derivation',value='Source sale proceeds minus source reported realized gain; no lot method is asserted.'))
+            if row.get('tool')=='read_retirement_funding':
+                from ..retirement_funding.lineage import public_provenance
+                investment_provenance=public_provenance(data,figures)
+                investment_derivations=[]
+                context.append(dict(label='Retirement funding source scope',value=scalar(data.get('source_scope'))))
+                context.append(dict(label='Selected retirement plans',value=', '.join(strings(data['subject']['member_ids'],3))))
+                context.append(dict(label='Retirement funding view',value=scalar(data['view'])))
+                relationships=set()
+                for fig in figures:
+                    relationship=(fig.get('subject') or {}).get('relationship_id')
+                    if relationship and relationship not in relationships:
+                        relationships.add(relationship)
+                        context.append(dict(label='Documented rollover relationship',value=relationship))
+                        context.append(dict(label='Canonical rollover source',value=scalar(fig['subject']['source_account_id'])))
+                        context.append(dict(label='Canonical rollover destination',value=scalar(fig['subject']['destination_account_id'])))
+            if row.get("tool")=="read_instrument_details":
+                for label,key in (("Instrument view","view"),("Selected account","account"),("Valuation currency","currency"),("Authenticated read revision","revision")):
+                    context.append(dict(label=label,value=scalar(data.get(key))))
+                rules=data.get("tax_absence_rules",[])
+                if not isinstance(rules,list) or len(rules)>80:raise ValueError("tax absence receipt unavailable")
+                active_ids={f.get("authority_record_id") for f in figures}
+                for rule in rules:
+                    if rule.get("record_id") not in active_ids:continue
+                    if set(rule)!={"record_id","from","to","rule"} or rule["rule"]!="accepted_empty_tax_event_set_v1":raise ValueError("tax absence receipt unavailable")
+                    from datetime import date
+                    start=date.fromisoformat(rule["from"]);end=date.fromisoformat(rule["to"])
+                    if start>end:raise ValueError("tax absence receipt period unavailable")
+                    context.append(dict(label="Tax absence rule",value="For "+start.isoformat()+" through "+end.isoformat()+", sum of the complete accepted tax event set (no events)."))
+                comparison=data.get("allocation_comparison")
+                if comparison is not None:
+                    if not isinstance(comparison,dict):raise ValueError("allocation receipt unavailable")
+                    current=[p for p in getattr(turn.result,"target_premises",[]) if p.get("receipt_id")==comparison.get("premise_ref")]
+                    if len(current)!=1 or current[0].get("kind")!="user_stated" or current[0].get("target_role_text") not in turn.question:raise ValueError("current target receipt unavailable")
+                    target=current[0]
+                    premises.append(dict(parameter="allocation_target",role="user-stated allocation target",raw=target["target_role_text"],
+                        modeled=scalar(comparison["target_numerator"])+"/"+scalar(comparison["target_denominator"]),unit="fraction",currency="",
+                        source="current_question",quote=target["target_role_text"],derivation="exact positive target-role grammar"))
+                    for label,key in (("Allocation comparison operation","operation"),("Accepted exposure market-value numerator","numerator_value"),
+                        ("Numerator source figure","numerator_record_id"),("Accepted cash-inclusive market-value denominator","denominator_value"),
+                        ("Denominator source figure","denominator_record_id"),("Display-only rounded allocation weight","display_weight_record_id"),
+                        ("Current target receipt","premise_ref"),("Exposure","exposure"),("Snapshot date","snapshot_date"),("Arithmetic convention","rounding")):
+                        context.append(dict(label=label,value=scalar(comparison[key])))
             if any(source['kind']=='unavailable' for source in sources.values()):
                 context.append(dict(label='Source receipt limit',value='Some source identities are not captured originals or resolvable local records. Movement lookup is limited to 10000 held transaction lines.'))
             if any(source['kind']=='local_activity' and event not in local for event,source in sources.items()):
@@ -219,6 +356,9 @@ def numerical_receipts(turn, projection, turn_id):
             receipt=dict(schema_version=1,id=identity,figure_ids=[fig['id'] for fig in figures],
                 source_records=[sources[record] for record in records],premises=premises,observed_inputs=observed,
                 local_inputs=[local[event] for event in sorted(local)],context=context,caveats=caveats)
+            if investment_provenance is not None:
+                receipt['figure_provenance']=investment_provenance
+                receipt['investment_derivations']=investment_derivations
             size=len(json.dumps(receipt,ensure_ascii=False).encode())
             if size>MAX_RECEIPT_BYTES or receipt_bytes+size>MAX_ANSWER_RECEIPT_BYTES:continue
             receipt_bytes+=size

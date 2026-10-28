@@ -29,6 +29,10 @@ from vivacore.verify.normalize import parse_amount, parse_date
 from ..ledger.events import Provenance
 from ..ledger.postings import BROKERAGE_ACTIVITY_KINDS
 from .statement import period_date
+from . import instrument_contracts as c
+from ..ledger.instruments import encode, decode
+from viva.investment.extraction import InvestmentSource, parse as parse_investment_source
+from viva.investment.contracts import EvidenceError as InvestmentSourceError
 
 log = logging.getLogger(__name__)
 
@@ -40,13 +44,18 @@ class PositionFact:
     market_value: Decimal              # the statement's value for the holding
     cost_basis: Decimal | None = None  # optional — None when the statement omits it
     page: int | None = None
+    classification: c.PositionClassification | None = None
+
+    def __post_init__(self):
+        if self.classification is not None and (type(self.classification) is not c.PositionClassification or self.classification.instrument.value != self.instrument):
+            raise c.ContractError("position classification must name its printed instrument")
 
     def to_dict(self) -> dict:
         return {"instrument": self.instrument, "units": str(self.units),
                 "market_value": str(self.market_value),
                 "cost_basis": (str(self.cost_basis)
                                if self.cost_basis is not None else ""),
-                "page": self.page}
+                "page": self.page, "classification": encode(self.classification)}
 
     @classmethod
     def from_dict(cls, d: dict) -> "PositionFact":
@@ -54,7 +63,9 @@ class PositionFact:
         return cls(instrument=d.get("instrument", ""), units=Decimal(d["units"]),
                    market_value=Decimal(d["market_value"]),
                    cost_basis=(Decimal(cb) if cb not in (None, "") else None),
-                   page=d.get("page"))
+                   page=d.get("page"),
+                   classification=(decode(d["classification"], c.PositionClassification)
+                       if d.get("classification") is not None else None))
 
 
 @dataclass(frozen=True)
@@ -90,7 +101,7 @@ class BrokerageActivity:
 class BrokerageFacts:
     doc_id: str
     doc_type: str
-    doc_type_confidence: float
+    doc_type_confidence: float | None
     account_ref: str
     currency: str
     as_of: str                         # the statement date the snapshot is measured at
@@ -105,6 +116,13 @@ class BrokerageFacts:
     # funding account and recognizing income, fees and gains.
     opening_cash: Decimal | None = None
     activity: list[BrokerageActivity] = field(default_factory=list)
+    investment_source: InvestmentSource | None = None
+    acquisition: dict | None = None
+    validated_source_page_count: int | None = None
+
+    def __post_init__(self):
+        from ..acquisition import classification
+        classification(self.doc_id, self.doc_type_confidence, self.acquisition)
 
     @property
     def period_end(self) -> str:
@@ -114,13 +132,16 @@ class BrokerageFacts:
         document rather than switching on its type."""
         return self.as_of
 
-    def provenance(self, note: str = "") -> Provenance:
-        return Provenance(doc_id=self.doc_id, note=note)
+    def provenance(self, note: str = "", page: int | None = None) -> Provenance:
+        return Provenance(doc_id=self.doc_id, page=page, note=note)
 
     def to_dict(self) -> dict:
         return {
             "doc_id": self.doc_id, "doc_type": self.doc_type,
             "doc_type_confidence": self.doc_type_confidence,
+            **({"acquisition": dict(self.acquisition)} if self.acquisition is not None else {}),
+            **({"validated_source_page_count": self.validated_source_page_count}
+               if self.validated_source_page_count is not None else {}),
             "account_ref": self.account_ref, "currency": self.currency,
             "as_of": self.as_of, "cash": str(self.cash), "total": str(self.total),
             "positions": [p.to_dict() for p in self.positions],
@@ -129,6 +150,7 @@ class BrokerageFacts:
             "opening_cash": (str(self.opening_cash)
                              if self.opening_cash is not None else ""),
             "activity": [a.to_dict() for a in self.activity],
+            "investment_source": self.investment_source.to_dict() if self.investment_source is not None else None,
         }
 
     @classmethod
@@ -137,6 +159,8 @@ class BrokerageFacts:
         return cls(
             doc_id=d["doc_id"], doc_type=d.get("doc_type", "brokerage_statement"),
             doc_type_confidence=d.get("doc_type_confidence", 0.0),
+            acquisition=d.get("acquisition"),
+            validated_source_page_count=d.get("validated_source_page_count"),
             account_ref=d.get("account_ref", ""), currency=d["currency"],
             as_of=d.get("as_of", ""), cash=Decimal(d["cash"]),
             total=Decimal(d["total"]),
@@ -145,7 +169,8 @@ class BrokerageFacts:
             institution=d.get("institution", ""),
             account_names=list(d.get("account_names", [])),
             opening_cash=(Decimal(oc) if oc not in (None, "") else None),
-            activity=[BrokerageActivity.from_dict(x) for x in d.get("activity", [])])
+            activity=[BrokerageActivity.from_dict(x) for x in d.get("activity", [])],
+            investment_source=parse_investment_source(d.get("investment_source")))
 
 
 # A brokerage account's "cash" is usually a money-market fund, so the same money
@@ -287,10 +312,23 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
                                 f"position {i} cost_basis")
         # Sweep rows are kept as read: deciding whether the cash line already
         # includes them needs the stated total, which is the projector's call.
+        classification = None
+        proposed = rp.get("classification")
+        if proposed is not None:
+            try:
+                if type(proposed) is not dict or set(proposed) - {"exposure", "vehicle", "exposure_page", "vehicle_page"}:
+                    raise c.ContractError("unknown classification fields")
+                classification = c.PositionClassification(
+                    c.SourcedText(str(rp.get("instrument", "")).strip(), c.Source(doc_id, rp.get("page"))),
+                    c.Exposure(proposed.get("exposure", "unknown")), c.Vehicle(proposed.get("vehicle", "unknown")),
+                    c.Source(doc_id, proposed["exposure_page"]) if proposed.get("exposure_page") is not None else None,
+                    c.Source(doc_id, proposed["vehicle_page"]) if proposed.get("vehicle_page") is not None else None)
+            except (c.ContractError, ValueError, TypeError) as exc:
+                return None, f"position {i} classification: {exc}"
         positions.append(PositionFact(
             instrument=str(rp.get("instrument", "")).strip(),
             units=units_n.decimal(), market_value=mv,
-            cost_basis=cost, page=rp.get("page")))
+            cost_basis=cost, page=rp.get("page"), classification=classification))
 
     # Optional: opening cash and the period's cash activity. Absent on a
     # holdings-only statement, where only the snapshot is recorded.
@@ -334,6 +372,11 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
     else:
         names = []
 
+    try:
+        investment_source = parse_investment_source(data.get("investment_source"))
+    except InvestmentSourceError as error:
+        return None, f"investment source: {error}"
+
     facts = BrokerageFacts(
         doc_id=doc_id,
         doc_type=str(data.get("doc_type", "brokerage_statement")).strip().lower()
@@ -344,5 +387,6 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
         positions=positions,
         account_number=str(data.get("account_number", "")).strip(),
         institution=str(data.get("institution", "")).strip(),
-        account_names=names, opening_cash=opening_cash, activity=activity)
+        account_names=names, opening_cash=opening_cash, activity=activity,
+        investment_source=investment_source)
     return facts, None

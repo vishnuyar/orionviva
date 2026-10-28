@@ -33,19 +33,24 @@ export async function connectBrowser(onEnded: (message?: string) => void): Promi
   const pendingVaultRequests = new Set<Promise<unknown>>();
   let timer: ReturnType<typeof setTimeout>;
   const listeners = new Set<JobProgressListener>();
-  const release = () => {
-    ended = true; clearTimeout(timer);
-    navigator.sendBeacon("/__orionviva/release", JSON.stringify({ token, page }));
-    onEnded();
-  };
-  window.addEventListener("pagehide", release, { once: true });
-  function end(message?: string) {
+  let released = false;
+  function releaseOwnedPage() {
+    if (released) return;
+    released = true;
+    try { navigator.sendBeacon("/__orionviva/release", JSON.stringify({ token, page })); }
+    catch { /* Ending access still clears the private view if delivery fails. */ }
+  }
+  function finish(message: string | undefined, forgetSession: boolean) {
     if (ended) return;
     ended = true; clearTimeout(timer);
-    sessionStorage.removeItem(SESSION_KEY);
     window.removeEventListener("pagehide", release);
+    if (forgetSession) sessionStorage.removeItem(SESSION_KEY);
+    releaseOwnedPage();
     onEnded(message);
   }
+  const release = () => finish(undefined, false);
+  window.addEventListener("pagehide", release, { once: true });
+  function end(message?: string) { finish(message, true); }
   async function call<T>(path: string, payload: unknown): Promise<T> {
     if (ended) throw new Error("Browser access has ended");
     let response: Response;
@@ -63,7 +68,7 @@ export async function connectBrowser(onEnded: (message?: string) => void): Promi
     }
     return await response.json() as T;
   }
-  const capabilities = await call<{ remember: boolean; backup_save?: boolean; vault_epoch: number; sequence: number }>("capabilities", {});
+  const capabilities = await call<{ remember: boolean; backup_save?: boolean; campaign_file_chooser?: boolean; vault_epoch: number; sequence: number }>("capabilities", {});
   vaultEpoch = capabilities.vault_epoch;
   let after = capabilities.sequence;
   let eventEpoch = capabilities.vault_epoch;
@@ -99,6 +104,33 @@ export async function connectBrowser(onEnded: (message?: string) => void): Promi
     try { return await request; }
     finally { pendingVaultRequests.delete(request); }
   }
+  async function pickCampaignDocuments(multiple = false): Promise<readonly string[]> {
+    const files = await new Promise<readonly File[]>((resolve, reject) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/pdf,.pdf";
+      input.multiple = multiple;
+      input.setAttribute("aria-label", "Choose synthetic persona PDF");
+      input.style.display = "none";
+      const finish = (files: readonly File[]) => { input.remove(); resolve(files); };
+      input.addEventListener("change", () => {
+        const selected = Array.from(input.files ?? []);
+        if (selected.length > (multiple ? 1000 : 1)) { input.remove(); reject(new Error("selection_over_limit")); }
+        else finish(selected);
+      }, { once: true });
+      input.addEventListener("cancel", () => finish([]), { once: true });
+      document.body.append(input);
+      try { input.click(); }
+      catch (failure) { input.remove(); reject(failure); }
+    });
+    const paths: string[] = [];
+    for (const file of files) {
+      const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+      const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      paths.push(await call<string>("campaign-file", { name: file.name, sha256 }));
+    }
+    return paths;
+  }
   return {
     closeVault: () => withVaultAccess(true, async () => {
       const result = await call<{ response: null; vault_epoch: number }>("close", { vault_epoch: vaultEpoch });
@@ -126,7 +158,8 @@ export async function connectBrowser(onEnded: (message?: string) => void): Promi
     ...(capabilities.remember ? { rememberVault: (directory: string, passphrase: string) => call<void>("remember", { directory, passphrase, vault_epoch: vaultEpoch }) } : {}),
     ...(capabilities.backup_save === true ? { pickBackupSavePath: () => call<string | null>("save-backup", {}) } : {}),
     pickVaultDirectory: () => call<string | null>("pick-folder", {}),
-    pickDocumentPaths: async () => { const path = await call<string | null>("pick-file", {}); return path ? [path] : []; },
+    pickDocumentPaths: capabilities.campaign_file_chooser === true ? () => pickCampaignDocuments() : async () => { const path = await call<string | null>("pick-file", {}); return path ? [path] : []; },
+    pickMultipleDocumentPaths: capabilities.campaign_file_chooser === true ? () => pickCampaignDocuments(true) : () => call<readonly string[]>("pick-files", {}),
     subscribeToJobProgress: async (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   };
 }

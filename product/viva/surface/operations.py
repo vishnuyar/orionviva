@@ -28,6 +28,8 @@ BRIDGE_OPEN_VAULT = "bridge.open_vault"
 # a passphrase: both are the engine's, so a caller has nowhere to point it at a
 # directory of their own and nowhere to learn what opens it.
 BRIDGE_OPEN_DEMO_VAULT = "bridge.open_demo_vault"
+BRIDGE_SAMPLE_PREPARE = "bridge.sample.prepare"
+BRIDGE_SAMPLE_STATUS = "bridge.sample.status"
 SURFACE_CAPABILITIES = "viva.surface.capabilities"
 SURFACE_READ = "viva.surface.read"
 # What is in force, asked without a vault. It is not a surface read: a surface
@@ -59,11 +61,13 @@ DECLARED_OPERATIONS: tuple[BridgeOperation, ...] = (
     BridgeOperation(BRIDGE_HANDSHAKE),
     BridgeOperation(BRIDGE_OPEN_VAULT),
     BridgeOperation(BRIDGE_OPEN_DEMO_VAULT),
+    BridgeOperation(BRIDGE_SAMPLE_PREPARE),
+    BridgeOperation(BRIDGE_SAMPLE_STATUS),
     BridgeOperation(SURFACE_CAPABILITIES),
     BridgeOperation(SURFACE_READ, serves=("AccountOverview.v2", "SpendingBreakdown.v1", "ObligationsAndFindings.v1",
                                          "CurrentPeriodControl.v1",
                                          "GoalsAndPlans.v1",
-                                         "ConversationTimeline.v1",
+                                         "ConversationTimeline.v1", "DocumentsPage.v1",
                                          "JobRegistry.v1", "OutboundRecord.v1",
                                          "ActivityMovements.v3",
                                          "AccountLedger.v1", "ReviewSummary.v1")),

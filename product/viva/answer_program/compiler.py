@@ -132,6 +132,12 @@ class AnswerProgramCompiler:
         """Bind this turn's bounded vault-label catalog before interpretation."""
         self._families = SemanticFamilyRegistry(catalog)
 
+    def set_instrument_currency_resolver(self, resolver):
+        self._families._currency_resolver=resolver
+
+    def set_instrument_context(self, context):
+        self._families.instrument_context=context
+
     def _provider_exchange(self, exchange):
         from vivacore.models import AnthropicAdapter, OpenAICompatAdapter
         adapter_type = type(self._adapter)
