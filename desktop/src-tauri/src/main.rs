@@ -109,6 +109,58 @@ fn store_remembered_vault(directory: &str, passphrase: &str) -> Result<(), Strin
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn load_remembered_vault() -> Result<Option<RememberedVault>, String> {
+    bounded_credential_read(
+        read_remembered_vault,
+        &REMEMBERED_VAULT_READ_RUNNING,
+        Duration::from_secs(1),
+    )
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+static REMEMBERED_VAULT_READ_RUNNING: AtomicBool = AtomicBool::new(false);
+
+#[cfg(any(test, target_os = "macos", target_os = "windows"))]
+fn bounded_credential_read<T: Send + 'static>(
+    read: impl FnOnce() -> Result<T, String> + Send + 'static,
+    running: &'static AtomicBool,
+    timeout: Duration,
+) -> Result<T, String> {
+    running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .map_err(|_| "remembered vault lookup is still pending".to_string())?;
+    struct ReadGuard(&'static AtomicBool);
+    impl Drop for ReadGuard {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    let (sender, receiver) = mpsc::sync_channel(1);
+    // Only the credential getter runs here. A late read has no app or bridge
+    // handle and cannot open a vault after the caller has stopped waiting.
+    thread::Builder::new()
+        .name("orionviva-credential-read".into())
+        .spawn(move || {
+            let guard = ReadGuard(running);
+            let result = read();
+            drop(guard);
+            let _ = sender.send(result);
+        })
+        .map_err(|_| {
+            running.store(false, Ordering::SeqCst);
+            "remembered vault lookup could not start".to_string()
+        })?;
+    receiver
+        .recv_timeout(timeout)
+        .map_err(|error| match error {
+            mpsc::RecvTimeoutError::Timeout => "remembered vault lookup timed out".to_string(),
+            mpsc::RecvTimeoutError::Disconnected => {
+                "remembered vault lookup is unavailable".to_string()
+            }
+        })?
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn read_remembered_vault() -> Result<Option<RememberedVault>, String> {
     let encoded = match credential_entry()?.get_password() {
         Ok(encoded) => encoded,
         Err(keyring::Error::NoEntry) => return Ok(None),
@@ -670,10 +722,30 @@ fn spawn_bridge<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<BridgeProcess, 
     spawn_bridge_command(app, command)
 }
 
+#[cfg(target_os = "macos")]
+fn configure_bridge_temp_dir(
+    command: &mut Command,
+    temporary: &std::path::Path,
+) -> Result<(), String> {
+    // Pass a canonical temporary root to the bundled bridge, including when
+    // macOS supplies /var as an alias for /private/var.
+    let canonical = temporary
+        .canonicalize()
+        .map_err(|_| "unable to resolve OrionViva bridge temporary directory".to_string())?;
+    if !canonical.is_dir() {
+        return Err("OrionViva bridge temporary directory is unavailable".to_string());
+    }
+    command.env("TMPDIR", canonical);
+    Ok(())
+}
+
 fn spawn_bridge_command<R: tauri::Runtime>(
     app: &AppHandle<R>,
     mut command: Command,
 ) -> Result<BridgeProcess, String> {
+    #[cfg(target_os = "macos")]
+    configure_bridge_temp_dir(&mut command, &std::env::temp_dir())?;
+
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1339,6 +1411,126 @@ fn protected_default_matches_active(active: &ActiveVault, remembered_directory: 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn credential_read_deadline_discards_a_late_result() {
+        static RUNNING: AtomicBool = AtomicBool::new(false);
+        let (release, held) = mpsc::channel();
+        let (started, entered) = mpsc::channel();
+        let (returned, finished) = mpsc::channel();
+        let result = super::bounded_credential_read(
+            move || {
+                started.send(()).unwrap();
+                // The synthetic getter completes within one second.
+                let _ = held.recv_timeout(Duration::from_secs(1));
+                returned.send(()).unwrap();
+                Ok("late credential")
+            },
+            &RUNNING,
+            Duration::from_millis(20),
+        );
+        assert_eq!(result.unwrap_err(), "remembered vault lookup timed out");
+        entered.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(finished.try_recv().is_err());
+        assert!(RUNNING.load(Ordering::SeqCst));
+        assert!(super::bounded_credential_read(
+            || -> Result<(), String> {
+                panic!("must not start a second lookup while the first is held")
+            },
+            &RUNNING,
+            Duration::from_millis(20),
+        )
+        .is_err());
+        release.send(()).unwrap();
+        finished.recv_timeout(Duration::from_secs(1)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while RUNNING.load(Ordering::SeqCst) && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert!(!RUNNING.load(Ordering::SeqCst));
+        assert_eq!(
+            super::bounded_credential_read(
+                || Ok("fresh credential"),
+                &RUNNING,
+                Duration::from_secs(1)
+            )
+            .unwrap(),
+            "fresh credential"
+        );
+    }
+
+    #[test]
+    fn credential_read_preserves_absence_and_store_errors() {
+        static RUNNING: AtomicBool = AtomicBool::new(false);
+        assert_eq!(
+            super::bounded_credential_read(|| Ok(None::<String>), &RUNNING, Duration::from_secs(1))
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            super::bounded_credential_read(
+                || Err::<(), _>("store unavailable".into()),
+                &RUNNING,
+                Duration::from_secs(1)
+            )
+            .unwrap_err(),
+            "store unavailable"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bridge_child_uses_canonical_temporary_directory_without_changing_parent() {
+        use std::os::unix::fs::symlink;
+
+        let parent_temp = std::env::var_os("TMPDIR");
+        let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
+            "orionviva-temp-regression-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let actual = root.join("actual");
+        std::fs::create_dir(&actual).unwrap();
+        let alias = root.join("alias");
+        symlink(&actual, &alias).unwrap();
+        let temporary = alias.join("temporary");
+        std::fs::create_dir(&temporary).unwrap();
+        let canonical = temporary.canonicalize().unwrap();
+        assert_ne!(temporary, canonical);
+
+        let mut command = Command::new("/bin/sh");
+        command.env_clear().args(["-c", "printf '%s' \"$TMPDIR\""]);
+        super::configure_bridge_temp_dir(&mut command, &temporary).unwrap();
+        let output = command.output().unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            canonical.to_str().unwrap()
+        );
+        assert_eq!(std::env::var_os("TMPDIR"), parent_temp);
+        assert_eq!(command.get_envs().count(), 1);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bridge_rejects_unavailable_temporary_directory_before_spawn() {
+        let mut command = Command::new("/bin/sh");
+        let temporary = std::env::temp_dir().join(format!(
+            "orionviva-missing-temp-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        assert!(super::configure_bridge_temp_dir(&mut command, &temporary).is_err());
+        assert_eq!(command.get_envs().count(), 0);
+    }
+
     use super::{
         can_replay_after_recovery, claim_read_recovery, deadline_policy,
         operation_can_reopen_vault_and_replay, operation_may_have_written,

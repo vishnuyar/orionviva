@@ -33,3 +33,30 @@ describe("actual selected-account numerical receipt wire", () => {
     expect(adaptTurn(broken)!.figures.every((figure) => figure.receiptState === "unavailable")).toBe(true);
   });
 });
+
+it("retains every diagnostic entry without promoting source identifiers to human labels", () => {
+  const before = JSON.stringify(wire);
+  const answer = adaptTurn(wire)!;
+  expect(answer.missing).toHaveLength(19);
+  expect(answer.missing.slice(0, 6).map(({ tag, label, question }) => ({ tag, label, question })))
+    .toEqual(Array.from({ length: 6 }, () => ({ tag: "no_compatible_evidence", label: "", question: "" })));
+  expect(answer.missing.slice(6).map((item) => item.label)).toEqual(wire.missing.slice(6).map((item: { label: string }) => item.label));
+  expect(answer.figures.map((figure) => [figure.id, figure.written, figure.numerical?.dated, figure.grade]))
+    .toEqual(wire.figures.map((figure: { id: string; written: string; dated: string; grade: string }) => [figure.id, figure.written, figure.dated, figure.grade]));
+  expect(answer.figures.every((figure) => figure.numerical?.boundary.accounts?.held === 12)).toBe(true);
+  expect(JSON.stringify(wire)).toBe(before);
+});
+
+it("retains novel source-only, tag-only and blank human-copy entries in their original order", () => {
+  const missing = [
+    { source: "novel:node:73" },
+    { tag: "novel_diagnostic_reason" },
+    { source: "other:node", reason: "unseen_reason", label: " \t", question: "\n" },
+    { source: "internal:lineage", label: "A readable uncertainty", question: "Which account?" },
+  ];
+  const answer = adaptTurn({ ...wire, missing })!;
+  expect(answer.missing).toHaveLength(4);
+  expect(answer.missing.map((item) => item.tag)).toEqual(["", "novel_diagnostic_reason", "unseen_reason", ""]);
+  expect(answer.missing.map((item) => item.label)).toEqual(["", "", " \t", "A readable uncertainty"]);
+  expect(answer.missing[3].question).toBe("Which account?");
+});

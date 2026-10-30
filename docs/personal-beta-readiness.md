@@ -84,12 +84,14 @@ financial browser cases. The complete evaluator result is recorded below. Indepe
 regressions pass, including invalid ceilings and invalid provider cost receipts;
 the complete run still reports insufficient release evidence.
 
-The original campaign budget and spending/hold records remain in force. The
-reviewed retained-document campaign runner is missing and must be restored and
-authenticated before resumption. No paid model call was made in this cycle.
-Provider/data authority, existing spending and holds must be reconciled before
-any separately authorized live run. Preserve failed and incomplete evidence;
-missing reports are never passes.
+The original campaign budget and spending/hold records remain in force. The two
+named missing continuation files have now been recovered and authenticated,
+together with further historical source and metadata files. Remaining proof
+dependencies are incomplete, so that historical runner cannot yet resume. The
+separate reviewed continuation fixture is described below.
+Earlier recovery checks made no paid calls; the later foundation check used a
+separately authorized USD 10 grant and preserved the original ledger. Preserve
+failed and incomplete evidence; missing reports are never passes.
 
 Use [the acceptance policy](../acceptance/README.md),
 [the retained-document continuation](../acceptance/real-document-test.md) and
@@ -120,10 +122,23 @@ interpretation or grant runtime admission.
 Consult the ignored current checkpoint for exact candidate-bound full-corpus
 and complete-gate evidence. Prototypes and supporting tests alone do not
 establish those results.
-Historical reports above retain their source identities and are not this
-candidate's verdict. The existing qualification version's source pin does not
-match the changed product answer-program evaluation source; a new reviewed
-version is required
-before a separately authorized funded profile can be measured. Signing,
-installed-machine and unassisted-user evidence remain open. No invitation or
-release readiness follows from this implementation.
+Historical reports above retain their source identities and are not the current
+candidate's verdict. The separate live-quality lane passed all eighteen
+repetitions. The first new full canonical run failed date-only semantic
+validation and remains NOT_ADMITTED. Its later single-case diagnostic passed,
+but did not recover or explain the original rejected response. Under the owner's
+scoped automatic-retry amendment, a fresh independently reviewed invocation of
+the unchanged candidate command passed all 123 cases on committed `61d3820` and
+published its validated runtime bundle. Qualification spending totals USD
+1.06999675 of the additional USD 10 grant. Metered real-document browser spending
+continues within that same ceiling, preserving prior charges and unresolved holds.
+
+All nineteen original hashes match the retained encrypted documents. A separate
+reviewed browser fixture uses an isolated retained-vault copy, canonical clean
+source imports and fail-closed provider accounting. It preserves admission
+checks and blocks device credentials. The document and question dispositions,
+exact current spending and private evidence pointers are in the ignored
+foundation checkpoint. This fixture is distinct from the incomplete historical
+continuation runner. Docker Linux packaged-engine checks passed; signed native
+GUI installation, the complete personal campaign and unassisted first use remain
+open. No invitation or release readiness follows.

@@ -9,7 +9,7 @@ import weakref
 from time import monotonic
 
 from .envelope import ToolResult, figure, refusal, bounded, weakest
-from .ledger_common import _identifiers, _measure_of
+from .ledger_common import REAL_KINDS, _identifiers, _measure_of
 from .ledger_movements import _captured_balance
 from .instruments import _instrument_authority_result
 from ..ledger.ledger import _owned_projection_identity
@@ -180,6 +180,7 @@ def read_report(projection, runtime, read_day, args):
         if monotonic() >= deadline:
             raise CaptureLimit("selected account report deadline")
     infos = {info.account: info for info in projection.account_infos()}
+    held = sum(info.kind in REAL_KINDS for info in infos.values())
     if any(a not in infos or infos[a].kind not in ("depository", "investment", "liability") for a in accounts):
         return refuse("invalid_arguments", "Every selected identity must be a balance-holding account.")
     captured = projection.captured_docs()
@@ -218,7 +219,7 @@ def read_report(projection, runtime, read_day, args):
                         quantity=_measure_of(info.kind), grade=value.grade,
                         dated=value.as_of, currency=value.currency, record_ids=documents,
                         subject={"account_id": account}, boundary=bounded(whole=False,
-                            counted=1, held=len(infos), selected=[{"kind":"account","value":account}],
+                            counted=1, held=held, selected=[{"kind":"account","value":account}],
                             cut=[{"kind":"account","value":account}]))
                     source = dict(account=account, value=str(value.amount), currency=value.currency,
                         dated=value.as_of, grade=value.grade, quantity=magnitude["quantity"],

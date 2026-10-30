@@ -156,10 +156,14 @@ function sourceRecordGroups(receipts: readonly SourcedAssertion[]) {
   return [...groups.entries()];
 }
 
+function missingInformation(item: MissingAnswerInput): string {
+  return item.question.trim() || item.label.trim() || "Some information for this answer is unavailable.";
+}
+
 function AnswerDetail({ answer, onOpenFigure, onReviewPlan, onUndoCorrection, onOpenSourceDocument }: { answer: TurnView; onOpenFigure: (figureId: string) => void; onReviewPlan?: (draft: ConversationGoalDraft) => void; onUndoCorrection?: (correctionId: string) => Promise<ActionResult>; onOpenSourceDocument?: (documentId: string, page: number) => void; onContinueAllocation?: (turnId: string, answerId: string) => void }) {
   const sourceGroupId = useId();
   const answerText = answer.text || answer.refusal;
-  const ordinaryMissing = answer.missing.filter((item) => item.tag !== "unsupported_family" && (item.question || item.label || item.tag).trim() !== answerText.trim());
+  const ordinaryMissing = answer.missing.filter((item) => item.tag !== "unsupported_family" && missingInformation(item) !== answerText.trim());
   const capability = answer.missing.find((item) => item.tag === "unsupported_family");
   return <div className="conversation-answer" role={answer.status === "capability_gap" ? "status" : undefined} aria-live={answer.status === "capability_gap" ? "polite" : undefined} aria-atomic={answer.status === "capability_gap" ? "true" : undefined}>
     <p className="conversation-answer-text">{answerText}</p>
@@ -183,7 +187,7 @@ function AnswerDetail({ answer, onOpenFigure, onReviewPlan, onUndoCorrection, on
     {answer.targetPremises?.length ? <section aria-label="User-stated target"><h4>Your stated target</h4>{answer.targetPremises.map((premise) => <p key={premise.receiptId}>{premise.written}</p>)}</section> : null}
     {answer.options.length ? <ul className="conversation-answer-options">{answer.options.map((option) => <li key={option.id}>{option.label}</li>)}</ul> : null}
     {capability ? <CapabilityBoundary item={capability} /> : null}
-    {ordinaryMissing.length ? <ul className="conversation-answer-missing">{ordinaryMissing.map((item, index) => <li key={`${item.tag}:${item.label}:${index}`}>{item.question || item.label || item.tag}</li>)}</ul> : null}
+    {ordinaryMissing.length ? <ul className="conversation-answer-missing">{ordinaryMissing.map((item, index) => <li key={`${item.tag}:${item.label}:${index}`}>{missingInformation(item)}</li>)}</ul> : null}
     {answer.spoken.withheld ? <p className="conversation-answer-withheld">{answer.spoken.withheld}</p> : null}
     {answer.spoken.citationSentence ? <p className="conversation-answer-citation">{answer.spoken.citationSentence}</p> : null}
     {answer.goalDraft?.reviewInPlans && onReviewPlan ? <button className="secondary-button" type="button" onClick={() => onReviewPlan(answer.goalDraft!)}>Review in Plans</button> : null}

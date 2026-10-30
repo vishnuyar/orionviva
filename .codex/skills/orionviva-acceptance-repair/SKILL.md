@@ -14,6 +14,49 @@ Use `scripts/repair_loop.py` for preflight, evaluator execution, and determinist
 report validation. The script does not interpret product intent, edit code, or
 commit.
 
+## Keep the acceptance outcome in view
+
+Keep the owner's original acceptance outcome as the finish line. Before choosing
+work, distinguish a product failure, an evaluator contract problem, an
+environment failure and a qualification-tooling failure. A tooling failure does
+not itself authorize product changes, evaluator edits, broader repair scope or
+additional provider calls. Keep these diagnostic categories separate from the
+script's report classifications below; do not relabel an official result.
+
+For a preparation or performance blocker, inspect retained measurements and
+failed experiments first. Record the exact failing operation, complete-path
+clock, dominant costs and smallest proposed change. Do not rerun an unchanged
+unsuccessful experiment without a new testable reason for a different result.
+Require a failing reproduction and paired baseline/candidate measurements at
+the original composed boundary. A faster helper or passing supporting checks
+does not establish blocker removal. Preserve deadlines and evidence contracts
+unless the owner explicitly approves a reviewed change to them.
+
+Scope independent review to the approved change and its affected evidence.
+Reuse a previous pass only when its candidate, input and environment identities
+and relevant dependency closure remain valid; record why the change leaves that
+closure unaffected. Distinguish carried-forward evidence from new execution.
+Run complete required packs at their existing gates; do not repeatedly run them
+after unrelated edits. This does not waive any required full-lane gate below or
+permit reuse where a contract requires fresh execution.
+
+After a failed bounded attempt, preserve its evidence and report the remaining
+blocker, what was learned and the next concrete decision. The existing
+three-cycle stop rule still applies. Preserve original spending history and
+unresolved charges; do not reset accounting or release holds to enable a retry.
+Use a paid grant only after verifying its scope, remaining balance and current
+accounting. Under the owner's 2026-10-25 amendment, automatic paid retries are
+allowed within an already approved campaign's provider, data scope and total
+ceiling. Retain each failed result, state the diagnostic purpose or tested repair,
+and meter every attempt against that same grant. Do not repeat solely to select a
+passing result, discard earlier failures, reset accounting or release uncertain
+holds. Stop at the funding boundary or existing three-cycle repair limit. A new
+provider/data scope or additional funding still needs owner authorization.
+
+Lead progress reports with the original acceptance outcome, current-candidate
+question dispositions when applicable, and the remaining blocker. A completed
+supporting repair is not a financial-question pass or qualification admission.
+
 ## Choose the lane
 
 Read `WORKFLOW.md` and classify the work before requiring the independent

@@ -25,6 +25,14 @@ repo. What changed is who types the passphrase, not what may be written down. If
 you ever find yourself deciding that a real number is worth putting in the
 report, you have misread this paragraph.
 
+Owner amendment, 2026-10-25: the agent may generate and use a strong unique
+passphrase for a disposable test vault, subject to applicable tool security
+requirements. Keep it in memory or an authorized protected credential store;
+never print it or save it in plaintext, reports or source control. This does not
+authorize changing a personal vault's credential. Automatic paid retries within
+an explicitly approved campaign are allowed under WORKFLOW.md's existing grant,
+scope, evidence, accounting and stop conditions; no additional funding is implied.
+
 ## What you may touch
 
 - **`.env`** — the passphrase, model ids, base URLs, key-env names. Read it to

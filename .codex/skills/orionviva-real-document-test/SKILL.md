@@ -15,6 +15,20 @@ Run the whole acceptance journey as a user would. Completion means all 19 docume
 4. Use a dedicated private run directory outside every repository, normally `~/.viva-runs/<run-id>/`, for document copies, hashes, source extracts, vaults, exact answers, screenshots, provider records and cost records. Use `runs/<run-id>/` only for scrubbed verdicts and machine facts. Read the repository Witness role before handling real data. Source originals remain untouched.
 5. For a continuation, inspect the latest scrubbed status and private manifest before acting. Verify which vault is open, what build serves it, and whether a repair requires a new vault. A stale “passed” or “done” note does not establish current state. Never rely on process IDs, browser tabs, temporary helper scripts or vault paths from an old session without checking them.
 
+Owner amendment, 2026-10-25: automatic paid retries are permitted within the
+approved campaign's existing provider, data scope and total spending ceiling.
+Account for previous spending and unresolved holds before every attempt. Retain
+failed evidence and state the diagnostic purpose or tested repair; do not retry
+merely to select a pass. The existing funding and three-cycle repair stops remain.
+This permission does not grant additional funding or a broader destination/data
+scope. The agent may generate and use a strong unique passphrase for a disposable
+test vault, subject to applicable tool security requirements. Keep it in memory
+or an authorized protected credential store, never in plaintext files, reports,
+tool output or source control. Existing personal vault credentials and source
+originals remain unchanged.
+
+For an owner-authorized continuation on an already uploaded vault, begin with its latest question checkpoint and current candidate. Verify retained inventory, review dispositions, independent source oracles and required qualification, then resume the pending question sequence when eligible. Do not turn continuation into a new ingestion campaign or a broad repair exercise. The restart rule below still applies when a repair invalidates ingested financial state. Classify a qualification-tooling blocker separately and use the acceptance-repair skill's measured blocker procedure. Report document verification, current-candidate question dispositions and qualification as separate counts; a supporting repair is not a financial-question pass.
+
 ## Orchestrate independent work
 
 Use multiple agents when the user requests this workflow with delegation or the applicable repository instructions require it. The parent owns the real browser, documents, credentials and Witness evidence. Give repair agents only synthetic reproductions and scrubbed predicates.
@@ -42,7 +56,11 @@ Use the available supported browser/computer tools and read their documentation.
 
 For a new ingestion campaign, create a disposable test vault and an isolated learned merchant/catalog store. A fresh vault with a reused learned store is not a clean restart. Preserve the user's shared catalog and unrelated vaults. Record exactly which folders belong to this test.
 
-If the Mac is locked, request an unlock and continue independent checks. If browser policy requires the user to enter a new vault passphrase, prepare the concrete new-vault form first and hand off only credential entry/submission. Do not print the passphrase or work around the handoff. Opening an existing vault uses the applicable existing-credential policy.
+If the Mac is locked, request an unlock and continue independent checks. Agent-
+generated test-vault passphrases are authorized by the owner amendment above.
+Where the chosen tool requires user entry of a new credential, prepare the form
+and hand off only that required step; do not bypass the tool's security policy.
+Opening an existing vault uses the applicable existing-credential policy.
 
 ## The one-document loop
 

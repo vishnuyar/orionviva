@@ -115,3 +115,26 @@ Model-free checks do not publish a runtime qualification. Any further exact-mode
 The conversation viewer currently links captured documents. Local goal event sources and receipts remain structured data and are not visible clickable receipt entries. That source-viewer work is owner-deferred. Browser receipt reachability, retained-vault Witness testing and inherited browser-host/signing gaps are separate acceptance work; this implementation does not claim them complete.
 
 The public [financial acceptance checks](../acceptance/scenarios/financial-capabilities.md) and [real-document continuation plan](../acceptance/real-document-test.md) define browser observation and source-first retained-vault testing. Their declarations do not substitute for qualification or Witness results.
+
+## Instrument availability exclusions
+
+The current-period surface explains why funds with restricted or unconfirmed
+availability are excluded from liquid funds. Known term-deposit and escrow
+families remain excluded when their restriction evidence is accepted, missing
+or conflicted. This availability rule does not remove recorded asset value
+from net worth or turn it into spendable cash. Historical persona wording
+remains available for recorded answers.
+
+### Instrument candidate contracts
+
+Dedicated instrument reads retain contractual-principal, source-rate and
+allocation percentage-point quantities. These quantities cannot enter generic
+compute or Financial Query arithmetic. Source date, text and convention
+assertions retain authenticated field and document-page receipts. Original
+principal is distinct from current balance or debt; disclosure APR is distinct
+from note rate. Allocation comparisons use a current-question user target and
+accepted market values, with a hypothetical, ungraded percentage-point result.
+Explicit saved allocation recovery revalidates the current authenticated stored
+answer and its dependencies; it does not restore live handles or trust saved
+prose. The current resources listed above require their own verification and
+qualification evidence.

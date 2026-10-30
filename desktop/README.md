@@ -68,6 +68,15 @@ workflow and prerequisites; see [RELEASING.md](../RELEASING.md).
 
 ## Local browser mode
 
+On macOS, the native host resolves the system temporary directory before
+starting the Python engine and sets `TMPDIR` only for that child process. This
+lets the bundled engine prepare the sample when macOS supplies a `/var` alias
+for `/private/var`, while retaining the sample's strict package identity checks.
+Remembered-vault credential reads wait at most one second for the operating
+system. A delayed read returns an error and cannot open a vault later; only one
+credential read can remain outstanding. Credential-store writes retain their
+existing behavior.
+
 The native **Open in browser** control serves the production-built
 `loopback.html` and shared assets from the application's bundle on 127.0.0.1.
 `src-tauri/src/browser.rs` owns authenticated session/page admission, revocation,

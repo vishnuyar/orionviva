@@ -133,7 +133,7 @@ export function adaptTurn(raw: unknown): TurnView | null {
   const missing = (Array.isArray(raw.missing) ? raw.missing : []).flatMap((item) => {
     if (!isRecord(item)) return [];
     const tag = textValue(item.tag) || textValue(item.reason) || textValue(item.type);
-    const label = textValue(item.label) || textValue(item.source);
+    const label = textValue(item.label);
     const question = textValue(item.question);
     const requestedFamily = textValue(item.requested_family);
     const requestedLabel = textValue(item.requested_label);
@@ -144,7 +144,7 @@ export function adaptTurn(raw: unknown): TurnView | null {
         return id && supportedLabel && example ? [{ id, label: supportedLabel, example }] : [];
       })
       : [];
-    return tag || label || question || requestedFamily || requestedLabel || supportedFamilies.length
+    return tag || label || question || textValue(item.source) || requestedFamily || requestedLabel || supportedFamilies.length
       ? [{ tag, label, question, requestedFamily, requestedLabel, supportedFamilies }]
       : [];
   });

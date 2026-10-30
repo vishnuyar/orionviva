@@ -392,7 +392,7 @@ def test_report_origin_private_attribute_copy_cannot_issue_a_result_witness(live
     _reject_without_evidence_mutation(fake, live_report.runtime.run_token)
 
 
-def _selected_wire_source(tmp_path, holdings=20, component_padding=0, *, unmeasured_debt=False):
+def _selected_wire_source(tmp_path, holdings=20, component_padding=0, *, unmeasured_debt=False, component_tail_padding=0):
     """Normal synthetic ingestion for seven mixed-kind selected account rows."""
     from io import BytesIO
     from decimal import Decimal
@@ -445,7 +445,9 @@ def _selected_wire_source(tmp_path, holdings=20, component_padding=0, *, unmeasu
                     units={"raw":str(item.units),"page":2}, market_value={"raw":str(item.market_value),"page":2})
                 lines.append(row)
             return parse({"schema":"investment-source-v2","headers":headers,"positions":lines,"rows":[]})
-        positions = [PositionFact("Synthetic holding " + str(j) + "x" * component_padding, Decimal("2"), Decimal("10"), page=2)
+        positions = [PositionFact("Synthetic holding " + str(j) + "x" *
+            (component_padding + (component_tail_padding if index == 0 and j == 0 else 0)),
+            Decimal("2"), Decimal("10"), page=2)
             for j in range(holdings)]
         facts = BrokerageFacts("", "brokerage_statement", 1.0, name, "USD", "2021-02-28",
             Decimal("100"), Decimal("100") + holdings * Decimal("10"), positions,
@@ -467,7 +469,7 @@ def _selected_wire_source(tmp_path, holdings=20, component_padding=0, *, unmeasu
     return ledger, selected
 
 
-def _actual_selected_wire(tmp_path, holdings=20, component_padding=0, *, ordinary=False, configure=None, unmeasured_debt=False, session_mode=False):
+def _actual_selected_wire(tmp_path, holdings=20, component_padding=0, *, ordinary=False, configure=None, unmeasured_debt=False, session_mode=False, component_tail_padding=0):
     from contextlib import contextmanager
     from types import SimpleNamespace
     from viva.answer_program import (CapabilityManifest, ProgramValidator, ProgramExecutor,
@@ -478,7 +480,8 @@ def _actual_selected_wire(tmp_path, holdings=20, component_padding=0, *, ordinar
     from viva.tools import default_registry
     from viva.surface.conversation import conversation
     from viva.read_store import ReadStore
-    ledger, accounts = _selected_wire_source(tmp_path, holdings, component_padding, unmeasured_debt=unmeasured_debt)
+    ledger, accounts = _selected_wire_source(tmp_path, holdings, component_padding,
+        unmeasured_debt=unmeasured_debt, component_tail_padding=component_tail_padding)
     projection = ledger.projection()
     with ReadStore.create(tmp_path / "wire-read", "synthetic-passphrase") as store:
         store.synchronize(ledger.store)
@@ -1141,7 +1144,7 @@ def test_actual_session_turn_surface_preserves_selected_origin_full_wire_and_sav
     from viva.ledger.events import conversation_turn_opened, conversation_turn_settled
     from viva.surface.conversation import timeline
     import viva.tools.account_balances as adapter
-    actual = _actual_selected_wire(tmp_path, component_padding=317, session_mode=True)
+    actual = _actual_selected_wire(tmp_path, component_padding=317, session_mode=True, component_tail_padding=7)
     turn = actual.normal_turn
     assert isinstance(turn, Turn)
     assert turn.result._selected_report_origin.run_token is turn.instrument_execution.graph.ground.instrument_token
@@ -1167,3 +1170,86 @@ def test_actual_session_turn_surface_preserves_selected_origin_full_wire_and_sav
     for original,restored in zip(saved["figures"],loaded["figures"]):
         for field in ("value","quantity","currency","dated","grade","record_ids","receipt_ids","evidence_links"):
             assert restored[field] == original[field]
+
+
+@pytest.mark.parametrize("redeemed", [False, True])
+def test_registered_selected_held_population_survives_nonfinancial_and_unmeasured_additions(tmp_path, redeemed):
+    from contextlib import contextmanager
+    from time import monotonic
+    from viva.ledger import account_opened
+    from viva.ledger.events import ASSERTED
+    from viva.ledger.instruments import reference_accounts
+    from viva.read_store import ReadStore
+    from viva.tools import default_registry
+    from test_instrument_projector_b import setup, ingest, bank
+    from test_instrument_contracts import deposit_json, printed
+
+    raw, ledger = setup(tmp_path)
+    deposit = deposit_json()
+    deposit["terms"] = {"principal": printed("1000"), "opened": printed("2021-01-01"),
+        "maturity": printed("2022-01-01"), "withdrawal_restriction": printed("No withdrawal until maturity")}
+    if redeemed:
+        deposit.update(subtype="maturity", opening=printed("1010"), closing=printed("0"))
+        deposit["movements"][0].update(kind="redemption", amount=printed("1010"))
+    ingest(raw, ledger, "population-term", deposit, "term_deposit_statement")
+    bank(raw, ledger)
+    original = [reference_accounts(ledger.projection(), ref)[0] for ref in ("CD-A", "CHECK-A")]
+    expected = set(original)
+    observations = []
+    for stage in ("ingested", "nonfinancial", "asserted_unmeasured", "foreign_unmeasured"):
+        if stage == "nonfinancial":
+            for account, kind in (("synthetic-category", "expenses"), ("synthetic-blank", ""),
+                                  ("synthetic-unknown", "unknown")):
+                ledger.append(account_opened(account, kind, "Synthetic counterbucket", "USD", "2021-01-01"))
+        elif stage in {"asserted_unmeasured", "foreign_unmeasured"}:
+            account = "synthetic-" + stage
+            ledger.append(account_opened(account, "liability", "Synthetic unmeasured liability",
+                "EUR" if stage == "foreign_unmeasured" else "USD", "2021-01-01", origin=ASSERTED))
+            expected.add(account)
+        projection = ledger.projection()
+        infos = {info.account: info for info in projection.account_infos()}
+        # These identities are declared by the source setup, independently of any held filter.
+        assert expected.issubset(infos)
+        assert len(infos) > len(expected)
+        assert all(infos[account].kind in {"depository", "liability"} for account in expected)
+        with ReadStore.create(tmp_path / ("read-" + stage), "synthetic-passphrase") as store:
+            store.synchronize(ledger.store)
+            @contextmanager
+            def supplier():
+                with store.open_reader() as revision:
+                    yield revision
+            supplier.source_identity = ledger.store.authenticated_identity
+            supplier.expected_projection_identity = ledger._projection_identity
+            registry = default_registry(projection, "en-US", today="2021-01-31", instrument_scope=supplier)
+            with registry.instrument_runtime.execution(monotonic() + 15):
+                report = registry.call("read_account_balance_report", {f"account_{i}": a for i, a in enumerate(original, 1)})
+                assert report.ok and len(report.figures) == 2
+                for filters in ({"account": original[0]}, {"currency": "USD"}):
+                    ordinary = registry.call("query_ledger", {"entity": "balances", "filters": filters})
+                    assert ordinary.ok and ordinary.figures
+                    assert {f["boundary"]["accounts"]["held"] for f in ordinary.figures} == {len(expected)}
+                observations.append((len(expected), report))
+                if stage in {"asserted_unmeasured", "foreign_unmeasured"}:
+                    subset = registry.call("read_account_balance_report", {"account_1": original[1], "account_2": account})
+                    assert subset.ok and len(subset.figures) == 1
+                    assert subset.data["rows"][1]["amount"] == "unavailable"
+                    assert subset.data["rows"][1]["closure"] == "unavailable"
+                    assert {f["boundary"]["accounts"]["held"] for f in subset.figures} == {len(expected)}
+                    assert infos[account].origin == ASSERTED
+    baseline = observations[0][1]
+    assert [count for count, _ in observations] == [2, 2, 3, 4]
+    for count, report in observations:
+        assert report.data["rows"] == baseline.data["rows"]
+        assert report.data["source_fields"]["values"] == baseline.data["source_fields"]["values"]
+        assert report.data["source_fields"]["selected_accounts"] == original
+        assert report.data["rows"][0]["restriction"] == "accepted"
+        assert all(row["closure"] == "unavailable" for row in report.data["rows"])
+        assert {f["boundary"]["accounts"]["held"] for f in report.figures} == {count}
+        for figure in report.figures:
+            assert figure["dated"] == "2021-01-31" and figure["currency"] == "USD"
+            assert figure["grade"] == "corroborated"
+            assert figure["boundary"]["accounts"]["counted"] == 1
+        values = {v["account"]: v for v in report.data["source_fields"]["values"]}
+        assert values[original[0]]["value"] == ("0" if redeemed else "1010")
+        assert values[original[1]]["value"] == "1400"
+        assert all(term["page"] == 1 for value in values.values() for term in value["terms"])

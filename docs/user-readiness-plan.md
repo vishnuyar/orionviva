@@ -124,7 +124,24 @@ full-corpus and complete-gate evidence. The final working-tree measurement passe
 all 65 mandatory financial cases and 17 declarations; whole-product acceptance
 remained incomplete with 26 pass, zero fail and two gaps. Prototypes and supporting tests alone
 do not establish those results. The previous snapshot is not this candidate's
-verdict. Changed product answer-program evaluation source invalidates the
-existing qualification version's source pin; review a
-successor before any separately authorized funded profile. Existing budget,
-retained-document, native installation and invitation gates remain unchanged.
+verdict. Changed evaluation source invalidates historical qualification
+evidence. The first new full canonical run remains NOT_ADMITTED for date-only
+semantic validation; its passing single-case diagnostic did not recover the
+historical rejected response. The separate eighteen-repetition live-quality lane
+passed. Under the owner's scoped automatic-retry amendment, a fresh independently
+reviewed invocation of the unchanged candidate command passed all 123 cases on
+committed `61d3820` and published its validated runtime bundle. Qualification
+spending totals USD 1.06999675 of the additional USD 10 grant. Metered browser
+spending continues within that same ceiling, preserving all previous charges and
+holds. Disposable agent-created test-vault passphrases are authorized subject to
+tool security requirements.
+
+Exact-hash recovery restored 163 continuation source and metadata files, including
+both named blockers, but the historical proof dependency closure remains
+incomplete. A separate reviewed browser fixture now continues an isolated copy
+of the nineteen-document vault, with canonical clean-source imports, fail-closed
+provider accounting and device credentials blocked. All nineteen originals match
+the retained encrypted raw copies. Current document and question dispositions,
+spending and evidence pointers are in the ignored foundation checkpoint. Docker
+Linux packaged-engine checks passed; signed native delivery, the complete personal
+campaign, unassisted first use and invitation gates remain open.

@@ -1,6 +1,11 @@
 # WORKFLOW — how this project is built
 
-**Status:** Living · **Last updated:** 2026-09-06 (the small bug lane added for
+**Status:** Living · **Last updated:** 2026-10-25 (owner-authorized automatic paid retries and
+disposable test-vault passphrases; acceptance continuation
+keeps the original outcome visible, scopes independent work and evidence reuse,
+and requires complete-path measurement for tooling blockers without changing
+owner gates, qualification contracts or financial-data protections. Before that,
+2026-09-06: the small bug lane added for
 localized deterministic defects whose intended behavior is already settled,
 with full affected-package evidence and independent review retaining the
 ordinary owner and commit gates. The independent end-to-end acceptance pack
@@ -241,6 +246,74 @@ Director's instruction set is not tracked, so this section points at a file no
 clone, no build, no Verifier and no Fact-checker can read. That is half a rule
 until it is published, and more pressing now that the role may authorise a
 commit at all.
+
+## Acceptance continuation and tooling blockers
+
+Keep the owner's original acceptance outcome visible throughout a continuation.
+One orchestrator maintains the current checkpoint, approved scope, evidence
+dependencies and accounting continuity. A Builder owns a bounded approved
+change, a fresh Verifier checks it, and the parent Witness alone handles private
+sources, the real vault and actual browser checks. The other required roles and
+owner checkpoints above still apply. Independent investigations may run in
+parallel; expensive timing measurements and dependent browser operations run
+sequentially so contention does not distort evidence.
+
+Distinguish a product defect, an evaluator contract problem, an environment
+failure and a qualification-tooling failure before choosing a repair. A tooling
+failure does not itself expand product scope, authorize evaluator edits or
+permit another paid attempt. For preparation or performance failures, inspect
+retained measurements and failed experiments, identify the dominant cost, and
+propose one bounded change. Require a failing reproduction and paired
+baseline/candidate measurements at the original composed boundary. Supporting
+tests or a faster helper do not prove that the original blocker was removed.
+Changing evidence scope, trust timing or deadlines requires a reviewed design
+and the owner's explicit approval; do not treat it as an equivalent optimization.
+
+Reuse passing evidence only when its relevant candidate, input, environment and
+dependency identities remain valid, explaining why the change leaves them
+unaffected. Distinguish carried-forward checks from new execution. Complete
+required suites still run at their existing gates, and any requirement for
+fresh execution still applies. Do not repeat unchanged unsuccessful experiments
+without a new testable reason for a different result. Existing repair stop
+limits remain in force.
+
+Use one current checkpoint and link immutable earlier evidence rather than
+copying expanding histories into each status update. A checkpoint identifies
+the candidate, retained vault, document and question dispositions, remaining
+blocker, authority records, accounting frontier and next concrete action.
+References locate authority; prose summaries never replace the owner's grant
+or authoritative accounting. Preserve uploads where continuation is authorized
+and state remains suitable, original spending history and unresolved charges.
+Do not reset a budget or release a hold to enable a retry. Verify the current
+grant's remaining balance, original conditions and unresolved charges before use.
+Owner amendment, 2026-10-25: automatic paid retries are authorized within an
+explicitly approved testing campaign's existing provider, data scope and total
+spending ceiling. A retry needs retained failure evidence and a stated diagnostic
+purpose or tested repair; never retry merely to select a passing result. Preserve
+all outcomes, charge each attempt to the same grant, retain uncertain-cost holds,
+and stop at the funding boundary or the existing three-cycle repair limit.
+Additional funding or a changed provider/data scope still requires the owner.
+
+The same amendment permits the agent to generate and use a strong unique
+passphrase for a disposable campaign test vault, subject to applicable tool
+security requirements. Keep it in memory or an authorized protected credential
+store, never in transcripts, reports, source control or plaintext files. Do not
+change an existing personal vault's passphrase or overwrite the owner's vault.
+
+Owner amendment, 2026-10-26: consolidate the intended five-year-persona
+implementation into the main checkout, replace the product sample with that
+persona, and run its paid document-upload and financial-question campaign under
+the existing USD20 grant. The 900-second sample-import/preparation cutoff is
+removed; retain progress, failures, cancellation and accounting rather than
+terminating an otherwise progressing import at that boundary. This does not
+remove financial-source validation, financial-read deadlines, provider spending
+limits or the owner's separate hold on installation testing. Earlier timed-out
+evidence remains unchanged. Keep unrelated local edits and private vaults intact.
+
+Reports lead with current-candidate acceptance dispositions and the remaining
+blocker. Supporting repair completion, qualification admission, financial
+question verification and release readiness are separate claims. The maintained
+acceptance-repair and real-document skills supply the detailed run procedures.
 
 ## When a brief is sliced
 

@@ -4,6 +4,36 @@
 release evidence remains incomplete.
 **Integration branch:** `main`; original work branch: `codex/product-reliability-usability`.
 
+## Current local consolidation checkpoint
+
+The owner requested: “infact i want you to move all of the changes in a single
+branch and fix them”. The consolidation is prepared on
+`codex/consolidated-current-work`, based on `main` at `68d2917`. Main already
+contains and supersedes the older bulk-upload, persona and financial-browser
+implementations. Their staged and unstaged versions were retained separately;
+the consolidation carries the seven pending main edits, the unique local
+workflow/readiness changes and the remaining instrument documentation.
+Source worktrees remain intact. The ignored local archive is
+`runs/consolidation-20261029/summary.json` in the consolidated worktree.
+
+Native startup now supplies a canonical temporary root to the bundled engine
+and bounds remembered-credential reads to one outstanding lookup. Credential
+permissions and strict sample identity checks are unchanged. A broken link to
+an ignored interface-review report is now an explicit local-only reference.
+The rebuilt installed app is responsive after a delayed credential read and
+begins sample ingestion without a temporary-directory launch override.
+
+Fresh verification has 6,931 Python tests passing with 92 skips, 45 native
+tests passing with two opt-in tests skipped, 1,443 frontend tests passing, and
+architecture, style and production-build checks passing. The earlier Python
+run with a documentation-link failure remains in the local archive; that link
+is repaired and the owning documentation suite is retested after this update. Full 794-document
+preparation and release readiness remain unverified. Preparation
+is slow, and a prior sample worker continued after native exit; those
+observations are retained rather than reported as fixed. The owner authorizes
+verification, stewardship, a local commit and merge to main; no push is
+authorized.
+
 ## Authorization and context-refresh instructions
 
 The owner approved the preceding assessment: “I approve this plan. I would like
