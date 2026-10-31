@@ -176,3 +176,156 @@ it("rejects old callbacks after generation changes, model disabling, and unmount
  f.rerender(); expect(f.result.current.retainedSelection).toHaveLength(0); act(() => f.result.current.addRetainedReading(savedDocument())); const last = f.result.current.confirmRetainedReadings;
  f.unmount(); act(() => last()); expect(f.reading).not.toHaveBeenCalled();
 });
+
+function savedImport(remaining = 4): import("../surface/types").ImportSessionSnapshot {
+  return { sessionId: "a".repeat(32), total: 4, completed: 4 - remaining, remaining, state: remaining ? "pending" : "completed", rows: ["one", "two", "three", "four"].map((path, ordinal) => ({ path: `${path}.pdf`, documentId: "b".repeat(64), status: ordinal < 4 - remaining ? "posted" : "queued" })) };
+}
+function queuedFixture() {
+  const f = fixture();
+  const enqueueImport = vi.fn(async () => savedImport());
+  const listImports = vi.fn(async () => [] as import("../surface/types").ImportSessionSummary[]);
+  const resumeImport = vi.fn(async () => ({ ...result(["one", "two", "three"]), session: savedImport(1) }));
+  const inspectImport = vi.fn(async (_sessionId: string) => savedImport());
+  f.context.documentActions = { ...f.actions, enqueueImport, listImports, resumeImport, inspectImport };
+  f.rerender();
+  return { ...f, enqueueImport, listImports, resumeImport, inspectImport };
+}
+describe("durable encrypted selections", () => {
+  it("enqueues the whole folder once and refreshes each committed chunk before continuing", async () => {
+    const f = queuedFixture();
+    const second = deferred<import("../surface/types").ImportChunkResult>();
+    f.resumeImport.mockImplementationOnce(async () => ({ ...result(["one", "two", "three"]), session: savedImport(1) })).mockImplementationOnce(() => second.promise as never);
+    let completion!: Promise<unknown>;
+    act(() => { completion = f.result.current.chooseBulkDocuments(); });
+    await waitFor(() => expect(f.resumeImport).toHaveBeenCalledTimes(2));
+    expect(f.enqueueImport).toHaveBeenCalledWith(["/one.pdf", "/two.pdf", "/three.pdf", "/four.pdf"]);
+    expect(f.uploadMany).not.toHaveBeenCalled();
+    expect(f.refreshAfterAction).toHaveBeenCalledTimes(1);
+    expect(f.result.current.bulkSession?.rows.map((row) => row.status)).toEqual(["posted", "posted", "posted", "queued"]);
+    await act(async () => { second.resolve({ ...result(["four"], "last"), session: savedImport(0) }); await completion; });
+    expect(f.refreshAfterAction).toHaveBeenCalledTimes(2);
+    expect(f.result.current.pendingImports).toHaveLength(0);
+  });
+  it("stops capture admission while originals are being saved and does not start a reading", async () => {
+    const f = queuedFixture(); const saving = deferred<import("../surface/types").ImportSessionSnapshot>();
+    f.enqueueImport.mockImplementationOnce(() => saving.promise);
+    let completion!: Promise<unknown>; act(() => { completion = f.result.current.chooseBulkDocuments(); });
+    await waitFor(() => expect(f.enqueueImport).toHaveBeenCalledOnce());
+    expect(f.result.current.bulkSession?.state).toBe("running");
+    act(() => f.result.current.stopBulkDocuments());
+    f.context.session = { ...f.context.session, jobs: [job] }; f.rerender();
+    await waitFor(() => expect(f.actions.cancel).toHaveBeenCalledWith("active-chunk"));
+    await act(async () => { saving.resolve({ ...savedImport(), state: "stopped" }); await completion; });
+    expect(f.resumeImport).not.toHaveBeenCalled(); expect(f.result.current.pendingImports).toHaveLength(1);
+    expect(f.result.current.bulkSession?.state).toBe("paused");
+  });
+  it("discovers retained selections after reopening but only continues on an explicit gesture", async () => {
+    const f = queuedFixture(); f.listImports.mockResolvedValue([savedImport()]);
+    f.context.source = {} as never; f.context.sourceIdentity.current = f.context.source; f.rerender();
+    await waitFor(() => expect(f.result.current.pendingImports).toHaveLength(1));
+    expect(f.resumeImport).not.toHaveBeenCalled();
+    f.resumeImport.mockResolvedValue({ ...result(["one"]), session: savedImport(0) });
+    await act(async () => { f.result.current.resumeImportSession("a".repeat(32)); });
+    expect(f.resumeImport).toHaveBeenCalledOnce();
+  });
+  it("does not continue an uncertain paid request or apply replies after vault switching", async () => {
+    const f = queuedFixture();
+    f.resumeImport.mockResolvedValue({ ...result(["one"]), session: { ...savedImport(), state: "interrupted" } });
+    await act(async () => { await f.result.current.chooseBulkDocuments(); });
+    expect(f.resumeImport).toHaveBeenCalledOnce(); expect(f.result.current.bulkSession?.state).toBe("uncertain");
+    const another = queuedFixture(); const saving = deferred<import("../surface/types").ImportSessionSnapshot>();
+    another.enqueueImport.mockImplementationOnce(() => saving.promise);
+    let completion!: Promise<unknown>; act(() => { completion = another.result.current.chooseBulkDocuments(); });
+    await waitFor(() => expect(another.enqueueImport).toHaveBeenCalledOnce());
+    another.context.requestId.current += 1;
+    await act(async () => { saving.resolve(savedImport()); await completion; });
+    expect(another.resumeImport).not.toHaveBeenCalled();
+  });
+});
+
+it.each(["enqueue", "continue"] as const)("keeps explicit %s refusal distinct from an uncertain admitted request", async (boundary) => {
+  const f = queuedFixture();
+  const failure = new BridgeRefusal(REQUEST_REFUSED, "unreviewed machine details");
+  if (boundary === "enqueue") f.enqueueImport.mockRejectedValueOnce(failure);
+  else f.resumeImport.mockRejectedValueOnce(failure);
+  await act(async () => { await f.result.current.chooseBulkDocuments(); });
+  expect(f.result.current.bulkSession?.state).toBe("refused");
+  expect(f.actions.readJobs).not.toHaveBeenCalled();
+  expect(f.context.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "captured", result: { state: "unserved" } }));
+  expect(JSON.stringify(vi.mocked(f.context.dispatch).mock.calls)).not.toContain("unreviewed machine details");
+});
+it("requires inspecting interrupted saved results before a manual continuation", async () => {
+  const f = queuedFixture();
+  const saved = { ...savedImport(), state: "interrupted" as const };
+  f.listImports.mockResolvedValue([saved]);
+  const inspectImport = vi.fn(async () => saved);
+  f.context.documentActions = { ...f.context.documentActions!, inspectImport };
+  f.context.source = {} as never; f.context.sourceIdentity.current = f.context.source; f.rerender();
+  await waitFor(() => expect(f.result.current.pendingImports).toHaveLength(1));
+  act(() => f.result.current.resumeImportSession(saved.sessionId));
+  expect(f.resumeImport).not.toHaveBeenCalled();
+  await act(async () => { await f.result.current.inspectImportSession(saved.sessionId); });
+  expect(inspectImport).toHaveBeenCalledWith(saved.sessionId);
+  expect(f.result.current.bulkSession?.state).toBe("uncertain");
+  expect(f.resumeImport).not.toHaveBeenCalled();
+  f.resumeImport.mockResolvedValue({ ...result(["one"]), session: savedImport(0) });
+  await act(async () => { f.result.current.resumeImportSession(saved.sessionId); });
+  expect(f.resumeImport).toHaveBeenCalledOnce();
+});
+
+it("invalidates inspection A when another selection replaces its displayed document rows", async () => {
+  const f = queuedFixture();
+  const interruptedA = { ...savedImport(), label: "selection-a.pdf", state: "interrupted" as const };
+  const pendingB = { ...savedImport(), sessionId: "c".repeat(32), label: "selection-b.pdf" };
+  f.listImports.mockResolvedValue([interruptedA, pendingB]);
+  const inspectImport = vi.fn(async (sessionId: string) => sessionId === interruptedA.sessionId ? interruptedA : pendingB);
+  f.context.documentActions = { ...f.context.documentActions!, inspectImport };
+  f.context.source = {} as never; f.context.sourceIdentity.current = f.context.source; f.rerender();
+  await waitFor(() => expect(f.result.current.pendingImports).toHaveLength(2));
+  await act(async () => { await f.result.current.inspectImportSession(interruptedA.sessionId); });
+  expect(f.result.current.inspectedImport).toBe(interruptedA.sessionId);
+  const oldContinue = f.result.current.resumeImportSession;
+  f.resumeImport.mockResolvedValue({ ...result(["b"]), session: { ...savedImport(0), sessionId: pendingB.sessionId } });
+  await act(async () => { f.result.current.resumeImportSession(pendingB.sessionId); });
+  expect(f.result.current.inspectedImport).toBeNull();
+  expect(f.resumeImport).toHaveBeenCalledOnce();
+  act(() => { f.result.current.resumeImportSession(interruptedA.sessionId); oldContinue(interruptedA.sessionId); });
+  expect(f.resumeImport).toHaveBeenCalledOnce();
+  await act(async () => { await f.result.current.inspectImportSession(interruptedA.sessionId); });
+  expect(inspectImport.mock.calls.map(([sessionId]) => sessionId)).toEqual([interruptedA.sessionId, pendingB.sessionId, interruptedA.sessionId]);
+});
+
+it("publishes inspected saved rows with a live Stop before the first resumed chunk answers", async () => {
+  const f = queuedFixture();
+  f.listImports.mockResolvedValue([savedImport()]);
+  f.context.source = {} as never; f.context.sourceIdentity.current = f.context.source; f.rerender();
+  await waitFor(() => expect(f.result.current.pendingImports).toHaveLength(1));
+  const reading = deferred<import("../surface/types").ImportChunkResult>();
+  f.resumeImport.mockImplementationOnce(() => reading.promise as never);
+  act(() => { f.result.current.resumeImportSession("a".repeat(32)); });
+  await waitFor(() => expect(f.resumeImport).toHaveBeenCalledOnce());
+  expect(f.inspectImport).toHaveBeenCalledWith("a".repeat(32));
+  expect(f.inspectImport.mock.invocationCallOrder[0]).toBeLessThan(f.resumeImport.mock.invocationCallOrder[0]);
+  expect(f.result.current.bulkSession).toMatchObject({ state: "running", rows: savedImport().rows });
+  act(() => { f.result.current.stopBulkDocuments(); });
+  expect(f.result.current.bulkSession?.state).toBe("stopping");
+  f.context.session = { ...f.context.session, jobs: [job] }; f.rerender();
+  await waitFor(() => expect(f.actions.cancel).toHaveBeenCalledWith("active-chunk"));
+  f.rerender(); expect(f.actions.cancel).toHaveBeenCalledOnce();
+  await act(async () => { reading.resolve({ ...result(["one", "two", "three"]), session: { ...savedImport(1), state: "stopped" } }); });
+  expect(f.resumeImport).toHaveBeenCalledOnce();
+  expect(f.result.current.bulkSession?.state).toBe("paused");
+});
+it("does not admit a saved chunk after its prerequisite inspection returns for an old vault generation", async () => {
+  const f = queuedFixture();
+  f.listImports.mockResolvedValue([savedImport()]);
+  f.context.source = {} as never; f.context.sourceIdentity.current = f.context.source; f.rerender();
+  await waitFor(() => expect(f.result.current.pendingImports).toHaveLength(1));
+  const inspecting = deferred<import("../surface/types").ImportSessionSnapshot>();
+  f.inspectImport.mockImplementationOnce(() => inspecting.promise);
+  act(() => { f.result.current.resumeImportSession("a".repeat(32)); });
+  await waitFor(() => expect(f.inspectImport).toHaveBeenCalledOnce());
+  f.context.requestId.current += 1;
+  await act(async () => { inspecting.resolve(savedImport()); });
+  expect(f.resumeImport).not.toHaveBeenCalled();
+});

@@ -1,6 +1,7 @@
 """Local-only source revision decisions, effective dates and recorded frontiers."""
 from dataclasses import dataclass,replace,fields
 from datetime import date,timedelta
+from copy import deepcopy
 from .contracts import *
 
 CHANGE='InvestmentEvidenceChanged'
@@ -37,7 +38,13 @@ class Selection:
 class SourceIndex:
  """Validate recorded predecessor choices before resolving financial dates."""
  def __init__(self,events,statements):
-  self.events=events;self.statements={s.observation_id:s for s in statements};self.roots={};self.root_for={};self.heads={};self.changes=[];self._changes_by_root={};seen=set()
+  self._initialize(deepcopy(tuple(events)),deepcopy(tuple(statements)))
+ def _initialize(self,events,statements,owned=None):
+  from .prefix_proofs import PrefixProofIndex
+  proofs=owned
+  self.__owned=owned
+  self.__events=events
+  self.statements={s.observation_id:s for s in statements};self.roots={};self.root_for={};self.heads={};self.changes=[];self._changes_by_root={};seen=set()
   event_map={e.event_id:e for e in events}
   for ordinal,event in enumerate(events):
    if event.event_type=='InvestmentActivityStatementObserved':
@@ -63,12 +70,15 @@ class SourceIndex:
      accepted=self.accepts(replacement,change.facet)
      self.root_for[(change.facet,change.replacement_id)]=key
     else:
-     from .events import prefix
+     if proofs is None:proofs=PrefixProofIndex(events)
      proof=event.body.get('prefix',{});count=proof.get('event_count')
-     if type(count) is not int or count!=ordinal or encode(prefix(events[:count]))!=proof:raise EvidenceError('source retraction prefix mismatch')
+     if type(count) is not int or count!=ordinal or encode(proofs.proof(count))!=proof:raise EvidenceError('source retraction prefix mismatch')
      accepted=True
     if accepted:self.heads[key]=change.replacement_id
     self.changes.append((key,change,accepted));self._changes_by_root.setdefault(key,[]).append((change,accepted))
+ @property
+ def events(self):
+  return deepcopy(self.__events)
  @staticmethod
  def accepts(statement,facet):
   return statement.snapshot_complete if facet=='positions' else statement.disposition.startswith('accepted_complete')
@@ -100,15 +110,16 @@ class SourceIndex:
   parent=next((item.statement for item in selections if item.root==key[1] and item.status=='accepted'),None) if key else None
   return parent is not None and parent.observation_id in active and statement_identity(statement)==statement_identity(parent) and statement.account.raw==parent.account.raw
  def project(self,facet,as_of,resolve_reference):
-  from .events import validate_funding
-  from .payroll import FundingValidationContext
-  if not hasattr(self,'_funding_context'):self._funding_context=FundingValidationContext(self.events,tuple(self.statements.values()))
+  from .payroll import _OwnedFundingRunner
+  if not hasattr(self,'_funding_runner'):
+   self._funding_runner=(_OwnedFundingRunner(self.__events,resolve_reference) if self.__owned is None else
+                         _OwnedFundingRunner._from_owned(self.__owned,resolve_reference))
   activity=self.select('activity',as_of);active={s.statement.observation_id for s in activity if s.status=='accepted'}
   while True:
    invalid={s.statement.observation_id for s in activity if s.statement.observation_id in active and s.statement.corroborates is not None and not self.copy_supported(s.statement,activity,active)}
    if not invalid:break
    active-=invalid
-  by_id={e.event_id:e for e in self.events};out=[]
+  out=[]
   for selected in self.select(facet,as_of):
    statement=selected.statement;status=selected.status
    if facet=='activity':
@@ -117,12 +128,12 @@ class SourceIndex:
     for row in statement.rows:
      if row.kind.value=='contribution' and row.funding_role!='reinvestment':
       valid=row.funding_status=='accepted'
-      try:validate_funding(statement,row,by_id,resolve_reference,effective_as_of=as_of,_context=self._funding_context)
+      try:self._funding_runner.validate_funding(statement,row,resolve_reference,effective_as_of=as_of)
       except EvidenceError:valid=False
       witness=row.funding_witness
       if witness is not None and witness.source_row_event_id and witness.role not in ('other_broker','retirement_rollover'):
-       source=by_id.get(witness.source_row_event_id)
-       if source is None or source.body.get('statement_id') not in active:valid=False
+       source=self._funding_runner.source_row_statement_id(witness.source_row_event_id)
+       if source not in active:valid=False
       if not valid:row=replace(row,funding_status='conflicted' if row.funding_role!='unknown' else 'unavailable')
      rows.append(row)
     statement=replace(statement,rows=tuple(rows))
@@ -130,7 +141,7 @@ class SourceIndex:
   return tuple(out)
  def segments(self,resolve_reference):
   from .payroll import change_dates
-  points=['0001-01-01',*sorted(({c.effective for _,c,_ in self.changes}|set(change_dates(self.events)))-{'0001-01-01'})];out=[]
+  points=['0001-01-01',*sorted(({c.effective for _,c,_ in self.changes}|set(change_dates(self.__events)))-{'0001-01-01'})];out=[]
   for facet in ('activity','positions'):
    prior={}
    for index,left in enumerate(points):

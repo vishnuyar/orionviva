@@ -30,6 +30,9 @@ def _write(path,value):
         # Publish a complete receipt atomically, while preserving exclusive
         # historical names: an existing receipt is never overwritten.
         os.link(temporary,path)
+        directory_fd = os.open(path.parent, os.O_RDONLY|os.O_NOFOLLOW)
+        try: os.fsync(directory_fd)
+        finally: os.close(directory_fd)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -178,6 +181,50 @@ def completion_failures(pack, projection):
     return failures
 
 
+def verify_replay_agreement(ledger):
+    """Require the live fold to equal a fresh authenticated financial replay."""
+    import time
+    from ..ledger.projection import LedgerProjection
+    started = time.monotonic()
+    with ledger._lock:
+        before = ledger.store.authenticated_identity()
+        current = ledger.projection()
+        events, identity = ledger.store.fork().snapshot_events_with_identity()
+        replay = LedgerProjection(events, resolve_keys=current.core._resolve_keys)
+        if identity != before:
+            raise SampleBuildError('sample replay revision changed')
+        families = []
+        def same(name, actual, expected):
+            if actual != expected:
+                raise SampleBuildError('sample replay disagrees: '+name)
+            families.append(name)
+        same('accounts', current.accounts(), replay.accounts())
+        same('balances', {account:current.balance(account) for account in current.accounts()},
+                        {account:replay.balance(account) for account in replay.accounts()})
+        same('movements', current.movements(), replay.movements())
+        same('positions', current.positions(), replay.positions())
+        same('instrument_allocations', current.instrument_allocations(), replay.instrument_allocations())
+        same('instrument_component_states', current.instrument_component_states(), replay.instrument_component_states())
+        # Lazy query caches and callable ownership guards carry no financial
+        # facts; event-folded dependency indexes remain part of the comparison.
+        ephemeral = {'apply', '_resolve_keys', '_mkeys', '_mkeys_of', '_statements',
+                     '_own_tokens_cache', '_measurement_sources'}
+        current_state = vars(current.core); replay_state = vars(replay.core)
+        names = (set(current_state)|set(replay_state))-ephemeral
+        for name in sorted(names):
+            if name not in current_state or name not in replay_state:
+                raise SampleBuildError('sample replay state family differs')
+            same('core'+name, current_state[name], replay_state[name])
+        same('measurement_source_accounts', current.core._measurement_sources.accounts,
+                                           replay.core._measurement_sources.accounts)
+        same('measurement_source_accepted', current.core._measurement_sources.accepted,
+                                           replay.core._measurement_sources.accepted)
+        if ledger.store.authenticated_identity() != identity:
+            raise SampleBuildError('sample replay revision changed')
+    return {'state':'equal', 'families':families, 'family_count':len(families),
+            'event_identity':list(identity), 'seconds':time.monotonic()-started}
+
+
 def _worker(instance, limit=None):
     import time
     from datetime import datetime, timezone
@@ -192,10 +239,16 @@ def _worker(instance, limit=None):
         vault=Vault.open(instance/'vault',PASSPHRASE)
         reader=CuratedReader(pack)
         for document in pack.documents[:limit]:
-            result=capture_and_ingest(vault.raw,vault.ledger,pack.original(document),reader,
+            original = pack.original(document)
+            document_started = time.monotonic()
+            result=capture_and_ingest(vault.raw,vault.ledger,original,reader,
                 filename=document['file'],captured_at=datetime.now(timezone.utc).isoformat())
+            capture_finished = time.monotonic()
+            event_count = vault.ledger.store.authenticated_identity()[0]
             outcomes.append({'document_id':document['id'],'doc_id':result.doc_id,
-                'action':result.action,'message':result.message,'grade':result.grade})
+                'action':result.action,'message':result.message,'grade':result.grade,
+                'capture_seconds':capture_finished-document_started,
+                'elapsed_seconds':capture_finished-started, 'event_count':event_count})
             posted_count=len(vault.ledger.projection().posted_doc_ids())
             _write(instance/f'progress-{len(outcomes):04d}.json',{
                 **outcomes[-1], 'completed_documents':len(outcomes),
@@ -203,15 +256,22 @@ def _worker(instance, limit=None):
                 'held_documents':max(0,len(outcomes)-posted_count)})
             if result.action=='parked' or result.doc_type=='unknown':
                 raise SampleBuildError('required sample source could not be parsed')
+        sweep_started = time.monotonic()
         swept=sweep(vault.ledger)
+        sweep_seconds = time.monotonic()-sweep_started
         projection=vault.ledger.projection()
         captures=set(projection.captured_docs())
         expected={doc['sha256'] for doc in pack.documents[:limit]}
         if captures!=expected or set(vault.raw.doc_ids())!=expected:
             raise SampleBuildError('sample capture closure is incomplete')
+        agreement = verify_replay_agreement(vault.ledger)
+        sql_started = time.monotonic()
         _prepare_demo_read_store(vault)
+        sql_seconds = time.monotonic()-sql_started
         identity=vault.ledger.store.authenticated_identity()
+        checks_started = time.monotonic()
         failures=completion_failures(pack,projection) if limit is None else []
+        checks_seconds = time.monotonic()-checks_started
         state='engineering_partial' if limit is not None else 'source_checks_failed' if failures else 'ready'
         report={'contract':'sample-instance-v1','version':VERSION,
             'state':state,'readiness_failures':failures,
@@ -220,6 +280,9 @@ def _worker(instance, limit=None):
             'documents':len(captures),'outcomes':outcomes,'sweep':swept,
             'event_identity':list(identity),'runtime_identity':runtime,'resources_seconds':resources_done-started,
             'complete_seconds':time.monotonic()-started,
+            'capture_seconds':sum(row['capture_seconds'] for row in outcomes),
+            'phase_seconds':{'sweep':sweep_seconds,'sql':sql_seconds,'source_completion':checks_seconds},
+            'replay_agreement':agreement,
             'open_holds':projection.open_holds()}
         if _runtime_identity()!=runtime: raise SampleBuildError('sample runtime changed during construction')
         filename='sample-instance.json' if state=='ready' else 'sample-incomplete.json'
@@ -231,6 +294,15 @@ def _worker(instance, limit=None):
         raise
     finally:
         if vault is not None: vault.close()
+
+def _restore_worker(instance, limit=None):
+    from .snapshot import restore
+    try:
+        return restore(instance)
+    except BaseException:
+        _write(instance/'sample-failed.json', {'state':'failed', 'reason':'prepared_snapshot_invalid'})
+        raise
+
 
 def _source_dependency_root():
     """Use the installed dependency actually imported by this source runtime."""
@@ -254,8 +326,8 @@ def _source_dependency_root():
 def _launch(instance,operation,limit=None):
     frozen = getattr(sys, 'frozen', False) is True
     if frozen:
-        if operation not in ('build', 'reopen') or limit is not None:
-            raise SampleBuildError('frozen sample worker accepts only complete build or reopen')
+        if operation not in ('build', 'restore', 'reopen') or limit is not None:
+            raise SampleBuildError('frozen sample worker accepts only complete build, restore or reopen')
         command=[sys.executable, '--sample-worker']
         request=json.dumps({'operation':operation,'instance':str(instance)},sort_keys=True).encode('utf-8')
         if len(request)>4096: raise SampleBuildError('sample worker request exceeds its bound')
@@ -266,7 +338,7 @@ def _launch(instance,operation,limit=None):
         roots=list(dict.fromkeys(roots))
         if any(not Path(root).is_dir() or str(Path(root).resolve())!=root for root in roots):
             raise SampleBuildError('sample runtime roots are not ordinary installed directories')
-        script='import sys,json;sys.path[:0]=json.loads(sys.argv[1]);from viva.sample.instances import _worker,_reopen_worker;result=(_worker if sys.argv[3]=="build" else _reopen_worker)(__import__("pathlib").Path(sys.argv[2]),None if sys.argv[4]=="" else int(sys.argv[4]));print(json.dumps(result,sort_keys=True))'
+        script='import sys,json;sys.path[:0]=json.loads(sys.argv[1]);from viva.sample.instances import _worker,_restore_worker,_reopen_worker;result=({"build":_worker,"restore":_restore_worker,"reopen":_reopen_worker}[sys.argv[3]])(__import__("pathlib").Path(sys.argv[2]),None if sys.argv[4]=="" else int(sys.argv[4]));print(json.dumps(result,sort_keys=True))'
         command=[sys.executable,'-I','-S','-B','-c',script,json.dumps(roots),str(instance),operation,'' if limit is None else str(limit)]
     environment={'PATH':'/usr/bin:/bin','HOME':str(instance/'home'),
         'MERCHANTCORE_HOME':str(instance/'learned'),'VIVA_PROFILES':str(instance/'learned/profiles'),
@@ -286,10 +358,12 @@ def _launch(instance,operation,limit=None):
         raise SampleBuildError('sample child runtime identity does not match')
     return report
 
-def build_instance(base: Path, *, engineering_document_limit=None, on_instance=None):
+def build_instance(base: Path, *, engineering_document_limit=None, on_instance=None, prepared=False):
     """Build a fresh owned instance; no active-sample manifest is changed."""
     if engineering_document_limit is not None and (type(engineering_document_limit) is not int or not 1<=engineering_document_limit<794):
         raise SampleBuildError('invalid engineering document limit')
+    if prepared and engineering_document_limit is not None:
+        raise SampleBuildError('prepared sample requires its complete source closure')
     base=Path(base).absolute()
     for ancestor in (base,*base.parents):
         if ancestor.is_symlink(): raise SampleBuildError('sample base traverses a symlink')
@@ -314,7 +388,7 @@ def build_instance(base: Path, *, engineering_document_limit=None, on_instance=N
         _write(instance/'sample-staging.json',{'version':VERSION,'instance_id':instance.name})
         if on_instance is not None:
             on_instance(instance)
-        report=_launch(instance,'build',engineering_document_limit)
+        report=_launch(instance,'restore' if prepared else 'build',engineering_document_limit)
         return instance,report
     finally: os.close(fd)
 
@@ -323,14 +397,18 @@ def _reopen_worker(instance,limit=None):
     from ..vault import Vault
     from ..demo import _prepare_demo_read_store
     from .resources import load_pack,MANIFEST_SHA256,READINGS_SHA256
-    started=time.monotonic();pack=load_pack();record=json.loads((instance/'sample-instance.json').read_text())
+    started=time.monotonic();pack=load_pack();resources_done=time.monotonic()
+    record=json.loads((instance/'sample-instance.json').read_text())
     if record['version']!=VERSION or record['manifest_sha256']!=MANIFEST_SHA256 or record['readings_sha256']!=READINGS_SHA256 or record['state']!='ready':
         raise SampleBuildError('sample instance version is incompatible or incomplete')
     if record.get('runtime_identity')!=_runtime_identity():
         raise SampleBuildError('sample instance belongs to another application version')
     _ordinary(instance/'vault')
+    open_started=time.monotonic()
     vault=Vault.open(instance/'vault',PASSPHRASE,create=False)
+    open_seconds=time.monotonic()-open_started
     try:
+        validation_started=time.monotonic()
         before=vault.ledger.store.authenticated_identity()
         if not {doc['sha256'] for doc in pack.documents} <= set(vault.ledger.projection().captured_docs()):
             raise SampleBuildError('sample source closure is incomplete')
@@ -338,10 +416,16 @@ def _reopen_worker(instance,limit=None):
             if vault.raw.get(doc['sha256'])!=pack.original(doc): raise SampleBuildError('sample original differs')
         if completion_failures(pack,vault.ledger.projection()):
             raise SampleBuildError('sample source checks no longer hold')
+        validation_seconds=time.monotonic()-validation_started
+        sql_started=time.monotonic()
         _prepare_demo_read_store(vault)
+        sql_seconds=time.monotonic()-sql_started
         after=vault.ledger.store.authenticated_identity()
         if before!=after: raise SampleBuildError('sample reopen unexpectedly changed history')
-        return {'version':VERSION,'state':'ready','event_identity':list(after),'runtime_identity':_runtime_identity(),'reopen_seconds':time.monotonic()-started}
+        return {'version':VERSION,'state':'ready','event_identity':list(after),'runtime_identity':_runtime_identity(),'reopen_seconds':time.monotonic()-started,
+            'phase_seconds':{'resources':resources_done-started,
+                'runtime_and_receipt_validation':open_started-resources_done,
+                'vault_open':open_seconds,'source_validation':validation_seconds,'sql':sql_seconds}}
     finally: vault.close()
 
 def reopen_instance(instance: Path):

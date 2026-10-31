@@ -1,10 +1,11 @@
 """Locked-prefix noncash observation append and immutable replay validation."""
+from copy import deepcopy
 from dataclasses import dataclass,replace
 from decimal import Decimal, localcontext
 from viva.ledger.events import Event,Provenance
 from viva.ledger.postings import brokerage_activity_transaction,brokerage_cash_effect
-from viva.ledger.projection import LedgerProjection
 from .contracts import *
+from .prefix_proofs import _json_primitives
 
 STATEMENT='InvestmentActivityStatementObserved'
 ROW='InvestmentActivityRowObserved'
@@ -15,18 +16,6 @@ class LockedEventPrefix:
  event_count: int
  last_event_id: str
  prefix_digest: str
-
-
-def _json_primitives(value):
- # The authenticated event wire is already JSON. Avoid allocating a second
- # recursive dataclass encoding, but retain its exact semantics for all other
- # Python values through the original canonical encoder below.
- kind=type(value)
- if value is None or kind in (str,int,bool):return True
- if kind is float:return math.isfinite(value)
- if kind in (tuple,list):return all(_json_primitives(item) for item in value)
- if kind is dict:return all(type(key) is str and _json_primitives(item) for key,item in value.items())
- return False
 
 
 def prefix(events):
@@ -204,44 +193,39 @@ def append_statement(ledger,statement,resolve_reference=lambda field: None,chang
 
 def append_from_source(ledger,build_statement,resolve_reference=lambda field:None,changes=()):
  """Append only evidence records after checking the store's locked event tuple."""
- with ledger._lock:
-  complete=[]
-  def decide(events):
-   statement=build_statement(events)
-   if statement is None:
-    complete.extend(events);return ()
-   current_changes=changes(events,statement) if callable(changes) else changes
-   from .identity import bind_corroborating_copy
-   from .lifecycle import SourceIndex,SourceChange,CHANGE
-   known=_validated_statements(events,resolve_reference)
-   index=SourceIndex(events,known)
-   if type(current_changes) is not tuple or len(current_changes)>2 or len({c.facet for c in current_changes})!=len(current_changes) or any(type(c) is not SourceChange or c.replacement_id!=statement.observation_id for c in current_changes):raise EvidenceError("invalid local source revision batch")
-   active=tuple(selection.statement for selection in index.project("activity",statement.end.value,resolve_reference) if selection.status=="accepted")
-   prior={e.body.get('observation_id'):e for e in events if e.event_type==STATEMENT}
-   if not current_changes and statement.observation_id not in prior:statement=bind_corroborating_copy(statement,active,events)
-   statement=certify_funding(statement,events,resolve_reference)
-   validate_statement(statement,events,resolve_reference,known)
-   witness=prefix(events)
-   if statement.observation_id in prior:
-    if prior[statement.observation_id].body.get('statement')!=encode(statement): raise EvidenceError('observation ID collision')
-    attached=prior[statement.observation_id].body.get('source_change_event_ids',[])
-    by_id={event.event_id:event for event in events}
-    if [by_id[event_id].body['change'] for event_id in attached]!=[encode(change) for change in current_changes]:raise EvidenceError('source observation decision collision')
-    complete.extend(events);return ()
-   for change in current_changes:index.validate_new(change,statement)
-   by_observation={e.body.get('row',{}).get('observation_id') for e in events if e.event_type==ROW}
-   if any(r.observation_id in by_observation for r in statement.rows): raise EvidenceError('row observation ID collision')
-   additions=tuple(Event(ROW,statement.end.value,{'statement_id':statement.observation_id,'row':encode(row)},Provenance(doc_id=row.amount.document,page=row.amount.page)) for row in statement.rows)
-   change_events=tuple(Event(CHANGE,change.effective,{'change':encode(change),'statement_event_id':''}) for change in current_changes)
-   statement_event=Event(STATEMENT,statement.end.value,{'schema_version':'investment-evidence-v1','observation_id':statement.observation_id,'statement':encode(statement),'prefix':encode(witness),'row_event_ids':[e.event_id for e in additions],'source_change_event_ids':[e.event_id for e in change_events]},Provenance(doc_id=statement.account.document,page=statement.account.page))
-   for event in change_events:event.body['statement_event_id']=statement_event.event_id
-   additions+=(statement_event,*change_events)
-   complete.extend(events);complete.extend(additions)
-   return additions
-  records=ledger.store.append_atomically(decide)
-  ledger._proj=LedgerProjection(complete,resolve_keys=ledger._resolve_keys)
-  ledger._projection_identity=ledger.store._cached_identity()
-  return records
+ def decide(events):
+  statement=build_statement(events)
+  if statement is None:
+   return ()
+  current_changes=changes(events,statement) if callable(changes) else changes
+  from .identity import bind_corroborating_copy
+  from .lifecycle import SourceIndex,SourceChange,CHANGE
+  known=_validated_statements(events,resolve_reference)
+  index=SourceIndex(events,known)
+  if type(current_changes) is not tuple or len(current_changes)>2 or len({c.facet for c in current_changes})!=len(current_changes) or any(type(c) is not SourceChange or c.replacement_id!=statement.observation_id for c in current_changes):raise EvidenceError("invalid local source revision batch")
+  active=tuple(selection.statement for selection in index.project("activity",statement.end.value,resolve_reference) if selection.status=="accepted")
+  prior={e.body.get('observation_id'):e for e in events if e.event_type==STATEMENT}
+  if not current_changes and statement.observation_id not in prior:statement=bind_corroborating_copy(statement,active,events)
+  statement=certify_funding(statement,events,resolve_reference)
+  validate_statement(statement,events,resolve_reference,known)
+  witness=prefix(events)
+  if statement.observation_id in prior:
+   if prior[statement.observation_id].body.get('statement')!=encode(statement): raise EvidenceError('observation ID collision')
+   attached=prior[statement.observation_id].body.get('source_change_event_ids',[])
+   by_id={event.event_id:event for event in events}
+   if [by_id[event_id].body['change'] for event_id in attached]!=[encode(change) for change in current_changes]:raise EvidenceError('source observation decision collision')
+   return ()
+  for change in current_changes:index.validate_new(change,statement)
+  by_observation={e.body.get('row',{}).get('observation_id') for e in events if e.event_type==ROW}
+  if any(r.observation_id in by_observation for r in statement.rows): raise EvidenceError('row observation ID collision')
+  additions=tuple(Event(ROW,statement.end.value,{'statement_id':statement.observation_id,'row':encode(row)},Provenance(doc_id=row.amount.document,page=row.amount.page)) for row in statement.rows)
+  change_events=tuple(Event(CHANGE,change.effective,{'change':encode(change),'statement_event_id':''}) for change in current_changes)
+  statement_event=Event(STATEMENT,statement.end.value,{'schema_version':'investment-evidence-v1','observation_id':statement.observation_id,'statement':encode(statement),'prefix':encode(witness),'row_event_ids':[e.event_id for e in additions],'source_change_event_ids':[e.event_id for e in change_events]},Provenance(doc_id=statement.account.document,page=statement.account.page))
+  for event in change_events:event.body['statement_event_id']=statement_event.event_id
+  additions+=(statement_event,*change_events)
+  return additions
+ records=ledger.append_atomically(lambda projection: decide(tuple(projection._source_events)))
+ return records
 
 
 def decode_field(data):
@@ -283,13 +267,21 @@ def decode_statement(data):
 
 def _validated_statements(events,resolve_reference=lambda field:None):
  """Replay only atomic observations whose dependency prefixes still exist."""
+ from .prefix_proofs import _OwnedEvidence
+ return deepcopy(_OwnedEvidence(events)._statements(resolve_reference))
+
+
+def _statements_with_proofs(events,proofs,resolve_reference):
+ # Caller callbacks receive independent fields, including mutable field payloads.
+ original_resolve=resolve_reference
+ resolve_reference=lambda field:original_resolve(deepcopy(field))
  by_id={e.event_id:e for e in events};out=[];observation_ids=set();row_ids=set()
  for index,event in enumerate(events):
   if event.event_type!=STATEMENT: continue
   body=event.body
   if body.get('schema_version')!='investment-evidence-v1': raise EvidenceError('unknown source observation version')
   witness=body.get('prefix',{});count=witness.get('event_count')
-  if type(count) is not int or not 0<=count<=index or encode(prefix(events[:count]))!=witness:
+  if type(count) is not int or not 0<=count<=index or encode(proofs.proof(count))!=witness:
    raise EvidenceError('source dependency prefix mismatch')
   statement=decode_statement(body['statement'])
   if statement.observation_id in observation_ids or any(row.observation_id in row_ids for row in statement.rows):raise EvidenceError('duplicate permanent source observation identity')
@@ -323,12 +315,9 @@ def committed_statements(events,resolve_reference=lambda field:None,effective_as
 def retract_source(ledger,change,resolve_reference=lambda field:None):
  from .lifecycle import SourceChange,CHANGE
  if type(change) is not SourceChange or change.replacement_id is not None:raise EvidenceError('typed source retraction required')
- with ledger._lock:
-  complete=[]
-  def decide(events):
-   index=source_index(events,resolve_reference);index.validate_new(change)
-   event=Event(CHANGE,change.effective,{'change':encode(change),'statement_event_id':None,'prefix':encode(prefix(events))})
-   complete.extend(events);complete.append(event);return (event,)
-  records=ledger.store.append_atomically(decide)
-  ledger._proj=LedgerProjection(complete,resolve_keys=ledger._resolve_keys);ledger._projection_identity=ledger.store._cached_identity()
-  return records
+ def decide(events):
+  index=source_index(events,resolve_reference);index.validate_new(change)
+  event=Event(CHANGE,change.effective,{'change':encode(change),'statement_event_id':None,'prefix':encode(prefix(events))})
+  return (event,)
+ records=ledger.append_atomically(lambda projection: decide(tuple(projection._source_events)))
+ return records

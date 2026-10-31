@@ -60,6 +60,7 @@ REFUSAL_DECLARATION = re.compile(r'export const REQUEST_REFUSED = "([^"]+)"')
 # The reviewed payload contract: what each operation accepts from a caller.
 PAYLOAD_FIELDS: dict[str, set[str]] = {
     "viva.documents.preview.read": {"document_id", "page"},
+    "viva.documents.imports.read": {"list_sessions", "session_id", "inspect"},
     BRIDGE_HANDSHAKE: set(),
     # `create` is the person's own word for making a vault where they said to.
     # It defaults to false, so a path typed with a letter wrong is refused
@@ -264,6 +265,75 @@ def _declared_payload_fields(module: Path, function: str) -> set[str]:
     fields = [item.value for item in literal.elts]
     assert len(fields) == len(set(fields)), "payload field declaration repeats a name"
     return set(fields)
+
+
+def _declared_import_payload_alternatives(module: Path, function: str) -> set[frozenset[str]]:
+    """Read exact equal-set alternatives without loosening ordinary validators."""
+    tree = ast.parse(module.read_text(encoding='utf-8'), filename=str(module))
+    functions = [node for node in ast.walk(tree)
+                 if isinstance(node, ast.FunctionDef) and node.name == function]
+    assert len(functions) == 1, 'import status must have one validator'
+    alternatives = []
+    for node in ast.walk(functions[0]):
+        if (not isinstance(node, ast.Compare) or not isinstance(node.left, ast.Call)
+                or not isinstance(node.left.func, ast.Name) or node.left.func.id != 'set'
+                or len(node.left.args) != 1 or not isinstance(node.left.args[0], ast.Name)
+                or node.left.args[0].id != 'payload' or node.left.keywords):
+            continue
+        assert len(node.ops) == 1 and isinstance(node.ops[0], ast.Eq), 'unknown import field guard'
+        assert len(node.comparators) == 1 and isinstance(node.comparators[0], ast.Set), 'unknown import field declaration'
+        fields = node.comparators[0].elts
+        assert all(isinstance(field, ast.Constant) and type(field.value) is str for field in fields)
+        names = [field.value for field in fields]
+        assert len(names) == len(set(names)), 'import field declaration repeats a name'
+        alternatives.append(frozenset(names))
+    assert len(alternatives) == 2 and len(set(alternatives)) == 2, 'import status requires two exact alternatives'
+    return set(alternatives)
+
+
+def test_import_read_field_inventory_matches_its_two_closed_handler_alternatives():
+    alternatives = _declared_import_payload_alternatives(BRIDGE_PACKAGE/'document_actions.py', 'imports_read')
+    assert alternatives == {frozenset({'list_sessions'}), frozenset({'session_id', 'inspect'})}
+    assert set().union(*alternatives) == PAYLOAD_FIELDS['viva.documents.imports.read']
+
+
+def test_import_read_accepts_both_complete_forms_and_routes_without_queue_mutation(monkeypatch):
+    from viva.desktop_bridge import import_sessions
+    vault = object(); calls = []
+    class Sessions:
+        def __init__(self, actual):
+            assert actual is vault
+        def listing(self):
+            calls.append(('listing',)); return {'sessions':[]}
+        def inspect(self, identifier):
+            calls.append(('inspect', identifier)); return {'session_id':identifier}
+    monkeypatch.setattr(import_sessions, 'ImportSessions', Sessions)
+    handler = handlers_for_opened_vault(vault).handlers['viva.documents.imports.read']
+    assert handler({'list_sessions':True}) == {'sessions':[]}
+    assert handler({'session_id':'a'*32, 'inspect':True}) == {'session_id':'a'*32}
+    assert calls == [('listing',), ('inspect', 'a'*32)]
+
+
+@pytest.mark.parametrize('payload', [
+    {}, {'session_id':'a'*32}, {'inspect':True}, {'list_sessions':False},
+    {'list_sessions':1}, {'session_id':'a'*32, 'inspect':False},
+    {'session_id':'a'*32, 'inspect':1},
+    {'list_sessions':True, 'session_id':'a'*32, 'inspect':True},
+    {'list_sessions':True, 'inspect':True},
+    {'list_sessions':True, 'unexpected_field':'synthetic'},
+    {'session_id':'a'*32, 'inspect':True, 'unexpected_field':'synthetic'},
+    {'session_id':'a'*32, 'inspect':True, 'resume':True},
+    {'list_sessions':True, 'paths':['/synthetic/source.pdf']},
+    [], None,
+])
+def test_import_read_rejects_combined_incomplete_extra_and_mutating_forms_before_session_access(monkeypatch, payload):
+    from viva.desktop_bridge import import_sessions
+    def forbidden(*args, **kwargs):
+        raise AssertionError('invalid import-read shape reached session storage')
+    monkeypatch.setattr(import_sessions, 'ImportSessions', forbidden)
+    handler = handlers_for_opened_vault(object()).handlers['viva.documents.imports.read']
+    with pytest.raises(ValueError, match='closed import status request required'):
+        handler(payload)
 
 
 def test_bulk_payload_parser_accepts_valid_paths_before_refusing_extra_fields():

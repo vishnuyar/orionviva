@@ -242,9 +242,13 @@ def _candidates(proj: LedgerProjection) -> dict:
     movements = [m for m in proj.movements() if not m.linked]
     sources = [m for m in movements if _flow(m) == "source"]
     dests = [m for m in movements if _flow(m) == "destination"]
+    by_amount = {}
+    for destination in dests:
+        by_amount.setdefault((destination.currency, abs(destination.amount)), []).append(destination)
     graph: dict[str, list[MovementInfo]] = {}
     for s in sources:
-        matches = [d for d in dests if is_transfer_candidate(s, d)]
+        matches = [d for d in by_amount.get((s.currency, abs(s.amount)), ())
+                   if is_transfer_candidate(s, d)]
         if matches:
             graph[s.key] = matches
     return graph, {s.key: s for s in sources}

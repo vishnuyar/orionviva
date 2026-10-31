@@ -88,6 +88,9 @@ def _stand_in(tmp_path: Path, replies: dict, name: str = "sidecar") -> Path:
         "        continue\n"
         "    asked = json.loads(line)\n"
         "    operation = asked['operation']\n"
+        "    if behavior.get('operation_log'):\n"
+        "        with open(behavior['operation_log'], 'a') as log:\n"
+        "            log.write(json.dumps(asked) + '\\n')\n"
         "    payload = asked.get('payload') or {}\n"
         "    if operation == 'viva.conversation.decline' and not behavior.get('ignore_decline'):\n"
         "        declined.add(payload.get('question_id'))\n"
@@ -156,7 +159,17 @@ def _working(**overrides) -> dict:
         "status": "open", "primary_action": "open_question",
         "allowed_actions": ["open_question"], "binding": bindings[identity],
     } for identity in ids]
+    prepared = {'state':'ready','sample_version':'five-year-life-v1',
+                'completed_documents':794,'total_documents':794,'posted_documents':790,
+                'held_documents':4,'phase':'ready','message':'Prepared.'}
     replies = {
+        "bridge.sample.prepare": {"ok":True,"result":prepared},
+        "bridge.sample.status": {"ok":True,"result":prepared},
+        "viva.surface.read:overview_accounts": {"ok":True,"result":{"data":{
+            "state":"ready","freshness":"current","revision":"synthetic-generation",
+            "accounts":{"accounts":[{"account":"opaque:synthetic-packaged-account"}]}}}},
+        "viva.surface.read:account_ledger": {"ok":True,"result":{"data":{
+            "state":"ready","scope":{"account_id":"opaque:synthetic-packaged-account"}}}},
         "bridge.handshake": {"ok": True, "result": {
             "protocol": "2.1", "transport": "json-lines", "revision": "abcdef123456"}},
         "viva.lifecycle.read": {"ok": True, "result": {
@@ -333,7 +346,7 @@ def test_one_sample_question_does_not_replace_the_eleven_document_pagination_pro
     assert any("all eleven synthetic" in line for line in _run(tmp_path, replies))
 
 
-def test_sample_binding_proof_cannot_be_vacuously_empty(tmp_path):
+def test_genuinely_empty_sample_still_requires_the_eleven_document_pagination_proof(tmp_path):
     replies = _working()
     for surface in ("conversation", "review"):
         key = f"viva.surface.read:{surface}"
@@ -344,8 +357,7 @@ def test_sample_binding_proof_cannot_be_vacuously_empty(tmp_path):
     conversation["total"] = 0
     review["groups"] = []
     review["actionable_count"] = review["shown_count"] = 0
-    with pytest.raises(SystemExit, match="sample supplied no actionable question to pair"):
-        _run(tmp_path, replies)
+    assert any("all eleven synthetic" in line for line in _run(tmp_path, replies))
 
 
 def test_a_pagination_question_without_identity_cannot_pass(tmp_path):
@@ -431,7 +443,7 @@ def test_pagination_waits_only_for_bounded_declared_read_store_readiness(monkeyp
     class StartingSidecar:
         calls = 0
 
-        def ask(self, _operation, _payload):
+        def ask(self, _operation, _payload, **kwargs):
             self.calls += 1
             if readiness == "transient" and self.calls > 1:
                 return {"ok": True, "result": {"data": {"state": "ready"}}}
@@ -722,3 +734,53 @@ def test_every_surface_an_opened_vault_serves_is_walked():
     from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
 
     assert set(checker.SURFACES) == OpenedVaultSurfaceProvider._SURFACES
+
+
+def test_real_controller_prepares_once_polls_then_opens_and_uses_packaged_account(tmp_path):
+    log=tmp_path/'operations.jsonl'
+    replies=_working(__behavior__={'operation_log':str(log)})
+    _run(tmp_path,replies)
+    calls=[json.loads(line) for line in log.read_text().splitlines()]
+    operations=[call['operation'] for call in calls]
+    assert operations.count('bridge.sample.prepare')==1
+    assert operations.count('bridge.sample.status')==1
+    assert operations.index('bridge.sample.prepare')<operations.index('bridge.sample.status')<operations.index('bridge.open_demo_vault')
+    ledger=next(call for call in calls if call.get('payload',{}).get('surface')=='account_ledger')
+    assert ledger['payload']['parameters']['account_id']=='opaque:synthetic-packaged-account'
+    assert any('beyond index ten' in line for line in checker.validate(_stand_in(tmp_path,replies,name='second-sidecar')))
+
+
+@pytest.mark.parametrize('change',['missing-account','wrong-scope','malformed-scope','stale-account'])
+def test_account_ledger_cannot_skip_or_relabel_selected_packaged_identity(tmp_path,change):
+    replies=_working()
+    account=replies['viva.surface.read:overview_accounts']['result']['data']
+    ledger=replies['viva.surface.read:account_ledger']['result']['data']
+    if change=='missing-account':account['accounts']['accounts']=[]
+    elif change=='wrong-scope':ledger['scope']['account_id']='foreign-opaque-account'
+    elif change=='malformed-scope':ledger['scope']='foreign'
+    else:account['freshness']='malformed'
+    with pytest.raises(SystemExit):_run(tmp_path,replies)
+
+
+@pytest.mark.parametrize('change',['tail-count','hidden-questions','bad-groups','bool-count'])
+def test_empty_review_still_requires_complete_shape_and_count_agreement(tmp_path,change):
+    review={'groups':[],'actionable_count':0,'shown_count':0,'remaining_count':0}
+    conversation={'questions':[],'total':0,'tail':{'count':0}}
+    if change=='tail-count':conversation['tail']['count']=1
+    elif change=='hidden-questions':
+        conversation['total']=review['actionable_count']=review['remaining_count']=1
+        conversation['tail']['count']=1
+    elif change=='bad-groups':review['groups']=[False]
+    else:review['shown_count']=False
+    with pytest.raises(SystemExit):checker._review_conversation_ids(review,conversation)
+
+
+def test_frozen_controller_uses_its_own_canonical_disposable_temporary_directory(tmp_path, monkeypatch):
+    for key in ('TMPDIR','TEMP','TMP'):monkeypatch.setenv(key,'/foreign/noncanonical/temp')
+    home=tmp_path/'home';home.mkdir()
+    environment=checker._isolated_environment(home)
+    temporary=home/'temp'
+    assert environment['TMPDIR']==environment['TEMP']==environment['TMP']==str(temporary)
+    assert temporary.resolve(strict=True)==temporary and not temporary.is_symlink()
+    assert temporary.stat().st_mode & 0o077 == 0
+    assert all('/foreign/' not in value for value in environment.values())

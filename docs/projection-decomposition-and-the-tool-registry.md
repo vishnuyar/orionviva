@@ -13,7 +13,7 @@
 1. One core module folds events into state and owns the shared caches; nothing else folds events.
 2. Each read family is its own module over that core — accounts, balances, movements, merchants, categories, rulings, tiers, positions, coverage, activity, rhythm.
 3. `LedgerProjection` remains a facade delegating to the views, so a caller imports one surface.
-4. One live projection is kept, so a read never re-replays the encrypted log.
+4. The ledger owns a private canonical fold and publishes detached mutable read views. After full physical chain authentication, an unchanged authenticated prefix can reuse its decrypted events and financial fold; new events advance that private fold. External changes, uncertain ownership or integrity failures revoke reuse, and full replay remains the recovery path. Historical views may construct their own projection.
 
 ### PROJ-61 — the registry holds only verbs the code can honestly serve
 **State:** enforced

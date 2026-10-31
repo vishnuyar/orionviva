@@ -6,6 +6,8 @@ from .contracts import Field,EvidenceError,FundingWitness,text,day,decimal,encod
 from .events import accepted,prefix,LockedEventPrefix
 from viva.ledger.events import Event,Provenance
 from viva.ledger.projection import LedgerProjection
+from viva.ledger.projection.core import TxnLine
+from viva.ledger.work_cache import active_memo
 from viva.ledger.postings import paystub_decomposition
 
 OBSERVED='PayrollDeductionSourceObserved'
@@ -208,16 +210,36 @@ def _complete(source):
 
 def _net_event(events,key,currency):
     from viva.ledger.projection.movements import _enumerated
+    memo = active_memo()
+    # The digest covers every event body and its order, including corrections
+    # and account aliases; event IDs alone cannot witness a historical fold.
+    identity = (prefix(events), key, currency) if memo is not None else None
+    cached = memo.get("payroll_net_deposit", identity) if memo is not None else None
+    if cached is not None:
+        transaction_id, values = cached
+        event = next((event for event in events if event.event_id == transaction_id), None)
+        if event is None or event.event_type != 'TransactionRecorded':
+            raise EvidenceError('cached net deposit dependency unavailable')
+        return event, TxnLine(*values)
     projection=LedgerProjection(events)
     candidates=[(account,line) for held,account,state,line in _enumerated(projection.core) if held==key and state.kind=='depository' and state.currency==currency]
     if len(candidates)!=1:raise EvidenceError('matched payroll net deposit unavailable or ambiguous')
     account,line=candidates[0]
     event=next((event for event in events if event.event_id==line.transaction_id),None)
     if event is None or event.event_type!='TransactionRecorded':raise EvidenceError('net deposit transaction unavailable')
+    if memo is not None:
+        values = tuple(getattr(line, field.name) for field in fields(TxnLine))
+        memo.put("payroll_net_deposit", identity, (event.event_id, values))
+        return event, TxnLine(*values)
     return event,line
 
 
 def _decomposition(source,events,event_id=None):
+    return _decomposition_with_net(source,events,event_id,
+        lambda key,currency: _net_event(events,key,currency))
+
+
+def _decomposition_with_net(source,events,event_id,lookup_net):
     if not accepted(source.currency,source.pay_date,source.gross,source.net) or any(not accepted(row.amount) for row in source.deductions):raise EvidenceError('payroll numeric source unavailable')
     with localcontext() as context:
         context.prec=128
@@ -227,7 +249,7 @@ def _decomposition(source,events,event_id=None):
     def legs(body):return Counter((p.get('account'),str(decimal(p['amount'],True)),p.get('grade')) for p in body.get('postings',()))
     choices=[event for event in events if event.event_type=='TransactionRecorded' and event.occurred_at==source.pay_date.value and event.body.get('matched_movement_key') and event.body.get('matched_currency')==source.currency.value and legs(event.body)==legs({'postings':expected}) and (event_id is None or event.event_id==event_id)]
     if len(choices)!=1:raise EvidenceError('accepted payroll decomposition unavailable or ambiguous')
-    event=choices[0];net,line=_net_event(events,event.body['matched_movement_key'],source.currency.value)
+    event=choices[0];net,line=lookup_net(event.body['matched_movement_key'],source.currency.value)
     if line.amount!=decimal(source.net.value):raise EvidenceError('matched payroll net amount differs')
     if line.date!=source.pay_date.value:
         from datetime import date
@@ -236,16 +258,37 @@ def _decomposition(source,events,event_id=None):
 
 
 def _records(events,as_of='9999-12-31'):
+    from copy import deepcopy
+    from .prefix_proofs import _OwnedEvidence
+    return deepcopy(_OwnedEvidence(events)._records(as_of))
+
+
+def _records_from_owned_prefix(proofs,as_of):
+    return _records_with_proofs(proofs.events,proofs,as_of)
+
+
+def _records_with_proofs(events,proofs,as_of):
     day(as_of);known={};roots={};heads={};pending=set();changes=[];by_id={e.event_id:e for e in events}
     if len(by_id)!=len(events):raise EvidenceError('duplicate committed payroll dependency id')
+    def historical_net(count,key,currency):
+        memo=active_memo()
+        cached=memo.get('payroll_net_deposit',(proofs.proof(count),key,currency)) if memo is not None else None
+        if cached is not None:
+            transaction_id,values=cached
+            event=next((event for event in events[:count] if event.event_id==transaction_id),None)
+            if event is None or event.event_type!='TransactionRecorded':
+                raise EvidenceError('cached net deposit dependency unavailable')
+            return event,TxnLine(*values)
+        return _net_event(events[:count],key,currency)
     for ordinal,event in enumerate(events):
         if event.event_type==OBSERVED:
             body=event.body
             required={'schema_version','source','decomposition_event_id','decomposition_body_digest','net_deposit_event_id','net_deposit_body_digest','net_movement_key','currency','prefix','prior_id','change_event_id'}
             if set(body)!=required or body['schema_version']!='payroll-deduction-source-v1':raise EvidenceError('invalid stored payroll source envelope')
             proof=body['prefix'];count=proof.get('event_count')
-            if type(count) is not int or count!=ordinal or encode(prefix(events[:count]))!=proof:raise EvidenceError('payroll source committed prefix differs')
-            source=decode_source(body['source']);decomp,net,line=_decomposition(source,events[:count],body['decomposition_event_id'])
+            if type(count) is not int or count!=ordinal or encode(proofs.proof(count))!=proof:raise EvidenceError('payroll source committed prefix differs')
+            source=decode_source(body['source']);decomp,net,line=_decomposition_with_net(source,events[:count],body['decomposition_event_id'],
+                lambda key,currency: historical_net(count,key,currency))
             if digest(decomp.body)!=body['decomposition_body_digest'] or digest(net.body)!=body['net_deposit_body_digest'] or net.event_id!=body['net_deposit_event_id'] or decomp.body['matched_movement_key']!=body['net_movement_key'] or body['currency']!=source.currency.value:raise EvidenceError('payroll source money dependency differs')
             if event.provenance.doc_id!=source.document or event.occurred_at!=source.pay_date.value:raise EvidenceError('payroll source provenance differs')
             known[event.event_id]=(event,source)
@@ -259,7 +302,7 @@ def _records(events,as_of='9999-12-31'):
             body=event.body
             if set(body)!={'change','prefix'}:raise EvidenceError('invalid payroll change envelope')
             proof=body['prefix'];count=proof.get('event_count')
-            if type(count) is not int or count!=ordinal or encode(prefix(events[:count]))!=proof:raise EvidenceError('payroll change committed prefix differs')
+            if type(count) is not int or count!=ordinal or encode(proofs.proof(count))!=proof:raise EvidenceError('payroll change committed prefix differs')
             value=body['change']
             if type(value) is not dict or set(value)!={f.name for f in fields(PayrollSourceChange)}:raise EvidenceError('invalid payroll change')
             change=PayrollSourceChange(**value)
@@ -286,68 +329,146 @@ def change_dates(events):
 
 def append_source(ledger,facts,*,locale='en-US',effective=None):
     if facts.payroll_source is None:return []
-    with ledger._lock:
-        complete=[]
-        def decide(events):
-            source=build_source(facts,locale);decomp,net,line=_decomposition(source,events)
-            records=_records(events);same_doc=[(e,s,pending) for e,s,pending in records if s.document==source.document]
-            prior=same_doc[0][0] if len(same_doc)==1 else None
-            if len(same_doc)>1:raise EvidenceError('ambiguous payroll source predecessor')
-            copies=[(e,s) for e,s,pending in records if not pending and _accounting_identity(s)==_accounting_identity(source)]
-            if decomp.provenance.doc_id!=source.document and not copies:raise EvidenceError('historical payroll reference attribution unavailable')
-            binding={'schema_version':'payroll-deduction-source-v1','source':encode(source),'decomposition_event_id':decomp.event_id,'decomposition_body_digest':digest(decomp.body),'net_deposit_event_id':net.event_id,'net_deposit_body_digest':digest(net.body),'net_movement_key':decomp.body['matched_movement_key'],'currency':source.currency.value}
-            identifier='payroll-source:'+digest(binding)
-            existing=next((e for e in events if e.event_id==identifier),None)
-            if existing is not None:complete.extend(events);return ()
-            change_id='payroll-change:'+digest((prior.event_id,identifier)) if prior is not None else None
-            body={**binding,'prefix':encode(prefix(events)),'prior_id':prior.event_id if prior is not None else None,'change_event_id':change_id}
-            event=Event(OBSERVED,source.pay_date.value,body,Provenance(doc_id=source.document,page=source.pay_date.page),event_id=identifier)
-            additions=(event,)
-            if prior is not None:
-                change=PayrollSourceChange(change_id,prior.event_id,source.document,effective or source.pay_date.value,'source_correction',identifier)
-                additions+=(Event(CHANGED,change.effective,{'change':encode(change),'prefix':encode(prefix((*events,event)))},Provenance(doc_id=source.document),event_id=change_id),)
-            complete.extend(events);complete.extend(additions);return additions
-        result=ledger.store.append_atomically(decide)
-        ledger._proj=LedgerProjection(complete,resolve_keys=ledger._resolve_keys);ledger._projection_identity=ledger.store._cached_identity()
-        return result
+    def decide(events):
+        source=build_source(facts,locale);decomp,net,line=_decomposition(source,events)
+        records=_records(events);same_doc=[(e,s,pending) for e,s,pending in records if s.document==source.document]
+        prior=same_doc[0][0] if len(same_doc)==1 else None
+        if len(same_doc)>1:raise EvidenceError('ambiguous payroll source predecessor')
+        copies=[(e,s) for e,s,pending in records if not pending and _accounting_identity(s)==_accounting_identity(source)]
+        if decomp.provenance.doc_id!=source.document and not copies:raise EvidenceError('historical payroll reference attribution unavailable')
+        binding={'schema_version':'payroll-deduction-source-v1','source':encode(source),'decomposition_event_id':decomp.event_id,'decomposition_body_digest':digest(decomp.body),'net_deposit_event_id':net.event_id,'net_deposit_body_digest':digest(net.body),'net_movement_key':decomp.body['matched_movement_key'],'currency':source.currency.value}
+        identifier='payroll-source:'+digest(binding)
+        existing=next((e for e in events if e.event_id==identifier),None)
+        if existing is not None:return ()
+        change_id='payroll-change:'+digest((prior.event_id,identifier)) if prior is not None else None
+        body={**binding,'prefix':encode(prefix(events)),'prior_id':prior.event_id if prior is not None else None,'change_event_id':change_id}
+        event=Event(OBSERVED,source.pay_date.value,body,Provenance(doc_id=source.document,page=source.pay_date.page),event_id=identifier)
+        additions=(event,)
+        if prior is not None:
+            change=PayrollSourceChange(change_id,prior.event_id,source.document,effective or source.pay_date.value,'source_correction',identifier)
+            additions+=(Event(CHANGED,change.effective,{'change':encode(change),'prefix':encode(prefix((*events,event)))},Provenance(doc_id=source.document),event_id=change_id),)
+        return additions
+    result=ledger.append_atomically(lambda projection: decide(tuple(projection._source_events)))
+    return result
 
 
 def retract_source(ledger,change):
     if type(change) is not PayrollSourceChange or change.cause!='source_retraction':raise EvidenceError('typed payroll retraction required')
-    with ledger._lock:
-        complete=[]
-        def decide(events):
-            current=[(e,s) for e,s,pending in _records(events) if e.event_id==change.prior_id and s.document==change.prior_document]
-            if len(current)!=1:raise EvidenceError('payroll retraction predecessor is not current')
-            if any(e.event_id==change.change_id for e in events):raise EvidenceError('payroll change id collision')
-            event=Event(CHANGED,change.effective,{'change':encode(change),'prefix':encode(prefix(events))},Provenance(doc_id=change.prior_document),event_id=change.change_id)
-            complete.extend(events);complete.append(event);return (event,)
-        result=ledger.store.append_atomically(decide)
-        ledger._proj=LedgerProjection(complete,resolve_keys=ledger._resolve_keys);ledger._projection_identity=ledger.store._cached_identity()
-        return result
+    def decide(events):
+        current=[(e,s) for e,s,pending in _records(events) if e.event_id==change.prior_id and s.document==change.prior_document]
+        if len(current)!=1:raise EvidenceError('payroll retraction predecessor is not current')
+        if any(e.event_id==change.change_id for e in events):raise EvidenceError('payroll change id collision')
+        event=Event(CHANGED,change.effective,{'change':encode(change),'prefix':encode(prefix(events))},Provenance(doc_id=change.prior_document),event_id=change.change_id)
+        return (event,)
+    result=ledger.append_atomically(lambda projection: decide(tuple(projection._source_events)))
+    return result
 
 
 class FundingValidationContext:
     """Ephemeral exact-prefix work reuse; never persisted or used by tool reads."""
     def __init__(self,events,validated_sources):
-        self.events=tuple(events);self.frontier=prefix(self.events)
+        from .prefix_proofs import PrefixProofIndex
+        self._proofs=PrefixProofIndex(events);self._events=self._proofs.events;self.frontier=self._proofs.proof(len(self._events))
         self.sources=tuple(validated_sources);self._records={};self._destinations={};self._source_index=None
+    @property
+    def events(self):
+        return self._proofs.events
     def check(self,events):
         if prefix(tuple(events))!=self.frontier:raise EvidenceError('funding context prefix changed')
     def source_index(self,events):
         self.check(events)
         if self._source_index is None:
             from .lifecycle import SourceIndex
-            self._source_index=SourceIndex(self.events,self.sources)
+            self._source_index=SourceIndex(self._events,self.sources)
         return self._source_index
     def records(self,events,as_of):
         self.check(events)
-        if as_of not in self._records:self._records[as_of]=_records(self.events,as_of)
+        if as_of not in self._records:self._records[as_of]=_records_from_owned_prefix(self._proofs,as_of)
         return self._records[as_of]
     def destinations(self,events,as_of):
         self.check(events)
-        if as_of not in self._destinations:self._destinations[as_of]=destination_resolver(self.events,as_of,_validated_sources=self.sources)
+        if as_of not in self._destinations:self._destinations[as_of]=destination_resolver(self._events,as_of,_validated_sources=self.sources)
         return self._destinations[as_of]
+
+
+class _OwnedFundingAdapter:
+    """Private validator work with no closure retaining a completed operation."""
+    def __init__(self,events,proofs,sources):
+        self.__events=events;self.__proofs=proofs;self.__sources=sources
+        self.__records={};self.__destinations={};self.__index=None
+    def check(self,events):
+        if len(events)!=len(self.__events) or any(
+                event is not held for event,held in zip(events,self.__events)):
+            raise EvidenceError('owned funding basis changed')
+    def records(self,events,as_of):
+        self.check(events)
+        if as_of not in self.__records:
+            self.__records[as_of]=self.__proofs._records(as_of)
+        return self.__records[as_of]
+    def destinations(self,events,as_of):
+        self.check(events)
+        if as_of not in self.__destinations:
+            self.__destinations[as_of]=self.__proofs._destinations(as_of,self.__sources)
+        return self.__destinations[as_of]
+    def source_index(self,events):
+        self.check(events)
+        if self.__index is None:
+            self.__index=self.__proofs._source_index(self.__sources)
+        return self.__index
+
+
+class _OwnedFundingRunner:
+    """Validate proposals against a private snapshot without lending its bodies.
+
+    The private adapter is used only by deterministic validators. Ordinary
+    caller-supplied contexts continue checking complete mutable input contents.
+    """
+    def __init__(self,events,resolve_reference):
+        from .prefix_proofs import _OwnedEvidence
+        _OwnedEvidence(events)._configure_runner(self,resolve_reference)
+    @classmethod
+    def _from_owned(cls,owned,resolve_reference):
+        from .prefix_proofs import _require_owned
+        owned=_require_owned(owned)
+        runner=cls.__new__(cls)
+        owned._configure_runner(runner,resolve_reference)
+        return runner
+    def _initialize(self,events,owned,resolve_reference,by_id):
+        self.__proofs=owned
+        self.__events=events
+        self.__sources=owned._statements(resolve_reference)
+        self.__by_id=by_id
+        self.__adapter=_OwnedFundingAdapter(events,owned,self.__sources)
+    def validate_funding(self,statement,row,resolve_reference,effective_as_of='9999-12-31'):
+        from .events import validate_funding
+        from copy import deepcopy
+        validate_funding(statement,row,self.__by_id,lambda field:resolve_reference(deepcopy(field)),
+            effective_as_of=effective_as_of,_context=self.__adapter)
+    def bind_funding(self,fields,**parameters):
+        from copy import deepcopy
+        from .funding import bind_funding
+        return deepcopy(bind_funding(fields,self.__events,_context=self.__adapter,**parameters))
+    def _uses_owned(self,owned):
+        return self.__proofs is owned
+    def _healing_plan(self,root,*,copy=False):
+        return self.__proofs._plan_healing(self,root,copy=copy)
+    def _plan_owned(self,events,owned,root,*,copy=False):
+        from copy import deepcopy
+        from weakref import ref
+        from .funding import resolver
+        from .healing import _HealingBasis,_root_plan,_copy_plan
+        if not hasattr(self,'_OwnedFundingRunner__healing_basis'):
+            resolve=resolver(events)
+            planner=_HealingBasis.__new__(_HealingBasis)
+            _HealingBasis._initialize(planner,events,resolve,
+                owned._source_index(owned._statements(resolve)),ref(self))
+            self.__healing_basis=planner
+        return deepcopy((_copy_plan if copy else _root_plan)(self.__healing_basis,root))
+    def source_row_statement_id(self,event_id):
+        from .events import ROW
+        event=self.__by_id.get(event_id)
+        value=event.body.get('statement_id') if event is not None and event.event_type==ROW else None
+        return value if type(value) is str else None
 
 
 def destination_resolver(events,as_of='9999-12-31',*,_validated_sources=None):
@@ -357,6 +478,10 @@ def destination_resolver(events,as_of='9999-12-31',*,_validated_sources=None):
     from .lifecycle import SourceIndex
     sources=_validated_statements(events,lambda _:None) if _validated_sources is None else _validated_sources
     index=SourceIndex(events,sources)
+    return _destinations_with_index(events,as_of,index)
+
+
+def _destinations_with_index(events,as_of,index):
     mapping={}
     for selection in index.select('positions',as_of):
         source=selection.statement

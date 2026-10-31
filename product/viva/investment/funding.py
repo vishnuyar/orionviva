@@ -3,7 +3,7 @@
 Payroll and investment-to-investment source role witnesses remain separate.
 """
 from dataclasses import replace
-from .contracts import Field,FundingWitness,digest,decimal
+from .contracts import Field,FundingWitness,canonical,digest,decimal
 from .events import accepted
 
 
@@ -15,7 +15,7 @@ def resolver(events):
  return resolve
 
 
-def bind_bank(fields,events):
+def bind_bank(fields,events,*,preferred_witness=None):
  reference=fields['printed_reference'];counterpart=fields['counterpart_reference'];date=fields['date'];amount=fields['amount']
  if not accepted(reference,counterpart,date,amount):return {}
  role=fields.get('funding_role')
@@ -34,13 +34,25 @@ def bind_bank(fields,events):
  if not source_refs:return {}
  source=source_refs[-1]
  witness=FundingWitness(Field(reference.value,event.provenance.doc_id,event.provenance.page,raw=reference.value),Field(counterpart.value,source.provenance.doc_id,source.provenance.page,raw=counterpart.value),account,'own_bank',event.event_id,digest(event.body))
+ if (type(preferred_witness) is FundingWitness and type(preferred_witness.reference) is Field
+     and type(preferred_witness.counterpart_reference) is Field):
+  # A retained exact field can remain the citation after an equivalent account
+  # observation. Fresh account and cash uniqueness above remain mandatory.
+  try:
+   if (canonical(preferred_witness)==canonical(replace(witness,counterpart_reference=preferred_witness.counterpart_reference))
+       and any(canonical(preferred_witness.counterpart_reference)==canonical(Field(counterpart.value,
+           observed.provenance.doc_id,observed.provenance.page,raw=counterpart.value))
+           for observed in source_refs if observed.provenance.page<=200)):
+    witness=preferred_witness
+  except (TypeError,ValueError,RecursionError):
+   pass
  return {'funding_role':'own_bank','funding_role_source':role if accepted(role) else replace(counterpart,value='own_bank'),'funding_witness':witness}
 
 
 def bind_funding(fields,events,*,destination_account,destination_reference,currency,effective_as_of='9999-12-31',_context=None,preferred_witness=None):
     role=fields.get('funding_role')
     if accepted(role) and role.value=='reinvestment':return {'funding_role':'reinvestment','funding_role_source':role}
-    bank=bind_bank(fields,events)
+    bank=bind_bank(fields,events,preferred_witness=preferred_witness)
     if bank:return bank
     other=bind_investment(fields,events,destination_account=destination_account,destination_reference=destination_reference,currency=currency,effective_as_of=effective_as_of,_context=_context,preferred_witness=preferred_witness)
     if other:return other

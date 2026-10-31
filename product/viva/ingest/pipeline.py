@@ -238,6 +238,12 @@ def _capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
                  "resp_chars=%d)", rr.model, rr.cost_usd, rr.facts is not None,
                  len(rr.raw_text))
 
+    return ledger.stage_atomically(lambda staged: _settle_read(
+        raw, staged, doc_id, rr, staged.projection().posted_doc_ids()))
+
+
+def _settle_read(raw, ledger, doc_id, rr, posted_before):
+    """Publish deterministic financial effects together after the read audit."""
     # (3) route by type: the registry says which types have a projector.
     if rr.facts is not None and can_project(rr.doc_type):
         # (4) route by the profile's identity to that identity's gate and

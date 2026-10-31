@@ -9,6 +9,7 @@ import types
 from dataclasses import dataclass, fields, is_dataclass
 from decimal import Decimal
 from enum import Enum
+from functools import lru_cache
 from typing import Union, get_args, get_origin, get_type_hints
 
 from .events import Event, Provenance
@@ -51,6 +52,11 @@ def encode(value):
     raise ValueError("value is outside the instrument storage contract")
 
 
+@lru_cache(maxsize=None)
+def _storage_fields(target):
+    return fields(target), get_type_hints(target)
+
+
 def decode(value, target):
     """Closed typed-storage decoder; model proposals use instrument_parser."""
     from ..ingest.instrument_contracts import ContractError
@@ -84,7 +90,7 @@ def decode(value, target):
         except ValueError:
             raise ContractError("unknown stored enum") from None
     if is_dataclass(target):
-        fs, hints = fields(target), get_type_hints(target)
+        fs, hints = _storage_fields(target)
         if type(value) is not dict or set(value) != {field.name for field in fs}:
             raise ContractError("stored object has missing or extra fields")
         return target(**{name: decode(item, hints[name]) for name, item in value.items()})
@@ -112,7 +118,7 @@ def decode_change(value):
         kind = ObservationKind(value["kind"])
     except (ValueError, TypeError):
         raise ContractError("unknown stored observation kind") from None
-    hints = get_type_hints(ObservationChange)
+    _, hints = _storage_fields(ObservationChange)
     kwargs = {name: decode(item, hints[name]) for name, item in value.items() if name != "payload"}
     kwargs["payload"] = None if value["payload"] is None else decode(value["payload"], PAYLOADS[kind])
     return ObservationChange(**kwargs)

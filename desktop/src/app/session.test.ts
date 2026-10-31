@@ -1967,7 +1967,8 @@ describe("surface session", () => {
       pickDocumentPaths: async () => ["/statement.pdf"],
       request: async <T>(frame: BridgeRequest) => {
         if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
-        if (frame.operation === "viva.documents.upload") { uploads += 1; throw new BridgeTimeout(frame.operation, true); }
+        if (frame.operation === "viva.documents.imports.read") return ok(frame.requestId, { sessions: [] } as T);
+        if (frame.operation === "viva.documents.upload_many" && "queue_paths" in frame.payload) { uploads += 1; throw new BridgeTimeout(frame.operation, true); }
         if (frame.operation === "viva.surface.read") { const surface = frame.payload.surface as SurfaceName; return ok(frame.requestId, { surface, job_id: "job", data: completeSurfacePayload(surface) } as T); }
         return ok(frame.requestId, {} as T);
       },

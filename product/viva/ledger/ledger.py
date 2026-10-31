@@ -1,21 +1,22 @@
-"""The Ledger — an event store plus one live, incrementally-updated projection.
+"""The ledger facade: canonical events, a private fold and detached read views.
 
-The facade used across the product (ingest, answers, the surface): it owns the
-``EventStore`` and keeps a single ``LedgerProjection`` in sync, folding in each
-appended event rather than replaying and decrypting the whole log on every read.
-Reads call :meth:`projection`; appends go through :meth:`append` so the cache
-stays current.
+Only authenticated events update the private financial basis. Callers receive
+mutable projections detached from it, so retained or modified read views cannot
+become the basis of a later canonical append. Atomic decisions receive their
+own speculative copy.
 
-An append is O(1) over the cache and a read is free. An `as_of` query builds a
-filtered projection on demand.
+Canonical reads and writes still authenticate the entire physical chain.
+Financial folds and unchanged-record decryption reuse authenticated prior work;
+``as_of`` queries and explicit replay construct a fresh financial projection.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from copy import deepcopy
+from contextvars import ContextVar
 from dataclasses import dataclass
-from threading import RLock
+from threading import RLock, get_ident
 from types import MethodType
 from typing import Iterator
 from weakref import WeakKeyDictionary, ref
@@ -24,6 +25,7 @@ from .events import Event
 from .projection import LedgerProjection
 from .projection.core import ProjectionCore
 from .store import EventStore
+from .work_cache import ValidationMemo, memo_scope
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,8 @@ def _guarded_core_apply(core, event):
 
 def _owned_projection_identity(projection: LedgerProjection) -> tuple[int, str] | None:
     """Read an existing owner's exact cache witness without refreshing it."""
+    if projection is None:
+        return None
     record = _owned_projections.get(projection)
     if record is None:
         return None
@@ -88,6 +92,40 @@ def _owned_projection_identity(projection: LedgerProjection) -> tuple[int, str] 
         return record.identity
 
 
+@dataclass(frozen=True)
+class _StageAuthority:
+    owner: ref
+    thread: int
+    operation: object
+
+
+_active_stage_operation = ContextVar("active_stage_operation", default=None)
+_active_stages = WeakKeyDictionary()
+
+
+def _stage_capability(stage):
+    """Return only an opaque active operation/generation witness."""
+    if type(stage) is not _StagedLedger:
+        return None
+    authority = _active_stages.get(stage)
+    if authority is None:
+        return None
+    owner = authority.owner()
+    if (owner is None or authority.thread != get_ident()
+            or _active_stage_operation.get() is not authority.operation
+            or owner.store._decision_owner != authority.thread
+            or not stage._active or stage._failed or stage._invalidating):
+        return None
+    return authority.operation, stage._generation
+
+
+def _stage_on_invalidation(stage, callback):
+    if _stage_capability(stage) is None:
+        return False
+    stage._work_cleanup.append(callback)
+    return True
+
+
 class Ledger:
     """An EventStore wrapped with a cached, incrementally-updated projection."""
 
@@ -98,9 +136,11 @@ class Ledger:
         # the live one does.
         self._resolve_keys = resolve_keys
         self._lock = RLock()
+        self._validation_memo = ValidationMemo()
         # Desktop SQL reads do not require this projection; legacy consumers
         # construct it on their first request.
         self._proj: LedgerProjection | None = None
+        self._basis: LedgerProjection | None = None
         self._cache_generation = 0
         # Begin at the authenticated identity established by EventStore.open.
         self._projection_identity = store._cached_identity()
@@ -110,20 +150,50 @@ class Ledger:
         if self._proj is not None:
             _revoke_projection(self._proj)
 
-    def _install_cache(self, events, identity, *, witnessed: bool) -> None:
-        self._revoke_cache()
-        projection = LedgerProjection(deepcopy(events), resolve_keys=self._resolve_keys)
-        self._proj = projection
+    def _set_basis(self, projection, identity, *, witnessed: bool) -> None:
+        self._proj = None
         self._projection_identity = identity
-        count, head = identity[:2]
-        if (witnessed and type(count) is int and isinstance(head, str)
-                and head and count == len(events)):
+        count = identity[0]
+        self._basis = (projection if witnessed and
+                       (count is None or count == projection._event_count()) else None)
+
+    def _publish_basis(self) -> None:
+        """Publish a detached mutable view; it can never feed the private fold."""
+        assert self._basis is not None
+        self._revoke_cache()
+        projection = deepcopy(self._basis)
+        self._proj = projection
+        count, head = self._projection_identity[:2]
+        if (type(count) is int and isinstance(head, str)
+                and head and count == projection._event_count()):
             core = projection.core
             core.apply = MethodType(_guarded_core_apply, core)
             _owned_projections[projection] = _ProjectionOwnership(
                 ref(self), ref(core), self._cache_generation,
                 core._classification_revision, (count, head))
             _owned_cores[core] = ref(projection)
+
+    def _basis_reusable(self):
+        count, head = self._projection_identity[:2]
+        return (self._basis is not None and type(count) is int
+                and isinstance(head, str) and bool(head)
+                and count == self._basis._event_count())
+
+    def _install_cache(self, events, identity, *, witnessed: bool) -> None:
+        self._revoke_cache()
+        projection = LedgerProjection(deepcopy(events), resolve_keys=self._resolve_keys)
+        self._set_basis(projection, identity, witnessed=witnessed)
+
+    def _advance_cache(self, events, reusable):
+        """Fold authenticated suffix events into a basis never given to callers."""
+        if reusable:
+            projection = self._basis
+            assert projection is not None
+            count = projection._event_count()
+            for event in events[count:]:
+                projection.apply(deepcopy(event))
+            return projection
+        return LedgerProjection(deepcopy(events), resolve_keys=self._resolve_keys)
 
     def fork(self) -> "Ledger":
         """An independently cached ledger over the same durable log."""
@@ -134,19 +204,25 @@ class Ledger:
                                 resolve_keys=self._resolve_keys)
 
     def _sync_if_external_write(self) -> None:
-        # The authenticated head is the cache witness. File size is neither an
-        # authenticity check nor enough to notice head-only rollback/tampering.
+        # Authentication still checks the entire physical committed chain.
+        # Only decryption and financial folds reuse the private canonical basis.
+        reusable = self._basis_reusable()
         try:
             identity = self.store.authenticated_identity()
-            if self._proj is None or identity != self._projection_identity:
+            if self._basis is None or identity != self._projection_identity or not reusable:
                 self._revoke_cache()
                 from ..startup_diagnostics import span
                 with span("event_authenticated_snapshot"):
                     events, identity = self.store.snapshot_events_with_identity()
                 with span("projection_construction"):
-                    self._install_cache(events, identity, witnessed=True)
+                    projection = self._advance_cache(events, reusable)
+                    self._set_basis(projection, identity, witnessed=True)
+            if self._proj is None or _owned_projection_identity(self._proj) is None:
+                self._publish_basis()
         except BaseException:
             self._revoke_cache()
+            self._proj = None
+            self._basis = None
             raise
 
     @classmethod
@@ -155,23 +231,12 @@ class Ledger:
 
     def append(self, event: Event) -> dict:
         """Persist an event and fold it into the live projection."""
-        # The submitted value and final fold own their bodies, independently
-        # of the caller's mutable Event and of the store's temporary prefix.
-        event = deepcopy(event)
-        with self._lock:
-            self._revoke_cache()
-            complete: list[Event] = []
+        return self.append_many((event,))[0]
 
-            def choose(events: tuple[Event, ...]) -> tuple[Event, ...]:
-                complete.extend(deepcopy(events))
-                complete.append(deepcopy(event))
-                return (event,)
-
-            record = self.store.append_atomically(choose)[0]
-            identity = self.store._cached_identity()
-            witnessed = (record['seq'] + 1, record['record_hash']) == identity[:2]
-            self._install_cache(complete, identity, witnessed=witnessed)
-            return record
+    def append_many(self, events: Iterable[Event]) -> list[dict]:
+        """Commit already-decided events together, preserving their order."""
+        submitted = deepcopy(tuple(events))
+        return self._append_decision(None, submitted)
 
     def projection(self) -> LedgerProjection:
         """The live projection, synchronized after another handle writes."""
@@ -201,31 +266,71 @@ class Ledger:
     def append_atomically(
         self, decide: Callable[[LedgerProjection], Iterable[Event]]
     ) -> list[dict]:
-        """Compare against a locked fresh projection and append one decision."""
-        complete: list[Event] = []
-        prefix_identity = None
+        """Compare against a detached locked projection and append one decision."""
+        return self._append_decision(decide, ())
 
-        def choose(events: tuple[Event, ...]) -> tuple[Event, ...]:
-            nonlocal prefix_identity
-            # This witness is already authenticated under the writer boundary.
-            prefix_identity = self.store._cached_identity()
-            baseline = deepcopy(events)
-            projection = LedgerProjection(deepcopy(baseline), resolve_keys=self._resolve_keys)
-            chosen = deepcopy(tuple(decide(projection)))
-            complete.extend(baseline)
-            complete.extend(deepcopy(chosen))
-            return chosen
+    def stage_atomically(self, operation):
+        """Settle deterministic work with one durable all-or-none append.
 
-        with self._lock:
+        The operation receives an isolated in-memory ledger, without a store
+        or provider capability. Capture and external requests belong outside
+        this boundary. Its return value is delivered only after commit.
+        """
+        result = None
+
+        def decide(projection):
+            nonlocal result
+            staged = _StagedLedger(projection, self._resolve_keys)
+            operation_id = object()
+            _active_stages[staged] = _StageAuthority(ref(self), get_ident(), operation_id)
+            token = _active_stage_operation.set(operation_id)
+            try:
+                result = operation(staged)
+                staged._check_active()
+                return tuple(staged._additions)
+            finally:
+                staged._active = False
+                staged._invalidate_work()
+                _active_stages.pop(staged, None)
+                _active_stage_operation.reset(token)
+
+        self.append_atomically(decide)
+        return result
+
+    def _append_decision(self, decide, submitted):
+        with self._lock, memo_scope(self._validation_memo):
+            reusable = self._basis_reusable()
             self._revoke_cache()
-            records = self.store.append_atomically(choose)
-            identity = self.store._cached_identity()
-            if records:
-                witnessed = (records[-1]['seq'] + 1, records[-1]['record_hash']) == identity[:2]
-            else:
-                witnessed = prefix_identity == identity
-            self._install_cache(complete, identity, witnessed=witnessed)
-            return records
+            projection = None
+            chosen = ()
+            prefix_identity = None
+
+            def choose(events):
+                nonlocal projection, chosen, prefix_identity
+                prefix_identity = self.store._cached_identity()
+                projection = self._advance_cache(events, reusable)
+                # A decision can retain or mutate every input it receives. Its
+                # speculative fold must never become the owner's financial basis.
+                chosen = deepcopy(tuple(decide(deepcopy(projection)))) if decide is not None else submitted
+                return chosen
+
+            try:
+                records = self.store.append_atomically(choose)
+                identity = self.store._cached_identity()
+                assert projection is not None
+                for event in chosen:
+                    projection.apply(deepcopy(event))
+                if records:
+                    witnessed = (records[-1]['seq'] + 1, records[-1]['record_hash']) == identity[:2]
+                else:
+                    witnessed = prefix_identity == identity
+                self._set_basis(projection, identity, witnessed=witnessed)
+                return records
+            except BaseException:
+                self._revoke_cache()
+                self._proj = None
+                self._basis = None
+                raise
 
     def projection_as_of(self, as_of: str | None) -> LedgerProjection:
         """A projection as of a past date. None returns the live one; otherwise
@@ -241,3 +346,86 @@ class Ledger:
 
     def __len__(self) -> int:
         return len(self.store)
+
+
+class _StagedLedger:
+    """A private speculative basis with detached mutable views and decisions."""
+
+    def __init__(self, projection, resolve_keys):
+        self.__basis = projection
+        self.__view = None
+        self._resolve_keys = resolve_keys
+        self._additions = []
+        self._active = True
+        self._failed = False
+        self._thread = get_ident()
+        self._generation = 0
+        self._invalidating = False
+        self._work_cleanup = []
+
+    def __copy__(self):
+        raise TypeError("staged ledger capabilities cannot be copied")
+
+    def __deepcopy__(self, memo):
+        raise TypeError("staged ledger capabilities cannot be copied")
+
+    def _check_active(self):
+        if _stage_capability(self) is None:
+            raise RuntimeError("staged ledger is closed, failed or outside its owning thread")
+
+    def _invalidate_work(self):
+        self._generation += 1
+        callbacks, self._work_cleanup = self._work_cleanup, []
+        self._invalidating = True
+        try:
+            for callback in callbacks:
+                try:
+                    callback()
+                except BaseException:
+                    # Cleanup cannot prevent revocation or canonical closure.
+                    # A generation mismatch independently prevents reuse.
+                    pass
+        finally:
+            self._invalidating = False
+
+    def projection(self):
+        self._check_active()
+        if self.__view is None:
+            self.__view = deepcopy(self.__basis)
+        return self.__view
+
+    def append(self, event):
+        self.append_many((event,))
+
+    def append_many(self, events):
+        self._check_active()
+        try:
+            chosen = deepcopy(tuple(events))
+            if not chosen:
+                return
+            self._invalidate_work()
+            self.__view = None
+            for event in chosen:
+                if not isinstance(event, Event):
+                    raise TypeError("a staged append accepts only events")
+                self.__basis.apply(deepcopy(event))
+            self._additions.extend(chosen)
+        except BaseException:
+            self._failed = True
+            self.__view = None
+            self._invalidate_work()
+            raise
+
+    def append_atomically(self, decide):
+        self._check_active()
+        chosen = deepcopy(tuple(decide(deepcopy(self.__basis))))
+        self.append_many(chosen)
+        return deepcopy(chosen)
+
+    def events(self):
+        self._check_active()
+        return iter(deepcopy(tuple(self.__basis._source_events)))
+
+    def __len__(self):
+        self._check_active()
+        return self.__basis._event_count()

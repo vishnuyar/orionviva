@@ -35,6 +35,7 @@ import logging
 import os
 import threading
 import time
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
@@ -439,6 +440,7 @@ class EventStore:
         self._key = key
         self._kdf = kdf
         self._write_failed = False
+        self._decrypted_events = {}
         self._decision_owner: int | None = None
         self._observer_owner: int | None = None
         self._commit_observer: Callable[[tuple[int | None, str | None, int]], None] | None = None
@@ -889,8 +891,14 @@ class EventStore:
             if _record_hash(seq, rec_prev, sealed) != rec_hash:
                 raise CryptoError(f"record hash mismatch at seq {seq}")
             aad = f"{seq}:{rec_prev}".encode("utf-8")
-            payload = json.loads(open_sealed(self._key, sealed, aad))
-            yield Event.from_dict(payload["event"])
+            cached = self._decrypted_events.get(seq)
+            if cached is None or cached[0] != rec_hash:
+                payload = json.loads(open_sealed(self._key, sealed, aad))
+                cached = (rec_hash, payload["event"])
+                self._decrypted_events[seq] = cached
+            # The cache never crosses a caller boundary: decisions and public
+            # snapshots may mutate or retain their Events independently.
+            yield Event.from_dict(deepcopy(cached[1]))
             prev = rec_hash
 
     def events(self) -> Iterator[Event]:

@@ -6,21 +6,45 @@ import { act, fireEvent, render, waitFor, createRef, userEvent,
   installCapturedAnimationFrames, activityPayload, reviewEmptyPayload, trustPayload, sampleReads,
   sampleFrame, installSampleBridge, openSample } from "./App.testSupport";
 
+function documentQueueFixture(onSettled: () => void = () => undefined) {
+  let selection = 0;
+  let paths: string[] = [];
+  let identifier = "";
+  const outcome = (ordinal: number) => ({ ordinal, document_id: paths.length === 1 ? "c".repeat(64) : (ordinal === 0 ? "a" : "b").repeat(64), action: paths.length === 1 ? "parked" : ordinal === 0 ? "awaiting" : "posted", disposition: paths.length === 1 ? "never_read" : "read", reason: paths.length === 1 ? "no_model" : null });
+  const snapshot = (settled: boolean) => ({ session_id: identifier, label: paths[0].split("/").at(-1), total: paths.length, completed: settled ? paths.length : 0, remaining: settled ? 0 : paths.length, state: settled ? "completed" : "pending", rows: paths.map((path, ordinal) => ({ ordinal, document_id: outcome(ordinal).document_id, filename: path.split("/").at(-1), status: settled ? outcome(ordinal).action : "pending", outcome: settled ? outcome(ordinal) : null })) });
+  return (operation: string, payload: Record<string, unknown>) => {
+    if (operation === "viva.documents.imports.read" && payload.list_sessions === true) return { sessions: [] };
+    if (operation !== "viva.documents.upload_many") return undefined;
+    if (Array.isArray(payload.queue_paths)) {
+      paths = payload.queue_paths as string[];
+      identifier = (++selection).toString(16).padStart(32, "0");
+      return { ...snapshot(false), job_id: `capture-${selection}` };
+    }
+    if (payload.session_id === identifier && payload.resume === true) {
+      onSettled();
+      return { job_id: `chunk-${selection}`, rows: paths.map((_, ordinal) => outcome(ordinal)), session: snapshot(true) };
+    }
+    throw new Error("Unexpected import queue request");
+  };
+}
+
 beforeEach(() => { installResponsiveMatchMedia(1440); });
 afterEach(() => { window.orionVivaBridge = undefined; });
 
 describe("documents", () => {
-  it("keeps single-file upload and submits a multiple-file drop as one bounded chunk", async () => {
+  it("keeps the exact single-file selection and settles a multiple-file drop as one bounded chunk", async () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     const operations: Array<{ operation: string; payload: Record<string, unknown> }> = [];
     let captured = false;
+    const queue = documentQueueFixture(() => { captured = true; });
     let listen: ((paths: readonly string[]) => void) | null = null;
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         operations.push({ operation, payload });
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
-        if (operation === "viva.documents.upload_many") return { protocol: "1.0", request_id: "bulk", ok: true, result: { job_id: "chunk-1", rows: (payload.paths as string[]).map((_, ordinal) => ({ ordinal, document_id: `saved-${ordinal}`, action: ordinal === 0 ? "awaiting" : "posted", disposition: "read", reason: null })) } as T };
+        const queued = queue(operation, payload);
+        if (queued !== undefined) return { protocol: "1.0", request_id: "queue", ok: true, result: queued as T };
         if (operation === "viva.documents.upload") {
           captured = true;
           return { protocol: "1.0", request_id: "upload", ok: true, result: { kind: "completed", message: SAVED_NO_READER, state: null, reason: null } as T };
@@ -56,29 +80,34 @@ describe("documents", () => {
       operations.length = 0;
       await user.click(getByRole("button", { name: "Choose statement file" }));
 
-      // Capture sends one path, then rereads every destination and the job registry.
+      // The exact single selection is sealed, settled, then reread coherently.
       await waitFor(() => expect(container.querySelector(".document-library")).toHaveTextContent("quarter-close.pdf"));
       const selectedReads = operations.filter((frame) => (frame.payload.parameters as Record<string, unknown> | undefined)?.selected_document_id);
       expect(selectedReads).toHaveLength(1);
       expect(selectedReads[0].payload).toMatchObject({ surface: "documents", parameters: { contract_version: "documents-page-v1", selected_document_id: "c".repeat(64) } });
       const ordinaryReads = operations.filter((frame) => !selectedReads.includes(frame));
-      expect(ordinaryReads.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(9).fill("viva.surface.read")]);
-      expect(operations[0].payload).toEqual({ path: "/chosen/first.pdf" });
-      expect(ordinaryReads.slice(1).map((frame) => frame.payload.surface).sort()).toEqual(["activity", "conversation", "documents", "jobs", "overview_accounts", "overview_accounts", "plans", "review", "trust"]);
-      expect(getAllByText(SAVED_NO_READER).length).toBeGreaterThan(0);
+      expect(ordinaryReads.map((frame) => frame.operation)).toEqual(["viva.documents.upload_many", "viva.documents.upload_many", ...Array(9).fill("viva.surface.read")]);
+      expect(operations[0].payload).toEqual({ queue_paths: ["/chosen/first.pdf"] });
+      expect(operations[1].payload).toEqual({ session_id: "1".padStart(32, "0"), resume: true });
+      expect(ordinaryReads.slice(2).map((frame) => frame.payload.surface).sort()).toEqual(["activity", "conversation", "documents", "jobs", "overview_accounts", "overview_accounts", "plans", "review", "trust"]);
+      expect(getAllByText(/No document reader configured/, { selector: "p" })).toHaveLength(1);
 
       // A dropped path is the same request from the same screen: a path
       // crosses, and nothing about the file's contents does.
       operations.length = 0;
       expect(listen).not.toBeNull();
       await act(async () => { listen?.(["/dropped/second.pdf"]); });
-      await waitFor(() => expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(9).fill("viva.surface.read")]));
-      expect(operations[0].payload).toEqual({ path: "/dropped/second.pdf" });
+      await waitFor(() => expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload_many", "viva.documents.upload_many", ...Array(9).fill("viva.surface.read")]));
+      expect(operations[0].payload).toEqual({ queue_paths: ["/dropped/second.pdf"] });
+      expect(operations[1].payload).toEqual({ session_id: "2".padStart(32, "0"), resume: true });
 
       operations.length = 0;
       await act(async () => { listen?.(["/dropped/third.pdf", "/dropped/fourth.pdf"]); });
       await waitFor(() => expect(getByText("Held: awaiting counterpart")).toBeInTheDocument());
-      expect(operations.filter((frame) => frame.operation === "viva.documents.upload_many")).toEqual([{ operation: "viva.documents.upload_many", payload: { paths: ["/dropped/third.pdf", "/dropped/fourth.pdf"] } }]);
+      expect(operations.filter((frame) => frame.operation === "viva.documents.upload_many")).toEqual([
+        { operation: "viva.documents.upload_many", payload: { queue_paths: ["/dropped/third.pdf", "/dropped/fourth.pdf"] } },
+        { operation: "viva.documents.upload_many", payload: { session_id: "3".padStart(32, "0"), resume: true } },
+      ]);
       expect(operations.filter((frame) => frame.operation === "viva.documents.upload")).toEqual([]);
       expect(getByText("Posted")).toBeInTheDocument();
     } finally {
@@ -146,10 +175,12 @@ describe("documents", () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     let listen: ((paths: readonly string[]) => void) | null = null;
+    const queue = documentQueueFixture();
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
-        if (operation === "viva.documents.upload") return { protocol: "1.0", request_id: "upload", ok: true, result: { kind: "completed", message: SAVED_NO_READER, state: null, reason: null } as T };
+        const queued = queue(operation, payload);
+        if (queued !== undefined) return { protocol: "1.0", request_id: "queue", ok: true, result: queued as T };
         const surface = payload.surface;
         if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };
@@ -171,13 +202,13 @@ describe("documents", () => {
       // so the screen that can say what became of it is what the person sees.
       await act(async () => { listen?.(["/dropped/first.pdf"]); });
       await waitFor(() => expect(getByRole("heading", { name: "Statements & documents" })).toBeInTheDocument());
-      await waitFor(() => expect(getAllByText(SAVED_NO_READER, { selector: "p" })).toHaveLength(1));
+      await waitFor(() => expect(getAllByText(/No document reader configured/, { selector: "p" })).toHaveLength(1));
 
       // What was written is the session's, not the panel's: leaving the screen
       // and returning does not discard the receipt for it.
       await user.click(getByRole("button", { name: "Overview" }));
       await user.click(getByRole("button", { name: "Statements" }));
-      expect(getAllByText(SAVED_NO_READER, { selector: "p" })).toHaveLength(1);
+      expect(getAllByText(/No document reader configured/, { selector: "p" })).toHaveLength(1);
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -259,10 +290,12 @@ describe("documents", () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     let listen: ((paths: readonly string[]) => void) | null = null;
+    const queue = documentQueueFixture();
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
-        if (operation === "viva.documents.upload") return { protocol: "1.0", request_id: "upload", ok: true, result: { kind: "completed", message: SAVED_NO_READER, state: null, reason: null } as T };
+        const queued = queue(operation, payload);
+        if (queued !== undefined) return { protocol: "1.0", request_id: "queue", ok: true, result: queued as T };
         const surface = payload.surface;
         if (surface === "jobs") return { protocol: "1.0", request_id: "jobs", ok: true, result: { surface, job_id: "job", data: { jobs: [] } } as T };
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] } : surface === "documents" ? { documents: [], reading_sentence: "" } : { questions: [], total: 0, invite: "", answered_by_document: "" };

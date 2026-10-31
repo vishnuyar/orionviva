@@ -11,12 +11,17 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
+import stat
+import time
 import shutil
 import subprocess
 import tempfile
 import threading
 
 PROTOCOL = "2.1"
+SAMPLE_VERSION = "five-year-life-v1"
+MAX_FRAME_BYTES = 4_000_000
 SAMPLE_PASSPHRASE = "a-sample-vault-anybody-may-open"
 
 
@@ -26,9 +31,14 @@ def digest(path: Path) -> str:
 
 
 def snapshot(root: Path, *, canonical: bool = False) -> dict[str, str]:
+    _ordinary(root, directory=True)
+    if canonical: _ordinary(root/"raw", directory=True)
     paths = ([root / "events.jsonl", root / "events.jsonl.head",
               *sorted((root / "raw").rglob("*"))] if canonical
              else sorted(root.rglob("*")))
+    if any(path.is_symlink() or (path.exists() and not path.is_file() and not path.is_dir())
+           for path in paths):
+        raise RuntimeError("synthetic vault contains a linked canonical member")
     result = {path.relative_to(root).as_posix(): digest(path)
               for path in paths if path.is_file()}
     if not result or (canonical and ("events.jsonl" not in result or "events.jsonl.head" not in result or
@@ -57,12 +67,13 @@ def isolated_environment(home: Path) -> dict[str, str]:
 
 class Session:
     """Bound each reply and shut down only the subprocess this session owns."""
-    def __init__(self, executable: Path, home: Path, timeout: float = 90):
+    def __init__(self, executable: Path, home: Path, timeout: float = 90, *, environment=None):
         self.timeout = timeout
-        self.frames: queue.Queue = queue.Queue()
+        self.frames: queue.Queue = queue.Queue(maxsize=32)
+        self.reader_error = None
         self.number = 0
         self.process = subprocess.Popen(
-            [str(executable)], cwd=home, env=isolated_environment(home),
+            [str(executable)], cwd=home, env=isolated_environment(home) if environment is None else environment,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             text=True, encoding="utf-8")
         self.reader = threading.Thread(target=self._read, daemon=True)
@@ -70,40 +81,104 @@ class Session:
 
     def _read(self):
         try:
-            for line in self.process.stdout:
-                self.frames.put(line)
+            while True:
+                line = self.process.stdout.readline(MAX_FRAME_BYTES+1)
+                if not line:
+                    break
+                if len(line) > MAX_FRAME_BYTES or len(line.encode("utf-8")) > MAX_FRAME_BYTES or not line.endswith("\n"):
+                    raise RuntimeError("sidecar supplied an oversized or incomplete frame")
+                try:
+                    self.frames.put(line, timeout=0.1)
+                except queue.Full:
+                    raise RuntimeError("sidecar supplied too many queued frames") from None
+        except (OSError, UnicodeError, RuntimeError) as error:
+            self.reader_error = error
         finally:
-            self.frames.put(None)
+            try: self.frames.put_nowait(None)
+            except queue.Full: pass
 
-    def ask(self, operation: str, payload: dict | None = None) -> dict:
-        import time
+    def request(self, operation: str, payload: dict | None = None, *, deadline=None) -> dict:
+        expires = time.monotonic()+self.timeout
+        if deadline is not None:
+            expires = min(expires, deadline)
+        if time.monotonic() >= expires:
+            raise RuntimeError(f"timed out during {operation}")
         self.number += 1
         request_id = f"lifecycle-{self.number}"
-        self.process.stdin.write(json.dumps(dict(protocol=PROTOCOL, request_id=request_id,
-                                                 operation=operation, payload=payload or {})) + "\n")
-        self.process.stdin.flush()
-        deadline = time.monotonic() + self.timeout
+        encoded = json.dumps(dict(protocol=PROTOCOL, request_id=request_id,
+                                  operation=operation, payload=payload or {})) + "\n"
+        if len(encoded.encode('utf-8')) > MAX_FRAME_BYTES:
+            raise RuntimeError('sidecar request exceeds its frame bound')
+        sent = threading.Event()
+        errors = []
+        def send():
+            try:
+                self.process.stdin.write(encoded)
+                self.process.stdin.flush()
+            except (OSError, ValueError) as error:
+                errors.append(error)
+            finally: sent.set()
+        writer = threading.Thread(target=send, daemon=True)
+        writer.start()
+        if not sent.wait(timeout=max(0, expires-time.monotonic())):
+            try: self.process.kill()
+            except OSError: pass
+            writer.join(timeout=1)
+            raise RuntimeError(f"timed out writing {operation}")
+        writer.join(timeout=1)
+        if errors: raise RuntimeError(f'sidecar stopped accepting {operation}') from errors[0]
         while True:
-            remaining = deadline - time.monotonic()
+            remaining = expires-time.monotonic()
             if remaining <= 0:
                 raise RuntimeError(f"timed out during {operation}")
+            if getattr(self, 'reader_error', None) is not None:
+                raise RuntimeError("sidecar reader rejected its output") from self.reader_error
             try:
                 line = self.frames.get(timeout=remaining)
             except queue.Empty:
                 raise RuntimeError(f"timed out during {operation}") from None
             if line is None:
-                raise RuntimeError(f"sidecar exited during {operation}")
-            frame = json.loads(line)
-            if time.monotonic() >= deadline:
+                raise RuntimeError(f"sidecar stopped answering during {operation}")
+            def closed(pairs):
+                value = {}
+                for key, item in pairs:
+                    if key in value: raise RuntimeError('duplicate sidecar frame field')
+                    value[key] = item
+                return value
+            try:
+                frame = json.loads(line, object_pairs_hook=closed)
+            except (ValueError, TypeError):
+                raise RuntimeError("sidecar wrote a line that is not a frame") from None
+            if time.monotonic() >= expires:
                 raise RuntimeError(f"timed out during {operation}")
-            if frame.get("event"):
+            if (not isinstance(frame, dict) or frame.get("protocol") != PROTOCOL
+                    or frame.get("request_id") != request_id):
+                raise RuntimeError(f"sidecar supplied a malformed or mismatched frame during {operation}")
+            if "event" in frame:
+                progress = frame.get("result")
+                if (set(frame) != {"protocol", "request_id", "event", "result"}
+                        or frame["event"] != "job.progress" or not isinstance(progress, dict)
+                        or not isinstance(progress.get("job_id"), str) or not progress['job_id']
+                        or progress.get("status") not in {"started", "progress", "completed", "failed", "cancelled"}
+                        or type(progress.get("completed")) is not int
+                        or type(progress.get("total")) is not int
+                        or not 0 <= progress['completed'] <= progress['total']):
+                    raise RuntimeError("sidecar supplied malformed progress")
                 continue
-            if frame.get("request_id") != request_id or frame.get("ok") is not True:
-                raise RuntimeError(f"sidecar refused or mismatched {operation}: "
-                                   f"{(frame.get('error') or {}).get('code', 'no-code')}")
-            if not isinstance(frame.get("result"), dict):
+            if type(frame.get("ok")) is not bool:
+                raise RuntimeError("sidecar supplied a malformed reply")
+            if frame['ok'] is True and not isinstance(frame.get('result'), dict):
                 raise RuntimeError(f"invalid result during {operation}")
-            return frame["result"]
+            if frame['ok'] is False and not isinstance(frame.get('error'), dict):
+                raise RuntimeError(f"invalid refusal during {operation}")
+            return frame
+
+    def ask(self, operation: str, payload: dict | None = None, *, deadline=None) -> dict:
+        frame = self.request(operation, payload, deadline=deadline)
+        if frame['ok'] is not True:
+            raise RuntimeError(f"sidecar refused {operation}: "
+                               f"{frame['error'].get('code', 'no-code')}")
+        return frame['result']
 
     def close(self):
         try:
@@ -119,7 +194,78 @@ class Session:
             raise RuntimeError("sidecar did not exit cleanly")
 
 
-def probe(executable: Path, home: Path, *, create: bool) -> str:
+def _sample_status(value):
+    fields = {'state','sample_version','completed_documents','total_documents',
+              'posted_documents','held_documents','phase','message'}
+    if (not isinstance(value, dict) or set(value) != fields
+            or value['sample_version'] != SAMPLE_VERSION
+            or value['state'] not in {'preparing','ready','failed'}
+            or value['phase'] not in {'validating','capturing','checking','ready','failed'}
+            or not isinstance(value['message'], str) or not value['message']
+            or any(type(value[name]) is not int or not 0 <= value[name] <= 794
+                   for name in ('completed_documents','total_documents','posted_documents','held_documents'))
+            or value['total_documents'] != 794
+            or value['posted_documents']+value['held_documents'] != value['completed_documents']
+            or (value['state'] == 'ready' and (value['phase'] != 'ready' or value['completed_documents'] != 794))
+            or (value['state'] == 'failed' and value['phase'] != 'failed')
+            or (value['state'] == 'preparing' and value['phase'] in {'ready','failed'})):
+        raise RuntimeError('sample supplied malformed preparation status')
+    return value
+
+
+def prepare_sample(ask, *, deadline):
+    """Prepare once and poll under a single unchanged readiness budget."""
+    status = _sample_status(ask('bridge.sample.prepare', deadline=deadline))
+    first = True
+    while True:
+        if time.monotonic() >= deadline:
+            raise RuntimeError('sample preparation timed out')
+        if status['state'] == 'failed': raise RuntimeError('sample preparation failed')
+        if not first and status['state'] == 'ready': return status
+        first = False
+        if status['state'] == 'preparing':
+            time.sleep(min(0.05, max(0, deadline-time.monotonic())))
+        status = _sample_status(ask('bridge.sample.status', deadline=deadline))
+
+
+def _ordinary(path, *, directory):
+    info = path.lstat()
+    if (path.is_symlink() or (directory and not stat.S_ISDIR(info.st_mode))
+            or (not directory and not stat.S_ISREG(info.st_mode))
+            or (hasattr(os, 'getuid') and info.st_uid != os.getuid())):
+        raise RuntimeError('sample pointer path is not ordinary and owned')
+    if path.resolve(strict=True) != path:
+        raise RuntimeError('sample pointer path is not canonical')
+
+
+def resolve_sample_root(home):
+    """Bind the initial closed pointer once; never select a replacement vault."""
+    root = home/'vault'/'versioned'
+    _ordinary(home, directory=True); _ordinary(home/'vault', directory=True)
+    _ordinary(root, directory=True)
+    pointer = root/'five-year-sample-active.json'
+    _ordinary(pointer, directory=False)
+    def closed(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value: raise RuntimeError('duplicate sample pointer field')
+            value[key] = item
+        return value
+    with pointer.open('rb') as source: data = source.read(513)
+    if len(data) > 512: raise RuntimeError('sample pointer exceeds its bound')
+    value = json.loads(data, object_pairs_hook=closed)
+    if (not isinstance(value, dict) or set(value) != {'version','instance_id'}
+            or value['version'] != SAMPLE_VERSION or not isinstance(value['instance_id'], str)
+            or re.fullmatch('[0-9a-f]{32}', value['instance_id']) is None):
+        raise RuntimeError('sample pointer is malformed')
+    selected = root/'sample-vaults'/value['version']/value['instance_id']/'vault'
+    for directory in (root/'sample-vaults', root/'sample-vaults'/value['version'], selected.parent, selected):
+        _ordinary(directory, directory=True)
+    if not selected.is_relative_to(root): raise RuntimeError('sample pointer escaped its root')
+    return selected
+
+
+def probe(executable: Path, home: Path, *, create: bool, vault_root: Path | None = None) -> str:
     session = Session(executable, home)
     try:
         handshake = session.ask("bridge.handshake")
@@ -128,19 +274,21 @@ def probe(executable: Path, home: Path, *, create: bool) -> str:
             raise RuntimeError("unidentified or incompatible packaged sidecar")
         if session.ask("viva.lifecycle.read").get("origin") != "packaged":
             raise RuntimeError("sidecar does not report packaged origin")
+        deadline = time.monotonic()+90
         if create:
-            if session.ask("bridge.open_demo_vault").get("sample") is not True:
+            prepare_sample(session.ask, deadline=deadline)
+            if session.ask("bridge.open_demo_vault", deadline=deadline).get("sample") is not True:
                 raise RuntimeError("sidecar did not create the fictional sample")
         else:
-            session.ask("bridge.open_vault", dict(vault_directory=str(home / "vault"),
-                        passphrase=SAMPLE_PASSPHRASE, create=False))
+            if vault_root is None: raise RuntimeError("reopen has no bound canonical vault")
+            _ordinary(vault_root, directory=True)
+            session.ask("bridge.open_vault", dict(vault_directory=str(vault_root),
+                        passphrase=SAMPLE_PASSPHRASE, create=False), deadline=deadline)
         # Ordinary reopen starts a background read-store catch-up. Its status
         # surface is the public readiness boundary; do not retry refused writes.
-        import time
-        deadline = time.monotonic() + 90
         while True:
             readiness = session.ask("viva.surface.read", dict(surface="overview_accounts",
-                                    job_id="lifecycle-ready", parameters={}))
+                                    job_id="lifecycle-ready", parameters={}), deadline=deadline)
             if (readiness.get("data") or {}).get("freshness") == "current":
                 break
             if time.monotonic() >= deadline:
@@ -167,10 +315,10 @@ def validate(baseline: Path, candidate: Path, *, require_distinct: bool = False)
         raise RuntimeError("two-version evidence requires distinct artifact bytes")
     revisions = []
     with tempfile.TemporaryDirectory(prefix="orionviva-sidecar-lifecycle-") as directory:
-        root = Path(directory)
+        root = Path(directory).resolve(strict=True)
         home, install = root / "profile", root / "installation"
         home.mkdir()
-        vault = home / "vault"
+        vault = None
         canonical = None
         for index, artifact in enumerate((baseline, candidate, baseline)):
             install.mkdir()
@@ -179,7 +327,9 @@ def validate(baseline: Path, candidate: Path, *, require_distinct: bool = False)
             expected_hash = hashes[1] if index == 1 else hashes[0]
             if digest(executable) != expected_hash:
                 raise RuntimeError("artifact changed before launch")
-            revisions.append(probe(executable, home, create=index == 0))
+            revisions.append(probe(executable, home, create=index == 0, vault_root=vault))
+            if index == 0:
+                vault = resolve_sample_root(home)
             if digest(executable) != expected_hash:
                 raise RuntimeError("artifact changed during launch")
             observed = snapshot(vault, canonical=True)
@@ -196,7 +346,7 @@ def validate(baseline: Path, candidate: Path, *, require_distinct: bool = False)
         shutil.copy2(baseline, executable)
         if digest(executable) != hashes[0]:
             raise RuntimeError("baseline changed before reinstall")
-        revisions.append(probe(executable, home, create=False))
+        revisions.append(probe(executable, home, create=False, vault_root=vault))
         if digest(executable) != hashes[0] or not revisions[0] == revisions[2] == revisions[3]:
             raise RuntimeError("baseline identity changed across launches")
         if snapshot(vault, canonical=True) != canonical:

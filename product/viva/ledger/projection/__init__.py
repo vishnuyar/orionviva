@@ -65,8 +65,8 @@ class LedgerProjection:
 
     The read model for the whole ledger: per-account balances and ingest state
     (what is captured, posted, held). Built once and updated incrementally via
-    ``apply``; the `Ledger` facade keeps one live instance so reads never
-    re-replay the whole encrypted log.
+    ``apply``; the `Ledger` facade owns a private canonical fold and publishes
+    detached read views after authenticating the event frontier.
 
     A facade over one `ProjectionCore` and this package's read modules: state
     and caches live on the core, so every family reads the same fold and a
@@ -86,6 +86,9 @@ class LedgerProjection:
                 yield event
         self._core = ProjectionCore(with_source_context(), as_of, resolve_keys)
         self._core._measurement_sources = sources
+
+    def _event_count(self):
+        return len(self.__source_events)
 
     @property
     def _source_events(self) -> list[Event]:
@@ -110,14 +113,44 @@ class LedgerProjection:
         from ..ledger import _revoke_projection
         _revoke_projection(self)
         self.__source_events.append(event)
-        if (event.event_type == "InstrumentObservationRecorded" and event.body.get("record", {}).get("prior_id")) or (
-                event.event_type == 'ReadRecorded' and any(hasattr(allocation,'receipt')
-                    for allocation in self._core._instrument_allocations.values())):
+        if self._changes_prior_instrument_visibility(event):
             self._core = LedgerProjection(self._source_events, self.as_of, self._core._resolve_keys)._core
             return
         if self.as_of is None or event.occurred_at <= self.as_of:
             self._core._measurement_sources.apply(event)
         self._core.apply(event)
+
+    def _changes_prior_instrument_visibility(self, event: Event) -> bool:
+        """Rebuild when new knowledge can retire an existing interpretation."""
+        if event.event_type == "InstrumentObservationRecorded":
+            record = event.body.get("record", {})
+            if record.get("prior_id"):
+                return True
+            # Retiring an allocation also removes its planning effect identity;
+            # dropping only the live allocation would suppress a replacement.
+            return (record.get("kind") == "mortgage_components"
+                    and any(hasattr(allocation, "receipt")
+                            and record.get("subject_id") == allocation.loan_account
+                            for allocation in self._core._instrument_allocations.values()))
+        if (event.event_type != "ReadRecorded"
+                or event.body.get("phase", "extract") != "extract"):
+            return False
+        known = [allocation for allocation in self._core._instrument_allocations.values()
+                 if hasattr(allocation, "receipt")]
+        if not known:
+            return False
+        document = event.body.get("doc_id")
+        if any(allocation.payment.reference.source.doc_id == document for allocation in known):
+            return True
+        # Other active mortgage witnesses can contradict the same occurrence.
+        # Their retained raw readings participate in source_conflicted too.
+        from ...ingest.instrument_contracts import MortgageFacts
+        loans = {allocation.loan_account for allocation in known}
+        return any(not row["superseded"]
+                   and row["change"].subject_id in loans
+                   and type(row["change"].payload) is MortgageFacts
+                   and row["change"].source.doc_id == document
+                   for row in self._core._instrument_observations.values())
 
     def _state(self, account: str):
         return self._core._state(account)

@@ -154,6 +154,10 @@ export type BridgeClient = {
   // because the sidecar answers one request before it reads the next.
   uploadDocument: (path: string) => Promise<unknown>;
   readRetainedDocuments?: (documents: readonly { documentId: string; confirmationToken: string }[]) => Promise<unknown>;
+  enqueueDocumentImport?: (paths: readonly string[]) => Promise<unknown>;
+  listDocumentImports?: () => Promise<unknown>;
+  inspectDocumentImport?: (sessionId: string) => Promise<unknown>;
+  resumeDocumentImport?: (sessionId: string) => Promise<unknown>;
   uploadDocuments?: (paths: readonly string[]) => Promise<unknown>;
   recoverDocument?: (jobId: string) => Promise<unknown>;
   pickDocumentPaths?: () => Promise<readonly string[]>;

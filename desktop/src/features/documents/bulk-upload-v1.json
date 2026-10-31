@@ -2,12 +2,12 @@
   "title": "Add multiple documents",
   "detail": "Choose up to 1000 documents. Each original is encrypted in this vault. Up to three independent readers use your configured model at a time and may incur charges. Financial checks still decide what can post.",
   "choose": "Choose multiple documents",
-  "session": "This selection exists only in this open session. Closing it loses unstarted selections; saved originals remain in Statements. Jobs retain recent activity, not this whole list.",
+  "session": "Selected originals are encrypted in this vault before reading begins. Saved selections survive closing the app. Continue them here after reopening; completed readings are reused and uncertain requests are held for inspection.",
   "stop": "Stop remaining documents",
   "stopping": "Stopping; finishing active reads. Completed responses are retained. No further documents will start.",
   "uncertain": "The outcome is unknown for some selected documents. No further documents were started and nothing was retried. Inspect Statements and job activity before selecting those files again.",
   "finished": "Selection finished. Review each result; finished does not mean posted.",
-  "running": "Reading selected documents. Completion counts change only when document results return.",
+  "running": "Reading selected documents. Finished results become available throughout the vault after each group of up to three documents. Figures cover posted records only; pending documents are excluded.",
   "previous": "Previous selection page",
   "next": "Next selection page",
   "labels": {
@@ -34,7 +34,7 @@
   "overLimit": "Choose at most 1000 documents. Nothing was added.",
   "pickerFailed": "Documents could not be selected. Nothing was submitted.",
   "counts": "{terminal} terminal {resultNoun} of {total} selected {documentNoun}",
-  "pageCounts": "Selection rows {first}\u2013{last} of {total}",
+  "pageCounts": "Selection rows {first}–{last} of {total}",
   "savedOriginal": "Saved original",
   "reason": "Reason",
   "reasons": {
@@ -54,5 +54,7 @@
   "resultSingular": "result",
   "resultPlural": "results",
   "documentSingular": "document",
-  "documentPlural": "documents"
+  "documentPlural": "documents",
+  "paused": "Import paused. {remaining} selected {documentNoun} {remainVerb}. Continue the saved selection when you are ready.",
+  "refused": "The selection request was refused. Inspect the saved selection and job activity before trying again."
 }

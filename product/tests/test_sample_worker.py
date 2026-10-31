@@ -36,7 +36,7 @@ def request(instance, operation='build', **extra):
     return json.dumps({'operation':operation,'instance':str(instance),**extra}).encode()
 
 
-@pytest.mark.parametrize('operation',['build','reopen'])
+@pytest.mark.parametrize('operation',['build','restore','reopen'])
 def test_closed_worker_dispatches_only_fixed_operations_in_key_free_environment(instance,monkeypatch,operation):
     if operation == 'reopen':
         (instance/'vault').mkdir(mode=0o700)
@@ -53,6 +53,7 @@ def test_closed_worker_dispatches_only_fixed_operations_in_key_free_environment(
         return {'state':'controlled-dispatch'}
     def denied(*args):raise AssertionError('wrong operation dispatched')
     monkeypatch.setattr(instances,'_worker',selected if operation=='build' else denied)
+    monkeypatch.setattr(instances,'_restore_worker',selected if operation=='restore' else denied)
     monkeypatch.setattr(instances,'_reopen_worker',selected if operation=='reopen' else denied)
     assert worker.run_request(request(instance,operation))=={'state':'controlled-dispatch'}
     assert seen==[instance]
@@ -229,6 +230,13 @@ print(json.dumps({'instance':str(path),'report':report},sort_keys=True))
     value=json.loads(completed.stdout);report=value['report'];instance=Path(value['instance'])
     assert report['state']=='engineering_partial' and report['documents']==1
     assert len(report['outcomes'])==1 and report['outcomes'][0]['document_id']=='D0001'
+    measured=report['outcomes'][0]
+    assert measured['capture_seconds']>0 and measured['elapsed_seconds']>=measured['capture_seconds']
+    assert measured['event_count']==report['event_identity'][0]
+    assert report['capture_seconds']==measured['capture_seconds']
+    assert report['replay_agreement']['state']=='equal'
+    assert report['replay_agreement']['event_identity']==report['event_identity']
+    assert set(report['phase_seconds'])=={'sweep','sql','source_completion'}
     assert not (instance/'sample-instance.json').exists()
     assert (instance/'sample-incomplete.json').is_file()
     assert not list((task/'instances').glob('**/five-year-sample-active.json'))

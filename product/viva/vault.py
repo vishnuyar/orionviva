@@ -28,6 +28,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -97,6 +98,36 @@ class Vault:
     _retained_confirmation_closed: bool = field(default=False, init=False, repr=False)
     _retained_confirmation_owner: object | None = field(default=None, init=False, repr=False)
     _retained_confirmation_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+    _read_publication_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+    _read_publication_depth: int = field(default=0, init=False, repr=False)
+    _read_publication_pending: bool = field(default=False, init=False, repr=False)
+
+    @contextmanager
+    def defer_read_store_updates(self):
+        """Publish a document's durable events as one coherent read revision.
+
+        Canonical commits remain individually durable. Nested scopes publish
+        at their outer boundary; failed publication leaves explicit stale state
+        for recovery without changing the result of a canonical commit.
+        """
+        with self._read_publication_lock:
+            self._read_publication_depth += 1
+        try:
+            yield
+        finally:
+            publish = False
+            with self._read_publication_lock:
+                self._read_publication_depth -= 1
+                if self._read_publication_depth == 0 and self._read_publication_pending:
+                    self._read_publication_pending = False
+                    publish = True
+            if publish:
+                try:
+                    self.synchronize_read_store(_event_store=self._read_store_event_source)
+                except Exception:
+                    self.read_store_lifecycle = ('stale' if self._has_read_revision()
+                                                 else 'degraded')
+                    log.warning('document read publication failed; canonical events remain committed')
 
     def hold_read_store_visibility(self) -> int:
         """Fence reads for one background writer and identify its ownership."""
@@ -153,6 +184,12 @@ class Vault:
     def _after_canonical_commit(
             self, _identity: tuple[int | None, str | None, int]) -> None:
         """Catch up after commit, while keeping the event as the sole success boundary."""
+        with self._read_publication_lock:
+            if self._read_publication_depth:
+                self._read_publication_pending = True
+                self.read_store_lifecycle = ('stale' if self._has_read_revision()
+                                             else 'rebuilding')
+                return
         # A brand-new or recovering store already advertises rebuilding.  Its
         # owner performs one explicit full synchronization after the initial
         # event batch; per-event generations here would hide an earlier batch
@@ -462,6 +499,7 @@ class Vault:
         revoke_retained_confirmations(self)
         self.ledger.store.observe_commits(None)
         self.stop_read_store_worker()
+        self.ledger._validation_memo.clear()
         if self.read_store is not None:
             self.read_store.close()
 

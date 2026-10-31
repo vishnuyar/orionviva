@@ -9,7 +9,7 @@ import json
 import types
 from dataclasses import MISSING, dataclass, fields, is_dataclass
 from enum import Enum
-from typing import Union, get_args, get_origin, get_type_hints
+from typing import Union, get_args, get_origin
 
 from vivacore.verify.normalize import parse_amount, parse_date
 from . import instrument_contracts as c
@@ -88,7 +88,7 @@ def decode(value, target, *, doc_id, locale, currency, source_contract=None, pag
         if isinstance(value, dict) and set(value) & {'signed_effect', 'effect_basis', 'kind_source'}:
             return _signed_principal(value, doc_id, locale, currency, page_count).lower()
     if is_dataclass(target):
-        fs, hints = fields(target), get_type_hints(target)
+        fs, hints = c._closed_fields(target)
         required = {f.name for f in fs if f.default is MISSING and f.default_factory is MISSING}
         _object(value, {f.name for f in fs}, required)
         kwargs = {key: decode(item, hints[key], doc_id=doc_id, locale=locale, currency=currency,

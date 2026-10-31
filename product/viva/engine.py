@@ -702,6 +702,14 @@ def _finalize_new_documents(vault: Vault, posted_before: set[str]) -> None:
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn, *,
            on_captured=None, before_read=None, _bulk_audit=None) -> dict:
+    """Ingest one document and publish its committed financial view once."""
+    with vault.defer_read_store_updates():
+        return _upload(vault, filename, data, read_fn, on_captured=on_captured,
+                       before_read=before_read, _bulk_audit=_bulk_audit)
+
+
+def _upload(vault: Vault, filename: str, data: bytes, read_fn, *,
+            on_captured=None, before_read=None, _bulk_audit=None) -> dict:
     """Ingest an uploaded file: capture, read, then post, park or hold.
 
     Returns the outcome — `action`, `grade`, `doc_type`, `account`,

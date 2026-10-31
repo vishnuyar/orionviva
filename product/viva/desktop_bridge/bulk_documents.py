@@ -19,6 +19,7 @@ class _Message:
     document: str
     phase: object=None
     response: object=None
+    result: object=None
     response_id: str|None=None
     doc_type: str='unknown'
     confidence: float=0.0
@@ -40,11 +41,15 @@ def _reading_task(read,pages,text,document,messages):
         if message.error is not None:raise message.error
         return message.response_id
     try:
-        return read(tuple(pages),text,document,phase_sink=exchange,permit=exchange,
+        result=read(tuple(pages),text,document,phase_sink=exchange,permit=exchange,
                     response_sink=receive)
     except Exception:
         # No completed response is invented for a request that never returned.
-        return ReadResult('unknown',0.0,None,error='read request failed')
+        result=ReadResult('unknown',0.0,None,error='read request failed')
+    message=_Message(document,result=result)
+    messages.put(message);message.done.wait()
+    if message.error is not None:raise message.error
+    return result
 
 
 def _paths(payload):
@@ -88,7 +93,14 @@ def _row(ordinal,document=None,action='failed',disposition=None,reason=None):
 class BulkDocuments:
     def __init__(self,vault,jobs):
         self.vault=vault;self.jobs=jobs;self.messages=Queue(maxsize=3)
-        self.stopped=Event();self.owners={};self.job_id=None;self.fatal=None;self.last_pulse=monotonic();self.retained_mode=False
+        self.stopped=Event();self.owners={};self.job_id=None;self.fatal=None;self.last_pulse=monotonic();self.retained_mode=False;self.queued=None
+
+    def run_queued(self, entries):
+        """Process only private manifest originals already sealed by the queue."""
+        if not 1 <= len(entries) <= 3:
+            raise ValueError("bounded private queue chunk required")
+        self.queued = tuple(entries)
+        return self.run({"paths": [entry["filename"] for entry in entries]})
 
     def stop(self):
         self.stopped.set()
@@ -115,6 +127,8 @@ class BulkDocuments:
             try:message=self.messages.get(timeout=.02 if wait else 0)
             except Empty:return
             try:
+                if message.result is not None:
+                    self.checkpoints.complete(self.owners[message.document],message.result)
                 if message.response is not None:
                     message.response_id=_retain_bulk_response(self.owners[message.document],message.response)
                 if message.phase is not None:
@@ -133,6 +147,9 @@ class BulkDocuments:
         retained=_retained(payload) if type(payload) is dict and 'retained_documents' in payload else None
         self.retained_mode=retained is not None
         paths=None if retained is not None else _paths(payload)
+        from .import_checkpoints import ImportCheckpoints
+        checkpoints=ImportCheckpoints(self.vault)
+        self.checkpoints=checkpoints
         reader,configured=build_reader()
         job=self.jobs.open('viva.documents.upload_many',('checked','opened','read','settled'))
         self.job_id=job.job_id
@@ -172,6 +189,13 @@ class BulkDocuments:
                     self._service()
                     if self.stopped.is_set():
                         rows[ordinal]=_row(ordinal,action='cancelled',reason='job_cancelled');continue
+                    if self.queued is not None:
+                        entry=self.queued[ordinal]
+                        data=self.vault.raw.get_bounded(entry['doc_id'])
+                        if self.vault.raw.fingerprint(data)!=entry['doc_id']:
+                            raise ValueError('queued original identity changed')
+                        entries.append((ordinal,path,data,entry['doc_id']))
+                        continue
                     refused=_refusal(path)
                     if refused is not None:
                         rows[ordinal]=_row(ordinal,action='refused',reason=refused.reason);continue
@@ -203,9 +227,22 @@ class BulkDocuments:
                     if self.stopped.is_set():
                         _retain_bulk_original(owner)
                         rows[ordinal]=_row(ordinal,document,action='cancelled',reason='job_cancelled');continue
-                    if retained is None and (self.vault.ledger.projection().is_resolved(document)
-                            or document in self.vault.ledger.projection().captured_docs()):
-                        rows[ordinal]=_row(ordinal,document,'duplicate');continue
+                    if retained is None:
+                        if self.vault.ledger.projection().is_resolved(document):
+                            rows[ordinal]=_row(ordinal,document,'duplicate');continue
+                        try:
+                            saved=checkpoints.read(document)
+                            if saved is not None:
+                                if saved['state']=='settled':
+                                    rows[ordinal]=_row(ordinal,document,'duplicate');continue
+                                cached=checkpoints.resume(owner,saved)
+                                futures[ordinal]=(None,owner,cached);continue
+                        except Exception:
+                            rows[ordinal]=_row(ordinal,document,'failed',reason='outcome_unknown')
+                            self.stopped.set();continue
+                        if document in self.vault.ledger.projection().captured_docs():
+                            rows[ordinal]=_row(ordinal,document,'duplicate');continue
+                    checkpoints.begin(owner)
                     if not configured:
                         futures[ordinal]=(None,owner,reader(data,document));continue
                     try:
@@ -229,7 +266,10 @@ class BulkDocuments:
                 job.reached('read')
                 for ordinal,(future,owner,cached) in futures.items():
                     self._pump()
-                    result=cached if future is None else future.result()
+                    try:result=cached if future is None else future.result()
+                    except Exception as exc:
+                        self.fatal=exc;self.stopped.set()
+                        rows[ordinal]=_row(ordinal,owner.document,'failed',reason='outcome_unknown');continue
                     if owner.retained:
                         try:_validate_bulk_history(owner)
                         except Exception as exc:
@@ -242,8 +282,12 @@ class BulkDocuments:
                         rows[ordinal]=_row(ordinal,owner.document,'failed',
                             disposition='read_yielded_nothing',reason='read_failed');continue
                     try:
+                        # A complete trusted result is sealed before any financial write.
+                        checkpoints.complete(owner,result)
+                        checkpoints.mark(owner.document,'settling')
                         outcome=upload(self.vault,owner.filename,owner.data,
                             lambda data,document,cached=result:cached,_bulk_audit=owner)
+                        checkpoints.mark(owner.document,'settled',outcome)
                     except Exception as exc:
                         self.fatal=exc;self.stopped.set()
                         rows[ordinal]=_row(ordinal,owner.document,'failed',reason='outcome_unknown')

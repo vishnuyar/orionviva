@@ -48,6 +48,9 @@ def _activate_pointer(base,instance):
         json.dump({'version':VERSION,'instance_id':instance.name},stream)
         stream.flush();os.fsync(stream.fileno())
     os.replace(temporary,base/'five-year-sample-active.json')
+    directory_fd = os.open(base, os.O_RDONLY|os.O_NOFOLLOW)
+    try: os.fsync(directory_fd)
+    finally: os.close(directory_fd)
 
 
 def _status(base):
@@ -118,11 +121,14 @@ def _prepare(base):
     def allocated(value):
         nonlocal instance
         with _lock:
-            _activate_pointer(base,value)
             instance=value
             _attempt_instances[str(base)]=value
     try:
-        build_instance(base,on_instance=allocated)
+        ready, report = build_instance(base,on_instance=allocated,prepared=True)
+        if report.get('state') != 'ready':
+            raise SampleBuildError('prepared sample is incomplete')
+        with _lock:
+            _activate_pointer(base,ready)
     except BaseException:
         # Worker retains its detailed failure privately. The status interface
         # exposes only the stable sanitized state, never paths or exception text.

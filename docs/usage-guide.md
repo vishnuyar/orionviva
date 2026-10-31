@@ -15,8 +15,9 @@ can be re-entered with **Try sample data**; it never opens a private default.
 
 **Choose folder** and **Choose statement file** open operating-system dialogs supplied
 by OrionViva. They may appear beside the app rather than inside the browser.
-Select one document at a time. Browser drag-and-drop is not supported; use the
-file action. The selected original is not moved or rewritten and the host does
+Use **Choose statement file** for one document or **Choose multiple documents**
+when that control is available. Browser drag-and-drop is not supported; use the
+file actions. Selected originals are not moved or rewritten and the host does
 not stage a plaintext upload copy.
 
 Reloading the authorized tab reconnects when its previous page releases control.
@@ -45,6 +46,11 @@ interruption.
 
 Choose **Try sample data** from the welcome screen. Everything inside it is
 invented. A visible frame identifies the sample until it is closed.
+
+The current source implementation restores a prepared synthetic vault without
+calling a model. Its complete artifact and installed delivery are still under
+verification. Existing installed builds have not been replaced during this
+work. See the [prepared-sample record](prepared-sample.md).
 
 Use the sample to explore Overview, Accounts, Transactions, Statements, Review,
 Plans, Ask Viva, evidence drawers, and Trust & settings before adding personal
@@ -88,18 +94,36 @@ Use the always-available **Add statement** action or open **Statements**.
    state.
 4. Add the next statement only after understanding the prior result.
 
-OrionViva takes one document per capture. A saved document can remain waiting
+Each original is captured separately. A saved document can remain waiting
 when no reader is configured; saved and fully interpreted are different states.
 A failed read does not mean the encrypted source was deleted.
+
+For a selection, choose **Choose multiple documents** and select up to 1000
+files. Originals are encrypted before reading begins. Up to three readers can
+use the configured service concurrently; new readings may incur charges.
+Finished results become available throughout the vault after each group of up
+to three documents. You can navigate while the selection continues. Figures
+cover posted records; queued, held and unread documents are not proof of complete
+financial coverage. A finished selection does not mean every document posted.
+
+**Stop remaining documents** keeps completed work and asks active requests to
+finish before stopping. After closing and reopening the vault, find **Saved
+document selections** in Statements and choose the matching **Continue saved
+selection**. Completed readings are checked and reused; pending documents may
+start new readings. Captured originals no longer depend on the external files.
+If capture itself was interrupted, uncaptured files still need to be available.
+An interrupted selection first offers **Inspect interrupted selection**. Review
+its document results before continuing. An uncertain request stays held rather
+than being sent again automatically.
 
 Expand **Check for matching records** and choose **Check records** to reconcile information already in
 the vault, including matching transfers and resolving gaps. Rescan does not send
 documents to a model or read their contents again, and should not create a
 second financial effect for the same source.
 
-If the app closes while reading a statement, reopen the vault and check
-**Interrupted statements** in Statements. Match the **Import reference** to the
-original attempt. When offered, **Read saved original again** uses the encrypted
+Older individual jobs can instead appear under **Interrupted statements** in
+Statements. Match the **Import reference** to the original attempt. When offered,
+**Read saved original again** uses the encrypted
 copy already in the vault, so the source file need not still exist. Choosing it
 authorizes another read by the configured service, which may send the document
 and incur charges again. Nothing retries automatically.
@@ -107,7 +131,7 @@ and incur charges again. Nothing retries automatically.
 The app checks the saved original and financial history before another read.
 Cancelled jobs and uncertain or partial financial writes cannot use this retry.
 Follow the displayed inspection guidance in those cases; do not assume a failed
-job means nothing was saved. Older jobs without a saved recovery receipt may
+job means nothing was saved. Jobs without a saved recovery receipt may
 not appear here.
 
 ## Read the financial picture

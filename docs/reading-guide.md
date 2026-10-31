@@ -1,9 +1,26 @@
 # Reading Guide — where every document sits
 
+Current storage experiment: [Encrypted SQLite financial authority prototype](sql-authority-prototype.md)
+records the isolated staging, validation and atomic acceptance design, integrity
+limits, fixed experiment gates and migration prerequisites. Production vaults
+remain on their existing format.
+
+The implemented storage slice, [Authenticated public readings and existing source-reference identity](sql-authority-curated-source.md), records the bounded prototype-v2 contract, independent verification, all 420 matched balance sources and the successful original synthetic scale gates. The Director accepted this bounded slice at Checkpoint 2; transfers, the other 374 inputs, full mixed-sample parity, production migration and installed delivery remain open.
+
+The experimental [SQL-owned transfer overlays](sql-authority-transfers.md) implement indexed rival components, global token-owner dependencies, ordered overlays and bounded Activity-admitted manual actions in an isolated v3 format. The owner-authorized shared ledger admission extraction is accepted with unchanged Activity behavior and a full product result of 7,235 passes and 92 explicit skips. Transfer mechanism qualification, other financial families, mixed-794 parity/timing, production migration and installed delivery remain open; broader workloads remain held.
+
 Current accounting direction: [Automatic accounting and correction learning](automatic-accounting.md), with [ADR-017](decisions/ADR-017-automatic-accounting.md). Classification review is superseded by reversible interpretation. Selected corrections describe the counterpart of the recorded source; remembered treatment can fill an otherwise matching default-unknown purpose while preserving known distinctions. Categories and treatment require no proof; evidence remains required for source numbers. Independent verification is recorded; complete acceptance, real-document testing and signed release readiness remain open.
 
 Current approved implementation: [Product reliability and usability plan](product-improvement-plan.md)
 records the scope, milestones, agent ownership, evidence, and resumption steps.
+
+Current import work: [Import performance and prepared sample plan](import-performance-plan.md)
+with proposed [compatibility and coverage repairs](import-validation-coverage-plan.md)
+and the proposed [packaged validation harness repair](packaged-validation-harness-plan.md)
+with the proposed [exact validation reuse amendments](import-validation-reuse-plan.md)
+and its [stable bank funding provenance amendment](import-bank-witness-plan.md).
+records the incremental-import scope, retained measurements and outstanding
+verification. The prepared artifact and installed delivery remain unverified.
 
 **State:** built
 **Rules:** SPINE-5, SPINE-6
@@ -42,6 +59,7 @@ Read in this order if arriving fresh. Each entry: what it is, and when you would
 - [financial-analysis-measurements-and-scenarios.md](financial-analysis-measurements-and-scenarios.md) — reviewed analysis and sourced measurements, hypothetical calculations, supported whole-question premise forms, and the remaining exact-model and retained-vault acceptance boundaries.
 - [`../README.md`](../README.md) (repo root) — what OrionViva is, and the principles everything else reasons from.
 - [installation-guide.md](installation-guide.md) — release installation and source-build instructions for macOS, Windows, and Linux, including protected default-vault behavior and troubleshooting.
+- [prepared-sample.md](prepared-sample.md) — the implemented synthetic snapshot build and restore contract, source closure, compatibility pin and remaining artifact and installed-host evidence.
 - [decisions/ADR-016-local-browser-interface.md](decisions/ADR-016-local-browser-interface.md) — optional same-computer browser access, retained native host, session ownership and browser-first acceptance.
 - [usage-guide.md](usage-guide.md) — the end-user path through vaults, statements, financial surfaces, evidence, Review, Ask Viva, Trust, recovery, and accessibility.
 - [original-source-preview.md](original-source-preview.md) — local original viewing, source identity, rendering limits, platform support and remaining installed-host evidence.
@@ -135,7 +153,7 @@ Read these together; they are one argument, running extraction → merchants →
 - [account-connection-research.md](account-connection-research.md) — the research record for aggregation as a future acquisition path alongside encrypted manual upload; it is not a current capability.
 - [multi-device-and-remote-access.md](multi-device-and-remote-access.md) — the ledger follows you, documents stay put: blind-relay sync, browser access with a passkey, and the one hosted architecture never to build.
 - [the-suggestions-channel.md](the-suggestions-channel.md) — what Viva offers when she cannot answer. The refusal stays clean and what is useful moves to a separate, labelled channel, because a chosen thing arriving in an answer's authority is the risk. The channel exists on both sides and the risks differ: while Viva speaks the risk is misreading, while she asks it is leading.
-- [jobs-and-the-progress-channel.md](jobs-and-the-progress-channel.md) — the reviewed job registry and progress channel: sidecar-minted identities, live event delivery, honest step counts, cancellation checkpoints and bounded durable receipts. Interrupted work is restored as failed rather than silently resumed, and financial results still belong only in the event log.
+- [jobs-and-the-progress-channel.md](jobs-and-the-progress-channel.md) — the reviewed job registry and progress channel: sidecar-minted identities, live event delivery, honest step counts, cancellation checkpoints and bounded durable receipts. Generic interrupted jobs restore as failed or cancelled; document selections have separate encrypted continuation with explicit inspection and continuation. Financial results still belong only in the event log.
 - [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) — an approved direction, not current state. The K1/K2/K3 knowledge vocabulary and the behavioural-classification design that sits on top of the merchant layer.
 
 **5b · What has been decided**
@@ -176,3 +194,7 @@ This guide describes what each document *is* and when to return to it. It does n
   registers rather than reading-path documents. Every other live top-level
   document must be slotted here, and every relative Markdown link must resolve;
   the documentation gate enforces both.
+
+The [prepared-sample build identity correction](prepared-sample-build-privacy-plan.md) keeps developer paths in private build receipts while publishing portable artifact proof.
+
+The [owned-evidence repair proposal](owned-evidence-repair-proposal.md) records the measured remaining import cost and the owner decision required after the three-cycle stop.

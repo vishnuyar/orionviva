@@ -1,7 +1,7 @@
 import { BridgeRefusal, BridgeTimeout, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/contracts";
 import type { BridgeClient, PriorityReadResult } from "../bridge/contracts";
 import { adaptDocumentsPage } from "./adapters/documents";
-import { adaptBulkDocuments } from "./adapters/bulk-documents";
+import { adaptBulkDocuments, adaptImportSession, adaptImportSessions, adaptImportChunk } from "./adapters/bulk-documents";
 import { adaptActivity, adaptActivityActionOutcome } from "./adapters/activity";
 import { adaptAccountLedger } from "./adapters/account-ledger";
 import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
@@ -160,6 +160,28 @@ export function privateJobStream(client: BridgeClient): JobStream | null {
 export function privateDocumentActions(client: BridgeClient): DocumentActions {
   return {
     upload: (path) => acted(client.uploadDocument(path)),
+    ...(client.enqueueDocumentImport && client.listDocumentImports && client.resumeDocumentImport ? {
+      enqueueImport: async (paths: readonly string[]) => {
+        const result = adaptImportSession(await client.enqueueDocumentImport!(paths));
+        if (!result) throw new BridgeUnreadable("viva.documents.upload_many");
+        return result;
+      },
+      listImports: async () => {
+        const result = adaptImportSessions(await client.listDocumentImports!());
+        if (!result) throw new BridgeUnreadable("viva.documents.upload_many");
+        return result;
+      },
+      ...(client.inspectDocumentImport ? { inspectImport: async (sessionId: string) => {
+        const result = adaptImportSession(await client.inspectDocumentImport!(sessionId));
+        if (!result || result.sessionId !== sessionId) throw new BridgeUnreadable("viva.documents.upload_many");
+        return result;
+      } } : {}),
+      resumeImport: async (sessionId: string) => {
+        const result = adaptImportChunk(await client.resumeDocumentImport!(sessionId));
+        if (!result || result.session.sessionId !== sessionId) throw new BridgeUnreadable("viva.documents.upload_many");
+        return result;
+      },
+    } : {}),
     ...(client.readRetainedDocuments ? { readRetained: async (documents: readonly import("./types").RetainedReadingSelection[]) => {
       const result = adaptBulkDocuments(await client.readRetainedDocuments!(documents), documents.length, documents.map((document) => document.documentId));
       if (!result) throw new BridgeUnreadable("viva.documents.upload_many");

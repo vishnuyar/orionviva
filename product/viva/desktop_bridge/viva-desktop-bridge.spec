@@ -234,9 +234,9 @@ analysis = Analysis(
     ],
     binaries=[],
     datas=(
-        collect_data_files("viva", include_py_files=False)
-        + collect_data_files("vivacore", include_py_files=False)
-        + collect_data_files("merchantcore", include_py_files=False)
+        collect_data_files("viva", include_py_files=True)
+        + collect_data_files("vivacore", include_py_files=True)
+        + collect_data_files("merchantcore", include_py_files=True)
         + [(str(source), destination) for source, destination in ADMISSION_SOURCES]
         + [(REVISION_SOURCE, "viva")]
         + [(str(SOURCE_MANIFEST), ".")]

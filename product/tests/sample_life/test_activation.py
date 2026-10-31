@@ -176,3 +176,37 @@ def test_bridge_preparation_status_are_explicit_and_open_refuses_before_ready(mo
     response=call('bridge.open_demo_vault')
     assert not response['ok'] and response['error']['code']=='sample_vault_unopened'
     assert seen==[('prepare',{}),('status',{})] and bridge._vault is None
+
+
+def test_prepared_instance_is_activated_only_after_verified_return(tmp_path, monkeypatch):
+    root = activation._base(tmp_path)
+    instance = root/'sample-vaults'/instances.VERSION/('d'*32)
+    instance.mkdir(mode=0o700, parents=True); root.chmod(0o700)
+    observed = []
+    def restore(base, *, on_instance, prepared):
+        assert prepared is True
+        on_instance(instance)
+        observed.append(activation._pointer(root))
+        return instance, {'state':'ready'}
+    monkeypatch.setattr(activation, 'build_instance', restore)
+    monkeypatch.setattr(activation, '_attempt_instances', {})
+    activation._prepare(root)
+    assert observed == [None]
+    assert activation._pointer(root) == instance
+
+
+def test_failed_prepared_restore_does_not_replace_active_pointer(tmp_path, monkeypatch):
+    root = activation._base(tmp_path)
+    previous = root/'sample-vaults'/instances.VERSION/('e'*32)
+    previous.mkdir(mode=0o700, parents=True); root.chmod(0o700)
+    activation._activate_pointer(root, previous)
+    candidate = previous.with_name('f'*32); candidate.mkdir(mode=0o700)
+    def fail(base, *, on_instance, prepared):
+        on_instance(candidate)
+        raise instances.SampleBuildError('invalid artifact')
+    monkeypatch.setattr(activation, 'build_instance', fail)
+    monkeypatch.setattr(activation, '_attempt_instances', {})
+    monkeypatch.setattr(activation, '_errors', set())
+    activation._prepare(root)
+    assert activation._pointer(root) == previous
+    assert (candidate/'sample-failed.json').exists()

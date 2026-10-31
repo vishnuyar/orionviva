@@ -26,7 +26,7 @@ export type CaptureControls = { state: CaptureActionState; onChoose: (() => void
 // to say what came of it. A source that cannot do it carries none of this.
 export type RescanControls = { state: RescanActionState; onRescan: () => void; onReviewMovement?: (movementId: string) => void };
 export type RetainedReadingControls = { selection: readonly RetainedReadingSelection[]; blocked: boolean; canSelect: (document: SurfaceDocument) => boolean; onAdd: (document: SurfaceDocument) => void; onRemove: (documentId: string) => void; onConfirm: () => void };
-type DocumentsProps = { retained?: RetainedReadingControls; bulk?: BulkDocumentControls; onSourcePageConsumed?: (nonce: number) => void; sourcePageRequest?: { documentId: string; page: number; nonce: number }; paging?: { busy: boolean; notice: string; canPrevious: boolean; retrySelected?: () => void | Promise<void>; first: () => void | Promise<void>; previous: () => void | Promise<void>; next: () => void | Promise<void> }; previewReader?: import("../../surface/types").DocumentPreviewReader; subscribePreviewEnd?: (clear: () => void) => () => void; onOpenReview?: () => void; recoveryJobs?: readonly JobView[]; onRecoverDocument?: (jobId: string) => void; onOpenSettings?: () => void; rescan: RescanControls | null; result: FeatureResult<DocumentsData>; selectedDocument: string; capture: CaptureControls | null; jobStatus?: "available" | "unavailable"; jobCheck?: "idle" | "checking" | "failed" | "succeeded"; onRecheckJobs?: () => void; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void; openingSample?: boolean };
+type DocumentsProps = { importQueue?: { sessions: readonly import("../../surface/types").ImportSessionSummary[]; unavailable: boolean; inspected?: string | null; onInspect?: (sessionId: string) => void; onResume: (sessionId: string) => void }; retained?: RetainedReadingControls; bulk?: BulkDocumentControls; onSourcePageConsumed?: (nonce: number) => void; sourcePageRequest?: { documentId: string; page: number; nonce: number }; paging?: { busy: boolean; notice: string; canPrevious: boolean; retrySelected?: () => void | Promise<void>; first: () => void | Promise<void>; previous: () => void | Promise<void>; next: () => void | Promise<void> }; previewReader?: import("../../surface/types").DocumentPreviewReader; subscribePreviewEnd?: (clear: () => void) => () => void; onOpenReview?: () => void; recoveryJobs?: readonly JobView[]; onRecoverDocument?: (jobId: string) => void; onOpenSettings?: () => void; rescan: RescanControls | null; result: FeatureResult<DocumentsData>; selectedDocument: string; capture: CaptureControls | null; jobStatus?: "available" | "unavailable"; jobCheck?: "idle" | "checking" | "failed" | "succeeded"; onRecheckJobs?: () => void; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void; openingSample?: boolean };
 
 // The one sentence this panel says, and the only place it is said. What the
 // vault answered the last capture with stands until the next capture; where
@@ -188,6 +188,15 @@ function RecoveryButton({ job, working, unavailable, onRecover, removedWhileFocu
   return <button ref={button} type="button" className="secondary-button" aria-label={`Read saved original again — import ${job.jobId}`} aria-describedby={`document-recovery-consent${working ? " document-capture-waiting" : ""}${unavailable ? " document-job-unavailable" : ""}`} aria-disabled={working || unavailable} onClick={() => { if (!working && !unavailable) onRecover(job.jobId); }}>Read saved original again</button>;
 }
 
+function SavedImportButton({ label, blocked, onClick, removedWhileFocused }: { label: string; blocked: boolean; onClick: () => void; removedWhileFocused: { current: boolean } }) {
+  const button = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => () => {
+    const element = button.current;
+    if (element && element.ownerDocument.activeElement === element) removedWhileFocused.current = true;
+  }, [removedWhileFocused]);
+  return <button ref={button} className="secondary-button" type="button" aria-disabled={blocked} onClick={() => { if (!blocked) onClick(); }}>{label}</button>;
+}
+
 // What became of the last capture a person asked for, and the capture control
 // itself, both sit outside the documents read's state gate. A file that was
 // sealed and a read that then failed still says the capture happened, instead
@@ -212,7 +221,7 @@ function RetainedReadingSelectionPanel({ controls }: { controls: RetainedReading
   </section>;
 }
 
-export function Documents({ retained, bulk, onSourcePageConsumed, sourcePageRequest, paging, previewReader, subscribePreviewEnd, onOpenReview, recoveryJobs = [], onRecoverDocument, onOpenSettings, result, selectedDocument, capture, rescan, jobStatus = "available", jobCheck = "idle", onRecheckJobs, onSelectDocument, onOpenEvidence, onExploreSample, openingSample = false }: DocumentsProps) {
+export function Documents({ importQueue, retained, bulk, onSourcePageConsumed, sourcePageRequest, paging, previewReader, subscribePreviewEnd, onOpenReview, recoveryJobs = [], onRecoverDocument, onOpenSettings, result, selectedDocument, capture, rescan, jobStatus = "available", jobCheck = "idle", onRecheckJobs, onSelectDocument, onOpenEvidence, onExploreSample, openingSample = false }: DocumentsProps) {
   const [localPageRequest, setLocalPageRequest] = useState<{ documentId: string; page: number; nonce: number } | null>(null);
   const sourcePageNonce = useRef(0);
   useLayoutEffect(() => { setLocalPageRequest(null); }, [selectedDocument]);
@@ -242,6 +251,14 @@ export function Documents({ retained, bulk, onSourcePageConsumed, sourcePageRequ
     setSelectionAnnouncement(`Selected statement: ${documentRowLabel(selection.document)}. Details are ready.`);
   }, [result, selectedDocument, sourcePageRequest, localPageRequest, rowIntent]);
   const recoveryHeading = useRef<HTMLHeadingElement>(null);
+  const importsHeading = useRef<HTMLHeadingElement>(null);
+  const importFocusRemoved = useRef(false);
+  useLayoutEffect(() => {
+    if (!importFocusRemoved.current) return;
+    importFocusRemoved.current = false;
+    const target = importsHeading.current ?? panel.current;
+    if (target && target.ownerDocument.activeElement === target.ownerDocument.body) target.focus();
+  });
   const removedWhileFocused = useRef(false);
   useLayoutEffect(() => {
     if (!removedWhileFocused.current) return;
@@ -252,12 +269,25 @@ export function Documents({ retained, bulk, onSourcePageConsumed, sourcePageRequ
   const said = capturePresentation(capture ? capture.state : { state: "idle" }, panelSentence(result));
   const captureRegion = capture?.onChoose ? <CapturePanel onOpenSettings={onOpenSettings} state={capture.state} onChoose={capture.onChoose} jobUnavailable={jobStatus === "unavailable"} /> : null;
   const job = capture?.job ?? null;
-  if (result.state === "absent" && !captureRegion && !said && !job && !rescan && jobStatus !== "unavailable" && !recoveryJobs.some((job) => job.recovery)) return null;
+  if (result.state === "absent" && !captureRegion && !said && !job && !rescan && jobStatus !== "unavailable" && !recoveryJobs.some((job) => job.recovery) && !importQueue?.sessions.length && !importQueue?.unavailable) return null;
   return <section ref={panel} tabIndex={-1} aria-label="Statements" className="feature-panel documents-surface">
     <div role={selectionAnnouncement ? "status" : undefined} aria-live="polite" className="visually-hidden">{selectionAnnouncement}</div>
     {captureRegion}
     {retained && (result.state === "ready" || result.state === "partial" || result.state === "needs_input") && result.data.retainedReadingVersion === "retained-reading-v1" ? <RetainedReadingSelectionPanel controls={retained} /> : null}
     {bulk ? <BulkDocumentSelection controls={bulk} unavailable={jobStatus === "unavailable"} /> : null}
+    {importQueue?.unavailable ? <p role="status">Saved import selections could not be checked. Reopen this vault before selecting those documents again.</p> : null}
+    {importQueue?.sessions.length ? <section className="document-job" aria-labelledby="saved-imports-title">
+      <h2 ref={importsHeading} tabIndex={-1} id="saved-imports-title">Saved document selections</h2>
+      <p>Your selected originals are encrypted in this vault. Continue remaining documents with your configured reader; new readings may incur charges. Completed readings are reused. An uncertain request is held for inspection.</p>
+      <ul>{importQueue.sessions.map((entry) => <li key={entry.sessionId}>
+        <strong>{entry.label || "Saved document selection"}</strong>
+        <p>{entry.completed} of {entry.total} finished; {entry.remaining} remaining.</p>
+        {entry.state === "interrupted" ? <p>Interrupted selection: a request may already have completed. Inspect its document results before continuing. An uncertain reading will stay held; it will not be sent again automatically.</p> : <p>Pending originals are saved and ready to continue.</p>}
+        {entry.state === "interrupted" && importQueue.onInspect ? <SavedImportButton label={`Inspect interrupted selection: ${entry.label || "saved documents"}`} blocked={capture?.state.state === "working" || jobStatus === "unavailable"} onClick={() => importQueue.onInspect?.(entry.sessionId)} removedWhileFocused={importFocusRemoved} /> : null}
+        {entry.state !== "interrupted" || importQueue.inspected === entry.sessionId ? <SavedImportButton label={`Continue saved selection: ${entry.label || "saved documents"}`} blocked={capture?.state.state === "working" || jobStatus === "unavailable"} onClick={() => importQueue.onResume(entry.sessionId)} removedWhileFocused={importFocusRemoved} /> : null}
+        {entry.state === "interrupted" && importQueue.inspected === entry.sessionId ? <p>The saved document results are shown in the selection above. Continue checks reusable completed readings and safe pending documents; uncertain requests remain held.</p> : null}
+      </li>)}</ul>
+    </section> : null}
     {recoveryJobs.some((job) => job.recovery) ? <section className="document-job" aria-labelledby="document-recovery-title">
       <h2 ref={recoveryHeading} tabIndex={-1} id="document-recovery-title">Interrupted statements</h2>
       <p id="document-recovery-consent">Reading a saved original uses your configured document reader, may send it to that service, and may incur charges again. Nothing starts until you choose to read it again.</p>

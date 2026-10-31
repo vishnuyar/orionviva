@@ -276,3 +276,12 @@ it("sends explicit new-reading consent and opaque selected confirmations without
  expect(frames[0].payload).toEqual({ retained_documents: [{ document_id: "a".repeat(64), confirmation_token: "opaque.token" }], confirm_reading: true });
  await client.uploadDocuments!(["/ordinary.pdf"]); expect(frames[1].payload).toEqual({ paths: ["/ordinary.pdf"] });
 });
+
+it("loads and inspects saved selections outside the exclusive upload channel", async () => {
+ const frames: BridgeRequest[] = [];
+ const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => { frames.push(frame); return { protocol: "2.0", request_id: frame.requestId, ok: true, result: {} as T }; } });
+ await client.listDocumentImports!();
+ await client.inspectDocumentImport!("a".repeat(32));
+ expect(frames.map((frame) => frame.operation)).toEqual(["viva.documents.imports.read", "viva.documents.imports.read"]);
+ expect(frames.map((frame) => frame.payload)).toEqual([{ list_sessions: true }, { session_id: "a".repeat(32), inspect: true }]);
+});

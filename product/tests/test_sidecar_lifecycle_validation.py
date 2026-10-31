@@ -13,10 +13,18 @@ def fixture_artifacts(tmp_path):
     return baseline, candidate
 
 
-def fake_probe(executable, home, *, create):
-    vault = home / "vault"
+def sample_root(home):
+    return home/'vault/versioned/sample-vaults/five-year-life-v1'/('a'*32)/'vault'
+
+
+def fake_probe(executable, home, *, create, vault_root=None):
+    vault = sample_root(home)
+    if not create: assert vault_root == vault
     if create:
-        vault.mkdir()
+        import json
+        vault.mkdir(parents=True)
+        pointer = home/'vault/versioned/five-year-sample-active.json'
+        pointer.write_text(json.dumps({'version':'five-year-life-v1','instance_id':'a'*32}))
         (vault / "raw").mkdir()
         (vault / "raw" / "document").write_bytes(b"synthetic encrypted original")
         (vault / "events.jsonl").write_bytes(b"synthetic encrypted ledger")
@@ -28,9 +36,9 @@ def fake_probe(executable, home, *, create):
 
 def test_roundtrip_reopens_without_recreating_and_cleans_profile(tmp_path, monkeypatch):
     seen = []
-    def probe(executable, home, *, create):
+    def probe(executable, home, *, create, vault_root=None):
         seen.append((home, create, executable.read_bytes()))
-        return fake_probe(executable, home, create=create)
+        return fake_probe(executable, home, create=create, vault_root=vault_root)
     monkeypatch.setattr(lifecycle, "probe", probe)
     report = lifecycle.validate(*fixture_artifacts(tmp_path), require_distinct=True)
     assert report["mode"] == "distinct-artifact"
@@ -50,13 +58,13 @@ def test_same_bytes_cannot_be_reported_as_version_transition(tmp_path, monkeypat
 @pytest.mark.parametrize("mutation", ["delete-ledger", "change-ledger", "delete-original", "refuse-open"])
 def test_bad_replacement_fails_and_cleans_up(tmp_path, monkeypatch, mutation):
     homes = []
-    def probe(executable, home, *, create):
+    def probe(executable, home, *, create, vault_root=None):
         homes.append(home)
-        revision = fake_probe(executable, home, create=create)
+        revision = fake_probe(executable, home, create=create, vault_root=vault_root)
         if not create:
             if mutation == "refuse-open":
                 raise RuntimeError("refused reopen")
-            path = home / "vault" / ("raw/document" if mutation == "delete-original" else "events.jsonl")
+            path = sample_root(home) / ("raw/document" if mutation == "delete-original" else "events.jsonl")
             if mutation == "change-ledger":
                 path.write_bytes(b"corrupt")
             else:
@@ -72,7 +80,7 @@ def test_removal_cannot_destroy_vault(tmp_path, monkeypatch):
     original = lifecycle.shutil.rmtree
     def destructive_remove(path, *args, **kwargs):
         if Path(path).name == "installation":
-            (Path(path).parent / "profile/vault/events.jsonl").unlink()
+            (sample_root(Path(path).parent / "profile")/"events.jsonl").unlink()
         return original(path, *args, **kwargs)
     monkeypatch.setattr(lifecycle, "probe", fake_probe)
     monkeypatch.setattr(lifecycle.shutil, "rmtree", destructive_remove)
@@ -172,11 +180,15 @@ def test_probe_rejects_failed_or_empty_sample_reads(tmp_path, monkeypatch, data)
     class Replies:
         def __init__(self, *args):
             pass
-        def ask(self, operation, payload=None):
+        def ask(self, operation, payload=None, **kwargs):
             if operation == "bridge.handshake":
                 return {"protocol": "2.1", "revision": "synthetic"}
             if operation == "viva.lifecycle.read":
                 return {"origin": "packaged"}
+            if operation in {"bridge.sample.prepare", "bridge.sample.status"}:
+                return {'state':'ready','sample_version':'five-year-life-v1',
+                        'completed_documents':794,'total_documents':794,'posted_documents':790,
+                        'held_documents':4,'phase':'ready','message':'Prepared.'}
             if operation == "bridge.open_demo_vault":
                 return {"sample": True}
             if payload["surface"] == "overview_accounts":
@@ -200,12 +212,13 @@ def test_queued_events_cannot_extend_response_deadline(monkeypatch):
     session.frames = queue.Queue()
     session.number, session.timeout = 0, 0.01
     for _ in range(20):
-        session.frames.put('{"event":"progress"}')
-    session.frames.put('{"request_id":"lifecycle-1","ok":true,"result":{}}')
+        session.frames.put(json.dumps({'protocol':'2.1','request_id':'lifecycle-1','event':'job.progress',
+                                      'result':{'job_id':'synthetic','status':'progress','completed':0,'total':1}}))
+    session.frames.put('{"protocol":"2.1","request_id":"lifecycle-1","ok":true,"result":{}}')
     original = json.loads
-    def delayed(line):
+    def delayed(line, **kwargs):
         time.sleep(0.002)
-        return original(line)
+        return original(line, **kwargs)
     monkeypatch.setattr(lifecycle.json, "loads", delayed)
     with pytest.raises(RuntimeError, match="timed out"):
         session.ask("bridge.handshake")
@@ -328,3 +341,178 @@ def test_snapshot_uses_portable_names_and_real_file_digests(
                 for name, data in files.items()
                 if not canonical or not name.startswith("read-model/")}
     assert lifecycle.snapshot(root, canonical=canonical) == expected
+
+
+def status_value(state='ready'):
+    complete = 794 if state == 'ready' else 0
+    return dict(state=state, sample_version='five-year-life-v1',
+                completed_documents=complete, total_documents=794,
+                posted_documents=complete, held_documents=0,
+                phase=state if state in {'ready', 'failed'} else 'validating', message='Synthetic status.')
+
+
+def test_preparation_polls_once_under_one_original_deadline(monkeypatch):
+    calls=[]; clock=[0.0]
+    monkeypatch.setattr(lifecycle.time, 'monotonic', lambda:clock[0])
+    monkeypatch.setattr(lifecycle.time, 'sleep', lambda seconds:clock.__setitem__(0, clock[0]+seconds))
+    def ask(operation, *, deadline):
+        calls.append((operation, deadline))
+        return status_value('ready' if len(calls) == 3 else 'preparing')
+    assert lifecycle.prepare_sample(ask, deadline=90)['state'] == 'ready'
+    assert [operation for operation, _ in calls] == ['bridge.sample.prepare','bridge.sample.status','bridge.sample.status']
+    assert {deadline for _, deadline in calls} == {90}
+
+
+@pytest.mark.parametrize('mutation', ['failed','missing','extra','bad-counter','wrong-version','ready-partial'])
+def test_bad_preparation_status_fails_without_retry(mutation):
+    status=status_value()
+    if mutation == 'failed': status=status_value('failed')
+    elif mutation == 'missing': del status['phase']
+    elif mutation == 'extra': status['unknown']=True
+    elif mutation == 'bad-counter': status['completed_documents']=True
+    elif mutation == 'wrong-version': status['sample_version']='foreign'
+    else: status['completed_documents']=status['posted_documents']=1
+    calls=[]
+    def ask(operation, *, deadline):
+        calls.append(operation);return status
+    import time
+    with pytest.raises(RuntimeError): lifecycle.prepare_sample(ask, deadline=time.monotonic()+90)
+    assert calls == ['bridge.sample.prepare']
+
+
+def test_a_poll_cannot_restart_the_overall_preparation_deadline(monkeypatch):
+    clock=[0.0];calls=[]
+    monkeypatch.setattr(lifecycle.time,'monotonic',lambda:clock[0])
+    monkeypatch.setattr(lifecycle.time,'sleep',lambda seconds:None)
+    def ask(operation, *, deadline):
+        calls.append((operation,deadline));clock[0]+=46
+        return status_value('preparing')
+    with pytest.raises(RuntimeError,match='timed out'):
+        lifecycle.prepare_sample(ask,deadline=90)
+    assert len(calls)==2 and {deadline for _,deadline in calls}=={90}
+
+
+@pytest.mark.parametrize('mutation', ['extra','traversal','wrong-version','duplicate','oversize',
+                                     'pointer-link','version-link','vault-link','missing-vault'])
+def test_pointer_and_selected_root_fail_closed(tmp_path, mutation):
+    import json
+    home=tmp_path/'home';home.mkdir()
+    fake_probe(None,home,create=True)
+    pointer=home/'vault/versioned/five-year-sample-active.json'
+    original=pointer.read_bytes();root=sample_root(home)
+    if mutation == 'extra': pointer.write_text(json.dumps(dict(version='five-year-life-v1',instance_id='a'*32,extra=True)))
+    elif mutation == 'traversal': pointer.write_text(json.dumps(dict(version='five-year-life-v1',instance_id='../foreign')))
+    elif mutation == 'wrong-version': pointer.write_text(json.dumps(dict(version='foreign',instance_id='a'*32)))
+    elif mutation == 'duplicate': pointer.write_text('{"version":"five-year-life-v1","version":"five-year-life-v1","instance_id":"'+'a'*32+'"}')
+    elif mutation == 'oversize': pointer.write_bytes(b' '*513)
+    elif mutation == 'pointer-link':
+        copy=tmp_path/'foreign-pointer';copy.write_bytes(original);pointer.unlink();pointer.symlink_to(copy)
+    elif mutation == 'version-link':
+        version=root.parent.parent;foreign=tmp_path/'foreign-version';version.rename(foreign);version.symlink_to(foreign,target_is_directory=True)
+    elif mutation == 'vault-link':
+        foreign=tmp_path/'foreign-vault';root.rename(foreign);root.symlink_to(foreign,target_is_directory=True)
+    else:
+        lifecycle.shutil.rmtree(root)
+    with pytest.raises((RuntimeError,ValueError,OSError)): lifecycle.resolve_sample_root(home)
+
+
+def test_lifecycle_binds_initial_pointer_once_even_when_a_later_pointer_changes(tmp_path, monkeypatch):
+    roots=[];resolves=[]
+    original=lifecycle.resolve_sample_root
+    def resolve(home):
+        resolves.append(home);return original(home)
+    def probe(executable,home,*,create,vault_root=None):
+        result=fake_probe(executable,home,create=create,vault_root=vault_root)
+        roots.append(vault_root)
+        if not create:
+            pointer=home/'vault/versioned/five-year-sample-active.json'
+            pointer.write_text('{"version":"five-year-life-v1","instance_id":"'+'b'*32+'"}')
+        return result
+    monkeypatch.setattr(lifecycle,'resolve_sample_root',resolve)
+    monkeypatch.setattr(lifecycle,'probe',probe)
+    lifecycle.validate(*fixture_artifacts(tmp_path))
+    assert len(resolves)==1
+    assert roots[0] is None and len(set(roots[1:]))==1 and roots[1]==sample_root(resolves[0])
+
+
+def test_enclosing_deadline_bounds_a_single_blocking_reply(tmp_path, monkeypatch):
+    import subprocess,sys,time
+    original=subprocess.Popen
+    def launch(command,**kwargs):
+        return original([sys.executable,'-c','import sys,time;sys.stdin.readline();time.sleep(30)'],**kwargs)
+    monkeypatch.setattr(lifecycle.subprocess,'Popen',launch)
+    session=lifecycle.Session(tmp_path/'fake',tmp_path,timeout=90)
+    started=time.monotonic()
+    try:
+        with pytest.raises(RuntimeError,match='timed out'):
+            session.ask('bridge.handshake',deadline=started+0.03)
+        assert time.monotonic()-started<1
+    finally:
+        session.process.kill()
+        with pytest.raises(RuntimeError,match='exit cleanly'):session.close()
+
+
+@pytest.mark.parametrize('change',['wrong-request','wrong-protocol','malformed-progress','unknown-event','wrong-result','non-object'])
+def test_only_correlated_well_formed_frames_are_accepted(change):
+    import io,json,queue
+    from types import SimpleNamespace
+    session=lifecycle.Session.__new__(lifecycle.Session)
+    session.process=SimpleNamespace(stdin=io.StringIO());session.frames=queue.Queue()
+    session.number=0;session.timeout=1
+    frame={'protocol':'2.1','request_id':'lifecycle-1','ok':True,'result':{}}
+    if change=='wrong-request':frame['request_id']='foreign'
+    elif change=='wrong-protocol':frame['protocol']='foreign'
+    elif change=='wrong-result':frame['result']=[]
+    elif change=='non-object':frame=[]
+    else:
+        frame={'protocol':'2.1','request_id':'lifecycle-1','event':'job.progress' if change=='malformed-progress' else 'unknown', 'result':{}}
+    session.frames.put(json.dumps(frame))
+    with pytest.raises(RuntimeError):session.ask('bridge.handshake')
+
+
+def test_multibyte_frame_cannot_bypass_the_byte_bound(monkeypatch):
+    import io,queue
+    from types import SimpleNamespace
+    session=lifecycle.Session.__new__(lifecycle.Session)
+    session.process=SimpleNamespace(stdout=io.StringIO('ééé\n'))
+    session.frames=queue.Queue();session.reader_error=None
+    monkeypatch.setattr(lifecycle,'MAX_FRAME_BYTES',4)
+    session._read()
+    assert isinstance(session.reader_error,RuntimeError)
+    assert 'oversized' in str(session.reader_error)
+    assert session.frames.get_nowait() is None
+
+
+def test_blocked_stdin_write_respects_enclosing_deadline_and_stops_only_owned_child(tmp_path, monkeypatch):
+    import subprocess,sys,time
+    original=subprocess.Popen
+    def launch(command,**kwargs):
+        return original([sys.executable,'-c','import time;time.sleep(30)'],**kwargs)
+    monkeypatch.setattr(lifecycle.subprocess,'Popen',launch)
+    session=lifecycle.Session(tmp_path/'fake',tmp_path,timeout=90)
+    started=time.monotonic()
+    with pytest.raises(RuntimeError,match='timed out writing'):
+        session.ask('bridge.handshake',{'synthetic':'x'*1_000_000},deadline=started+0.05)
+    assert time.monotonic()-started<2
+    with pytest.raises(RuntimeError,match='exit cleanly'):session.close()
+    assert session.process.poll() is not None
+
+
+def test_duplicate_frame_fields_are_rejected():
+    import io,queue
+    from types import SimpleNamespace
+    session=lifecycle.Session.__new__(lifecycle.Session)
+    session.process=SimpleNamespace(stdin=io.StringIO());session.frames=queue.Queue()
+    session.number=0;session.timeout=1
+    session.frames.put('{"protocol":"foreign","protocol":"2.1","request_id":"lifecycle-1","ok":true,"result":{}}')
+    with pytest.raises(RuntimeError,match='duplicate'):session.ask('bridge.handshake')
+
+
+def test_canonical_snapshot_rejects_a_linked_raw_root(tmp_path):
+    root=tmp_path/'vault';root.mkdir()
+    (root/'events.jsonl').write_bytes(b'synthetic canonical ledger')
+    (root/'events.jsonl.head').write_bytes(b'synthetic canonical head')
+    foreign=tmp_path/'foreign';foreign.mkdir()
+    (foreign/'raw-header.json').write_bytes(b'synthetic header')
+    (root/'raw').symlink_to(foreign,target_is_directory=True)
+    with pytest.raises(RuntimeError,match='ordinary'):lifecycle.snapshot(root,canonical=True)

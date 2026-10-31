@@ -9,6 +9,8 @@ from types import MappingProxyType
 VERSION = 'five-year-life-v1'
 MANIFEST_SHA256 = '97a92df2512beb4938c498d7f1b43d20d4e3800cc38e9ce83012dda252f46800'
 READINGS_SHA256 = 'dbd302f394113ecb66c730a6d4bb40636897ba40cb9c3e4345084fb215fe1eab'
+# Pinned prepared artifact metadata; regenerated only by the sample build tool.
+SNAPSHOT_MANIFEST_SHA256 = 'unbuilt'
 MAX_RESOURCE_BYTES = 8000000
 
 class SampleResourceError(ValueError):

@@ -119,10 +119,10 @@ _FIXED_WIRE_VERSION_SITES = {'ingest/paystub.py': {'sha256': '90cd4887b8d61fc1de
  'retirement_funding/payroll_v2.py': {'sha256': '9ce976307ea4eac6f3e2889a815e24b6a9e926c722e1e903bca3c66877e4b820',
                                       'sites': [(24, 26, 'payroll-source-v2'),
                                                 (34, 103, 'payroll-source-v2')]},
- 'retirement_funding/population.py': {'sha256': 'ed10c1c1e44d9794a1a804b54a939b474fe0f1517bd676257427048272fd3b0b',
-                                      'sites': [(93, 28, 'payroll-source-v2'),
-                                                (28, 27, 'payroll-source-v2'),
-                                                (24, 53, 'payroll-source-v2')]}}
+ 'retirement_funding/population.py': {'sha256': 'ee517557848e42575c085245aedf452f2fd027d9233e796d9d96e306827363aa',
+                                      'sites': [(92, 28, 'payroll-source-v2'),
+                                                (27, 27, 'payroll-source-v2'),
+                                                (23, 53, 'payroll-source-v2')]}}
 
 
 def _literal_version_offenders(root,declared):
@@ -506,3 +506,22 @@ def test_registry_fixed_wire_exception_rejects_new_literal_or_moved_site(tmp_pat
                else '\n' + original)
     target.write_text(changed)
     assert _literal_version_offenders(tmp_path, {'payroll-source-v2'})
+
+
+@pytest.mark.parametrize('mutation', ['changed-source', 'added-literal', 'moved-site'])
+def test_population_fixed_wire_exception_rejects_any_unreviewed_change(tmp_path, mutation):
+    target=tmp_path/'retirement_funding/population.py'
+    target.parent.mkdir(parents=True)
+    original=(PACKAGE/'retirement_funding/population.py').read_text()
+    target.write_text(original)
+    assert _literal_version_offenders(tmp_path,{'payroll-source-v2'})==[]
+    if mutation=='changed-source':
+        changed=original+'\n# unreviewed source bytes\n'
+    elif mutation=='added-literal':
+        changed=original+"\nextra = 'payroll-source-v2'\n"
+    else:
+        changed='\n'+original
+    target.write_text(changed)
+    offenders=_literal_version_offenders(tmp_path,{'payroll-source-v2'})
+    assert len(offenders)==(4 if mutation=='added-literal' else 3)
+    assert all('retirement_funding/population.py:' in offender for offender in offenders)

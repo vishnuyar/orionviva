@@ -65,6 +65,13 @@ def main() -> int:
         if not target:
             fail("rustc did not report a host target triple")
 
+    # A source change cannot silently ship an artifact built by different code.
+    sys.path[:0] = [str(PRODUCT), str(ROOT/'core'), str(ROOT/'merchant')]
+    from viva.sample.snapshot import _metadata
+    from importlib.resources import files
+    from viva.sample.resources import VERSION
+    _metadata(files('viva').joinpath('sample_snapshots', VERSION))
+
     pyinstaller = [sys.executable, "-m", "PyInstaller"]
     check = subprocess.run(
         [*pyinstaller, "--version"], cwd=PRODUCT, capture_output=True, text=True, check=False

@@ -1,11 +1,10 @@
 """Canonical ruling input stays unchanged while its projected view keeps history."""
 import copy
 import json
-import threading
-from types import SimpleNamespace
 
 import pytest
 
+from viva.ledger import Ledger
 from viva.ledger.events import (Event, Provenance, VERIFIED, UNVERIFIED,
     account_opened, ruling_recorded)
 from viva.ledger.projection import LedgerProjection
@@ -117,17 +116,7 @@ def payroll_facts():
     return facts
 
 
-class MemoryStore:
-    """Only new additions are serialized; existing committed wire is unchanged."""
-    def __init__(self,rows):self.rows=wire(rows)
-    def append_atomically(self,decide):
-        additions=tuple(decide(replay(self.rows)))
-        self.rows.extend(wire(event.to_dict()) for event in additions)
-        return additions
-    def _cached_identity(self):return ('public-memory',len(self.rows))
-
-
-def admitted_payroll(variant):
+def admitted_payroll(tmp_path,monkeypatch,variant):
     facts = payroll_facts()
     account = account_opened('public-checking','depository','Public checking','USD','2021-01-01')
     net = simple_transaction('public-checking','80.00','Public payroll deposit',WHEN,
@@ -142,17 +131,28 @@ def admitted_payroll(variant):
         events.append(ruling)
     events.append(decomposition)
     original=wire([event.to_dict() for event in events])
-    store=MemoryStore(original)
-    ledger=SimpleNamespace(store=store,_lock=threading.RLock(),_resolve_keys=None)
+    ledger=Ledger.open(tmp_path/'canonical-payroll.jsonl','public-test-passphrase')
+    ledger.append_many(replay(original))
+    assert [event.to_dict() for event in ledger.events()]==original
+    actual=ledger.append_atomically
+    decisions=[]
+    def observed(decide):
+        def checked(projection):
+            assert isinstance(projection,LedgerProjection)
+            decisions.append(wire([event.to_dict() for event in projection._source_events]))
+            return decide(projection)
+        return actual(checked)
+    monkeypatch.setattr(ledger,'append_atomically',observed)
     assert len(append_source(ledger,facts))==1
-    return store,original
+    assert decisions==[original]
+    return wire([event.to_dict() for event in ledger.events()]),original
 
 
 @pytest.mark.parametrize('variant',['no-ruling','missing-date','already-dated'])
-def test_payroll_append_proof_matches_pristine_committed_replay(variant):
-    store,original=admitted_payroll(variant)
-    assert store.rows[:-1]==original
-    pristine=replay(store.rows)
+def test_payroll_append_proof_matches_pristine_committed_replay(tmp_path,monkeypatch,variant):
+    rows,original=admitted_payroll(tmp_path,monkeypatch,variant)
+    assert rows[:-1]==original
+    pristine=replay(rows)
     assert pristine[-1].body['prefix']==encode(prefix(pristine[:-1]))
     assert len(_records(pristine))==1
     for _ in range(2):
@@ -161,9 +161,9 @@ def test_payroll_append_proof_matches_pristine_committed_replay(variant):
         assert len(_records(pristine))==1
 
 
-def test_wrong_committed_prefix_still_refuses():
-    store,_original=admitted_payroll('no-ruling')
-    changed=copy.deepcopy(store.rows)
+def test_wrong_committed_prefix_still_refuses(tmp_path,monkeypatch):
+    rows,_original=admitted_payroll(tmp_path,monkeypatch,'no-ruling')
+    changed=copy.deepcopy(rows)
     changed[-1]['body']['prefix']['prefix_digest']='0'*64
     with pytest.raises(EvidenceError,match='payroll source committed prefix differs'):
         _records(replay(changed))

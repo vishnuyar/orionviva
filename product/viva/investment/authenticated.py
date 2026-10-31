@@ -4,6 +4,7 @@ The extra authenticated snapshot scan is explicit and needs final review/timing;
 no raw event mirror or alternate cryptographic identity is persisted.
 """
 from viva.ledger.events import Event
+from viva.ledger.work_cache import publication_memo_scope
 from .contracts import EvidenceError
 from .events import LockedEventPrefix
 from .sql import materialize,read_sql
@@ -21,9 +22,10 @@ def synchronize(read_store,event_store,resolve_reference=None,*,fail_at=None):
   captured=snapshot.events[entry.sequence]
   if captured.event_id!=entry.event_id or captured.record_hash!=entry.record_hash:raise EvidenceError('authenticated captured prefix differs')
   if entry.sequence!=len(snapshot.events)-1:return
-  materialize(connection,events,resolve_reference)
-  connection.execute('CREATE TABLE IF NOT EXISTS investment_evidence_authenticated_source(singleton INTEGER PRIMARY KEY CHECK(singleton=1),source_count INTEGER NOT NULL,source_head TEXT NOT NULL)')
-  connection.execute('INSERT OR REPLACE INTO investment_evidence_authenticated_source VALUES(1,?,?)',(snapshot.identity.count,snapshot.identity.head_hash))
+  with publication_memo_scope():
+   materialize(connection,events,resolve_reference)
+   connection.execute('CREATE TABLE IF NOT EXISTS investment_evidence_authenticated_source(singleton INTEGER PRIMARY KEY CHECK(singleton=1),source_count INTEGER NOT NULL,source_head TEXT NOT NULL)')
+   connection.execute('INSERT OR REPLACE INTO investment_evidence_authenticated_source VALUES(1,?,?)',(snapshot.identity.count,snapshot.identity.head_hash))
  return read_store.synchronize(event_store,apply_event=project,projector_version=PROJECTOR,fail_at=fail_at)
 
 def read(read_store,revision,request,*,deadline=None):
@@ -41,6 +43,7 @@ def materialize_authenticated_snapshot(connection,snapshot):
  """Publish source projections in the native authenticated generation transaction."""
  events=tuple(Event.from_dict(entry.event.to_dict()) for entry in snapshot.events)
  from .funding import resolver
- materialize(connection,events,resolver(events))
- connection.execute('CREATE TABLE IF NOT EXISTS investment_evidence_authenticated_source(singleton INTEGER PRIMARY KEY CHECK(singleton=1),source_count INTEGER NOT NULL,source_head TEXT NOT NULL)')
- connection.execute('INSERT OR REPLACE INTO investment_evidence_authenticated_source VALUES(1,?,?)',(snapshot.identity.count,snapshot.identity.head_hash))
+ with publication_memo_scope():
+  materialize(connection,events,resolver(events))
+  connection.execute('CREATE TABLE IF NOT EXISTS investment_evidence_authenticated_source(singleton INTEGER PRIMARY KEY CHECK(singleton=1),source_count INTEGER NOT NULL,source_head TEXT NOT NULL)')
+  connection.execute('INSERT OR REPLACE INTO investment_evidence_authenticated_source VALUES(1,?,?)',(snapshot.identity.count,snapshot.identity.head_hash))

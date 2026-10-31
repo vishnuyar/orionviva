@@ -67,7 +67,7 @@ def _sidecar_analysis_data(monkeypatch, tmp_path, spec_path=SIDECAR_SPEC):
     hooks = ModuleType("PyInstaller.utils.hooks")
 
     def collect(package, *, include_py_files):
-        assert include_py_files is False
+        assert include_py_files is True
         return [(str(tmp_path / f"{package}.asset"), package)]
 
     hooks.collect_data_files = collect

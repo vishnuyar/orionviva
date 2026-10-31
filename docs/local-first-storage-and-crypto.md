@@ -98,6 +98,26 @@ platform permission status, and secure-deletion limits live with the active
 implementation checklist in
 [encrypted-read-store-implementation-todo.md](encrypted-read-store-implementation-todo.md).
 
+Canonical operations still authenticate the complete physical event chain.
+The ledger can reuse decrypted bodies and advance a privately owned financial
+fold after that authentication; callers receive detached views rather than the
+state used for later write decisions. Uncertain or invalid state discards reuse.
+This changes repeated computation, not the canonical authority or its checks.
+
+Document imports defer SQL publication to a document or bounded selection-group
+boundary. Canonical commits remain durable independently; publication exposes
+one coherent revision, and failed publication leaves an explicit stale or
+degraded read state for recovery. Pending documents do not contribute financial
+coverage merely because their originals were saved.
+
+Saved document selections and completed extraction checkpoints use authenticated
+encrypted files under the vault, with domain-separated keys. They retain source
+paths only until capture and bind completed readings to their exact canonical
+audit and extraction contract. These files support explicit continuation; they
+are derived operational state, never financial authority. See
+[document continuation](jobs-and-the-progress-channel.md#document-continuation-and-partial-results)
+and the [current implementation evidence](import-performance-plan.md).
+
 Local-first does not mean single-device forever. Designing storage as an encrypted log plus encrypted blobs keeps every sync option open — file-level sync, the user's own cloud drive, or nothing — without baking in an assumption that storage is ever plaintext.
 
 ## Open

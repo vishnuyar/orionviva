@@ -28,3 +28,24 @@ it("binds retained terminal outcomes to their selected ordinal and stable identi
  expect(adaptBulkDocuments({ ...raw, rows: [{ ...raw.rows[0], document_id: null }] }, 1, [id])).toBeNull();
  expect(adaptBulkDocuments(raw, 1, [])).toBeNull();
 });
+
+import { adaptImportSession, adaptImportSessions, adaptImportChunk } from "./bulk-documents";
+const queued = { session_id: "a".repeat(32), total: 1, completed: 0, remaining: 1, state: "pending", rows: [{ ordinal: 0, document_id: "b".repeat(64), filename: "synthetic.pdf", status: "pending", outcome: null }] };
+it("accepts a bounded queue snapshot and rejects mismatched outcome identities", () => {
+  expect(adaptImportSession(queued)?.rows[0].status).toBe("queued");
+  expect(adaptImportSession({ ...queued, rows: [{ ...queued.rows[0], outcome: { ...row, document_id: "c".repeat(64) } }] })).toBeNull();
+  expect(adaptImportSessions({ sessions: [queued, queued] })).toBeNull();
+  expect(adaptImportChunk({ job_id: "saved", rows: [row], session: queued })?.session.sessionId).toBe(queued.session_id);
+  expect(adaptImportSession({ ...queued, total: 2 })).toBeNull();
+});
+
+it("shows retained running rows as uncertain after interruption rather than active workers", () => {
+  const result = adaptImportSession({ ...queued, state: "interrupted", rows: [{ ...queued.rows[0], status: "running" }] });
+  expect(result?.rows[0].status).toBe("uncertain");
+});
+
+it.each(["total", "completed", "remaining"] as const)("rejects non-integer queue count %s without coercion", (field) => {
+  for (const value of ["1", true, null, 0.5, Infinity, NaN]) {
+    expect(adaptImportSession({ ...queued, [field]: value })).toBeNull();
+  }
+});

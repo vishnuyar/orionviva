@@ -98,7 +98,7 @@ def test_any_ledger_event_or_settling_receipt_refuses_without_reader(tmp_path, m
     assert len(list(vault.ledger.events())) == count
 
 
-@pytest.mark.parametrize("after", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("after", [1])
 def test_interruptions_during_post_are_never_replayed(tmp_path, monkeypatch, after):
     vault, jobs = setup(tmp_path, monkeypatch)
     source = tmp_path / "file.pdf"
@@ -122,6 +122,100 @@ def test_interruptions_during_post_are_never_replayed(tmp_path, monkeypatch, aft
     count = len(list(vault.ledger.events()))
     assert recover(vault, jobs, original.job_id)["reason"] == "recovery_unavailable"
     assert len(list(vault.ledger.events())) == count
+
+
+@pytest.mark.parametrize("fault", ["staged-first", "staged-third", "partial-durable", "committed-reply-lost"])
+def test_atomic_settlement_interruptions_never_retry_or_duplicate(tmp_path, monkeypatch, fault):
+    from importlib import import_module
+    from viva.ledger.ledger import _StagedLedger
+    vault,jobs=setup(tmp_path,monkeypatch)
+    source=tmp_path/"atomic.pdf"
+    source.write_bytes(DATA)
+    reads=[]
+    def counted(data,doc_id):
+        from dataclasses import replace
+        reads.append(doc_id)
+        return replace(reader(data,doc_id),model="synthetic-offline-reader",
+                       prompt_version="test",input_mode="text",raw_text="synthetic parsed statement")
+    monkeypatch.setattr("viva.ingest.reader.build_reader",lambda:(counted,True))
+    injected=[]
+    with monkeypatch.context() as patch:
+        if fault.startswith("staged"):
+            actual=_StagedLedger.append_many
+            calls=[]
+            def apply_then_interrupt(staged,events):
+                before=len(staged)
+                actual(staged,events)
+                calls.append(len(staged)-before)
+                if len(calls)==(1 if fault=="staged-first" else 3):
+                    assert sum(calls)>0
+                    injected.append("real staged effects applied")
+                    raise SystemExit("synthetic staged interruption")
+            patch.setattr(_StagedLedger,"append_many",apply_then_interrupt)
+            expected=SystemExit
+        else:
+            store=import_module("viva.ledger.store")
+            append=vault.ledger.store.append_atomically
+            financial_batch=False
+            def observe(decide):
+                nonlocal financial_batch
+                def chosen(events):
+                    nonlocal financial_batch
+                    additions=tuple(decide(events))
+                    financial_batch=any(event.event_type=="TransactionRecorded" for event in additions)
+                    return additions
+                try:return append(chosen)
+                finally:
+                    financial_batch=False
+            patch.setattr(vault.ledger.store,"append_atomically",observe)
+            if fault=="partial-durable":
+                actual=store._write_batch
+                def write_partial(stream,content):
+                    if financial_batch:
+                        fragment=content[:len(content)//2]
+                        assert fragment
+                        actual(stream,fragment)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                        injected.append("partial batch durably written")
+                        raise OSError("synthetic partial durable write")
+                    return actual(stream,content)
+                patch.setattr(store,"_write_batch",write_partial)
+            else:
+                actual=store.write_head
+                def commit_then_interrupt(*args,**kwargs):
+                    actual(*args,**kwargs)
+                    if financial_batch:
+                        injected.append("authenticated commit written")
+                        raise OSError("synthetic committed reply lost")
+                patch.setattr(store,"write_head",commit_then_interrupt)
+            expected=OSError
+        with pytest.raises(expected):
+            DocumentActions(vault,jobs).upload({"path":str(source)})
+    assert len(injected)==1
+    assert reads==[vault.raw.fingerprint(DATA)]
+    original=jobs.records()[0]
+    assert original.recovery_stage=="settling"
+    snapshot=[event.to_dict() for event in vault.ledger.events()]
+    audit={"DocumentCaptured","ReadRecorded","ModelExtractionResponseRecorded"}
+    assert any(event["event_type"]=="DocumentCaptured" for event in snapshot)
+    assert any(event["event_type"]=="ReadRecorded" and event["body"]["parse_ok"] for event in snapshot)
+    financial=[event for event in snapshot if event["event_type"] not in audit]
+    if fault=="committed-reply-lost":
+        assert sum(event["event_type"]=="TransactionRecorded" for event in financial)==1
+    else:
+        assert financial==[]
+    assert vault.raw.get(vault.raw.fingerprint(DATA))==DATA
+    vault.close()
+    vault=Vault.open(tmp_path/"vault","synthetic phrase")
+    jobs=JobRegistry(state_file=vault.directory/".jobs.json")
+    assert [event.to_dict() for event in vault.ledger.events()]==snapshot
+    monkeypatch.setattr("viva.ingest.reader.build_reader",lambda:pytest.fail("unsafe automatic reread"))
+    for _ in range(2):
+        assert recover(vault,jobs,original.job_id)["reason"]=="recovery_unavailable"
+        assert [event.to_dict() for event in vault.ledger.events()]==snapshot
+    assert len(reads)==1
+    vault.close()
 
 
 def test_cancel_request_survives_restart_and_cannot_recover(tmp_path, monkeypatch):

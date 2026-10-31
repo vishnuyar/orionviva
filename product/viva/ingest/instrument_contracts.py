@@ -9,6 +9,8 @@ from dataclasses import dataclass, fields
 from datetime import date
 from decimal import Decimal
 from enum import Enum
+from functools import lru_cache
+from types import MappingProxyType
 import types
 from typing import Union, get_args, get_origin, get_type_hints
 
@@ -29,12 +31,17 @@ def _matches_type(value, annotation):
     return type(value) is annotation
 
 
+@lru_cache(maxsize=None)
+def _closed_fields(target):
+    return fields(target), MappingProxyType(get_type_hints(target))
+
+
 class ClosedFact:
     """Enforce the same immutable field contract at every constructor boundary."""
 
     def __post_init__(self):
-        annotations = get_type_hints(type(self))
-        for field in fields(self):
+        declared, annotations = _closed_fields(type(self))
+        for field in declared:
             if not _matches_type(getattr(self, field.name), annotations[field.name]):
                 raise ContractError(f"{type(self).__name__}.{field.name} has the wrong closed type: {annotations[field.name]}")
 

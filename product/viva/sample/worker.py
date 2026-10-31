@@ -25,7 +25,7 @@ def _instance(request):
     from .resources import VERSION
 
     if (type(request) is not dict or set(request) != {'operation', 'instance'}
-            or request['operation'] not in ('build', 'reopen')
+            or request['operation'] not in ('build', 'restore', 'reopen')
             or type(request['instance']) is not str):
         raise SampleBuildError('invalid sample worker request')
     path = Path(request['instance'])
@@ -68,8 +68,8 @@ def run_request(encoded):
         'MERCHANTCORE_HOME':str(instance/'learned'), 'VIVA_PROFILES':str(instance/'learned/profiles'),
         'VIVA_CATALOG':str(instance/'learned/catalog.json'), 'VIVA_ENV_FILE':str(instance/'empty.env'),
         'LANG':'en_US.UTF-8', 'TMPDIR':str(instance/'tmp')})
-    from .instances import _worker, _reopen_worker
-    return (_worker if request['operation'] == 'build' else _reopen_worker)(instance)
+    from .instances import _worker, _restore_worker, _reopen_worker
+    return {'build':_worker, 'restore':_restore_worker, 'reopen':_reopen_worker}[request['operation']](instance)
 
 
 def main():

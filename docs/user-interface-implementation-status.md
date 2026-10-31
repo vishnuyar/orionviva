@@ -249,6 +249,7 @@ name. The destination shown to people is **Transactions**.
 | `viva.conversation.confirm` | yes | opened vault | yes |
 | `viva.conversation.decline` | yes | opened vault | yes |
 | `viva.documents.cancel` | yes | opened vault | yes |
+| `viva.documents.imports.read` | yes | opened vault | yes |
 | `viva.documents.preview.read` | yes | opened vault | yes |
 | `viva.documents.recover` | yes | opened vault | yes |
 | `viva.documents.rescan` | yes | opened vault | yes |

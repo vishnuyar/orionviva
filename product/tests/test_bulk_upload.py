@@ -97,15 +97,19 @@ def test_later_retry_failure_keeps_original_attempt_without_fallback():
 
 def test_three_models_overlap_all_phase_acks_precede_any_post(setup_bulk,monkeypatch):
     sample=setup_bulk;sample.configure(barrier=Barrier(3))
-    real=sample.vault.ledger.append;posted=[]
-    def append(event):
-        if event.event_type=='TransactionRecorded':
-            receipts=[e for e in sample.vault.ledger.events() if e.event_type=='ReadRecorded']
-            assert len(receipts)==6
-            assert all(adapter.calls==2 for adapter in sample.adapters)
-            posted.append(event)
-        return real(event)
-    monkeypatch.setattr(sample.vault.ledger,'append',append)
+    real=sample.vault.ledger.store.append_atomically;posted=[]
+    def append(decide):
+        def checked(current):
+            chosen=tuple(decide(current))
+            financial=[event for event in chosen if event.event_type=='TransactionRecorded']
+            if financial:
+                receipts=[event for event in current if event.event_type=='ReadRecorded']
+                assert len(receipts)==6
+                assert all(adapter.calls==2 for adapter in sample.adapters)
+                posted.extend(financial)
+            return chosen
+        return real(checked)
+    monkeypatch.setattr(sample.vault.ledger.store,'append_atomically',append)
     result=BulkDocuments(sample.vault,JobRegistry()).run({'paths':sample.paths})
     assert [row['ordinal'] for row in result['rows']]==[0,1,2]
     assert all(row['action']=='posted' for row in result['rows']),result

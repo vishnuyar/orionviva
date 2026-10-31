@@ -916,6 +916,7 @@ fn is_read(operation: &str) -> bool {
         "bridge.handshake"
             | "viva.surface.read"
             | "viva.documents.preview.read"
+            | "viva.documents.imports.read"
             | "viva.surface.capabilities"
             | "viva.lifecycle.read"
             | "viva.settings.read"
@@ -2293,6 +2294,15 @@ mod tests {
             operation,
             Some(&ActiveVault::Sample)
         ));
+        assert_eq!(deadline_policy(operation).cap, Duration::from_secs(15));
+    }
+
+    #[test]
+    fn import_status_is_read_only_and_does_not_acquire_a_long_job_deadline() {
+        let operation = Some("viva.documents.imports.read");
+        assert!(!operation_may_have_written(operation));
+        assert!(!operation_can_reopen_vault_and_replay(operation));
+        assert!(!super::is_long_job(operation.unwrap()));
         assert_eq!(deadline_policy(operation).cap, Duration::from_secs(15));
     }
 

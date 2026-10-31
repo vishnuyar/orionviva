@@ -129,14 +129,18 @@ def test_three_retained_workers_admit_one_prefix_overlap_then_serial_settle(setu
     sample=setup_bulk;docs=[capture(sample,i) for i in range(3)]
     choices=[{'document_id':doc,'confirmation_token':selected(sample,doc,monkeypatch)['confirmation_token']} for doc in docs]
     calls=actual_http(monkeypatch,barrier=Barrier(3))
-    real=sample.vault.ledger.append;settlements=[]
-    def append(event):
-        if event.event_type=='TransactionRecorded':
-            assert len(calls)==6
-            assert len([e for e in sample.vault.ledger.events() if e.event_type=='ReadRecorded'])==6
-            settlements.append(event)
-        return real(event)
-    monkeypatch.setattr(sample.vault.ledger,'append',append)
+    real=sample.vault.ledger.store.append_atomically;settlements=[]
+    def append(decide):
+        def checked(current):
+            chosen=tuple(decide(current))
+            financial=[event for event in chosen if event.event_type=='TransactionRecorded']
+            if financial:
+                assert len(calls)==6
+                assert len([event for event in current if event.event_type=='ReadRecorded'])==6
+                settlements.extend(financial)
+            return chosen
+        return real(checked)
+    monkeypatch.setattr(sample.vault.ledger.store,'append_atomically',append)
     result=BulkDocuments(sample.vault,JobRegistry()).run({'retained_documents':choices,'confirm_reading':True})
     assert [row['ordinal'] for row in result['rows']]==[0,1,2]
     assert [row['document_id'] for row in result['rows']]==docs

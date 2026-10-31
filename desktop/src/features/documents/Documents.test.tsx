@@ -575,3 +575,27 @@ describe("saved original new-reading confirmation", () => {
   expect(view.getByRole("heading", { name: "Select saved originals for a new reading" })).toHaveFocus();
  });
 });
+
+it("discloses interrupted selections and shows filename identity before explicit continuation", () => {
+  const entry = { sessionId: "a".repeat(32), label: "synthetic-quarter.pdf", total: 4, completed: 1, remaining: 3, state: "interrupted" as const };
+  const onInspect = vi.fn(), onResume = vi.fn();
+  const props = { result: ready([]), selectedDocument: "", capture: idle(), rescan: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+  const view = render(<Documents {...props} importQueue={{ sessions: [entry], unavailable: false, onInspect, onResume }} />);
+  expect(view.getByText("synthetic-quarter.pdf")).toBeVisible();
+  expect(view.getByText(/Interrupted selection: a request may already have completed/)).toBeVisible();
+  expect(view.queryByRole("button", { name: /^Continue saved selection/ })).toBeNull();
+  fireEvent.click(view.getByRole("button", { name: /^Inspect interrupted selection/ }));
+  expect(onInspect).toHaveBeenCalledWith(entry.sessionId); expect(onResume).not.toHaveBeenCalled();
+  view.rerender(<Documents {...props} importQueue={{ sessions: [entry], unavailable: false, inspected: entry.sessionId, onInspect, onResume }} />);
+  expect(view.getByRole("button", { name: /^Continue saved selection/ })).toBeVisible();
+});
+it.each([true, false])("restores removed saved-import focus without stealing focus moved elsewhere (%s)", (keepFocus) => {
+  const entry = { sessionId: "a".repeat(32), label: "synthetic-quarter.pdf", total: 4, completed: 1, remaining: 3, state: "pending" as const };
+  const props = { result: ready([]), selectedDocument: "", capture: idle(), rescan: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+  const view = render(<Documents {...props} importQueue={{ sessions: [entry], unavailable: false, onResume: vi.fn() }} />);
+  view.getByRole("button", { name: /^Continue saved selection/ }).focus();
+  const elsewhere = view.getByRole("button", { name: "Choose statement file" });
+  if (!keepFocus) elsewhere.focus();
+  view.rerender(<Documents {...props} importQueue={{ sessions: [], unavailable: false, onResume: vi.fn() }} />);
+  expect(keepFocus ? view.getByRole("region", { name: "Statements" }) : elsewhere).toHaveFocus();
+});

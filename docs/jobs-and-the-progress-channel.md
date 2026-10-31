@@ -162,11 +162,43 @@ code that did the thing, in the ordinary way. The bridge may persist a bounded
 and message. It contains no financial or document values and is not an authority
 for projection state.
 
+## Document continuation and partial results
+
+Selected filenames, pending source paths and trusted extraction snapshots are
+inside authenticated encrypted envelopes using separate domain-derived keys.
+Capture precedes reading. Once an original has been sealed, continuation uses
+its content address and no longer depends on the external file. Selection and
+checkpoint metadata never establish financial facts: canonical capture and
+response receipts remain necessary, and changed receipt populations or an
+incompatible extraction contract block reuse.
+
+The coordinator alone owns persistence and settlement; at most three model
+readers run concurrently. It acknowledges a completed read only after sealing
+its continuation. Deterministic posting, reconciliation and category effects
+commit as one canonical batch after model receipts are durable. A crash before
+that batch reuses the completed reading; a crash after it observes the already
+settled document without repeating financial effects. Legacy ambiguous partial
+financial histories remain blocked for review.
+
+After each group of at most three documents, the interface refreshes a coherent
+committed view before admitting another group. Navigation remains available;
+figures cover posted records, with pending and held coverage stated in the
+selection and Statements. Closing or switching vaults invalidates the previous
+selection's UI generation. Reopening lists saved selections but never starts
+new paid work until Continue is chosen. Stop drains already-started requests
+and leaves pending originals available for a later explicit continuation.
+
 ## Open
 
-- **Interrupted work is not resumed.** A nonterminal durable receipt is restored
-  as failed with an instruction to start the operation again. Resumable step
-  checkpoints and idempotent continuation remain unbuilt.
+- **Generic job receipts do not resume operations.** Nonterminal receipts
+  restore as failed or cancelled. Document selections have a separate encrypted
+  continuation: the whole selection is retained under `import-sessions/`, and
+  completed document reads under `import-work/`. Selecting Continue processes
+  at most three saved originals at a time. Completed reads are reused after
+  checking their extraction contract and exact canonical audit; no provider
+  request is repeated automatically. An uncertain external request stays held
+  for explicit inspection rather than being retried. Other job producers do
+  not gain resumability from this mechanism.
 - **Cancellation is cooperative between named steps.** It cannot interrupt the
   inside of a blocking reader or model call; the next checkpoint observes it.
 - **The jobs read remains operational rather than a registry destination.** It

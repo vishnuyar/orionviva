@@ -177,7 +177,7 @@ def assign_default_categories(ledger: Ledger, doc_id: str) -> int:
     if not (doc_id or "").strip():
         return 0
     projection = ledger.projection()
-    assigned = 0
+    additions = []
     for movement in projection.movements():
         if movement.provenance.doc_id != doc_id:
             continue
@@ -185,12 +185,14 @@ def assign_default_categories(ledger: Ledger, doc_id: str) -> int:
         if current.get("category") and current.get("subcategory"):
             continue
         category = current.get("category") or "other"
-        ledger.append(category_assigned(
+        additions.append(category_assigned(
             movement.key, movement.description, category, UNVERIFIED,
             movement.date, by="default",
             nature="",
             subcategory=FALLBACK_SUBCATEGORY))
-        assigned += 1
+    assigned = len(additions)
+    if additions:
+        ledger.append_many(additions)
     if assigned:
         log.info("category: default-classified %d movement(s) from %s",
                  assigned, doc_id[:12])

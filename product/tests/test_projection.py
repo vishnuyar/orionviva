@@ -607,7 +607,7 @@ def test_owner_incoming_and_atomic_output_aliases_are_detached(tmp_path):
     assert ledger.fresh_projection().balance("owned").amount == Decimal("140.00")
 
 
-@pytest.mark.parametrize("failure", ["decision", "write", "head", "construction"])
+@pytest.mark.parametrize("failure", ["decision", "write", "head", "fold"])
 def test_owner_write_failure_revokes_existing_cache(tmp_path, monkeypatch, failure):
     import viva.ledger.store as store_module
     import viva.ledger.ledger as owner_module
@@ -621,8 +621,8 @@ def test_owner_write_failure_revokes_existing_cache(tmp_path, monkeypatch, failu
         monkeypatch.setattr(store_module, "_write_batch", fail)
     elif failure == "head":
         monkeypatch.setattr(store_module, "write_head", fail)
-    elif failure == "construction":
-        monkeypatch.setattr(owner_module, "LedgerProjection", fail)
+    elif failure == "fold":
+        monkeypatch.setattr(owner_module.LedgerProjection, "apply", fail)
     with pytest.raises(OSError, match="public injected failure"):
         if failure == "decision":
             ledger.append_atomically(fail)

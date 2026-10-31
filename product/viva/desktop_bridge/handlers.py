@@ -194,6 +194,7 @@ def handlers_for_opened_vault(
         OpenedVaultSurfaceProvider(vault, jobs), progress_sink
     )
     from viva.source_preview import preview_document, OPERATION as PREVIEW_READ
+    from .import_sessions import READ_OPERATION as IMPORTS_READ
 
     captures = DocumentActions(vault, jobs)
     transfers = VaultTransferActions(vault, jobs)
@@ -206,6 +207,7 @@ def handlers_for_opened_vault(
     return BridgeDispatcher({
         **reads.handlers,
         PREVIEW_READ: lambda payload: preview_document(vault, payload),
+        IMPORTS_READ: captures.imports_read,
         DOCUMENTS_OPERATIONS["upload"]: captures.upload,
         DOCUMENTS_OPERATIONS["upload_many"]: captures.upload_many,
         DOCUMENTS_OPERATIONS["cancel"]: captures.cancel,

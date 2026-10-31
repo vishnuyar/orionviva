@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BridgeRefusal, BridgeTimeout, REQUEST_REFUSED } from "../bridge/contracts";
-import type { BulkDocumentSession, DocumentActions, SurfaceDocument, RetainedReadingSelection } from "../surface/types";
+import type { BulkDocumentSession, DocumentActions, SurfaceDocument, RetainedReadingSelection, ImportSessionSummary, ImportSessionSnapshot } from "../surface/types";
 import bulkCopy from "../features/documents/bulk-upload-v1.json";
 import { interrupted } from "./sessionCoordination";
 import type { CaptureGesture } from "./sessionCoordination";
@@ -33,6 +33,14 @@ export function useDocumentIntake(context: Coordination, { refreshAfterAction }:
   const capturing = useRef(false);
   const choosing = useRef(false);
   const sweeping = useRef(false);
+  const [pendingImports, setPendingImports] = useState<readonly ImportSessionSummary[]>([]);
+  const [inspectedImport, setInspectedImport] = useState<string | null>(null);
+  const inspection = useRef<{ generation: number; sessionId: string | null }>({ generation: 0, sessionId: null });
+  function invalidateInspection() {
+    inspection.current = { generation: inspection.current.generation + 1, sessionId: null };
+    setInspectedImport(null);
+  }
+  const [importsUnavailable, setImportsUnavailable] = useState(false);
   const [bulkSession, setBulkSession] = useState<BulkDocumentSession | null>(null);
   const [retainedSelection, setRetainedSelection] = useState<readonly RetainedReadingSelection[]>([]);
   const retainedPending = useRef<readonly RetainedReadingSelection[]>(retainedSelection);
@@ -44,11 +52,23 @@ export function useDocumentIntake(context: Coordination, { refreshAfterAction }:
   const sessionJobs = useRef(session.jobs);
   sessionJobs.current = session.jobs;
   useEffect(() => {
-    setBulkSession(null);
+    setBulkSession(null); invalidateInspection(); setPendingImports([]); setImportsUnavailable(false);
     retainedPending.current = []; setRetainedSelection([]); consumedTokens.current = [];
     return () => { retainedPending.current = []; consumedTokens.current = []; if (bulkRun.current) { bulkRun.current.stop = true; bulkRun.current.gone = true; } };
   }, [source]);
   useEffect(() => { retainedPending.current = []; setRetainedSelection([]); consumedTokens.current = []; }, [selectionGeneration]);
+  useEffect(() => {
+    let gone = false;
+    const activeRequest = requestId.current;
+    if (documentActions?.listImports && sourceIdentity.current === source && !capturing.current) {
+      void documentActions.listImports().then((sessions) => {
+        if (!gone && !capturing.current && requestId.current === activeRequest && sourceIdentity.current === source) {
+          setPendingImports(sessions.filter((entry) => entry.remaining > 0)); setImportsUnavailable(false);
+        }
+      }).catch(() => { if (!gone && requestId.current === activeRequest) setImportsUnavailable(true); });
+    }
+    return () => { gone = true; };
+  }, [source, documentActions]);
   const bulkCurrent = () => bulkRun.current;
   async function cancelActiveBulk() {
     const run = bulkCurrent();
@@ -64,10 +84,118 @@ export function useDocumentIntake(context: Coordination, { refreshAfterAction }:
     if (job) { run.jobId = job.jobId; void cancelActiveBulk(); }
   }, [session.jobs]);
 
+  async function continueImport(actions: DocumentActions, sessionId: string, initial?: ImportSessionSnapshot): Promise<CaptureGesture> {
+    if (!actions.resumeImport || (!initial && !actions.inspectImport) || !source || sourceIdentity.current !== source || capturing.current || session.jobStatus === "unavailable") return "none";
+    invalidateInspection();
+    capturing.current = true;
+    const activeRequest = requestId.current;
+    const run = { stop: false, gone: false, jobId: null as string | null, cancelled: false, knownJobs: new Set(sessionJobs.current.map((job) => job.jobId)), actions };
+    bulkRun.current = run;
+    const current = () => !run.gone && bulkRun.current === run && requestId.current === activeRequest && sourceIdentity.current === source;
+    let snapshot = initial;
+    let admitted = false;
+    let ids: string[] = [];
+    const publish = (uncertain = false, starting = false) => {
+      if (current() && snapshot) {
+        setBulkSession({ state: starting && snapshot.remaining ? "running" : uncertain || snapshot.state === "interrupted" ? "uncertain" : snapshot.remaining ? "running" : "finished", rows: snapshot.rows, jobIds: ids });
+        setPendingImports((previous) => [...previous.filter((entry) => entry.sessionId !== sessionId), ...(snapshot!.remaining ? [snapshot!] : [])]);
+      }
+    };
+    dispatch({ type: "capturing", requestId: activeRequest });
+    try {
+      if (!snapshot) {
+        snapshot = await actions.inspectImport!(sessionId);
+        if (!current()) return "bulk";
+        if (snapshot.sessionId !== sessionId) throw new Error("Saved selection identity differs");
+      }
+      // Render the authenticated saved rows and Stop before starting any reader.
+      publish(false, true);
+      if (run.stop || !snapshot.remaining) {
+        if (run.stop) setBulkSession((state) => state && ({ ...state, state: "paused" }));
+        dispatch({ type: "captured", requestId: activeRequest, result: { state: "settled", outcome: { kind: "completed", message: run.stop ? "Import paused. Saved pending documents can be continued here." : bulkCopy.finished, reason: "" } } });
+        return "bulk";
+      }
+      do {
+        run.jobId = null; run.cancelled = false;
+        run.knownJobs = new Set([...sessionJobs.current.map((job) => job.jobId), ...ids]);
+        admitted = true;
+        const result = await actions.resumeImport(sessionId);
+        if (!current()) return "bulk";
+        snapshot = result.session;
+        if (result.jobId) ids = [...ids, result.jobId];
+        const uncertain = result.rows.some((row) => row.reason === "outcome_unknown") || snapshot.state === "interrupted";
+        if (uncertain || snapshot.state === "stopped" || result.rows.some((row) => row.action === "cancelled")) run.stop = true;
+        publish(uncertain);
+        // Every bounded settlement is visible before another chunk is admitted.
+        await refreshAfterAction(source, activeRequest, current);
+        if (!current()) return "bulk";
+      } while (snapshot.remaining && !run.stop);
+      if (current()) {
+        if (run.stop && snapshot?.remaining && snapshot.state !== "interrupted") setBulkSession((state) => state && ({ ...state, state: "paused" }));
+        dispatch({ type: "captured", requestId: activeRequest, result: snapshot?.state === "interrupted" ? interrupted(bulkCopy.uncertain) : { state: "settled", outcome: { kind: "completed", message: run.stop ? "Import paused. Saved pending documents can be continued here." : bulkCopy.finished, reason: "" } } });
+      }
+    } catch (failure) {
+      if (current()) {
+        if (failure instanceof BridgeRefusal && failure.code === REQUEST_REFUSED) {
+          setBulkSession((state) => state && ({ ...state, state: "refused" }));
+          dispatch({ type: "captured", requestId: activeRequest, result: { state: "unserved" } });
+          return "bulk";
+        }
+        if (!admitted) {
+          setImportsUnavailable(true);
+          dispatch({ type: "captured", requestId: activeRequest, result: { state: "unanswered" } });
+          return "bulk";
+        }
+        publish(true);
+        dispatch({ type: "captured", requestId: activeRequest, result: interrupted(bulkCopy.uncertain) });
+        const jobs = await actions.readJobs().catch(() => null);
+        if (current()) dispatch(jobs?.state === "ready" ? { type: "jobs-read", requestId: activeRequest, jobs: jobs.data.jobs } : { type: "jobs-unavailable", requestId: activeRequest });
+      }
+    } finally {
+      if (bulkRun.current === run) { capturing.current = false; bulkRun.current = null; }
+    }
+    return "bulk";
+  }
+
   async function captureMany(actions: DocumentActions, paths: readonly string[], retained?: readonly RetainedReadingSelection[]): Promise<CaptureGesture> {
     if (!(retained ? actions.readRetained : actions.uploadMany) || !source || sourceIdentity.current !== source || session.jobStatus === "unavailable" || capturing.current) return "none";
     if (!paths.length) return "none";
     if (paths.length > 1000) return "over_limit";
+    invalidateInspection();
+    if (!retained && actions.enqueueImport && actions.resumeImport) {
+      const generation = requestId.current;
+      const run = { stop: false, gone: false, jobId: null as string | null, cancelled: false, knownJobs: new Set(sessionJobs.current.map((job) => job.jobId)), actions };
+      capturing.current = true; bulkRun.current = run;
+      const current = () => !run.gone && requestId.current === generation && sourceIdentity.current === source;
+      dispatch({ type: "capturing", requestId: generation });
+      setBulkSession({ state: "running", rows: paths.map((path) => ({ path, status: "queued" })), jobIds: [] });
+      try {
+        const saved = await actions.enqueueImport(paths);
+        if (!current()) return "bulk";
+        setPendingImports((previous) => [...previous.filter((entry) => entry.sessionId !== saved.sessionId), ...(saved.remaining ? [saved] : [])]);
+        capturing.current = false; bulkRun.current = null;
+        if (run.stop || saved.state === "stopped") {
+          setBulkSession({ state: "paused", rows: saved.rows, jobIds: [] });
+          dispatch({ type: "captured", requestId: generation, result: { state: "settled", outcome: { kind: "completed", message: "Import paused. Saved pending documents can be continued here.", reason: "" } } });
+          return "bulk";
+        }
+        return continueImport(actions, saved.sessionId, saved);
+      } catch (failure) {
+        if (current()) {
+          if (failure instanceof BridgeRefusal && failure.code === REQUEST_REFUSED) {
+            setBulkSession((state) => state && ({ ...state, state: "refused", rows: state.rows.map((row) => ({ ...row, status: "refused" })) }));
+            dispatch({ type: "captured", requestId: generation, result: { state: "unserved" } });
+            return "bulk";
+          }
+          setImportsUnavailable(true);
+          dispatch({ type: "jobs-unavailable", requestId: generation });
+          setBulkSession((state) => state && ({ ...state, state: "uncertain" }));
+          dispatch({ type: "captured", requestId: generation, result: interrupted("The selection could not be confirmed. Reopen this vault to inspect saved imports before selecting it again.") });
+        }
+        return "bulk";
+      } finally { if (bulkRun.current === run) { capturing.current = false; bulkRun.current = null; } }
+    }
+    invalidateInspection();
     capturing.current = true;
     const activeRequest = requestId.current;
     const run = { stop: false, gone: false, jobId: null as string | null, cancelled: false, knownJobs: new Set(sessionJobs.current.map((job) => job.jobId)), actions };
@@ -94,6 +222,8 @@ export function useDocumentIntake(context: Coordination, { refreshAfterAction }:
             return index >= offset && index < offset + chunk.length && outcome ? { ...row, status: outcome.reason === "outcome_unknown" ? "uncertain" : outcome.action, outcome } : uncertain && row.status === "queued" ? { ...row, status: "not_started" } : row;
           }) };
           publish();
+          await refreshAfterAction(source, activeRequest, current);
+          if (!current()) return "bulk";
         } catch (failure) {
           if (!current()) return "bulk";
           run.stop = true;
@@ -154,6 +284,7 @@ export function useDocumentIntake(context: Coordination, { refreshAfterAction }:
     const [first, second] = paths;
     if (first === undefined) return "none";
     if (second !== undefined) return actions.uploadMany ? captureMany(actions, paths) : "several";
+    if (actions.enqueueImport && actions.resumeImport) { await captureMany(actions, paths); return "one"; }
     await capture(actions, first);
     return "one";
   }
@@ -181,6 +312,28 @@ export function useDocumentIntake(context: Coordination, { refreshAfterAction }:
 
   return {
     bulkSession,
+    pendingImports,
+    importsUnavailable,
+    inspectedImport,
+    async inspectImportSession(sessionId: string) {
+      const activeSource = source;
+      const activeRequest = requestId.current;
+      if (requestId.current !== selectionGeneration || !documentActions?.inspectImport || !activeSource || capturing.current || sourceIdentity.current !== activeSource) return;
+      invalidateInspection();
+      const generation = inspection.current.generation;
+      try {
+        const saved = await documentActions.inspectImport(sessionId);
+        if (requestId.current !== activeRequest || sourceIdentity.current !== activeSource || inspection.current.generation !== generation || capturing.current) return;
+        setBulkSession({ state: saved.state === "interrupted" ? "uncertain" : "paused", rows: saved.rows, jobIds: [] });
+        inspection.current.sessionId = sessionId;
+        setInspectedImport(sessionId); setImportsUnavailable(false);
+      } catch { if (requestId.current === activeRequest && sourceIdentity.current === activeSource) setImportsUnavailable(true); }
+    },
+    resumeImportSession(sessionId: string) {
+      const selected = pendingImports.find((entry) => entry.sessionId === sessionId);
+      if (requestId.current !== selectionGeneration || !documentActions || !selected || selected.state === "interrupted" && inspection.current.sessionId !== sessionId) return;
+      void continueImport(documentActions, sessionId);
+    },
     retainedSelection,
     retainedAvailable: Boolean(documentActions?.readRetained),
     retainedBlocked,

@@ -4,7 +4,6 @@ from viva.investment.contracts import Field, EvidenceError, canonical, digest, e
 from viva.investment.events import prefix, decode_field
 from viva.investment.payroll import build_source, decode_source, source_fields, _complete
 from viva.ledger.events import Event, Provenance
-from viva.ledger.projection import LedgerProjection
 from .payroll_v2 import PayrollSourceExtractionV2, economic_facts, periods
 
 OBSERVED = 'RetirementPayrollPopulationObserved'
@@ -98,31 +97,25 @@ def append(ledger, facts, *, locale='en-US',effective=None):
         # A missing source is still recorded by ReadRecorded and included as an
         # unavailable population member during materialization.
         return []
-    with ledger._lock:
-        complete = []
-        def decide(events):
-            source = source_from_facts(facts, events, locale)
-            prior=[event for event in events if event.event_type in (OBSERVED,RETRACTED) and event.provenance.doc_id==facts.doc_id]
-            if prior and prior[-1].event_type==OBSERVED and prior[-1].body.get('population')==encode(source):
-                complete.extend(events);return ()
-            if prior and prior[-1].event_type==RETRACTED:
-                old=next((event for event in reversed(prior) if event.event_type==OBSERVED),None)
-                if old is not None and old.body['population']['reading_id']==source.reading_id:raise EvidenceError('retracted payroll source requires a new authorized reading')
-            previous=prior[-1].event_id if prior else None
-            effective_date=day(effective or facts.pay_date) if previous else '0001-01-01'
-            body = {'schema': 'retirement-payroll-population-v1', 'population': encode(source),'prior_id':previous,'effective':effective_date}
-            identifier = 'retirement-payroll:' + digest(body)
-            if any(e.event_id == identifier for e in events):
-                complete.extend(events); return ()
-            body['prefix'] = encode(prefix(events))
-            event = Event(OBSERVED, facts.pay_date or facts.period_end or facts.period_start, body, Provenance(doc_id=facts.doc_id), event_id=identifier)
-            complete.extend(events); complete.append(event)
-            return (event,)
-        additions = ledger.store.append_atomically(decide)
-        from copy import deepcopy
-        ledger._proj = LedgerProjection(deepcopy(complete), resolve_keys=ledger._resolve_keys)
-        ledger._projection_identity = ledger.store._cached_identity()
-        return additions
+    def decide(events):
+        source = source_from_facts(facts, events, locale)
+        prior=[event for event in events if event.event_type in (OBSERVED,RETRACTED) and event.provenance.doc_id==facts.doc_id]
+        if prior and prior[-1].event_type==OBSERVED and prior[-1].body.get('population')==encode(source):
+            return ()
+        if prior and prior[-1].event_type==RETRACTED:
+            old=next((event for event in reversed(prior) if event.event_type==OBSERVED),None)
+            if old is not None and old.body['population']['reading_id']==source.reading_id:raise EvidenceError('retracted payroll source requires a new authorized reading')
+        previous=prior[-1].event_id if prior else None
+        effective_date=day(effective or facts.pay_date) if previous else '0001-01-01'
+        body = {'schema': 'retirement-payroll-population-v1', 'population': encode(source),'prior_id':previous,'effective':effective_date}
+        identifier = 'retirement-payroll:' + digest(body)
+        if any(e.event_id == identifier for e in events):
+            return ()
+        body['prefix'] = encode(prefix(events))
+        event = Event(OBSERVED, facts.pay_date or facts.period_end or facts.period_start, body, Provenance(doc_id=facts.doc_id), event_id=identifier)
+        return (event,)
+    additions = ledger.append_atomically(lambda projection: decide(tuple(projection._source_events)))
+    return additions
 
 
 def records(events,as_of='9999-12-31'):
@@ -175,15 +168,11 @@ def change_dates(events):
 
 def retract(ledger,document,prior_id,effective):
     day(effective)
-    with ledger._lock:
-        complete=[]
-        def decide(events):
-            history=[event for event in events if event.event_type in (OBSERVED,RETRACTED) and event.provenance.doc_id==document]
-            if not history or history[-1].event_id!=prior_id:raise EvidenceError('population retraction predecessor is not current')
-            body={'document':document,'prior_id':prior_id,'effective':effective,'prefix':encode(prefix(events))}
-            event=Event(RETRACTED,effective,body,Provenance(doc_id=document),event_id='retirement-payroll-retraction:'+digest(body))
-            complete.extend(events);complete.append(event);return (event,)
-        additions=ledger.store.append_atomically(decide)
-        from copy import deepcopy
-        ledger._proj=LedgerProjection(deepcopy(complete),resolve_keys=ledger._resolve_keys);ledger._projection_identity=ledger.store._cached_identity()
-        return additions
+    def decide(events):
+        history=[event for event in events if event.event_type in (OBSERVED,RETRACTED) and event.provenance.doc_id==document]
+        if not history or history[-1].event_id!=prior_id:raise EvidenceError('population retraction predecessor is not current')
+        body={'document':document,'prior_id':prior_id,'effective':effective,'prefix':encode(prefix(events))}
+        event=Event(RETRACTED,effective,body,Provenance(doc_id=document),event_id='retirement-payroll-retraction:'+digest(body))
+        return (event,)
+    additions=ledger.append_atomically(lambda projection: decide(tuple(projection._source_events)))
+    return additions

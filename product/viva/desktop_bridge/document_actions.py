@@ -87,13 +87,27 @@ class DocumentActions:
 
     def upload_many(self,payload):
         from .bulk_documents import BulkDocuments
+        from .import_sessions import handle
         operation=BulkDocuments(self._vault,self._jobs)
         self._active_bulk=operation
-        try:return operation.run(payload)
+        try:
+            with self._vault.defer_read_store_updates():
+                queued=handle(self._vault,self._jobs,payload,operation)
+                return operation.run(payload) if queued is None else queued
         finally:self._active_bulk=None
 
     def stop_bulk(self):
         if self._active_bulk is not None:self._active_bulk.stop()
+
+    def imports_read(self, payload):
+        """Inspect saved work without acquiring upload ownership or starting it."""
+        from .import_sessions import ImportSessions
+        if type(payload) is dict:
+            if set(payload) == {'list_sessions'} and payload['list_sessions'] is True:
+                return ImportSessions(self._vault).listing()
+            if set(payload) == {'session_id', 'inspect'} and payload['inspect'] is True:
+                return ImportSessions(self._vault).inspect(payload['session_id'])
+        raise BridgeRequestError('closed import status request required')
 
     def upload(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Capture one file into the vault, and read nothing.

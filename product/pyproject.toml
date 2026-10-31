@@ -53,4 +53,5 @@ markers = ["production_kdf: mint vaults at the production scrypt cost parameters
 [tool.setuptools.package-data]
 "viva" = ["versions.json", "prompts/*.txt", "persona/*/*.json", "persona/*/*.md",
           "knowledge/*.json", "schemas/*.json", "evals/*.json",
+          "sample_snapshots/five-year-life-v1/*.json", "sample_snapshots/five-year-life-v1/*.zip",
           "sample_data/five-year-life-v1/*.json", "sample_data/five-year-life-v1/*.pdf"]

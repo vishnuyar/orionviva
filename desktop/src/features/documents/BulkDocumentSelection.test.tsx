@@ -11,7 +11,7 @@ describe("bulk selection presentation", () => {
     for (let i = 0; i < 31; i++) fireEvent.click(screen.getByRole("button", { name: "Next selection page" }));
     expect(screen.getAllByRole("listitem")).toHaveLength(19); expect(screen.getByText("document-793.pdf")).toBeVisible();
     expect(screen.getByRole("button", { name: "Next selection page" })).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText(/Closing it loses unstarted selections/)).toBeVisible();
+    expect(screen.getByText(/Saved selections survive closing the app/)).toBeVisible();
   });
   it("keeps choosing focusable while busy and announces stopping until active reads finish", () => {
     const choose = vi.fn(), stop = vi.fn();
@@ -62,4 +62,11 @@ it("uses retained-reading progress and identity without claiming another upload"
  const stop = screen.getByRole("button", { name: "Stop remaining readings" }); stop.focus();
  view.rerender(<BulkDocumentSelection controls={{ ...controls, session: { ...controls.session, state: "uncertain" }, working: false }} unavailable={false} />);
  expect(screen.getByRole("status", { name: "Document selection progress" })).toHaveFocus(); expect(screen.getByText(/outcome is unknown/)).toBeVisible();
+});
+
+it("announces a paused selection and remaining count without saying it finished", () => {
+  render(<BulkDocumentSelection controls={{ session: { state: "paused", rows: [{ path: "one.pdf", status: "posted" }, { path: "two.pdf", status: "queued" }], jobIds: [] }, working: false, onChoose: vi.fn(), onStop: vi.fn() }} unavailable={false} />);
+  const status = screen.getByRole("status", { name: "Document selection progress" });
+  expect(status).toHaveTextContent("Import paused. 1 selected document remains.");
+  expect(status).not.toHaveTextContent("Selection finished");
 });

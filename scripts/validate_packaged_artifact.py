@@ -40,6 +40,11 @@ import time
 from pathlib import Path
 from typing import Any, NoReturn
 
+if __package__:
+    from .validate_sidecar_lifecycle import Session, prepare_sample
+else:
+    from validate_sidecar_lifecycle import Session, prepare_sample
+
 ROOT = Path(__file__).resolve().parents[1]
 SIDECAR_NAME = "viva-desktop-bridge"
 
@@ -94,6 +99,10 @@ def _isolated_environment(home: Path) -> dict[str, str]:
     """Keep startup configuration, credentials and learned records disposable."""
     config = home / ".orionviva"
     config.mkdir(parents=True, exist_ok=True)
+    temporary = home/'temp'
+    temporary.mkdir(mode=0o700, exist_ok=True)
+    if temporary.is_symlink() or not temporary.is_dir() or temporary.resolve(strict=True) != temporary:
+        fail('disposable artifact temporary directory is not ordinary and canonical')
     empty_env = config / ".env"
     empty_env.write_text("", encoding="utf-8")
     environment = {key: value for key, value in os.environ.items()
@@ -101,6 +110,7 @@ def _isolated_environment(home: Path) -> dict[str, str]:
                               "TMP", "LANG", "LC_ALL"}}
     environment.update({
         "HOME": str(home), "USERPROFILE": str(home),
+        "TMPDIR":str(temporary), "TEMP":str(temporary), "TMP":str(temporary),
         "APPDATA": str(home / "AppData"),
         "LOCALAPPDATA": str(home / "AppData" / "Local"),
         "VIVA_DEMO_HOME": str(home / "demo"),
@@ -158,52 +168,39 @@ finally:
     return directory
 
 
-class Sidecar:
-    """One packaged executable, spoken to the way the host speaks to it."""
+class Sidecar(Session):
+    """Speak to the artifact with bounded, correlated stdio replies."""
 
     def __init__(self, executable: Path, home: Path) -> None:
-        environment = _isolated_environment(home)
-        self._process = subprocess.Popen(
-            [str(executable)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, text=True, env=environment, cwd=str(home))
-        self._request = 0
+        super().__init__(executable, home, environment=_isolated_environment(home))
 
-    def ask(self, operation: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        """One request, one reply, in the order the transport guarantees.
-
-        A reply that is not a whole JSON line, or that answers a different
-        request, is a protocol failure rather than a value to interpret: the
-        host would have nothing to render either."""
-        self._request += 1
-        request_id = f"validate-{self._request}"
-        frame = json.dumps({"protocol": PROTOCOL, "request_id": request_id,
-                            "operation": operation, "payload": payload or {}})
-        assert self._process.stdin is not None and self._process.stdout is not None
-        self._process.stdin.write(frame + "\n")
-        self._process.stdin.flush()
-        while True:
-            line = self._process.stdout.readline()
-            if not line:
-                fail(f"the sidecar stopped answering during {operation}")
-            try:
-                answered = json.loads(line)
-            except json.JSONDecodeError:
-                fail(f"the sidecar wrote a line that is not a frame during {operation}")
-            # Progress frames carry no request outcome and are not replies.
-            if answered.get("event"):
-                continue
-            if answered.get("request_id") != request_id:
-                fail(f"the sidecar answered {answered.get('request_id')!r} to "
-                     f"{request_id!r}")
-            return answered
-
-    def close(self) -> None:
-        if self._process.stdin is not None:
-            self._process.stdin.close()
+    def ask(self, operation: str, payload: dict[str, Any] | None = None, *, deadline=None) -> dict[str, Any]:
         try:
-            self._process.wait(timeout=20)
-        except subprocess.TimeoutExpired:
-            self._process.kill()
+            return self.request(operation, payload, deadline=deadline)
+        except (RuntimeError, ValueError, OSError) as error:
+            fail(f"{operation}: {error}")
+
+
+def _current_account(sidecar, *, deadline):
+    """Choose an opaque account only from the artifact's current SQL surface."""
+    while True:
+        read = _result(sidecar.ask('viva.surface.read', {
+            'surface':'overview_accounts', 'job_id':'validate-account-identity',
+            'parameters':{}}, deadline=deadline), 'viva.surface.read(overview_accounts)')
+        data = read.get('data')
+        if not isinstance(data, dict): fail('current account surface was not readable')
+        if data.get('freshness') == 'current' and data.get('state') == 'ready':
+            accounts = data.get('accounts')
+            rows = accounts.get('accounts') if isinstance(accounts, dict) else None
+            if (not isinstance(data.get('revision'), str) or not data['revision']
+                    or not isinstance(rows, list) or not rows or not isinstance(rows[0], dict)
+                    or not isinstance(rows[0].get('account'), str) or not rows[0]['account'].strip()):
+                fail('current account surface supplied no opaque identity')
+            return rows[0]['account']
+        if data.get('freshness') not in {'stale', 'unavailable'}:
+            fail('current account surface supplied malformed freshness')
+        if time.monotonic() >= deadline: fail('current account surface timed out')
+        time.sleep(min(0.05, max(0, deadline-time.monotonic())))
 
 
 def _result(answered: dict[str, Any], operation: str) -> dict[str, Any]:
@@ -222,8 +219,11 @@ def _review_conversation_ids(review: dict[str, Any], conversation: dict[str, Any
     questions = conversation.get("questions")
     if not isinstance(groups, list) or not isinstance(questions, list):
         fail("Review and conversation did not supply actionable question lists")
-    items = [item for group in groups if isinstance(group, dict)
-             for item in group.get("items", []) if isinstance(item, dict)]
+    if (any(not isinstance(group, dict) or not isinstance(group.get('items'), list)
+            or any(not isinstance(item, dict) for item in group['items']) for group in groups)
+            or any(not isinstance(question, dict) for question in questions)):
+        fail('Review and conversation supplied malformed actionable lists')
+    items = [item for group in groups for item in group['items']]
     targets = [item.get("target") for item in items]
     if any(not isinstance(target, dict) for target in targets):
         fail("Review supplied an item without a readable target")
@@ -237,13 +237,16 @@ def _review_conversation_ids(review: dict[str, Any], conversation: dict[str, Any
             or review_ids != conversation_ids):
         fail("Review targets do not match conversation questions one-for-one in order")
     total = conversation.get("total")
-    if (not isinstance(total, int) or isinstance(total, bool)
+    if (not isinstance(total, int) or isinstance(total, bool) or total < len(review_ids)
+            or any(type(review.get(name)) is not int for name in ('actionable_count','shown_count','remaining_count'))
             or review.get("actionable_count") != total
             or review.get("shown_count") != len(review_ids)
             or review.get("remaining_count") != total - len(review_ids)):
         fail("Review and conversation question counts disagree")
     tail = conversation.get("tail")
-    if isinstance(tail, dict) and tail.get("count") != review.get("remaining_count"):
+    if (not isinstance(tail, dict) or type(tail.get("count")) is not int
+            or tail["count"] != review.get("remaining_count")
+            or (not review_ids and total != 0)):
         fail("Review remaining count and conversation tail disagree")
     binding_keys = {
         "item_id", "question_id", "question_kind", "label", "reason", "refs",
@@ -296,7 +299,7 @@ def _pagination_surfaces(sidecar: Sidecar, phase: str) -> dict[str, dict[str, An
         while True:
             answered = sidecar.ask("viva.surface.read", {
                 "surface": surface, "job_id": f"validate-{phase}-{surface}",
-                "parameters": {}})
+                "parameters": {}}, deadline=deadline)
             error = answered.get("error") or {}
             if (answered.get("ok") is False
                     and error.get("code") == "invalid_request"
@@ -614,7 +617,7 @@ def validate(executable: Path) -> list[str]:
     if not os.access(executable, os.X_OK):
         fail(f"not executable: {executable}")
 
-    home = Path(tempfile.mkdtemp(prefix="orionviva-artifact-"))
+    home = Path(tempfile.mkdtemp(prefix="orionviva-artifact-")).resolve(strict=True)
     checked: list[str] = []
     sidecar = Sidecar(executable, home)
     try:
@@ -633,7 +636,13 @@ def validate(executable: Path) -> list[str]:
                  "rather than as a packaged build")
         checked.append("reports itself as a packaged build")
 
-        opened = _result(sidecar.ask("bridge.open_demo_vault"), "bridge.open_demo_vault")
+        deadline = time.monotonic()+90
+        try:
+            prepare_sample(lambda operation, **kwargs: _result(sidecar.ask(operation, **kwargs), operation),
+                           deadline=deadline)
+        except (RuntimeError, ValueError) as error:
+            fail(str(error))
+        opened = _result(sidecar.ask("bridge.open_demo_vault", deadline=deadline), "bridge.open_demo_vault")
         if opened.get("sample") is not True:
             fail("the artifact did not open the sample vault as the sample vault")
         if not (opened.get("frame") or {}).get("title"):
@@ -641,9 +650,10 @@ def validate(executable: Path) -> list[str]:
                  "around it, so nothing would say the money in it is invented")
         checked.append("mints and opens the sample vault, with its frame")
 
+        account_id = _current_account(sidecar, deadline=deadline)
         surface_data: dict[str, dict[str, Any]] = {}
         for surface in SURFACES:
-            parameters = ({"account_id": "acct:everyday-checking"}
+            parameters = ({"account_id": account_id}
                           if surface == "account_ledger" else
                           {"read_on": READ_ON} if surface == "spending" else {})
             read = _result(sidecar.ask("viva.surface.read", {
@@ -652,6 +662,9 @@ def validate(executable: Path) -> list[str]:
             data = read.get("data")
             if not isinstance(data, dict) or not data.get("state"):
                 fail(f"the {surface} read answered with nothing a screen could show")
+            if surface == 'account_ledger' and (not isinstance(data.get('scope'), dict)
+                    or data['scope'].get('account_id') != account_id):
+                fail('account-ledger scope differs from the selected packaged account')
             surface_data[surface] = data
         checked.append(f"answers every surface an opened vault serves ({len(SURFACES)})")
 
@@ -660,8 +673,6 @@ def validate(executable: Path) -> list[str]:
 
         question_ids = _review_conversation_ids(
             surface_data["review"], surface_data["conversation"])
-        if not question_ids:
-            fail("the sample supplied no actionable question to pair with Review")
         checked.append("pairs every shown sample Review target with conversation")
 
         pagination_vault = _create_pagination_vault(home)

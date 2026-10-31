@@ -15,6 +15,8 @@ from ..listen import category_vocabulary
 from ..ledger.projection.merchants import record_for_keys
 from ..ledger.projection.movements import (BY_CATEGORY, BY_DEFAULT, BY_RULING, MIXED, SETTLEMENT,
                                            SPENDING, TRANSFER, is_expense)
+from ..ledger.transfer_admission import (TRANSFER_CANDIDATE_LIMIT, TRANSFER_EVIDENCE_RULES,
+    recognized_link_origin, counterpart_reference_complete, relationship_complete)
 from ..ledger.events import GRADES
 from ..ledger.streams import money_effect
 from ..persona import moment
@@ -27,13 +29,6 @@ SUBCATEGORY_VOCABULARY_LIMIT = 200
 MAX_SELECTED_TAGS = 40
 MAX_TAG_LABEL_LENGTH = 80
 MAX_BATCH_MOVEMENTS = 100
-TRANSFER_CANDIDATE_LIMIT = 20
-TRANSFER_EVIDENCE_RULES = frozenset({
-    "account_ref_slot",
-    "account_ref_slot+printed_date",
-    "named_account",
-    "named_account+printed_date",
-})
 
 # Reviewed copy keys for movements whose nature is not plain spending.
 NATURES: dict[str, str] = {
@@ -263,15 +258,9 @@ def _transfer_state(projection, movement, locale: str
 
 def _link_explanation(link: dict[str, Any]) -> str:
     """Reviewed copy only for provenance combinations a real writer emits."""
-    by = link.get("by")
-    grade = link.get("grade")
-    decided_by = str(link.get("decided_by") or "").strip()
-    if by == "human" and grade == "verified" and not decided_by:
-        return "activity_transfer_linked_human"
-    if (by == "auto" and grade == "corroborated"
-            and decided_by in TRANSFER_EVIDENCE_RULES):
-        return "activity_transfer_linked_evidence"
-    return ""
+    origin = recognized_link_origin(link)
+    return {"human": "activity_transfer_linked_human",
+            "auto": "activity_transfer_linked_evidence"}.get(origin, "")
 
 
 def _transfer_reference(projection, source, counterpart, locale: str,
@@ -291,6 +280,8 @@ def _transfer_reference(projection, source, counterpart, locale: str,
         "display": str(render.money(abs(effect), counterpart.currency,
                                     locale=locale)),
     }
+    if not counterpart_reference_complete(counterpart, bool(values["account"])):
+        return None
     if relationship:
         values["relationship"] = _relationship(
             projection, source, counterpart, locale)
@@ -325,6 +316,10 @@ def _relationship(projection, source, counterpart, locale: str) -> str:
                                                counterpart.currency,
                                                locale=locale)),
     }
+    if not relationship_complete(source, counterpart,
+                                 bool(values["source_account"]),
+                                 bool(values["counterpart_account"])):
+        return ""
     if any(not value for value in values.values()):
         return ""
     return moment("activity_transfer_relationship", **values)

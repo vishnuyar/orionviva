@@ -96,6 +96,14 @@ python3 -m venv .venv
 .venv/bin/pip install -e './core[dev]' -e './merchant[dev]' -e './product[dev,reader]' -r product/requirements-sidecar-build.txt
 ```
 
+The current prepared-sample implementation requires a complete, compatible
+synthetic snapshot before sidecar packaging. Finish source changes, then build
+and pin that artifact using [the prepared-sample instructions](prepared-sample.md).
+Packaging rejects a missing, unbuilt or incompatible snapshot. Complete artifact
+and installed-host verification remain outstanding in the
+[import implementation plan](import-performance-plan.md); these instructions do
+not establish a verified release build.
+
 Install desktop dependencies and build the complete native application:
 
 ```sh
@@ -114,8 +122,10 @@ numerical reads and reused measurement/projection authorities, source-context
 facade, numerical envelopes and binding/rendering route, compiler, runtime,
 replay and model adapter. The source map in the sidecar specification and its
 owning parity test are the exact inventory. A missing required source stops the
-build; changed source invalidates the measured answering profile. Unrelated
-Python sources are not included in that admission source inventory. A generated
+build; changed source invalidates the measured answering profile. The
+prepared-sample compatibility check separately includes package source files
+shipped with the sidecar; that broader resource set does not widen the
+answering-admission source inventory. A generated
 manifest covers the current strict 60-entry inventory, including net worth,
 accounting, SQL Overview and surface Overview authorities. The earlier
 qualification005 package had 56 entries; its original record remains unchanged.

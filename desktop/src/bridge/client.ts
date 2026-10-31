@@ -133,6 +133,10 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     // refuses one that was sent.
     uploadDocument: (path: string) => request("viva.documents.upload", { path }),
     readRetainedDocuments: (documents: readonly { documentId: string; confirmationToken: string }[]) => request("viva.documents.upload_many", { retained_documents: documents.map((document) => ({ document_id: document.documentId, confirmation_token: document.confirmationToken })), confirm_reading: true }),
+    enqueueDocumentImport: (paths: readonly string[]) => request("viva.documents.upload_many", { queue_paths: [...paths] }),
+    listDocumentImports: () => request("viva.documents.imports.read", { list_sessions: true }),
+    inspectDocumentImport: (sessionId: string) => request("viva.documents.imports.read", { session_id: sessionId, inspect: true }),
+    resumeDocumentImport: (sessionId: string) => request("viva.documents.upload_many", { session_id: sessionId, resume: true }),
     uploadDocuments: (paths: readonly string[]) => request("viva.documents.upload_many", { paths: [...paths] }),
     recoverDocument: (jobId: string) => request("viva.documents.recover", { job_id: jobId, confirm_reading: true }),
   };
