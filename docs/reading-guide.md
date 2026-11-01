@@ -5,6 +5,11 @@ records the isolated staging, validation and atomic acceptance design, integrity
 limits, fixed experiment gates and migration prerequisites. Production vaults
 remain on their existing format.
 
+[SQL authority application groundwork](sql-authority-application.md) describes the
+selectable complete-verification profile, its held transaction boundaries and
+executed keyed foundation engineering checks. Application activation and original
+financial, hosted and native acceptance remain pending.
+
 The implemented storage slice, [Authenticated public readings and existing source-reference identity](sql-authority-curated-source.md), records the bounded prototype-v2 contract, independent verification, all 420 matched balance sources and the successful original synthetic scale gates. The Director accepted this bounded slice at Checkpoint 2; transfers, the other 374 inputs, full mixed-sample parity, production migration and installed delivery remain open.
 
 The experimental [SQL-owned transfer overlays](sql-authority-transfers.md) implement indexed rival components, global token-owner dependencies, ordered overlays and bounded Activity-admitted manual actions in an isolated v3 format. The owner-authorized shared ledger admission extraction is accepted with unchanged Activity behavior and a full product result of 7,235 passes and 92 explicit skips. Transfer mechanism qualification, other financial families, mixed-794 parity/timing, production migration and installed delivery remain open; broader workloads remain held.

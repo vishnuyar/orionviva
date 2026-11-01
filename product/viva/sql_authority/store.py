@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from functools import wraps
 from collections import deque
 import copy
 import base64
@@ -94,7 +95,35 @@ def _regular(path):
         raise AuthorityError("authority file must be private")
 
 
-def _connect(path, key):
+def _verification_policy(value):
+    if type(value) is not str or value not in {"indexed", "complete"}:
+        raise AuthorityError("unknown authority verification policy")
+    return value
+
+
+def _cipher_capability(db):
+    version = db.execute("PRAGMA cipher_version").fetchone()
+    words = version[0].split() if version and type(version[0]) is str else []
+    parts = words[0].split(".") if words else []
+    if len(parts) < 2 or not all(part.isascii() and part.isdigit() for part in parts[:2]):
+        raise AuthorityError("unsupported encrypted integrity capability")
+    if tuple(map(int, parts[:2])) < (4, 2):
+        raise AuthorityError("unsupported encrypted integrity capability")
+    enabled = db.execute("PRAGMA cipher_use_hmac").fetchall()
+    if (len(enabled) != 1 or len(enabled[0]) != 1
+            or type(enabled[0][0]) not in (int, str) or enabled[0][0] not in (1, "1")):
+        raise AuthorityError("encrypted page authentication is required")
+
+
+def _canonical_read(method):
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        with self._decision():
+            return method(self, *args, **kwargs)
+    return guarded
+
+
+def _connect(path, key, *, verification="indexed"):
     _regular(path)
     db = sql.connect(str(path), timeout=5, isolation_level=None)
     try:
@@ -102,6 +131,9 @@ def _connect(path, key):
         if not version or not version[0]:
             raise AuthorityError("SQLCipher is required; plaintext SQLite is forbidden")
         db.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
+        if verification == "complete":
+            db.execute("PRAGMA cipher_use_hmac=ON")
+            _cipher_capability(db)
         expected = {"cipher_plaintext_header_size": 0, "temp_store": 2,
                     "journal_mode": "delete", "synchronous": 2,
                     "foreign_keys": 1, "trusted_schema": 0, "busy_timeout": 5000}
@@ -123,7 +155,8 @@ def _connect(path, key):
 class SQLAuthority:
     """An explicitly created experimental format, with no legacy migration."""
 
-    def __init__(self, root, key, db):
+    def __init__(self, root, key, db, *, verification="indexed"):
+        self._verification = _verification_policy(verification)
         self.root, self._key, self._db = root, key, db
         from .reading import implementation_identity
         self._implementation_identity = implementation_identity()
@@ -131,6 +164,8 @@ class SQLAuthority:
         self._raw = RawStore(root / "originals", _derive(key, b"originals"))
         self._lock = threading.RLock()
         self._operations = None
+        self._verified_operation = False
+        self._verifying = False
         self._transfer_facts = None
         self.last_queries = ()
         self.last_rows_read = 0
@@ -143,7 +178,8 @@ class SQLAuthority:
         self._progress_callback = None
 
     @classmethod
-    def create(cls, root, passphrase):
+    def create(cls, root, passphrase, *, verification="indexed"):
+        verification = _verification_policy(verification)
         root = _safe_root(root, create=True)
         header, key = new_vault_header(passphrase)
         metadata = {"format": FORMAT, "crypto": header,
@@ -154,22 +190,29 @@ class SQLAuthority:
         database = root / "authority.db"
         fd = os.open(database, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         os.close(fd)
-        db = _connect(database, _derive(key, b"database"))
+        db = _connect(database, _derive(key, b"database"), verification=verification)
         try:
-            store = cls(root, key, db)
+            store = cls(root, key, db, verification=verification)
             db.executescript("BEGIN IMMEDIATE;" + DDL)
             db.execute("INSERT INTO format VALUES (?,?)", (FORMAT, SCHEMA_VERSION))
             mac = store._mac(0, ZERO)
             db.execute("INSERT INTO control VALUES(1,0,?,?)", (ZERO, mac))
             db.execute("COMMIT")
-            store._check_terminal()
+            if verification == "complete":
+                store.verify()
+            else:
+                store._check_terminal()
             return store
         except BaseException:
             db.close()
             raise
 
     @classmethod
-    def open(cls, root, passphrase):
+    def open(cls, root, passphrase, *, verification="indexed", curated_source=None):
+        verification = _verification_policy(verification)
+        if curated_source is not None:
+            from .curated import _owned
+            _owned(curated_source)
         root = _safe_root(root)
         allowed = {"authority.json", "authority.db", "authority.db-journal", "originals"}
         if set(path.name for path in root.iterdir()) - allowed:
@@ -208,12 +251,17 @@ class SQLAuthority:
             raise AuthorityError("unsafe originals directory")
         for side in root.glob("authority.db*"):
             _regular(side)
-        db = _connect(root / "authority.db", _derive(key, b"database"))
+        db = _connect(root / "authority.db", _derive(key, b"database"), verification=verification)
         try:
-            store = cls(root, key, db)
+            store = cls(root, key, db, verification=verification)
+            if curated_source is not None:
+                store.attach_curated(curated_source)
             if db.execute("SELECT * FROM format").fetchall() != [(FORMAT, SCHEMA_VERSION)]:
                 raise AuthorityError("unknown authority schema")
-            store._check_terminal()
+            if verification == "complete":
+                store.verify()
+            else:
+                store._check_terminal()
             return store
         except BaseException:
             db.close()
@@ -228,6 +276,44 @@ class SQLAuthority:
 
     def __exit__(self, *_args):
         self.close()
+
+    @property
+    def verification(self):
+        return self._verification
+
+    @contextmanager
+    def _snapshot(self):
+        with self._lock:
+            if self._db.in_transaction or self._verified_operation or self._verifying:
+                raise AuthorityError("verification requires an independent committed operation")
+            self._db.execute("BEGIN")
+            try:
+                # BEGIN is deferred: establish the actual reader snapshot before
+                # the physical-page scan and retain it through the answer.
+                self._check_terminal()
+                yield
+                self._db.execute("COMMIT")
+            except BaseException:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
+
+    @contextmanager
+    def _decision(self):
+        if self._verification == "indexed":
+            yield
+            return
+        with self._lock:
+            if self._verified_operation:
+                yield
+                return
+            with self._snapshot():
+                self._verified_operation = True
+                try:
+                    self._verify_current()
+                    yield
+                finally:
+                    self._verified_operation = False
 
     def _mac(self, revision, head):
         return hmac.new(self._audit_key, canonical([FORMAT, revision, head]).encode(), hashlib.sha256).hexdigest()
@@ -248,6 +334,7 @@ class SQLAuthority:
         return revision, head
 
     @property
+    @_canonical_read
     def head(self):
         with self._lock:
             revision, head = self._check_terminal()
@@ -287,8 +374,13 @@ class SQLAuthority:
     @contextmanager
     def _transaction(self):
         with self._lock:
+            if self._verified_operation or self._db.in_transaction:
+                raise AuthorityError("writer requires an independent committed operation")
             self._db.execute("BEGIN IMMEDIATE")
             try:
+                if self._verification == "complete":
+                    self._verify_current()
+                    self._verified_operation = True
                 revision, previous = self._check_terminal()
                 self._revision = revision + 1
                 self._operations = []
@@ -304,12 +396,14 @@ class SQLAuthority:
                     self._db.execute("UPDATE control SET revision=?,head=?,mac=? WHERE singleton=1", (self._revision, digest, mac))
                     self._fault("before_commit")
                 self._db.execute("COMMIT")
+                self._verified_operation = False
                 self._fault("after_commit")
             except BaseException:
                 if self._db.in_transaction:
                     self._db.execute("ROLLBACK")
                 raise
             finally:
+                self._verified_operation = False
                 self._transfer_facts = None
                 self._operations = None
 
@@ -317,6 +411,7 @@ class SQLAuthority:
         self._put("items", dict(doc_id=doc_id, state=state, reason=reason,
                                 account_id=account_id, revision=self._revision))
 
+    @_canonical_read
     def item(self, doc_id):
         with self._lock:
             self._check_terminal()
@@ -329,13 +424,18 @@ class SQLAuthority:
         item = self.item(doc_id)
         return ImportOutcome(doc_id, item["state"], item["reason"], item["account_id"], item["revision"], elapsed)
 
+    @_canonical_read
     def original(self, doc_id):
+        return self._original(doc_id)
+
+    def _original(self, doc_id):
         if type(doc_id) is not str or len(doc_id) != 64 or any(char not in "0123456789abcdef" for char in doc_id):
             raise AuthorityError("invalid document address")
         _regular(self.root / "originals" / (doc_id + ".blob"))
         return self._raw.get_bounded(doc_id, max_plaintext=MAX_SOURCE_BYTES,
                                      max_envelope=72 * 1024 * 1024)
 
+    @_canonical_read
     def receipt(self, doc_id):
         with self._lock:
             self._check_terminal()
@@ -517,41 +617,49 @@ class SQLAuthority:
                     self._db.execute("ROLLBACK")
                 raise
 
+    @_canonical_read
     def movements(self):
         from .transfers import movements
         with self._transfer_snapshot():
             return movements(self)
 
+    @_canonical_read
     def transfer_inventory(self):
         from .transfers import rows
         with self._transfer_snapshot():
             return rows(self, "transfer_inventory", order="source_order")
 
+    @_canonical_read
     def transfer_bindings(self):
         from .transfers import rows
         with self._transfer_snapshot():
             return rows(self, "transfer_bindings", order="source_order")
 
+    @_canonical_read
     def transfer_links(self):
         from .transfers import live_links
         with self._transfer_snapshot():
             return live_links(self)
 
+    @_canonical_read
     def transfer_suggestions(self, *, stored=False):
         from .transfers import suggestions
         with self._transfer_snapshot():
             return suggestions(self, stored)
 
+    @_canonical_read
     def transfer_assertions(self):
         from .transfers import assertion_rows
         with self._transfer_snapshot():
             return assertion_rows(self)
 
+    @_canonical_read
     def transfer_decisions(self):
         from .transfers import rows
         with self._transfer_snapshot():
             return [{**row, "body": json.loads(row["body"])} for row in rows(self, "transfer_runs", order="(SELECT revision FROM items WHERE doc_id=transfer_runs.boundary),run_id")]
 
+    @_canonical_read
     def transfer_as_of(self, day):
         from .transfers import as_of
         with self._transfer_snapshot():
@@ -582,6 +690,7 @@ class SQLAuthority:
         from .transfers import plans
         return plans(self)
 
+    @_canonical_read
     def account(self, account_id):
         with self._lock:
             self._check_terminal()
@@ -594,6 +703,7 @@ class SQLAuthority:
             row.update(earliest_opening=row["earliest_amount"], running_balance=row["current_amount"])
             return row
 
+    @_canonical_read
     def transactions(self, account_id):
         with self._lock:
             self._check_terminal()
@@ -605,6 +715,7 @@ class SQLAuthority:
                 results.append(row)
             return results
 
+    @_canonical_read
     def postings(self, doc_id):
         with self._lock:
             self._check_terminal()
@@ -616,6 +727,7 @@ class SQLAuthority:
                 results.append(row)
             return results
 
+    @_canonical_read
     def balance_observations(self, account_id):
         with self._lock:
             self._check_terminal()
@@ -629,11 +741,13 @@ class SQLAuthority:
                 result.append(row)
             return result
 
+    @_canonical_read
     def source_admission(self, doc_id):
         with self._lock:
             row = self._row("source_admissions", "doc_id=?", (doc_id,))
             return json.loads(row["body"]) if row else None
 
+    @_canonical_read
     def source_transactions(self, doc_id):
         with self._lock:
             columns = TABLES["transactions"]
@@ -647,12 +761,14 @@ class SQLAuthority:
                 result.append(row)
             return result
 
+    @_canonical_read
     def source_occurrences(self, doc_id):
         with self._lock:
             columns = TABLES["source_occurrences"]
             values = self._read("SELECT doc_id,line_index,event_id,date,page,raw FROM source_occurrences WHERE doc_id=? ORDER BY line_index", (doc_id,))
             return [{**dict(zip(columns, value)), "ordinal": value[1]} for value in values]
 
+    @_canonical_read
     def source_observations(self, doc_id):
         with self._lock:
             columns = TABLES["balance_observations"]
@@ -665,11 +781,13 @@ class SQLAuthority:
                 result.append(row)
             return result
 
+    @_canonical_read
     def identity_decision(self, doc_id):
         with self._lock:
             rows = self._read("SELECT body FROM identity_decisions WHERE doc_id=? ORDER BY created_revision DESC,decision_id DESC LIMIT 1", (doc_id,))
             return json.loads(rows[0][0]) if rows else None
 
+    @_canonical_read
     def resolve_source_identity(self, facts):
         from .identity import resolve_source
         with self._lock:
@@ -681,23 +799,25 @@ class SQLAuthority:
                     "period": self._db.execute("EXPLAIN QUERY PLAN SELECT * FROM periods WHERE account_id=? AND period_end=?", ("account", "2000-01-01")).fetchall(),
                     "pending": self._db.execute("EXPLAIN QUERY PLAN SELECT doc_id FROM dependencies WHERE identity=? AND boundary_amount=? AND direction=? AND active=1", ("identity", "0", "forward")).fetchall()}
 
+    def _export_current(self):
+        revision, head = self._check_terminal()
+        rows = self._db.execute("SELECT sequence,previous_hash,envelope,record_hash FROM audit ORDER BY sequence").fetchall()
+        commits = self._db.execute("SELECT revision,head,mac FROM commits ORDER BY revision").fetchall()
+        sources = [{"doc_id": doc_id, "sha256": doc_id, "byte_count": size} for doc_id, size in self._db.execute("SELECT doc_id,byte_count FROM documents ORDER BY doc_id").fetchall()]
+        return {"format": FORMAT, "revision": revision, "head": head,
+                "sources": sources, "mac": self._mac(revision, head),
+                "records": [list(row) for row in rows],
+                "commits": [list(row) for row in commits]}
+
     def export_audit(self):
         with self._lock:
-            self._db.execute("BEGIN")
-            try:
-                revision, head = self._check_terminal()
-                rows = self._db.execute("SELECT sequence,previous_hash,envelope,record_hash FROM audit ORDER BY sequence").fetchall()
-                commits = self._db.execute("SELECT revision,head,mac FROM commits ORDER BY revision").fetchall()
-                sources = [{"doc_id": doc_id, "sha256": doc_id, "byte_count": size} for doc_id, size in self._db.execute("SELECT doc_id,byte_count FROM documents ORDER BY doc_id").fetchall()]
-                result = {"format": FORMAT, "revision": revision, "head": head,
-                          "sources": sources,
-                          "mac": self._mac(revision, head), "records": [list(row) for row in rows],
-                          "commits": [list(row) for row in commits]}
-                self._db.execute("COMMIT")
-                return result
-            except BaseException:
-                self._db.execute("ROLLBACK")
-                raise
+            if self._verifying or (self._db.in_transaction and self._operations is not None):
+                raise AuthorityError("export requires a committed authority snapshot")
+            if self._verification == "complete":
+                with self._decision():
+                    return self._export_current()
+            with self._snapshot():
+                return self._export_current()
 
     @staticmethod
     def check_export_structure(export, *, expected_head=None):
@@ -773,32 +893,46 @@ class SQLAuthority:
             raise IntegrityError("exported sources disagree with authenticated audit")
         return state
 
-    def verify(self, *, expected_head=None):
-        with self._lock:
-            export = self.export_audit()
+    def _verify_current(self, *, expected_head=None):
+        if not self._db.in_transaction or self._verifying:
+            raise AuthorityError("verification requires an owned snapshot")
+        self._verifying = True
+        prior_operation = self._verified_operation
+        self._verified_operation = True
+        try:
+            if self._verification == "complete":
+                if self._db.execute("SELECT * FROM format").fetchall() != [(FORMAT, SCHEMA_VERSION)]:
+                    raise IntegrityError("unknown authority schema")
+                _cipher_capability(self._db)
+                if self._db.execute("PRAGMA cipher_integrity_check").fetchall():
+                    raise IntegrityError("encrypted page integrity failure")
+                if self._db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+                    raise IntegrityError("database structural integrity failure")
+                if self._db.execute("PRAGMA foreign_key_check").fetchall():
+                    raise IntegrityError("database reference integrity failure")
+            export = self._export_current()
             state = self._reconstruct(export, expected_head)
-            self._db.execute("BEGIN")
-            try:
-                if self.head != {"revision": export["revision"], "head": export["head"]}:
-                    raise IntegrityError("authority changed during verification")
-                counts = {}
-                for table, columns in TABLES.items():
-                    actual = {tuple(row[columns.index(key)] for key in KEYS[table]): dict(zip(columns, row)) for row in self._db.execute(f"SELECT {','.join(chr(34) + column + chr(34) for column in columns)} FROM {table}").fetchall()}
-                    if actual != state[table]:
-                        raise IntegrityError(f"audited state mismatch: {table}")
-                    counts[table] = len(actual)
-                from .identity import verify_semantics
-                verify_semantics(self, state)
-                from .transfer_verify import verify as verify_transfers
-                with localcontext() as arithmetic:
-                    arithmetic.prec = 28
-                    arithmetic.traps[Inexact] = True
-                    verify_transfers(self, state, export)
-                for key, document in state["documents"].items():
-                    if len(self.original(key[0])) != document["byte_count"]:
-                        raise IntegrityError("source size mismatch")
-                self._db.execute("COMMIT")
-                return {"verified": True, "revision": export["revision"], "head": export["head"], "counts": counts}
-            except BaseException:
-                self._db.execute("ROLLBACK")
-                raise
+            counts = {}
+            for table, columns in TABLES.items():
+                actual = {tuple(row[columns.index(key)] for key in KEYS[table]): dict(zip(columns, row)) for row in self._db.execute(f"SELECT {','.join(chr(34) + column + chr(34) for column in columns)} FROM {table}").fetchall()}
+                if actual != state[table]:
+                    raise IntegrityError(f"audited state mismatch: {table}")
+                counts[table] = len(actual)
+            from .identity import verify_semantics
+            verify_semantics(self, state)
+            from .transfer_verify import verify as verify_transfers
+            with localcontext() as arithmetic:
+                arithmetic.prec = 28
+                arithmetic.traps[Inexact] = True
+                verify_transfers(self, state, export)
+            for key, document in state["documents"].items():
+                if len(self._original(key[0])) != document["byte_count"]:
+                    raise IntegrityError("source size mismatch")
+            return {"verified": True, "revision": export["revision"], "head": export["head"], "counts": counts}
+        finally:
+            self._verified_operation = prior_operation
+            self._verifying = False
+
+    def verify(self, *, expected_head=None):
+        with self._snapshot():
+            return self._verify_current(expected_head=expected_head)
