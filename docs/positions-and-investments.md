@@ -34,9 +34,11 @@
 **Test:** product/tests/test_brokerage.py::test_cash_flow_reconciles_and_recognizes_income_fees_gains; ::test_cash_flow_mismatch_holds_activity_but_keeps_valid_snapshot
 
 1. Snapshot and activity are independent gates. A valid holdings snapshot posts even when the reported activity fails its cash-flow identity; the activity is held and emits no movements.
-2. Where the statement omits the opening, the previous statement's closing cash carries forward rather than the activity being discarded (product/tests/test_brokerage.py::test_opening_cash_carries_forward_when_the_statement_omits_it).
-3. Corrected activity reconciles before its movements and resolution record are appended atomically. The snapshot is not reposted and the activity cannot replay twice.
-4. A holdings-only statement falls back to the snapshot path, with cash observed as a lone attested balance.
+2. Once cash has an opening seed, the previous statement's closing cash carries forward when a later statement omits the opening (product/tests/test_brokerage.py::test_opening_cash_carries_forward_when_the_statement_omits_it). Registration or a holdings-only snapshot alone does not seed cash; a zero opening does.
+3. A first seed requires retained printed opening cash, currency, period start, period end and snapshot date, each on a page within the captured document's validated page count. Complete unambiguous dates, exact opening money and currency must agree with the accepted snapshot; effective activity dates must be canonical and inside that period. Missing activity dates keep the existing snapshot-date posting convention. Unsupported evidence holds activity while the independently reconciled closing and holdings survive.
+4. The first opening is dated to the printed period start. Account registration, closing cash and holdings retain the snapshot date. Already seeded activity admission is unchanged.
+5. Corrected activity reconciles before its required source-backed opening seed, movements and resolution record are appended in that order atomically. Unsupported first-seed corrections retain the hold without posting movements or resolving it. The snapshot is not reposted and the activity cannot replay twice.
+6. A holdings-only statement falls back to the snapshot path, with cash observed as a lone attested balance.
 
 ### MON-32 — activity counter-legs, and a contribution counted once
 **State:** enforced

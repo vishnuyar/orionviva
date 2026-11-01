@@ -16,6 +16,7 @@ def facts():
  data=legacy();data.update(institution='Test broker',account_number='TEST-1234',account_ref='Test account',opening_cash_raw='25.00',activity=[{'date_raw':'01/25/2025','kind':'buy','amount_raw':'25.00','instrument':'TEST-SEC','description':'Test security purchase'}])
  source=fixture();source['headers']['opening_cash']={'raw':'25.00','page':1};data['investment_source']=source
  parsed,error=from_brokerage_json(json.dumps(data),'source','en-US','USD');assert error is None
+ parsed.validated_source_page_count=1
  return parsed
 
 
@@ -65,6 +66,7 @@ def contribution_facts():
  row={key:None for key in ROW};row.update(date={'raw':'01/25/2025','page':1},kind={'raw':'contribution','page':1},amount={'raw':'100.00','page':1},printed_reference={'raw':'PRINTED-X','page':1},counterpart_reference={'raw':'BANK-REF','page':1})
  source['rows'].insert(0,row);data['investment_source']=source
  parsed,error=from_brokerage_json(json.dumps(data),'source','en-US','USD');assert error is None
+ parsed.validated_source_page_count=1
  return parsed
 
 

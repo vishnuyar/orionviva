@@ -150,6 +150,7 @@ def _post_and_build(data, tmp_path):
     facts, error = from_brokerage_json(json.dumps(data), 'printed-public', 'en-US', 'USD')
     assert error is None
     validate_pages(facts.investment_source, 1)
+    facts.validated_source_page_count = 1
     ledger = Ledger.open(tmp_path / 'events.jsonl', 'synthetic-only')
     ledger.append(document_captured('printed-public', 'public.pdf', 1, 'UNKNOWN', 0.0,
                                     '2021-01-31'))

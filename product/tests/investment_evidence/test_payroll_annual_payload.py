@@ -43,6 +43,7 @@ def populate(temporary,document_sha=False):
   packet=json.dumps(data)
   plan_doc=hashlib.sha256(packet.encode()).hexdigest() if document_sha else f'plan-month-{month:02}'
   f,error=from_brokerage_json(packet,plan_doc,'en-US','USD');assert error is None
+  f.validated_source_page_count=1
   posted=post_brokerage(ledger,f);assert posted.action=='posted',posted
   # Same evidence-only hook invoked by normal ingest.pipeline after source append.
   from viva.investment.healing import heal_after_source

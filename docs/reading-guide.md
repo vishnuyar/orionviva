@@ -59,6 +59,7 @@ Read in this order if arriving fresh. Each entry: what it is, and when you would
 - [financial-analysis-measurements-and-scenarios.md](financial-analysis-measurements-and-scenarios.md) — reviewed analysis and sourced measurements, hypothetical calculations, supported whole-question premise forms, and the remaining exact-model and retained-vault acceptance boundaries.
 - [`../README.md`](../README.md) (repo root) — what OrionViva is, and the principles everything else reasons from.
 - [installation-guide.md](installation-guide.md) — release installation and source-build instructions for macOS, Windows, and Linux, including protected default-vault behavior and troubleshooting.
+- [native-credential-profiles.md](native-credential-profiles.md) — explicit synthetic native credential namespaces and instance locks, preserved default behavior, separate filesystem isolation and the remaining OS credential and installed-lifecycle evidence.
 - [prepared-sample.md](prepared-sample.md) — the implemented synthetic snapshot build and restore contract, source closure, compatibility pin and remaining artifact and installed-host evidence.
 - [decisions/ADR-016-local-browser-interface.md](decisions/ADR-016-local-browser-interface.md) — optional same-computer browser access, retained native host, session ownership and browser-first acceptance.
 - [usage-guide.md](usage-guide.md) — the end-user path through vaults, statements, financial surfaces, evidence, Review, Ask Viva, Trust, recovery, and accessibility.

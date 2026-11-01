@@ -4,6 +4,7 @@ from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 import json
+import pypdfium2 as pdfium
 import sys
 import tempfile
 from unittest.mock import patch
@@ -61,6 +62,11 @@ def source_emitter_results(factor='1'):
         reply=json.dumps(packet)
         ledger.append(read_recorded(document,'offline-source-emitter','fixture','document',reply,0,0,0,True,None,'2025-01-31',usage_reported=False))
         facts,error=from_brokerage_json(reply,document,'en-US','USD');assert error is None,error
+        source_pdf=pdfium.PdfDocument(raw.get(document))
+        try:
+            facts.validated_source_page_count=len(source_pdf)
+        finally:
+            source_pdf.close()
         posted=post_brokerage(ledger,facts);assert posted.action=='posted',posted
         with ReadStore.create(root/'reads','synthetic-only') as reads:
             reads.synchronize(ledger.store)

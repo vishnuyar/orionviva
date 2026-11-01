@@ -176,6 +176,7 @@ def _transfer_state(projection, movement, locale: str
     """Return the bounded transfer relationship and its supported actions."""
     by_key = {item.key: item for item in projection.movements()}
     linked_keys = set(getattr(projection, "linked_keys", lambda: set())())
+    links = list(getattr(projection, "transfer_links", lambda: [])())
     suggestions = list(getattr(
         projection, "transfer_suggestions", lambda: [])())
     suggestion = next((item for item in suggestions
@@ -186,17 +187,22 @@ def _transfer_state(projection, movement, locale: str
         references: list[dict[str, Any]] = []
         seen: set[str] = set()
         coherent = (isinstance(raw, list) and bool(raw_candidates)
-                    and len(raw_candidates) <= TRANSFER_CANDIDATE_LIMIT)
+                    and len(raw_candidates) <= TRANSFER_CANDIDATE_LIMIT
+                    and movement.key not in linked_keys and not movement.linked
+                    and not any(movement.key in (link.get("a"), link.get("b"))
+                                for link in links)
+                    and _seen_transfer_account(projection, movement))
         for candidate_id in raw_candidates[:TRANSFER_CANDIDATE_LIMIT]:
             if (not isinstance(candidate_id, str) or not candidate_id.strip()
-                    or candidate_id == movement.key or candidate_id in seen
-                    or candidate_id in linked_keys):
+                    or candidate_id == movement.key or candidate_id in seen):
                 coherent = False
                 continue
             seen.add(candidate_id)
             candidate = by_key.get(candidate_id)
-            if candidate is not None and not is_transfer_candidate(
-                    movement, candidate):
+            if candidate is not None and (
+                    not is_transfer_candidate(movement, candidate)
+                    or not _seen_transfer_account(projection, candidate)
+                    or bool(candidate.linked) != (candidate_id in linked_keys)):
                 coherent = False
                 continue
             reference = (_transfer_reference(
@@ -205,8 +211,17 @@ def _transfer_state(projection, movement, locale: str
             if reference is None:
                 coherent = False
                 continue
+            if candidate_id in linked_keys:
+                if not _coherent_transfer_pair(
+                        projection, candidate, by_key, linked_keys, links, locale):
+                    coherent = False
+                continue
+            if any(candidate_id in (link.get("a"), link.get("b"))
+                   for link in links):
+                coherent = False
+                continue
             references.append(reference)
-        complete = (coherent and len(references) == len(raw_candidates))
+        complete = coherent and bool(references)
         explanation_key = ("activity_transfer_suggested"
                            if complete
                            else "activity_transfer_suggestion_incomplete")
@@ -220,7 +235,6 @@ def _transfer_state(projection, movement, locale: str
         return (state, ["confirm_transfer", "reject_transfer"]
                 if complete else [])
 
-    links = list(getattr(projection, "transfer_links", lambda: [])())
     matching_links = [item for item in links
                       if movement.key in {item.get("a"), item.get("b")}]
     link = matching_links[0] if len(matching_links) == 1 else None
@@ -232,7 +246,9 @@ def _transfer_state(projection, movement, locale: str
         counterpart_links = [item for item in links
                              if counterpart_id in {item.get("a"), item.get("b")}]
         explanation_key = _link_explanation(link)
-        coherent_pair = (isinstance(counterpart_id, str)
+        coherent_pair = (_coherent_transfer_pair(
+                            projection, movement, by_key, linked_keys, links, locale)
+                         and isinstance(counterpart_id, str)
                          and bool(counterpart_id.strip())
                          and counterpart_id != movement.key
                          and counterpart is not None
@@ -254,6 +270,45 @@ def _transfer_state(projection, movement, locale: str
             }, ["unlink_transfer"])
 
     return {"state": "none"}, []
+
+
+def _seen_transfer_account(projection, movement) -> bool:
+    """Require an actual held account and a readable account reference."""
+    try:
+        info = projection.account_info(movement.account)
+        return (info.account == movement.account
+                and bool(_account_display(projection, movement.account)))
+    except Exception:
+        return False
+
+
+def _coherent_transfer_pair(projection, movement, by_key, linked_keys, links,
+                            locale: str) -> bool:
+    """Recognize a complete live pair without hiding contradictory membership."""
+    matching = [link for link in links
+                if movement.key in (link.get("a"), link.get("b"))]
+    if len(matching) != 1:
+        return False
+    link = matching[0]
+    a, b = link.get("a"), link.get("b")
+    if (not isinstance(a, str) or not a.strip()
+            or not isinstance(b, str) or not b.strip() or a == b
+            or not recognized_link_origin(link)):
+        return False
+    endpoints = [by_key.get(a), by_key.get(b)]
+    if any(endpoint is None for endpoint in endpoints):
+        return False
+    first, second = endpoints
+    for endpoint in endpoints:
+        if (endpoint.key not in linked_keys or not endpoint.linked
+                or not _seen_transfer_account(projection, endpoint)
+                or sum(endpoint.key in (item.get("a"), item.get("b"))
+                       for item in links) != 1):
+            return False
+    return bool(
+        (is_transfer_candidate(first, second) or is_transfer_candidate(second, first))
+        and _transfer_reference(projection, first, second, locale)
+        and _transfer_reference(projection, second, first, locale))
 
 
 def _link_explanation(link: dict[str, Any]) -> str:
@@ -293,11 +348,11 @@ def _transfer_reference(projection, source, counterpart, locale: str,
 def _account_display(projection, account: str) -> str:
     try:
         info = projection.account_info(account)
+        entity = {"account": info.account, "name": info.name,
+                  "number_masked": info.number}
+        return str(render.account(entity))
     except Exception:  # the relationship is withheld if its account is unreadable
         return ""
-    entity = {"account": info.account, "name": info.name,
-              "number_masked": info.number}
-    return str(render.account(entity))
 
 
 def _relationship(projection, source, counterpart, locale: str) -> str:

@@ -397,9 +397,26 @@ def test_a_sweep_that_reconciles_neither_way_is_still_held(tmp_path):
 
 # --------------------------------------------------------- Stage 2: cash flow
 
+def _printed_opening(facts, start="2026-03-01", opening=None):
+    """Retain the printed headers and captured page bound for a flow fixture."""
+    from viva.investment.extraction import HEADERS, InvestmentSource, SourceField
+
+    values = {
+        "account_reference": facts.account_ref, "currency": facts.currency,
+        "period_start": start, "period_end": facts.as_of, "as_of": facts.as_of,
+        "opening_cash": str(facts.opening_cash if opening is None else opening),
+        "closing_cash": str(facts.cash),
+    }
+    facts.investment_source = InvestmentSource(
+        tuple((name, SourceField(values[name], 1) if name in values else None)
+              for name in HEADERS), (), ())
+    facts.validated_source_page_count = 1
+    return facts
+
+
 def _flow_facts(doc_id="", number="000000003311"):
     """A brokerage statement WITH opening cash + the period's activity."""
-    return BrokerageFacts(
+    return _printed_opening(BrokerageFacts(
         doc_id=doc_id, doc_type="brokerage_statement", doc_type_confidence=0.97,
         account_ref="Fidelity Roth", currency="USD", as_of="2026-03-31",
         opening_cash=Decimal("1000.00"), cash=Decimal("5080.00"),
@@ -414,7 +431,7 @@ def _flow_facts(doc_id="", number="000000003311"):
             BrokerageActivity("2026-03-20", "sell", Decimal("2000.00"),
                               instrument="VTSAX", realized_gain=Decimal("500.00")),
         ],
-        account_number=number, institution="Fidelity")
+        account_number=number, institution="Fidelity"))
 
 
 def test_cash_flow_reconciles_and_recognizes_income_fees_gains(tmp_path):
@@ -463,6 +480,7 @@ def test_a_contribution_ties_to_the_funding_account(tmp_path):
         total=Decimal("5000.00"), positions=[],
         activity=[BrokerageActivity("2026-03-02", "contribution", Decimal("5000.00"))],
         account_number="000000003311", institution="Fidelity")
+    _printed_opening(brk)
     capture_and_ingest(raw, ledger, b"brk",
                        lambda data, did: _stamp(brk, did), captured_at="2026-04-02")
 
@@ -484,12 +502,15 @@ def test_opening_cash_carries_forward_when_the_statement_omits_it(tmp_path):
     the previous statement's closing cash, forward-stitched."""
     raw = RawStore.open(tmp_path / "raw", "pw")
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
-    # November: closes with 200.00 cash.
+    # November: a source-backed opening and contribution close with 200.00 cash.
     nov = BrokerageFacts(
         doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
         account_ref="Fidelity", currency="USD", as_of="2026-11-30",
         cash=Decimal("200.00"), total=Decimal("200.00"), positions=[],
+        opening_cash=Decimal("100.00"),
+        activity=[BrokerageActivity("2026-11-02", "contribution", Decimal("100.00"))],
         account_number="000000003311", institution="Fidelity")
+    _printed_opening(nov, "2026-11-01")
     capture_and_ingest(raw, ledger, b"nov", lambda d, i: _stamp(nov, i),
                        captured_at="2026-12-01")
     # December: NO opening cash printed, but activity that reconciles from 200.
@@ -573,6 +594,7 @@ def test_cash_flow_mismatch_holds_activity_but_keeps_valid_snapshot(tmp_path):
             BrokerageActivity("2026-03-20", "sell", Decimal("2000.00")),
         ],
         account_number="000000003311", institution="Fidelity")
+    _printed_opening(facts)
     res = capture_and_ingest(raw, ledger, b"brk-bad",
                              lambda data, did: _stamp(facts, did), captured_at="2026-04-02")
     assert res.action == "posted"
@@ -612,14 +634,14 @@ def test_a_redownloaded_brokerage_statement_does_not_post_its_activity_twice(tmp
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
 
     def facts():
-        return BrokerageFacts(
+        return _printed_opening(BrokerageFacts(
             doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
             account_ref="Fidelity Roth", currency="USD", as_of="2026-03-31",
             cash=Decimal("1100.00"), total=Decimal("1100.00"), positions=[],
             opening_cash=Decimal("1000.00"),
             activity=[BrokerageActivity("2026-03-15", "dividend",
                                         Decimal("100.00"))],
-            account_number="3311", institution="Fidelity")
+            account_number="3311", institution="Fidelity"))
 
     first = capture_and_ingest(raw, ledger, b"march-as-downloaded",
                                lambda d, i: _stamp(facts(), i),
@@ -633,3 +655,264 @@ def test_a_redownloaded_brokerage_statement_does_not_post_its_activity_twice(tmp
     moves = [e for e in ledger.store.events()
              if e.event_type == "TransactionRecorded"]
     assert len(moves) == 1, "the dividend was counted twice"
+
+
+def _cash_events(ledger, kind):
+    return [event for event in ledger.events() if event.event_type == kind]
+
+
+def test_first_brokerage_opening_uses_printed_start_and_replays_historically(tmp_path):
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    facts = _flow_facts("source-dated-flow")
+    result = post_brokerage(ledger, facts)
+    assert result.action == "posted"
+    (opening,) = _cash_events(ledger, "OpeningBalanceObserved")
+    assert opening.occurred_at == "2026-03-01"
+    assert opening.body["amount"] == "1000.00"
+    assert opening.provenance.doc_id == facts.doc_id
+    assert opening.provenance.page == 1
+    assert _cash_events(ledger, "AccountOpened")[0].occurred_at == facts.as_of
+    assert _cash_events(ledger, "ClosingBalanceObserved")[0].occurred_at == facts.as_of
+    assert _cash_events(ledger, "PositionObserved")[0].occurred_at == facts.as_of
+    historical = LedgerProjection(event for event in ledger.events()
+                                 if event.occurred_at <= "2026-03-10")
+    assert historical.balance(result.account).amount == Decimal("6100.00")
+    replayed = Ledger.open(tmp_path / "events.jsonl", "pw").projection()
+    assert replayed.is_seeded(result.account)
+    assert replayed.balance(result.account).amount == Decimal("5080.00")
+
+
+def _damage_opening(facts, fault):
+    from dataclasses import replace
+    from viva.investment.extraction import SourceField
+
+    if fault == "no-source":
+        facts.investment_source = None
+        return
+    if fault in ("no-page-count", "boolean-page-count", "zero-page-count"):
+        facts.validated_source_page_count = {
+            "no-page-count": None, "boolean-page-count": True, "zero-page-count": 0,
+        }[fault]
+        return
+    headers = dict(facts.investment_source.headers)
+    field, raw, page = {
+        "missing-start": ("period_start", None, None),
+        "blank-start": ("period_start", "", 1),
+        "malformed-start": ("period_start", "yesterday", 1),
+        "ambiguous-start": ("period_start", "03/04/2026", 1),
+        "yearless-start": ("period_start", "03/01", 1),
+        "unpaged-start": ("period_start", "2026-03-01", None),
+        "outside-pages": ("period_start", "2026-03-01", 2),
+        "wrong-end": ("period_end", "2026-04-30", 1),
+        "wrong-as-of": ("as_of", "2026-04-30", 1),
+        "inverted-period": ("period_start", "2026-04-01", 1),
+        "wrong-currency": ("currency", "EUR", 1),
+        "wrong-money": ("opening_cash", "999.00", 1),
+        "conflicting-currency": ("opening_cash", "EUR 1000.00", 1),
+        "unpaged-money": ("opening_cash", "1000.00", None),
+        "unpaged-end": ("period_end", "2026-03-31", None),
+        "unpaged-as-of": ("as_of", "2026-03-31", None),
+        "unpaged-currency": ("currency", "USD", None),
+    }[fault]
+    headers[field] = None if raw is None else SourceField(raw, page)
+    facts.investment_source = replace(facts.investment_source,
+                                     headers=tuple(headers.items()))
+
+
+_OPENING_FAULTS = (
+    "no-source", "no-page-count", "boolean-page-count", "zero-page-count",
+    "missing-start", "blank-start",
+    "malformed-start", "ambiguous-start", "yearless-start", "unpaged-start",
+    "outside-pages", "wrong-end", "wrong-as-of", "inverted-period",
+    "wrong-currency", "wrong-money", "conflicting-currency", "unpaged-money",
+    "unpaged-end", "unpaged-as-of", "unpaged-currency",
+)
+
+
+@pytest.mark.parametrize("fault", _OPENING_FAULTS)
+@pytest.mark.parametrize("correction", [False, True])
+def test_unsupported_opening_holds_activity_and_preserves_snapshot(tmp_path, fault, correction):
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    facts = _flow_facts("unsupported-flow")
+    _damage_opening(facts, fault)
+    result = post_brokerage(ledger, facts)
+    assert result.action == "posted"
+    assert ledger.projection().account_value(result.account) == Decimal("23480.00")
+    assert _cash_events(ledger, "PositionObserved")[0].occurred_at == facts.as_of
+    assert _cash_events(ledger, "ClosingBalanceObserved")[0].occurred_at == facts.as_of
+    before = list(ledger.events())
+    if correction:
+        retry = apply_brokerage_activity_correction(ledger, facts.doc_id, facts.activity)
+        assert retry.action == "conflict"
+        assert list(ledger.events()) == before
+    assert not _cash_events(ledger, "OpeningBalanceObserved")
+    assert not ledger.projection().movements()
+    assert not _cash_events(ledger, "BrokerageActivityResolved")
+    assert len(ledger.projection().open_activity_holds()) == 1
+
+
+@pytest.mark.parametrize("when", ["2026-02-28", "2026-04-01", "03/02/2026", "invalid"])
+@pytest.mark.parametrize("correction", [False, True])
+def test_unseeded_activity_dates_must_be_canonical_and_in_printed_period(tmp_path, when, correction):
+    from dataclasses import replace
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    facts = _flow_facts("out-of-period")
+    facts.activity[0] = replace(facts.activity[0], date=when)
+    result = post_brokerage(ledger, facts)
+    assert result.action == "posted"
+    if correction:
+        assert apply_brokerage_activity_correction(
+            ledger, facts.doc_id, facts.activity).action == "conflict"
+    assert not _cash_events(ledger, "OpeningBalanceObserved")
+    assert not ledger.projection().movements()
+    assert ledger.projection().account_value(result.account) == Decimal("23480.00")
+    assert len(ledger.projection().open_activity_holds()) == 1
+
+
+def test_missing_activity_date_keeps_existing_snapshot_date_convention(tmp_path):
+    from dataclasses import replace
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    facts = _flow_facts("missing-row-date")
+    facts.activity[0] = replace(facts.activity[0], date="")
+    post_brokerage(ledger, facts)
+    assert _cash_events(ledger, "OpeningBalanceObserved")[0].occurred_at == "2026-03-01"
+    assert _cash_events(ledger, "TransactionRecorded")[0].occurred_at == facts.as_of
+
+
+def test_seen_but_unseeded_account_still_requires_printed_opening_source(tmp_path):
+    from dataclasses import replace
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    snapshot = replace(_flow_facts("snapshot"), activity=[], investment_source=None,
+                       opening_cash=None, as_of="2026-02-28")
+    account = post_brokerage(ledger, snapshot).account
+    assert ledger.projection().seen_account(account)
+    assert not ledger.projection().is_seeded(account)
+    flow = _flow_facts("unsupported-later-flow")
+    flow.investment_source = None
+    post_brokerage(ledger, flow)
+    assert not ledger.projection().is_seeded(account)
+    assert not ledger.projection().movements()
+    assert len(ledger.projection().open_activity_holds()) == 1
+
+
+def test_zero_opening_is_seeded_once_and_later_flow_needs_no_new_source(tmp_path):
+    from dataclasses import replace
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    facts = _flow_facts("zero-opening")
+    facts.opening_cash = Decimal("0.00")
+    facts.cash = Decimal("4080.00")
+    facts.total = Decimal("22480.00")
+    _printed_opening(facts)
+    account = post_brokerage(ledger, facts).account
+    assert ledger.projection().is_seeded(account)
+    later = replace(facts, doc_id="later-flow", as_of="2026-04-30",
+                    cash=Decimal("4180.00"), total=Decimal("22580.00"),
+                    opening_cash=None, investment_source=None,
+                    activity=[BrokerageActivity("2026-04-10", "dividend", Decimal("100.00"))])
+    post_brokerage(ledger, later)
+    assert len(_cash_events(ledger, "OpeningBalanceObserved")) == 1
+    assert ledger.projection().balance(account).amount == Decimal("4180.00")
+
+
+def test_correction_seeds_before_movements_in_one_atomic_batch_and_retries(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    facts = _flow_facts("corrected-source-flow")
+    correct_activity = list(facts.activity)
+    facts.activity[0] = replace(facts.activity[0], amount=Decimal("4900.00"))
+    result = post_brokerage(ledger, facts)
+    before = list(ledger.events())
+    original = ledger.append_atomically
+    batches = []
+
+    def interrupt(decide):
+        def inspect(projection):
+            batch = tuple(decide(projection))
+            batches.append(batch)
+            raise OSError("simulated interruption before atomic commit")
+        return original(inspect)
+
+    monkeypatch.setattr(ledger, "append_atomically", interrupt)
+    with pytest.raises(OSError, match="simulated interruption"):
+        apply_brokerage_activity_correction(ledger, facts.doc_id, correct_activity)
+    assert list(ledger.events()) == before
+    assert len(ledger.projection().open_activity_holds()) == 1
+    monkeypatch.setattr(ledger, "append_atomically", original)
+    assert apply_brokerage_activity_correction(
+        ledger, facts.doc_id, correct_activity).action == "posted"
+    expected = ["OpeningBalanceObserved"] + ["TransactionRecorded"] * 5 + ["BrokerageActivityResolved"]
+    assert [event.event_type for event in batches[0]] == expected
+    assert [event.event_type for event in list(ledger.events())[len(before):]] == expected
+    assert _cash_events(ledger, "OpeningBalanceObserved")[0].occurred_at == "2026-03-01"
+    assert ledger.projection().balance(result.account).amount == Decimal("5080.00")
+    assert not ledger.projection().open_activity_holds()
+    with pytest.raises(ValueError, match="no brokerage activity held"):
+        apply_brokerage_activity_correction(ledger, facts.doc_id, correct_activity)
+    assert len(_cash_events(ledger, "OpeningBalanceObserved")) == 1
+
+
+def test_correction_amount_cannot_override_retained_printed_opening(tmp_path):
+    from dataclasses import replace
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    facts = _flow_facts("opening-override")
+    facts.activity[0] = replace(facts.activity[0], amount=Decimal("4900.00"))
+    post_brokerage(ledger, facts)
+    before = list(ledger.events())
+    result = apply_brokerage_activity_correction(
+        ledger, facts.doc_id, facts.activity, opening_cash="1100.00")
+    assert result.action == "conflict"
+    assert list(ledger.events()) == before
+    assert len(ledger.projection().open_activity_holds()) == 1
+
+
+def test_seen_but_unseeded_account_can_take_source_backed_first_seed(tmp_path):
+    from dataclasses import replace
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    snapshot = replace(_flow_facts("earlier-snapshot"), activity=[],
+                       investment_source=None, opening_cash=None, as_of="2026-02-28")
+    account = post_brokerage(ledger, snapshot).account
+    result = post_brokerage(ledger, _flow_facts("later-sourced-flow"))
+    assert result.account == account
+    assert len(_cash_events(ledger, "AccountOpened")) == 1
+    (opening,) = _cash_events(ledger, "OpeningBalanceObserved")
+    assert opening.occurred_at == "2026-03-01"
+    assert len(ledger.projection().movements()) == 5
+
+
+def test_seeded_correction_keeps_existing_admission_without_new_opening(tmp_path):
+    from dataclasses import replace
+    from viva.ingest.brokerage_projector import post_brokerage
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    facts = _flow_facts("first-sourced-flow")
+    account = post_brokerage(ledger, facts).account
+    corrected = [BrokerageActivity("2026-04-10", "dividend", Decimal("100.00"))]
+    later = replace(facts, doc_id="held-later-flow", as_of="2026-04-30",
+                    opening_cash=Decimal("5080.00"), cash=Decimal("5180.00"),
+                    total=Decimal("23580.00"), investment_source=None,
+                    activity=[replace(corrected[0], amount=Decimal("99.00"))])
+    post_brokerage(ledger, later)
+    assert len(ledger.projection().open_activity_holds()) == 1
+    assert apply_brokerage_activity_correction(
+        ledger, later.doc_id, corrected).action == "posted"
+    assert len(_cash_events(ledger, "OpeningBalanceObserved")) == 1
+    assert not ledger.projection().open_activity_holds()
+    assert ledger.projection().balance(account).amount == Decimal("5180.00")

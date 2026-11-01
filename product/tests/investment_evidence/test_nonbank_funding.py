@@ -30,6 +30,7 @@ def facts(incoming,**kwargs):
  packet=source_packet(incoming,**kwargs)
  value,error=from_brokerage_json(json.dumps(packet),'destination-source' if incoming else 'origin-source','en-US','USD')
  assert error is None,error
+ value.validated_source_page_count=1
  return value
 
 
@@ -60,6 +61,7 @@ def test_actual_two_broker_posting_binds_exact_opposing_source_without_reposting
 def post_packet(ledger,packet,doc):
  currency=packet['investment_source']['headers']['currency']['raw']
  value,error=from_brokerage_json(json.dumps(packet),doc,'en-US',currency);assert error is None,error
+ value.validated_source_page_count=1
  result=post_brokerage(ledger,value);assert result.action in ('posted','duplicate'),result
  return value,result
 

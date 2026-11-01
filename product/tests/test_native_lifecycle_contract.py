@@ -223,3 +223,23 @@ def test_active_identity_is_generation_bound_at_success_and_failure():
     guarded = clear[opening:_block_end(clear, opening)]
     assert "active.vault = ActiveVault::None" in guarded
     assert clear.count("active.vault = ActiveVault::None") == 1
+
+
+def test_native_profile_is_initialized_before_app_construction_and_never_bypassed():
+    source = _source()
+    run = _function_body(source, "run")
+    initialize = run.find("native_profile::initialize(std::env::args_os().skip(1))")
+    assert 0 <= initialize < run.find("tauri::Builder::default()")
+    refusal = run[initialize:run.find("tauri::Builder::default()")]
+    assert "std::process::exit(2)" in refusal
+    entry = _function_body(source, "credential_entry")
+    assert "native_profile::credential_entry_with" in entry
+    assert "keyring::Entry::new(service, account)" in entry
+    assert source.count("keyring::Entry::new(") == 1
+    protected_source = source[:source.index(
+        '#[cfg(not(any(target_os = "macos", target_os = "windows")))]'
+    )]
+    assert "credential_entry()?.set_password" in _function_body(protected_source, "store_remembered_vault")
+    assert "credential_entry()?.get_password" in _function_body(protected_source, "read_remembered_vault")
+    assert "native_profile::lock_path(&directory)" in run
+    assert ".open(lock_path)" in run

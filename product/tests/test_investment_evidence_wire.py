@@ -1,5 +1,6 @@
 """Capture genuine backend receipts; positive wire is never hand-constructed."""
 import json
+import pypdfium2 as pdfium
 import os
 from pathlib import Path
 from contextlib import contextmanager
@@ -80,6 +81,11 @@ def populate(tmp_path,unknown_basis=False,max_fractional=False):
  reply=json.dumps(packet)
  facts,error=from_brokerage_json(reply,investment_doc,'en-US','USD');assert error is None
  ledger.append(read_recorded(investment_doc,'offline-source-reader-fixture','unreleased-test-source-contract','document',reply,0.0,0,0,True,None,facts.as_of,Provenance(doc_id=investment_doc),usage_reported=False))
+ source_pdf=pdfium.PdfDocument(investment_bytes)
+ try:
+  facts.validated_source_page_count=len(source_pdf)
+ finally:
+  source_pdf.close()
  result=post_brokerage(ledger,facts);assert result.action=='posted'
  return ledger,packet
 

@@ -1,4 +1,5 @@
 mod browser;
+mod native_profile;
 
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::path::PathBuf;
@@ -70,11 +71,6 @@ fn startup_diagnostic(
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const VAULT_CREDENTIAL_SERVICE: &str = "com.orionviva.desktop.default-vault";
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const VAULT_CREDENTIAL_ACCOUNT: &str = "default";
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Serialize, Deserialize)]
 struct RememberedVault {
     directory: String,
@@ -91,8 +87,10 @@ enum RememberedVaultOpen {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn credential_entry() -> Result<keyring::Entry, String> {
-    keyring::Entry::new(VAULT_CREDENTIAL_SERVICE, VAULT_CREDENTIAL_ACCOUNT)
-        .map_err(|error| format!("unable to access the operating-system credential store: {error}"))
+    native_profile::credential_entry_with(|service, account| {
+        keyring::Entry::new(service, account)
+            .map_err(|error| format!("unable to access the operating-system credential store: {error}"))
+    })
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3037,18 +3035,25 @@ fn close_vault(app: AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if let Err(error) = native_profile::initialize(std::env::args_os().skip(1)) {
+        eprintln!("Unable to start OrionViva: {error}");
+        std::process::exit(2);
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(browser::BrowserState::default())
         .setup(|app| {
             let directory = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&directory)?;
+            let lock_path = native_profile::lock_path(&directory).map_err(std::io::Error::other)?;
+            std::fs::create_dir_all(lock_path.parent().ok_or_else(|| {
+                std::io::Error::other("native instance lock has no directory")
+            })?)?;
             let lock = std::fs::OpenOptions::new()
                 .create(true)
                 .truncate(false)
                 .read(true)
                 .write(true)
-                .open(directory.join("instance.lock"))?;
+                .open(lock_path)?;
             lock.try_lock().map_err(|_| {
                 std::io::Error::other("OrionViva is already running. Use its existing window.")
             })?;

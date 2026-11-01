@@ -105,6 +105,49 @@ def _source_cash_page(facts, name, expected):
     return source.page if parsed.ok and parsed.decimal() == expected else None
 
 
+def _opening_cash_source(facts, opening_cash):
+    """Bind a first cash seed and its activity to retained printed evidence."""
+    from vivacore.verify.normalize import parse_amount, parse_date
+
+    page_count = facts.validated_source_page_count
+    if facts.investment_source is None or type(page_count) is not int or page_count < 1:
+        return None
+    headers = dict(facts.investment_source.headers)
+    names = ("period_start", "period_end", "as_of", "currency", "opening_cash")
+    fields = [headers.get(name) for name in names]
+    if any(item is None or type(item.page) is not int
+           or not 1 <= item.page <= page_count or not item.raw.strip()
+           for item in fields):
+        return None
+    start, end, as_of = [parse_date(headers[name].raw)
+                         for name in names[:3]]
+    if not all(value.ok for value in (start, end, as_of)):
+        return None
+    if (end.value != facts.as_of or as_of.value != facts.as_of
+            or start.value > end.value
+            or headers["currency"].raw.strip() != facts.currency):
+        return None
+    amount = parse_amount(headers["opening_cash"].raw, currency=facts.currency)
+    if not amount.ok or amount.decimal() != opening_cash:
+        return None
+    for item in facts.activity:
+        effective_date = item.date or facts.as_of
+        parsed = parse_date(effective_date)
+        if (not parsed.ok or parsed.value != effective_date
+                or not start.value <= effective_date <= end.value):
+            return None
+    return start.value, headers["opening_cash"].page
+
+
+def _unsupported_opening_finding():
+    return ReconciliationFinding(
+        reconciles=False, kind="brokerage_cashflow", status=UNLOCALIZED,
+        delta="0", confidence=0.1,
+        message=("The first cash balance needs a matching printed opening amount, "
+                 "currency and complete statement period on validated source pages, "
+                 "with activity inside that period. Held for your review."))
+
+
 def _post_brokerage_cash_and_snapshot(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     """Verify a brokerage statement's internal tally and, only if it holds,
     record its holdings as measurements.
@@ -118,7 +161,9 @@ def _post_brokerage_cash_and_snapshot(ledger: Ledger, facts: BrokerageFacts) -> 
 
     When the period's activity is present and an opening cash figure is known
     (printed, or carried forward from the ledger), the cash is additionally
-    reconciled as a flow and each activity line posts."""
+    reconciled as a flow. A first seed additionally requires a printed,
+    page-bound opening and period; unsupported activity stays held while
+    the independently valid snapshot survives."""
     # A statement may print the cash line as including the money-market sweep or
     # excluding it, and the same account can do either month to month.
     # `resolve_sweep_cash` picks whichever reading reconciles exactly and
@@ -218,8 +263,15 @@ def _post_brokerage_cash_and_snapshot(ledger: Ledger, facts: BrokerageFacts) -> 
 
     proj = ledger.projection()
     account = account0
-    seeding = not proj.seen_account(account)
-    if seeding:
+    seeding = not proj.is_seeded(account)
+    opening_source = None
+    if flow and seeding:
+        opening_source = _opening_cash_source(facts, opening_cash)
+        if opening_source is None:
+            activity_finding = _unsupported_opening_finding()
+            activity_issue = activity_finding.message
+            flow = False
+    if not proj.seen_account(account):
         log.info("post_brokerage: opening investment account %s (%s) at %s",
                  account, facts.account_ref, when)
         ledger.append(account_opened(
@@ -236,8 +288,9 @@ def _post_brokerage_cash_and_snapshot(ledger: Ledger, facts: BrokerageFacts) -> 
         # Income:CapitalGains.
         if seeding:
             ledger.append(opening_balance_observed(
-                account, opening_cash, when,
-                facts.provenance(f"opening cash (from {opening_from})", page=_source_cash_page(facts, "opening_cash", opening_cash))))
+                account, opening_cash, opening_source[0],
+                facts.provenance(f"opening cash (from {opening_from})",
+                                 page=opening_source[1])))
         for a in facts.activity:
             ledger.append(brokerage_activity_transaction(
                 account, a.kind, a.amount, a.description, a.date or when,
@@ -304,7 +357,8 @@ def apply_brokerage_activity_correction(
     """Reconcile and atomically replay a held brokerage activity stream.
 
     The holdings snapshot is unchanged. A successful replay appends the
-    corrected movements and closes the durable activity hold.
+    source-backed first opening when required, corrected movements and the
+    durable activity hold resolution.
     """
     outcome: list[IngestResult] = []
     accepted_sources = []
@@ -343,13 +397,27 @@ def apply_brokerage_activity_correction(
         if identity.verdict == "ambiguous":
             raise ValueError("corrected brokerage statement has ambiguous account identity")
         account = identity.account_id
-        events = [brokerage_activity_transaction(
+        events = []
+        if not projection.is_seeded(account):
+            opening_source = _opening_cash_source(corrected, corrected.opening_cash)
+            if opening_source is None:
+                finding = _unsupported_opening_finding()
+                outcome.append(IngestResult(
+                    doc_id=doc_id, action=CONFLICT, doc_type=corrected.doc_type,
+                    account=account, grade="conflicted", reconciliation=recon,
+                    finding=finding, message=finding.message))
+                return ()
+            events.append(opening_balance_observed(
+                account, corrected.opening_cash, opening_source[0],
+                corrected.provenance("opening cash (from the statement)",
+                                     page=opening_source[1])))
+        events.extend(brokerage_activity_transaction(
             account, item.kind, item.amount, item.description,
             item.date or corrected.as_of, instrument=item.instrument,
             realized_gain=item.realized_gain,
             provenance=corrected.provenance(
                 f"{item.kind} {item.instrument}".strip()))
-            for item in corrected.activity]
+            for item in corrected.activity)
         events.append(brokerage_activity_resolved(
             doc_id, corrected.as_of, Provenance(doc_id=doc_id)))
         accepted_sources.append((corrected, account))

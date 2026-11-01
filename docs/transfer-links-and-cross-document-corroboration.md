@@ -156,6 +156,33 @@ that a document is available only acknowledges waiting; declining sets the
 request aside. Neither answer opens an account. The synthetic parity and
 both-import-order checks live in `product/tests/test_counterpart_review.py`.
 
+## Current manual choices and retained history
+
+A stored transfer suggestion retains its original candidate list. Activity shows
+only its currently available choices, in their original order. A candidate
+consumed by a different live pair can be omitted only when both endpoints,
+account references, membership flags, eligibility and recognized link provenance
+coherently establish that pair. Account references require a successful exact
+identity lookup and readable metadata; no account enumeration is required.
+Unknown, malformed, ineligible or contradictory
+evidence blocks the whole question. The raw candidate limit applies before
+filtering; consumption cannot turn an oversized question into an authorized one.
+
+The existing confirm and reject actions remain available when at least one valid
+choice remains and the source is unlinked. Confirmation checks the freshly read
+choice list; a remembered consumed choice is stale. Reject dismisses the whole
+question without deleting its original evidence or disturbing another pair.
+Unlinking that other pair can restore a retained choice. These reads and the
+writer's linked-status guard are separate checks, not an atomic concurrency
+guarantee. Automatic matching rules, source postings and financial dates are
+unchanged.
+
+Historical Activity uses the same relationship checks at its requested cutoff.
+AccountLedger shares relationship presentation and strips write actions. Its
+bounded page may lack a candidate's separate consuming pair; that missing
+context remains incomplete rather than inferring a free choice or expanding
+the page's data access.
+
 ## Open
 
 - The one-sided own-account ask is unbuilt: a transfer naming an unseen destination is not turned into an "is …9876 yours?" question, and a confirmed transfer is not learned as a pattern so future look-alikes auto-link. A one-sided movement can remain spending, but existing structured liability implications can already classify it provisionally outside settled spending, and an own-account heuristic can already mark it as a transfer. None of these is a completed counterpart link.

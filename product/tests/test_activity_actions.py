@@ -1,6 +1,7 @@
 """Activity v3 corrections validate live state and append exact overlays."""
 
 import json
+from dataclasses import replace
 from decimal import Decimal
 from importlib import import_module
 
@@ -1189,6 +1190,358 @@ def test_confirm_transfer_writes_one_verified_link_survives_replay_and_is_idempo
     assert duplicate["kind"] == "stale"
     assert duplicate["reason"] == "transfer_state_changed"
     assert len(list(vault.events())) == after
+
+
+def test_consumed_candidate_keeps_free_choice_actionable_and_preserves_other_pair(
+        tmp_path):
+    vault, source, counterparts, _ordinary = _transfer_vault(tmp_path, candidates=2)
+    try:
+        vault.ledger.append(account_opened(
+            "acct:separate-source", "depository", "Reserve", "USD", "2026-03-01",
+            account_number="3300"))
+        vault.ledger.append(simple_transaction(
+            "acct:separate-source", "-125.00", "reserve payment", "2026-03-05"))
+        projection = vault.ledger.projection()
+        separate_source = next(movement.key for movement in projection.movements()
+                               if movement.description == "reserve payment")
+        vault.ledger.append(transfer_linked(
+            separate_source, counterparts[0], "verified", {"kind": "confirmed"},
+            "2026-03-08", by="human"))
+        projection = vault.ledger.projection()
+        original_link = projection.transfer_links()[0]
+        original_suggestion = projection.transfer_suggestions()[0]
+        original_events = list(vault.events())
+        balances = {account: projection.balance(account).amount
+                    for account in projection.accounts()}
+        assert original_suggestion["a"] == source
+        assert original_suggestion["candidates"] == counterparts
+        assert projection.linked_keys() == {separate_source, counterparts[0]}
+
+        rows = {item["id"]: item for item in activity(projection)["items"]}
+        transfer = rows[source]["transfer"]
+        assert transfer["complete"] is True
+        assert [candidate["id"] for candidate in transfer["candidates"]] == [
+            counterparts[1]]
+        assert {"confirm_transfer", "reject_transfer"} <= set(rows[source]["actions"])
+        assert rows[counterparts[0]]["transfer"]["counterpart"]["id"] == separate_source
+
+        outcome = ActivityActions(vault).confirm_transfer({
+            "movement_key": source, "counterpart_key": counterparts[1]})
+        assert outcome["kind"] == "completed"
+        events = list(vault.events())
+        assert events[:len(original_events)] == original_events
+        assert len(events) == len(original_events) + 1
+        assert events[-1].event_type == "TransferLinked"
+        assert _events(vault, "TransferSuggested")[0] == next(
+            event for event in original_events if event.event_type == "TransferSuggested")
+        for current in (vault.ledger.projection(), LedgerProjection(events)):
+            links = current.transfer_links()
+            assert original_link in links
+            new_link = next(link for link in links if source in {link["a"], link["b"]})
+            assert {new_link["a"], new_link["b"]} == {source, counterparts[1]}
+            assert new_link["by"] == "human"
+            assert new_link["grade"] == "verified"
+            assert len(links) == 2
+            assert {account: current.balance(account).amount for account in balances} == balances
+    finally:
+        vault.close()
+
+
+def _partly_consumed_transfer_vault(tmp_path):
+    vault, source, candidates, _ordinary = _transfer_vault(tmp_path, candidates=3)
+    vault.ledger.append(account_opened(
+        "acct:reserve", "depository", "Reserve", "USD", "2026-03-01",
+        account_number="3300"))
+    vault.ledger.append(simple_transaction(
+        "acct:reserve", "-125.00", "reserve payment", "2026-03-05"))
+    other = next(movement.key for movement in vault.ledger.projection().movements()
+                 if movement.description == "reserve payment")
+    vault.ledger.append(transfer_linked(
+        other, candidates[1], "verified", {}, "2026-03-08", by="human"))
+    return vault, source, candidates, other
+
+
+class _TransferProjectionOverride:
+    def __init__(self, projection, **overrides):
+        self.projection = projection
+        self.overrides = overrides
+
+    def __getattr__(self, name):
+        if name in self.overrides:
+            value = self.overrides[name]
+            return value if callable(value) else lambda: value
+        return getattr(self.projection, name)
+
+
+def _transfer_read(projection, source):
+    movement = next(item for item in projection.movements() if item.key == source)
+    return import_module("viva.surface.activity")._transfer_state(
+        projection, movement, "en-US")
+
+
+def test_consumed_choice_is_stale_and_unlink_restores_original_order_and_history(tmp_path):
+    vault, source, candidates, other = _partly_consumed_transfer_vault(tmp_path)
+    try:
+        original = list(vault.events())
+        state, actions = _transfer_read(vault.ledger.projection(), source)
+        assert state["complete"] is True
+        assert [item["id"] for item in state["candidates"]] == [candidates[0], candidates[2]]
+        assert actions == ["confirm_transfer", "reject_transfer"]
+        assert ActivityActions(vault).confirm_transfer({
+            "movement_key": source, "counterpart_key": candidates[1]})["kind"] == "stale"
+        assert list(vault.events()) == original
+        assert ActivityActions(vault).unlink_transfer({
+            "movement_key": other, "counterpart_key": candidates[1]})["kind"] == "completed"
+        restored_events = list(vault.events())
+        assert restored_events[:len(original)] == original
+        assert restored_events[-1].event_type == "TransferUnlinked"
+        for projection in (vault.ledger.projection(), LedgerProjection(restored_events)):
+            state, actions = _transfer_read(projection, source)
+            assert state["complete"] is True
+            assert [item["id"] for item in state["candidates"]] == candidates
+            assert actions == ["confirm_transfer", "reject_transfer"]
+            assert projection.transfer_suggestions()[0]["candidates"] == candidates
+        path = tmp_path / "transfer-vault"
+        vault.close()
+        vault = Vault.open(path, "pw")
+        state, actions = _transfer_read(vault.ledger.projection(), source)
+        assert [item["id"] for item in state["candidates"]] == candidates
+        assert actions == ["confirm_transfer", "reject_transfer"]
+        assert list(vault.events()) == restored_events
+    finally:
+        vault.close()
+
+
+@pytest.mark.parametrize("damage", [
+    "unknown", "blank", "non-string", "duplicate", "self", "not-list",
+    "source-linked", "source-flag", "candidate-flag", "candidate-key",
+    "missing-link", "overlap", "self-link", "missing-endpoint", "unknown-origin",
+    "endpoint-flag", "unseen-account", "currency", "amount", "date", "direction",
+    "incomplete-reference", "pair-currency", "pair-amount", "pair-date",
+])
+def test_invalid_candidate_evidence_blocks_whole_question_beside_free_choices(tmp_path, damage):
+    vault, source, candidates, other = _partly_consumed_transfer_vault(tmp_path)
+    try:
+        projection = vault.ledger.projection()
+        movements = list(projection.movements())
+        suggestions = [dict(projection.transfer_suggestions()[0])]
+        suggestions[0]["candidates"] = list(candidates)
+        links = [dict(item) for item in projection.transfer_links()]
+        keys = set(projection.linked_keys())
+        account_lookup = projection.account_info
+        raw = suggestions[0]["candidates"]
+        if damage == "unknown": raw.append("missing-movement")
+        elif damage == "blank": raw.append(" ")
+        elif damage == "non-string": raw.append(None)
+        elif damage == "duplicate": raw.append(candidates[0])
+        elif damage == "self": raw.append(source)
+        elif damage == "not-list": suggestions[0]["candidates"] = tuple(raw)
+        elif damage == "source-linked": keys.add(source)
+        elif damage == "candidate-key": keys.remove(candidates[1])
+        elif damage == "missing-link": links = []
+        elif damage == "overlap": links.append(dict(links[0], a=candidates[0], b=other))
+        elif damage == "self-link": links[0].update(a=candidates[1], b=candidates[1])
+        elif damage == "missing-endpoint": links[0].update(a="missing-movement")
+        elif damage == "unknown-origin": links[0].update(by="auto", grade="verified")
+        elif damage == "unseen-account":
+            account = next(item.account for item in movements if item.key == candidates[1])
+            def account_lookup(identity):
+                if identity == account:
+                    raise LookupError("synthetic account is unseen")
+                return projection.account_info(identity)
+        else:
+            target = source if damage == "source-flag" else (
+                other if damage.startswith("pair-") or damage == "endpoint-flag" else candidates[1])
+            changes = {
+                "source-flag": {"linked": True}, "candidate-flag": {"linked": False},
+                "endpoint-flag": {"linked": False}, "currency": {"currency": "EUR"},
+                "amount": {"amount": Decimal("126")}, "date": {"date": "2026-04-01"},
+                "direction": {"amount": Decimal("-125")},
+                "incomplete-reference": {"description": ""},
+                "pair-currency": {"currency": "EUR"}, "pair-amount": {"amount": Decimal("-126")},
+                "pair-date": {"date": "2026-04-01"},
+            }[damage]
+            movements = [replace(item, **changes) if item.key == target else item
+                         for item in movements]
+        view = _TransferProjectionOverride(projection, movements=movements,
+            transfer_suggestions=suggestions, transfer_links=links, linked_keys=keys,
+            account_info=account_lookup)
+        state, actions = _transfer_read(view, source)
+        assert state.get("complete") is not True
+        assert actions == []
+    finally:
+        vault.close()
+
+
+@pytest.mark.parametrize("by,grade,evidence", [
+    ("human", "verified", {}),
+    *[("auto", "corroborated", {"decided_by": rule}) for rule in (
+        "named_account", "named_account+printed_date", "account_ref_slot",
+        "account_ref_slot+printed_date")],
+])
+def test_consumption_accepts_only_existing_recognized_origins(tmp_path, by, grade, evidence):
+    vault, source, candidates, other = _partly_consumed_transfer_vault(tmp_path)
+    try:
+        projection = vault.ledger.projection()
+        links = [dict(projection.transfer_links()[0], by=by, grade=grade,
+                      decided_by=evidence.get("decided_by", ""))]
+        state, actions = _transfer_read(_TransferProjectionOverride(
+            projection, transfer_links=links), source)
+        assert state["complete"] is True
+        assert [item["id"] for item in state["candidates"]] == [candidates[0], candidates[2]]
+        assert actions == ["confirm_transfer", "reject_transfer"]
+    finally:
+        vault.close()
+
+
+def test_all_consumed_has_no_actions_and_raw_limit_precedes_filtering(tmp_path):
+    vault, source, candidates, other = _partly_consumed_transfer_vault(tmp_path)
+    try:
+        projection = vault.ledger.projection()
+        stored = dict(projection.transfer_suggestions()[0], candidates=[candidates[1]])
+        state, actions = _transfer_read(_TransferProjectionOverride(
+            projection, transfer_suggestions=[stored]), source)
+        assert state["complete"] is False
+        assert state["candidates"] == []
+        assert actions == []
+
+        class BoundedList(list):
+            def __getitem__(self, index):
+                assert isinstance(index, slice) and index.stop <= TRANSFER_CANDIDATE_LIMIT
+                return super().__getitem__(index)
+
+            def __iter__(self):
+                raise AssertionError("oversized raw list must not be traversed")
+
+        raw = BoundedList([candidates[1]] * TRANSFER_CANDIDATE_LIMIT + [candidates[0]])
+        stored["candidates"] = raw
+        state, actions = _transfer_read(_TransferProjectionOverride(
+            projection, transfer_suggestions=[stored]), source)
+        assert state["complete"] is False
+        assert actions == []
+    finally:
+        vault.close()
+
+
+def test_reject_partly_consumed_question_retains_other_pair_and_suggestion_history(tmp_path):
+    vault, source, candidates, other = _partly_consumed_transfer_vault(tmp_path)
+    try:
+        original = list(vault.events())
+        original_links = vault.ledger.projection().transfer_links()
+        assert ActivityActions(vault).reject_transfer({"movement_key": source})["kind"] == "completed"
+        events = list(vault.events())
+        assert events[:len(original)] == original
+        assert len(events) == len(original) + 1
+        assert events[-1].event_type == "TransferUnlinked"
+        for projection in (vault.ledger.projection(), LedgerProjection(events)):
+            assert projection.transfer_links() == original_links
+            assert projection.transfer_suggestions() == []
+        assert len(_events(vault, "TransferSuggested")) == 1
+    finally:
+        vault.close()
+
+
+@pytest.mark.parametrize("consumed", [False, True])
+def test_transfer_current_and_historical_sql_match_complete_canonical_context(tmp_path, consumed):
+    if consumed:
+        vault, source, candidates, _other = _partly_consumed_transfer_vault(tmp_path)
+        expected_candidates = [candidates[0], candidates[2]]
+    else:
+        vault, source, candidates, _ordinary = _transfer_vault(tmp_path, candidates=2)
+        expected_candidates = candidates
+    try:
+        cutoff = "2026-03-31"
+        canonical = activity(vault.ledger.projection_as_of(cutoff), "en-US")
+        row = next(item for item in canonical["items"] if item["id"] == source)
+        assert row["transfer"]["complete"] is True
+        assert [item["id"] for item in row["transfer"]["candidates"]] == expected_candidates
+        assert {"confirm_transfer", "reject_transfer"} <= set(row["actions"])
+        canonical_identity = vault.ledger.store.authenticated_identity()
+        assert canonical_identity[0] > 0 and canonical_identity[1]
+        vault.synchronize_read_store()
+        with vault.read_store.open_reader() as revision:
+            published = vault.read_store.authenticated_source_identity(revision)
+            assert (published["count"], published["head"]) == canonical_identity[:2]
+            current = revision.activity_projection()
+            historical = revision.historical_activity_projection(as_of=cutoff)
+            assert source in {item.key for item in current.movements()}
+            assert source in {item.key for item in historical.movements()}
+            assert current.account_info("acct:source").account == "acct:source"
+            assert historical.account_info("acct:source").account == "acct:source"
+            assert not hasattr(historical, "accounts")
+            assert activity(current, "en-US") == canonical
+            assert activity(historical, "en-US") == canonical
+    finally:
+        vault.close()
+
+
+@pytest.mark.parametrize("context", ["free", "linked", "missing-other-pair"])
+def test_actual_account_ledger_context_presents_relationships_and_strips_actions(tmp_path, context):
+    from viva.surface.account_ledger import sql_account_ledger_page
+
+    if context == "missing-other-pair":
+        vault, source, candidates, _other = _partly_consumed_transfer_vault(tmp_path)
+    else:
+        vault, source, candidates, _ordinary = _transfer_vault(
+            tmp_path, linked=context == "linked")
+    try:
+        canonical_identity = vault.ledger.store.authenticated_identity()
+        assert canonical_identity[0] > 0 and canonical_identity[1]
+        vault.synchronize_read_store()
+        with vault.read_store.open_reader() as revision:
+            published = vault.read_store.authenticated_source_identity(revision)
+            assert (published["count"], published["head"]) == canonical_identity[:2]
+            parts = revision.account_ledger_page("acct:source", locale="en-US",
+                cursor_secret=b"synthetic-account-ledger-secret!!")
+            assert parts.info.account == "acct:source"
+            assert parts.projection.account_info("acct:source").account == "acct:source"
+            assert source in {item.key for item in parts.projection.movements()}
+            assert not hasattr(parts.projection, "accounts")
+            payload = sql_account_ledger_page(parts)
+            row = next(item for group in payload["groups"] for item in group["movements"]
+                       if item["id"] == source)
+            assert row["actions"] == []
+            if context == "free":
+                assert row["transfer"]["complete"] is True
+                assert [item["id"] for item in row["transfer"]["candidates"]] == candidates
+            elif context == "linked":
+                assert row["transfer"]["state"] == "linked"
+                assert row["transfer"]["counterpart"]["id"] == candidates[0]
+            else:
+                assert row["transfer"]["state"] == "suggested"
+                assert row["transfer"]["complete"] is False
+                assert not parts.projection.transfer_links()
+    finally:
+        vault.close()
+
+
+@pytest.mark.parametrize("endpoint", ["source", "candidate", "consuming-pair"])
+@pytest.mark.parametrize("damage", ["unseen", "mismatch", "missing-identity", "unreadable"])
+def test_transfer_account_lookup_requires_exact_readable_identity(tmp_path, endpoint, damage):
+    from types import SimpleNamespace
+
+    vault, source, candidates, other = _partly_consumed_transfer_vault(tmp_path)
+    try:
+        projection = vault.ledger.projection()
+        key = {"source": source, "candidate": candidates[0], "consuming-pair": other}[endpoint]
+        account = next(item.account for item in projection.movements() if item.key == key)
+        def lookup(identity):
+            info = projection.account_info(identity)
+            if identity != account:
+                return info
+            if damage == "unseen":
+                raise LookupError("synthetic account is unseen")
+            if damage == "mismatch":
+                return replace(info, account="acct:different")
+            if damage == "missing-identity":
+                return SimpleNamespace(name="Synthetic account", number="4400")
+            return SimpleNamespace(account=identity)
+        state, actions = _transfer_read(_TransferProjectionOverride(
+            projection, account_info=lookup), source)
+        assert state["complete"] is False
+        assert actions == []
+    finally:
+        vault.close()
 
 
 def test_reject_transfer_appends_history_dismisses_live_suggestion_and_replays(

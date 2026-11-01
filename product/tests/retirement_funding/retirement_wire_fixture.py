@@ -4,6 +4,7 @@ from pathlib import Path
 from decimal import Decimal
 from dataclasses import replace
 import json
+import pypdfium2 as pdfium
 from reportlab.pdfgen.canvas import Canvas
 from viva.ingest.raw_store import RawStore
 from viva.ledger import Ledger
@@ -62,7 +63,13 @@ def fixture(root,output):
         plan=replace(plan,account_number=reference,account_ref=reference,opening_cash=Decimal('300000'),cash=Decimal('300975'),total=Decimal('301000'),as_of=end,activity=[replace(row,date=when) for row in plan.activity],investment_source=parse(source))
         printed={'headers':dict(source['headers']),'positions':source['positions'],'rows':source['rows']}
         document=capture(ledger,raw,output,reference+'-initial-plan.pdf','brokerage_statement',printed,end)
-        plan=replace(plan,doc_id=document);posted=post_brokerage(ledger,plan);assert posted.action=='posted',posted;heal_after_source(ledger,document);accounts.append(posted.account)
+        plan=replace(plan,doc_id=document)
+        source_pdf=pdfium.PdfDocument(raw.get(document))
+        try:
+            plan.validated_source_page_count=len(source_pdf)
+        finally:
+            source_pdf.close()
+        posted=post_brokerage(ledger,plan);assert posted.action=='posted',posted;heal_after_source(ledger,document);accounts.append(posted.account)
     for origin,destination,amount,when,opening_source,opening_destination,reference in [('PLAN-A','PLAN-B','185973.66','2022-12-31','300975','300975','ROLLOVER-023'),('PLAN-B','PLAN-C','212855.52','2024-06-30','486948.66','300975','ROLLOVER-041')]:
         for incoming,account,counterpart,opening,closing in [(False,origin,destination,Decimal(opening_source),Decimal(opening_source)-Decimal(amount)),(True,destination,origin,Decimal(opening_destination),Decimal(opening_destination)+Decimal(amount))]:
             packet=source_packet(incoming,reference=reference,counterpart=counterpart);end=when;start=when[:7]+'-01'
@@ -70,7 +77,13 @@ def fixture(root,output):
             packet['activity'][0].update(date_raw=when,amount_raw=amount)
             source=packet['investment_source'];source['headers'].update(account_reference=sf(account),period_start=sf(start),period_end=sf(end),as_of=sf(end),opening_cash=sf(str(opening)),closing_cash=sf(str(closing)));source['rows'][0].update(date=sf(when),amount=sf(amount))
             name=reference+('-in.pdf' if incoming else '-out.pdf');document=capture(ledger,raw,output,name,'brokerage_statement',packet,end);reading(ledger,document,packet,end,'offline-investment-source-v2')
-            parsed,error=from_brokerage_json(json.dumps(packet),document,'en-US','USD');assert error is None,error;posted=post_brokerage(ledger,parsed);assert posted.action=='posted',posted;heal_after_source(ledger,document)
+            parsed,error=from_brokerage_json(json.dumps(packet),document,'en-US','USD');assert error is None,error
+            source_pdf=pdfium.PdfDocument(raw.get(document))
+            try:
+                parsed.validated_source_page_count=len(source_pdf)
+            finally:
+                source_pdf.close()
+            posted=post_brokerage(ledger,parsed);assert posted.action=='posted',posted;heal_after_source(ledger,document)
     return ledger,accounts
 
 
@@ -89,5 +102,11 @@ def annual_fixture(root,output):
         packet['activity']=[{'date_raw':when,'kind':'contribution','amount_raw':'6000','description':'Employee retirement contribution','page':1},{'date_raw':when,'kind':'buy','amount_raw':'25','instrument':'TEST-SEC','description':'Synthetic investment purchase','page':1}]
         packet['investment_source']=source
         document=capture(ledger,raw,output,reference+'-plan.pdf','brokerage_statement',packet,end);reading(ledger,document,packet,end,'offline-investment-source-v1')
-        parsed,error=from_brokerage_json(json.dumps(packet),document,'en-US','USD');assert error is None,error;posted=post_brokerage(ledger,parsed);assert posted.action=='posted',posted;heal_after_source(ledger,document);accounts.append(posted.account)
+        parsed,error=from_brokerage_json(json.dumps(packet),document,'en-US','USD');assert error is None,error
+        source_pdf=pdfium.PdfDocument(raw.get(document))
+        try:
+            parsed.validated_source_page_count=len(source_pdf)
+        finally:
+            source_pdf.close()
+        posted=post_brokerage(ledger,parsed);assert posted.action=='posted',posted;heal_after_source(ledger,document);accounts.append(posted.account)
     return ledger,accounts
