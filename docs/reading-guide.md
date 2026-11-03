@@ -10,9 +10,26 @@ selectable complete-verification profile, its held transaction boundaries and
 executed keyed foundation engineering checks. Application activation and original
 financial, hosted and native acceptance remain pending.
 
+[SQL application sealed live history](sql-authority-live-history.md) and
+[ADR-020](decisions/ADR-020-sql-application-storage.md) describe the additive
+storage owner, exact SQL-history/custody checks, explicit recovery and encrypted
+directory backup. The separate storage candidate stopped at 188 passes and
+34 failures among 222 controls; factory integration remains pending. Payroll
+work neither retries nor qualifies those stopped controls. Historical foundation passes are not
+current-candidate verification. Windows safe directory ownership is not
+implemented and that target refuses before effects.
+
 The implemented storage slice, [Authenticated public readings and existing source-reference identity](sql-authority-curated-source.md), records the bounded prototype-v2 contract, independent verification, all 420 matched balance sources and the successful original synthetic scale gates. The Director accepted this bounded slice at Checkpoint 2; transfers, the other 374 inputs, full mixed-sample parity, production migration and installed delivery remain open.
 
-The experimental [SQL-owned transfer overlays](sql-authority-transfers.md) implement indexed rival components, global token-owner dependencies, ordered overlays and bounded Activity-admitted manual actions in an isolated v3 format. The owner-authorized shared ledger admission extraction is accepted with unchanged Activity behavior and a full product result of 7,235 passes and 92 explicit skips. Transfer mechanism qualification, other financial families, mixed-794 parity/timing, production migration and installed delivery remain open; broader workloads remain held.
+The experimental [SQL-owned transfer overlays](sql-authority-transfers.md) implement indexed rival components, global token-owner dependencies, ordered overlays and bounded Activity-admitted manual actions in the historical isolated v3 format; the payroll-only candidate introduced v4 and investment Step A now prepares v5 without automatic migration. The owner-authorized shared ledger admission extraction is accepted with unchanged Activity behavior and a full product result of 7,235 passes and 92 explicit skips. Transfer mechanism qualification, other financial families, mixed-794 parity/timing, production migration and installed delivery remain open; broader workloads remain held.
+
+[SQL payroll explanations](sql-authority-payroll.md) describes the prepared
+typed payroll tables, unique-deposit explanation, retained
+activation history and independent complete financial verification. Its fifty
+focused controls passed before investment shared-owner edits; that result is
+historical rather than a current combined-candidate pass. Application payroll getter integration, all-sixty
+source acceptance and the remaining investment/instrument families are still
+open; no mixed-794 performance claim follows from this source preparation.
 
 Current accounting direction: [Automatic accounting and correction learning](automatic-accounting.md), with [ADR-017](decisions/ADR-017-automatic-accounting.md). Classification review is superseded by reversible interpretation. Selected corrections describe the counterpart of the recorded source; remembered treatment can fill an otherwise matching default-unknown purpose while preserving known distinctions. Categories and treatment require no proof; evidence remains required for source numbers. Independent verification is recorded; complete acceptance, real-document testing and signed release readiness remain open.
 
@@ -204,3 +221,23 @@ This guide describes what each document *is* and when to return to it. It does n
 The [prepared-sample build identity correction](prepared-sample-build-privacy-plan.md) keeps developer paths in private build receipts while publishing portable artifact proof.
 
 The [owned-evidence repair proposal](owned-evidence-repair-proposal.md) records the measured remaining import cost and the owner decision required after the three-cycle stop.
+
+For the native SQL investment Step A contract, read
+[sql-authority-investment.md](sql-authority-investment.md). It distinguishes dated
+positions, cash activity, source-field availability, full-copy multiplicity and
+retained reversal history. It also names the funding, application and acceptance
+work that source preparation does not establish.
+
+For the separately named direct-engine admitted income/expense slice, read
+[sql-authority-income-expense.md](sql-authority-income-expense.md). B1 candidate01
+executed 379 cases with 377 passes/two failures; all preceding 303 controls passed
+and independent terminal integrity passed. Failed evidence remains unchanged.
+The separately archived V3 economic repair executed 381 cases with 380 passes and
+one failed global empty-suggestion assumption after unlink; its later target-pair
+reconfirmation and Background/relink branch were not reached. Independent terminal
+integrity passed, and card direction, mixed economics and old-sign oracle refusal
+controls passed. The ninth invocation and fourth unsuccessful candidate remain
+counted; no retry is authorized. Native postings, actual source-kind direction,
+supported-activity gaps and the independent authenticated-state oracle remain.
+Owner-directed local WIP consolidation is separate from qualification; no
+all794/performance, production adoption or delivery result follows.

@@ -122,6 +122,20 @@ def settle(store, doc_id):
         _reason(store, doc_id, "invalid_reading", "Classification, raw response and locale require their declared text types.")
         return
     row = {**row, **normalized}
+    if row['facts_type'] == 'investment':
+        from .investment import intake
+        intake(store,normalized)
+        return
+    if row['facts_type'] == 'invalid_investment':
+        _reason(store,doc_id,'invalid_investment_observation','Investment observations require genuine typed source-bound finite values.')
+        return
+    if row["facts_type"] == "payroll":
+        from .payroll import intake
+        intake(store, normalized)
+        return
+    if row["facts_type"] == "invalid_payroll":
+        _reason(store, doc_id, "unsupported_payroll_observation", "Payroll facts require bounded typed observations and a matching retained reading.")
+        return
     if row["facts_type"] == "invalid_balance":
         _reason(store, doc_id, "unsupported_observation", "Typed financial observations require exact Decimal values and bounded provenance.")
         return

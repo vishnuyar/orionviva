@@ -22,6 +22,19 @@ _IMPLEMENTATION_MODULES = (
     "viva.sql_authority.bank", "viva.sql_authority.reading", "viva.sql_authority.curated",
     "viva.sql_authority.identity", "viva.sql_authority.transfer_schema",
     "viva.sql_authority.transfers", "viva.sql_authority.transfer_verify",
+    "viva.sql_authority.application", "viva.sql_authority.application_history",
+    "viva.sql_authority.application_io", "viva.sql_authority.application_backup",
+    "viva.sql_authority.application_schema", "viva.sql_authority.payroll_schema",
+    "viva.sql_authority.payroll", "viva.sql_authority.payroll_verify",
+    "viva.sql_authority.investment", "viva.sql_authority.investment_schema",
+    "viva.sql_authority.investment_numbers", "viva.sql_authority.investment_verify",
+    "viva.sql_authority.accounting", "viva.sql_authority.accounting_verify",
+    "viva.sql_authority.accounting_numbers",
+    "viva.ingest.brokerage", "viva.ingest.instrument_contracts", "viva.ledger.instruments",
+    "viva.investment.units",
+    "viva.ingest.paystub", "viva.investment.payroll_extraction",
+    "viva.investment.extraction", "viva.investment.contracts",
+    "viva.retirement_funding.payroll_v2",
     "viva.ledger.movement_identity", "viva.ingest.transfers",
     "viva.ledger.transfer_admission", "vivacore.versions", "viva.ledger.projection.movements", "viva.sample.resources", "viva.sample.curation",
     "viva.ledger.projection.accounts", "viva.acquisition",
@@ -90,6 +103,14 @@ def current_read_context(implementation):
 
 def capture_types(facts):
     """Retain runtime type facts which plain JSON would otherwise erase."""
+    from ..ingest.paystub import PayStubFacts
+    from ..ingest.brokerage import BrokerageFacts
+    if type(facts) is BrokerageFacts:
+        from .investment import capture_types as investment_types
+        return investment_types(facts)
+    if type(facts) is PayStubFacts:
+        from .payroll import capture_types as payroll_types
+        return payroll_types(facts)
     if type(facts) is not StatementFacts:
         return {"transactions": False, "decimals": False}
     transactions = (type(facts.transactions) is list
@@ -181,7 +202,9 @@ def interpret(store, receipt):
         except (AuthorityError, ValueError, KeyError, TypeError, IndexError, StopIteration):
             facts_type = "source_rejected"
         else:
-            facts_type = "balance" if facts is not None else "unsupported"
+            from ..ingest.paystub import PayStubFacts
+            from ..ingest.brokerage import BrokerageFacts
+            facts_type = "investment" if type(facts) is BrokerageFacts else "payroll" if type(facts) is PayStubFacts else "balance" if facts is not None else "unsupported"
             facts_json = canonical(facts.to_dict()) if facts is not None else "null"
     if facts_type == "balance" and receipt["facts_type"] != "curated":
         if not _facts_shape(raw_facts, tags):
@@ -197,6 +220,49 @@ def interpret(store, receipt):
                     facts_json = canonical(facts.to_dict())
                 else:
                     facts_type = "invalid_balance"
+    if facts_type == "payroll":
+        from .payroll import decode
+        from ..ingest.paystub import from_paystub_json
+        try:
+            if receipt["facts_type"] != "curated" and canonical(raw_facts) != canonical(reading.get("facts")):
+                raise ValueError("retained payroll wire facts differ")
+            facts = decode(json.loads(facts_json), tags if receipt["facts_type"] != "curated" else None)
+            if facts.doc_id != receipt["doc_id"] or reading["doc_type"] != facts.doc_type or reading.get("error"):
+                raise ValueError("payroll reading binding differs")
+            if receipt["facts_type"] != "curated" and reading.get("raw_text"):
+                parsed,error=from_paystub_json(reading["raw_text"],receipt["doc_id"],reading["source_locale"],facts.currency)
+                if parsed is None or error:
+                    raise ValueError("payroll raw response cannot normalize")
+                expected,actual=facts.to_dict(),parsed.to_dict()
+                for key in ("doc_type_confidence","acquisition"):
+                    expected.pop(key,None);actual.pop(key,None)
+                if expected != actual:
+                    raise ValueError("payroll raw response differs")
+            facts_json=canonical(facts.to_dict())
+        except (ValueError, TypeError, KeyError, InvalidOperation, OverflowError):
+            facts_type="invalid_payroll"
+    if facts_type == 'investment':
+        from .investment import decode,wire_equal
+        from ..ingest.brokerage import from_brokerage_json
+        try:
+            if receipt['facts_type']!='curated' and canonical(raw_facts)!=canonical(reading.get('facts')):
+                raise ValueError('retained investment wire facts differ')
+            facts=decode(json.loads(facts_json),tags if receipt['facts_type']!='curated' else None)
+            if facts.doc_id!=receipt['doc_id'] or reading['doc_type']!=facts.doc_type or reading.get('error'):
+                raise ValueError('investment reading binding differs')
+            if receipt['facts_type']!='curated' and reading.get('raw_text'):
+                raw=json.loads(reading['raw_text'])
+                if type(raw) is not dict or ('doc_type' in raw and raw['doc_type']!=facts.doc_type):
+                    raise ValueError('investment raw classification differs')
+                raw.setdefault('doc_type',facts.doc_type)
+                parsed,error=from_brokerage_json(canonical(raw),receipt['doc_id'],reading['source_locale'],facts.currency)
+                if parsed is None or error:
+                    raise ValueError('investment raw response cannot normalize')
+                if not wire_equal(facts,parsed):
+                    raise ValueError('investment raw response differs')
+            facts_json=canonical(facts.to_dict())
+        except (ValueError,TypeError,KeyError,InvalidOperation,OverflowError):
+            facts_type='invalid_investment'
     row = dict(doc_id=receipt["doc_id"], facts_type=facts_type,
                facts=facts_json, context=canonical(context))
     store._put("interpretations", row)

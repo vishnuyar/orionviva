@@ -144,6 +144,49 @@ def derive(store, receipt, reading):
     store.last_source_timings["source_validation_seconds"] = time.perf_counter() - started
     from ..ingest.registry import profile_for, BALANCE_IDENTITY
     profile = profile_for(body["doc_type"])
+    if profile is not None and profile.identity == "paystub":
+        from ..ingest.paystub import from_paystub_json
+        from .payroll import decode
+        facts,error=from_paystub_json(text,receipt["doc_id"],admitted["locale"],admitted["currency"])
+        if facts is None or error:
+            raise AuthorityError("bound payroll observations could not normalize")
+        facts.doc_type=body["doc_type"]
+        facts.doc_type_confidence=None
+        facts.acquisition=dict(admitted["acquisition"])
+        if any(page is not None and (type(page) is not int or not 1 <= page <= pages) for page in (facts.gross_page,facts.net_page)):
+            raise AuthorityError("payroll provenance outside captured source")
+        facts=decode(facts.to_dict())
+        from ..investment.payroll_extraction import validate_pages
+        validate_pages(facts.payroll_source, pages)
+        if envelope["source_event_ids"] or envelope["source_cells"]:
+            raise AuthorityError("unsupported payroll source cell contract")
+        store.last_source_timings["parse_seconds"]=time.perf_counter()-started
+        return facts, []
+    if profile is not None and profile.identity == 'brokerage' and profile.account_kind == 'investment':
+        from ..ingest.brokerage import from_brokerage_json
+        from .investment import decode
+        facts,error=from_brokerage_json(text,receipt['doc_id'],admitted['locale'],admitted['currency'])
+        if facts is None or error:
+            raise AuthorityError('bound investment observations could not normalize')
+        facts.doc_type=body['doc_type']
+        facts.doc_type_confidence=None
+        facts.acquisition=dict(admitted['acquisition'])
+        facts.validated_source_page_count=pages
+        facts=decode(facts.to_dict())
+        if len(envelope['source_event_ids'])!=len(facts.activity):
+            raise AuthorityError('investment source event multiplicity differs')
+        occurrences=[]
+        for ordinal,(line,event_id) in enumerate(zip(facts.activity,envelope['source_event_ids'])):
+            matches=[cell for cell in envelope['source_cells'] if cell['field']==f'/activity/{ordinal}/amount_raw']
+            if len(matches)!=1:
+                raise AuthorityError('investment activity source cell multiplicity differs')
+            cell=matches[0]
+            if cell['association']!={'kind':'event','row_reference':event_id,'date':line.date or facts.as_of}:
+                raise AuthorityError('investment source event/date association differs')
+            occurrences.append(dict(doc_id=facts.doc_id,line_index=ordinal,event_id=event_id,
+                date=line.date or facts.as_of,page=cell['page'],raw=cell['raw']))
+        store.last_source_timings['parse_seconds']=time.perf_counter()-started
+        return facts,occurrences
     if profile is None or profile.identity != BALANCE_IDENTITY or profile.account_kind not in {"depository", "liability"}:
         return None, []
     parsed = time.perf_counter()

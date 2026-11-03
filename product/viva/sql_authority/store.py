@@ -1,12 +1,12 @@
 """SQLCipher staging, atomic promotion and independently replayable SQL audit."""
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from functools import wraps
 from collections import deque
 import copy
 import base64
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from decimal import Decimal, localcontext, Inexact
 import hashlib
 import hmac
@@ -57,6 +57,12 @@ def canonical(value):
 
 
 def _encode(value):
+    from ..ingest.paystub import PayStubFacts
+    from ..ingest.brokerage import BrokerageFacts
+    if type(value) in {PayStubFacts,BrokerageFacts}:
+        return _encode(value.to_dict())
+    if type(value) is ReadResult and type(value.facts) in {PayStubFacts,BrokerageFacts}:
+        return {field.name: _encode(getattr(value, field.name)) for field in fields(ReadResult)}
     if isinstance(value, Decimal):
         return str(value)
     if is_dataclass(value):
@@ -123,6 +129,14 @@ def _canonical_read(method):
     return guarded
 
 
+def _application_phase(method):
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        with self._application_context("phase"):
+            return method(self, *args, **kwargs)
+    return guarded
+
+
 def _connect(path, key, *, verification="indexed"):
     _regular(path)
     db = sql.connect(str(path), timeout=5, isolation_level=None)
@@ -155,9 +169,18 @@ def _connect(path, key, *, verification="indexed"):
 class SQLAuthority:
     """An explicitly created experimental format, with no legacy migration."""
 
-    def __init__(self, root, key, db, *, verification="indexed"):
+    def __init__(self, root, key, db, *, verification="indexed", _application_binding=None):
         self._verification = _verification_policy(verification)
         self.root, self._key, self._db = root, key, db
+        self._application_binding = _application_binding
+        self._application_required = _application_binding is not None
+        if _application_binding is None:
+            _regular(root / "authority.json")
+            if json.loads((root / "authority.json").read_text()).get("format") != FORMAT:
+                raise AuthorityError("nonprototype construction requires issued application ownership")
+        if _application_binding is not None:
+            from .application import _install_engine
+            _install_engine(_application_binding, self)
         from .reading import implementation_identity
         self._implementation_identity = implementation_identity()
         self._audit_key = _derive(key, b"audit")
@@ -178,8 +201,15 @@ class SQLAuthority:
         self._progress_callback = None
 
     @classmethod
-    def create(cls, root, passphrase, *, verification="indexed"):
+    def create(cls, root, passphrase, *, verification="indexed", application=False):
+        if type(application) is not bool:
+            raise AuthorityError("closed application selection required")
         verification = _verification_policy(verification)
+        if application:
+            if verification != "complete":
+                raise AuthorityError("application authority requires complete verification")
+            from .application import ApplicationSQLAuthority
+            return ApplicationSQLAuthority.create(root, passphrase)
         root = _safe_root(root, create=True)
         header, key = new_vault_header(passphrase)
         metadata = {"format": FORMAT, "crypto": header,
@@ -208,8 +238,15 @@ class SQLAuthority:
             raise
 
     @classmethod
-    def open(cls, root, passphrase, *, verification="indexed", curated_source=None):
+    def open(cls, root, passphrase, *, verification="indexed", curated_source=None, application=False):
+        if type(application) is not bool:
+            raise AuthorityError("closed application selection required")
         verification = _verification_policy(verification)
+        if application:
+            if verification != "complete":
+                raise AuthorityError("application authority requires complete verification")
+            from .application import ApplicationSQLAuthority
+            return ApplicationSQLAuthority.open(root, passphrase, curated_source=curated_source)
         if curated_source is not None:
             from .curated import _owned
             _owned(curated_source)
@@ -281,6 +318,21 @@ class SQLAuthority:
     def verification(self):
         return self._verification
 
+    def _application_context(self, kind):
+        if self._application_binding is None:
+            if self._application_required:
+                raise AuthorityError("application engine binding is missing")
+            return nullcontext()
+        from .application import _owned_binding
+        return _owned_binding(self._application_binding, self).operation(kind)
+
+    def _application_event(self, name, *args):
+        if self._application_required and self._application_binding is None:
+            raise AuthorityError("application engine binding is missing")
+        if self._application_binding is not None:
+            from .application import _owned_binding
+            return getattr(_owned_binding(self._application_binding, self), name)(*args)
+
     @contextmanager
     def _snapshot(self):
         with self._lock:
@@ -290,6 +342,7 @@ class SQLAuthority:
             try:
                 # BEGIN is deferred: establish the actual reader snapshot before
                 # the physical-page scan and retain it through the answer.
+                self._application_event("verify_schema")
                 self._check_terminal()
                 yield
                 self._db.execute("COMMIT")
@@ -300,6 +353,12 @@ class SQLAuthority:
 
     @contextmanager
     def _decision(self):
+        with self._application_context("decision"):
+            with self._decision_inside():
+                yield
+
+    @contextmanager
+    def _decision_inside(self):
         if self._verification == "indexed":
             yield
             return
@@ -369,11 +428,13 @@ class SQLAuthority:
         else:
             assignments = tuple(column for column in columns if column not in keys)
             self._db.execute(f"UPDATE {table} SET {','.join(f'{key}=?' for key in assignments)} WHERE {where}", tuple(row[key] for key in assignments) + tuple(row[key] for key in keys))
+        if table == "accounts":
+            self._investment_prior_accounts.setdefault(row["account_id"],prior)
         self._operations.append({"table": table, "row": dict(row)})
 
     @contextmanager
     def _transaction(self):
-        with self._lock:
+        with self._application_context("transaction"), self._lock:
             if self._verified_operation or self._db.in_transaction:
                 raise AuthorityError("writer requires an independent committed operation")
             self._db.execute("BEGIN IMMEDIATE")
@@ -384,8 +445,16 @@ class SQLAuthority:
                 revision, previous = self._check_terminal()
                 self._revision = revision + 1
                 self._operations = []
+                self._investment_prior_accounts = {}
                 self._transfer_facts = {"transfer_inventory": {}, "transfer_bindings": {}}
                 yield
+                from .investment import close_writer as close_investment
+                close_investment(self)
+                from .payroll import close_writer
+                with localcontext() as arithmetic:
+                    arithmetic.prec = 28
+                    arithmetic.traps[Inexact] = True
+                    close_writer(self)
                 if self._operations:
                     self._fault("before_audit")
                     envelope = canonical(seal(self._audit_key, canonical({"version": 1, "operations": self._operations}).encode(), aad=canonical([self._revision, previous]).encode()))
@@ -395,8 +464,10 @@ class SQLAuthority:
                     self._db.execute("INSERT INTO commits VALUES(?,?,?)", (self._revision, digest, mac))
                     self._db.execute("UPDATE control SET revision=?,head=?,mac=? WHERE singleton=1", (self._revision, digest, mac))
                     self._fault("before_commit")
+                self._application_event("prepare_transaction")
                 self._db.execute("COMMIT")
                 self._verified_operation = False
+                self._application_event("complete_transaction")
                 self._fault("after_commit")
             except BaseException:
                 if self._db.in_transaction:
@@ -406,6 +477,7 @@ class SQLAuthority:
                 self._verified_operation = False
                 self._transfer_facts = None
                 self._operations = None
+                self._investment_prior_accounts = None
 
     def _item(self, doc_id, state, reason="", account_id=""):
         self._put("items", dict(doc_id=doc_id, state=state, reason=reason,
@@ -454,6 +526,11 @@ class SQLAuthority:
 
     @contextmanager
     def _document_lock(self, doc_id):
+        if self._application_required:
+            from .application import _owned_binding
+            with _owned_binding(self._application_binding, self).document_lock(doc_id):
+                yield
+            return
         directory = os.open(self.root / "originals", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             try:
@@ -475,6 +552,8 @@ class SQLAuthority:
             os.close(descriptor)
 
     def _capture_original(self, doc_id, original):
+        if self._application_required:
+            return self._application_event("capture", doc_id, original)
         path = self.root / "originals" / (doc_id + ".blob")
         if path.exists() or path.is_symlink():
             _regular(path)
@@ -483,6 +562,7 @@ class SQLAuthority:
         else:
             _durable_json(path, seal(_derive(self._key, b"originals"), original, aad=doc_id.encode("ascii")))
 
+    @_application_phase
     def attach_curated(self, source):
         from .curated import _owned
         _owned(source)
@@ -540,7 +620,9 @@ class SQLAuthority:
                     raise AuthorityError("extraction receipt exceeds bound")
                 facts = result.facts
                 from .reading import capture_types
-                facts_type = "curated" if source is not None else "balance" if type(facts) is StatementFacts else "unsupported"
+                from ..ingest.paystub import PayStubFacts
+                from ..ingest.brokerage import BrokerageFacts
+                facts_type = "curated" if source is not None else "balance" if type(facts) is StatementFacts else "payroll" if type(facts) is PayStubFacts else "investment" if type(facts) is BrokerageFacts else "unsupported"
                 facts_json = canonical(_encode(facts))
                 receipt_started = time.perf_counter()
                 with self._transaction():
@@ -557,6 +639,7 @@ class SQLAuthority:
                 return self.resume(doc_id)
             return self._outcome(doc_id)
 
+    @_application_phase
     def resume(self, doc_id):
         from .bank import settle
         started = time.perf_counter()
@@ -665,6 +748,7 @@ class SQLAuthority:
         with self._transfer_snapshot():
             return as_of(self, day)
 
+    @_application_phase
     def confirm_transfer(self, a, b, *, today=None):
         from .transfers import manual
         with localcontext() as arithmetic:
@@ -672,6 +756,7 @@ class SQLAuthority:
             arithmetic.traps[Inexact] = True
             return manual(self, "confirm", a, b, today)
 
+    @_application_phase
     def reject_transfer(self, a, *, today=None):
         from .transfers import manual
         with localcontext() as arithmetic:
@@ -679,6 +764,7 @@ class SQLAuthority:
             arithmetic.traps[Inexact] = True
             return manual(self, "reject", a, today=today)
 
+    @_application_phase
     def unlink_transfer(self, a, b, *, today=None):
         from .transfers import manual
         with localcontext() as arithmetic:
@@ -697,6 +783,9 @@ class SQLAuthority:
             row = self._row("accounts", "account_id=?", (account_id,))
             if row is None:
                 raise AuthorityError("unknown accepted account")
+            if row["kind"] == "investment":
+                from .investment import cash_account_guard
+                cash_account_guard(self,row)
             mapping = self._row("account_keys", "account_id=?", (account_id,))
             if mapping is not None:
                 row.update(logical_key=mapping["logical_key"], creation_order=mapping["creation_order"])
@@ -740,6 +829,87 @@ class SQLAuthority:
                 row["provenance"] = {"doc_id": row["doc_id"], "page": row["page"], "region": "", "note": row["kind"] + " balance"}
                 result.append(row)
             return result
+
+    @_canonical_read
+    def investment_component(self, doc_id):
+        from .investment import component_view
+        with self._lock:
+            self._check_terminal()
+            return component_view(self,doc_id)
+
+    @_canonical_read
+    def income_expense(self, *, start='', end=''):
+        from .accounting import read
+        from .accounting_verify import verify
+        with self._lock:
+            if self._verification!='complete':
+                raise AuthorityError('income/expense requires complete verification')
+            result=read(self,start=start,end=end)
+            verify(self,result,start=start,end=end)
+            return result
+
+    @_canonical_read
+    def investment_snapshot(self, account_id, *, as_of):
+        from .investment import snapshot_view
+        with self._lock:
+            self._check_terminal()
+            return snapshot_view(self,account_id,as_of)
+
+    @_canonical_read
+    def investment_cash_period(self, doc_id):
+        from .investment import cash_period_view
+        with self._lock:
+            self._check_terminal()
+            return cash_period_view(self,doc_id)
+
+    @_canonical_read
+    def investment_activity(self, doc_id):
+        from .investment import activity_view
+        with self._lock:
+            self._check_terminal()
+            return activity_view(self,doc_id)
+
+    @_canonical_read
+    def investment_postings(self, doc_id):
+        from .investment import postings_view
+        with self._lock:
+            self._check_terminal()
+            return postings_view(self,doc_id)
+
+    @_canonical_read
+    def investment_history(self, doc_id):
+        from .investment import history_view
+        with self._lock:
+            self._check_terminal()
+            return history_view(self,doc_id)
+
+    @_canonical_read
+    def payroll_facts(self, doc_id):
+        from .payroll import fact_view
+        with self._lock:
+            self._check_terminal()
+            return fact_view(self, doc_id)
+
+    @_canonical_read
+    def payroll_component(self, doc_id):
+        from .payroll import component_view
+        with self._lock:
+            self._check_terminal()
+            return component_view(self, doc_id)
+
+    @_canonical_read
+    def payroll_decisions(self, doc_id):
+        from .payroll import decisions_view
+        with self._lock:
+            self._check_terminal()
+            return decisions_view(self, doc_id)
+
+    @_canonical_read
+    def payroll_postings(self, doc_id=None):
+        from .payroll import posting_view
+        with self._lock:
+            self._check_terminal()
+            return posting_view(self, doc_id)
 
     @_canonical_read
     def source_admission(self, doc_id):
@@ -810,7 +980,7 @@ class SQLAuthority:
                 "commits": [list(row) for row in commits]}
 
     def export_audit(self):
-        with self._lock:
+        with self._application_context("decision"), self._lock:
             if self._verifying or (self._db.in_transaction and self._operations is not None):
                 raise AuthorityError("export requires a committed authority snapshot")
             if self._verification == "complete":
@@ -900,6 +1070,7 @@ class SQLAuthority:
         prior_operation = self._verified_operation
         self._verified_operation = True
         try:
+            self._application_event("verify_schema")
             if self._verification == "complete":
                 if self._db.execute("SELECT * FROM format").fetchall() != [(FORMAT, SCHEMA_VERSION)]:
                     raise IntegrityError("unknown authority schema")
@@ -911,6 +1082,7 @@ class SQLAuthority:
                 if self._db.execute("PRAGMA foreign_key_check").fetchall():
                     raise IntegrityError("database reference integrity failure")
             export = self._export_current()
+            self._application_event("verify_representation", export)
             state = self._reconstruct(export, expected_head)
             counts = {}
             for table, columns in TABLES.items():
@@ -918,12 +1090,16 @@ class SQLAuthority:
                 if actual != state[table]:
                     raise IntegrityError(f"audited state mismatch: {table}")
                 counts[table] = len(actual)
+            from .investment_verify import verify as verify_investment
+            verify_investment(self,state,export)
             from .identity import verify_semantics
             verify_semantics(self, state)
+            from .payroll_verify import verify as verify_payroll
             from .transfer_verify import verify as verify_transfers
             with localcontext() as arithmetic:
                 arithmetic.prec = 28
                 arithmetic.traps[Inexact] = True
+                verify_payroll(self, state, export)
                 verify_transfers(self, state, export)
             for key, document in state["documents"].items():
                 if len(self._original(key[0])) != document["byte_count"]:
@@ -934,5 +1110,5 @@ class SQLAuthority:
             self._verifying = False
 
     def verify(self, *, expected_head=None):
-        with self._snapshot():
+        with self._application_context("decision"), self._snapshot():
             return self._verify_current(expected_head=expected_head)

@@ -1,7 +1,7 @@
 """Closed rows and indexes for the isolated experimental authority."""
 
-FORMAT = "viva-sql-authority-prototype-v3"
-SCHEMA_VERSION = 3
+FORMAT = "viva-sql-authority-prototype-v5"
+SCHEMA_VERSION = 5
 TABLES = {
     "documents": ("doc_id", "byte_count", "contract"),
     "source_admissions": ("doc_id", "body"),
@@ -80,6 +80,18 @@ KEYS.update(transfer_schema.KEYS)
 MUTABLE = MUTABLE | transfer_schema.MUTABLE
 DDL += transfer_schema.DDL
 
+from . import payroll_schema
+TABLES.update(payroll_schema.TABLES)
+KEYS.update(payroll_schema.KEYS)
+MUTABLE = MUTABLE | payroll_schema.MUTABLE
+DDL += payroll_schema.DDL
+
+from . import investment_schema
+TABLES.update(investment_schema.TABLES)
+KEYS.update(investment_schema.KEYS)
+MUTABLE = MUTABLE | investment_schema.MUTABLE
+DDL += investment_schema.DDL
+
 
 def supported_amount(value):
     """Bound exact arithmetic operands before exponent expansion or summation."""
@@ -99,6 +111,10 @@ def valid_row(table, row):
         return False
     if table in transfer_schema.TABLES:
         return transfer_schema.valid_row(table, row)
+    if table in payroll_schema.TABLES:
+        return payroll_schema.valid_row(table, row)
+    if table in investment_schema.TABLES:
+        return investment_schema.valid_row(table, row)
     nullable = {"page", "running_balance", "identity_page_count"}
     integer_bounds = {"byte_count": (0, 50 * 1024 * 1024), "line_index": (0, 9999),
                       "creation_order": (1, 2 ** 63 - 1), "claim_order": (1, 2 ** 63 - 1), "created_revision": (1, 2 ** 63 - 1),
@@ -109,14 +125,14 @@ def valid_row(table, row):
         ("items", "state"): {"captured", "read_uncertain", "staged", "pending", "unsupported", "accepted"},
         ("validation_runs", "state"): {"pending", "unsupported", "accepted"},
         ("staged_statements", "kind"): {"depository", "liability"},
-        ("accounts", "kind"): {"depository", "liability"},
+        ("accounts", "kind"): {"depository", "liability", "investment"},
         ("balance_observations", "kind"): {"opening", "closing"},
         ("reference_claims", "scope"): {"account"},
         ("dependencies", "direction"): {"forward", "backward"},
         ("postings", "grade"): {"verified", "unverified"},
         ("balance_observations", "grade"): {"corroborated"},
-        ("receipts", "facts_type"): {"balance", "curated", "unsupported"},
-        ("interpretations", "facts_type"): {"balance", "invalid_balance", "invalid_reading", "contract_changed", "source_rejected", "unsupported"},
+        ("receipts", "facts_type"): {"balance", "payroll", "investment", "curated", "unsupported"},
+        ("interpretations", "facts_type"): {"balance", "payroll", "investment", "invalid_investment", "invalid_payroll", "invalid_balance", "invalid_reading", "contract_changed", "source_rejected", "unsupported"},
     }
     for column, value in row.items():
         if value is None:
@@ -134,6 +150,8 @@ def valid_row(table, row):
             continue
         limit = 8 * 1024 * 1024 if column in {"body", "facts", "names", "context"} else 4096
         if column in {"logical_key", "normalized_name"}:
+            limit = 16384
+        if table == "accounts" and row["kind"] == "investment" and column in {"earliest_amount","current_amount"}:
             limit = 16384
         if column == "contract":
             limit = 256
@@ -169,6 +187,13 @@ def valid_row(table, row):
             except ValueError:
                 return False
         if column in amounts:
+            if table == 'accounts' and row['kind'] == 'investment':
+                from .investment_numbers import scalar
+                try:
+                    scalar(value)
+                except (ValueError,InvalidOperation):
+                    return False
+                continue
             try:
                 if not value.isascii() or value != value.strip() or len(value) > 128 or not supported_amount(Decimal(value)):
                     return False
@@ -245,9 +270,15 @@ def valid_source_admission(body):
 
 def valid_identity_decision(body):
     """Closed typed resolver result and instrumentation, without choosing policy."""
-    if type(body) is not dict or set(body)!={"resolution","logical_to_physical","account_order","metrics","policy","input","physical_account","promoted"}:
+    keys={"resolution","logical_to_physical","account_order","metrics","policy","input","physical_account","promoted"}
+    if type(body) is not dict:
         return False
-    if body["policy"]!="source_reference" or type(body["promoted"]) is not bool or not _text(body["physical_account"]):
+    native=body.get('policy')=='investment_source_reference'
+    if set(body)!=(keys|{'known_operation'} if native else keys):
+        return False
+    if native and not _integer(body['known_operation']):
+        return False
+    if body["policy"] not in {"source_reference","investment_source_reference"} or type(body["promoted"]) is not bool or not _text(body["physical_account"]):
         return False
     resolution=body["resolution"]
     resolution_fields={"account_id","key","verdict","candidate","candidate_name","candidates","reason"}
@@ -276,8 +307,15 @@ def valid_identity_decision(body):
         if type(rows) is not list or len(rows)>100 or any(type(row) is not list or len(row)!=4
             or not all(_integer(value) for value in row[:3]) or not _text(row[3],16384) for row in rows):
             return False
-    from .reading import _facts_shape
     value=body["input"]
+    if body['policy']=='investment_source_reference':
+        from .investment import decode
+        try:
+            facts=decode(value)
+            return True
+        except (ValueError,TypeError,KeyError,OverflowError):
+            return False
+    from .reading import _facts_shape
     if not _facts_shape(value,{"transactions":True,"decimals":True,"read_context_id":"0"*64}):
         return False
     from ..acquisition import validate

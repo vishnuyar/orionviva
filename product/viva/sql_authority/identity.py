@@ -90,6 +90,10 @@ def maintain_claim(store, claim):
 
 
 def source_claim(facts):
+    from ..ingest.brokerage import BrokerageFacts
+    if type(facts) is BrokerageFacts:
+        from .investment import source_claim as investment_claim
+        return investment_claim(facts)
     return SourceAccountIdentity(facts.source_account_ref, facts.doc_id,
                                  facts.source_account_ref_page, facts.validated_source_page_count)
 
@@ -128,6 +132,11 @@ def resolve_source(store, facts):
             selected.add(target["account_id"])
         for name in sorted({normalize_name(name) for name in facts.account_names if name.strip()}):
             selected.update(row[0] for row in store._read("SELECT h.account_id FROM holder_index h JOIN accounts a ON a.account_id=h.account_id WHERE h.normalized_name=? AND a.kind=?", (name, kind)))
+        if kind == 'investment':
+            from ..ledger.identity import usable_full_number
+            number = usable_full_number(facts.account_number)
+            if number:
+                selected.update(row[0] for row in store._read('SELECT account_id FROM accounts WHERE kind=? AND normalized_number=?',(kind,number)))
         accounts = [_account_metadata(store, physical) for physical in selected]
         accounts.sort(key=lambda row: row["creation_order"])
         claims, captured, distinct = [], {facts.doc_id}, 0
@@ -164,8 +173,13 @@ def resolve_source(store, facts):
             store._queries = None
 
 
-def record_decision(store, facts, decision, physical, *, promoted=False):
-    body = {**decision, "policy": "source_reference", "input": facts.to_dict(), "physical_account": physical, "promoted": promoted}
+def record_decision(store, facts, decision, physical, *, promoted=False, known_operation=None):
+    from ..ingest.brokerage import BrokerageFacts
+    body = {**decision, "policy": "investment_source_reference" if type(facts) is BrokerageFacts else "source_reference", "input": facts.to_dict(), "physical_account": physical, "promoted": promoted}
+    if type(facts) is BrokerageFacts:
+        if type(known_operation) is not int or not 0 <= known_operation <= len(store._operations):
+            raise IntegrityError("native identity evaluation frontier is missing")
+        body["known_operation"]=known_operation
     store._put("identity_decisions", dict(decision_id=secrets.token_hex(16), doc_id=facts.doc_id,
         body=canonical(body), created_revision=store._revision))
 
@@ -218,27 +232,49 @@ def verify_semantics(store, state):
             if actual_occurrences != {(row["doc_id"], row["line_index"]): row for row in occurrences}:
                 raise IntegrityError("source occurrences differ from immutable pinned receipt")
             facts_by_doc[doc_id] = facts
+        elif interpretation is not None and interpretation['facts_type'] == 'investment':
+            from ..ingest.brokerage import BrokerageFacts
+            if type(facts) is not BrokerageFacts or interpretation['facts']!=canonical(facts.to_dict()) or actual_occurrences!={(r['doc_id'],r['line_index']):r for r in occurrences}:
+                raise IntegrityError('investment interpretation differs from pinned receipt')
+            facts_by_doc[doc_id]=facts
+        elif interpretation is not None and interpretation["facts_type"] == "payroll":
+            from ..ingest.paystub import PayStubFacts
+            if type(facts) is not PayStubFacts or interpretation["facts"] != canonical(facts.to_dict()) or actual_occurrences:
+                raise IntegrityError("payroll interpretation differs from pinned receipt")
         elif actual_occurrences:
             raise IntegrityError("source occurrences have no admitted balance interpretation")
+    from .investment import decode as decode_investment
+    from ..ingest.brokerage import BrokerageFacts
+    for (doc_id,), interpretation in state['interpretations'].items():
+        if interpretation['facts_type']=='investment':
+            native=state['investment_facts'].get((doc_id,))
+            if native is None or native['body']!=interpretation['facts']:
+                raise IntegrityError('investment account source is missing')
+            facts_by_doc[doc_id]=decode_investment(json.loads(native['body']))
     accepted_revisions = {}
     for run in state["validation_runs"].values():
         if run["state"] == "accepted":
             accepted_revisions[run["doc_id"]] = run["revision"]
     periods = {row["doc_id"]: row for row in state["periods"].values()}
+    for snapshot in state['investment_snapshots'].values():
+        if snapshot['doc_id'] in periods:
+            raise IntegrityError('one source admitted in two financial families')
+        periods[snapshot['doc_id']]={'doc_id':snapshot['doc_id'],'account_id':snapshot['account_id']}
+        accepted_revisions[snapshot['doc_id']]=snapshot['created_revision']
     for claim in sorted(state["reference_claims"].values(), key=lambda row: (row["claim_order"], row["claim_id"])):
         facts = facts_by_doc.get(claim["doc_id"])
         period = periods.get(claim["doc_id"])
         if facts is None or period is None:
             raise IntegrityError("reference claim has no independently admitted accepted source")
         required = dict(claim_id=facts.doc_id + ":account", account_id=period["account_id"],
-            reference=facts.source_account_ref, doc_id=facts.doc_id, scope="account",
-            page=facts.source_account_ref_page, identity_page_count=facts.validated_source_page_count,
+            reference=source_claim(facts).reference, doc_id=facts.doc_id, scope="account",
+            page=source_claim(facts).page, identity_page_count=facts.validated_source_page_count,
             claim_order=accepted_revisions.get(facts.doc_id))
         if claim != required:
             raise IntegrityError("reference claim differs from its immutable admitted facts")
     for doc_id, period in periods.items():
         facts = facts_by_doc.get(doc_id)
-        if facts is not None and facts.source_account_ref and (doc_id + ":account",) not in state["reference_claims"]:
+        if facts is not None and source_claim(facts).eligible() and (doc_id + ":account",) not in state["reference_claims"]:
             raise IntegrityError("accepted source reference claim is missing")
     accounts = []
     for account in state["accounts"].values():
@@ -248,7 +284,16 @@ def verify_semantics(store, state):
         if key is None or first is None or key["creation_order"] != accepted_revisions[first["doc_id"]]:
             raise IntegrityError("semantic account mapping is missing or out of order")
         first_interpretation = state["interpretations"][(first["doc_id"],)]
-        first_facts = StatementFacts.from_dict(json.loads(first_interpretation["facts"]))
+        if first_interpretation['facts_type']=='investment':
+            first_facts=decode_investment(json.loads(first_interpretation['facts']))
+            if account['kind']!='investment' or (first['doc_id'],) not in state['investment_facts']:
+                raise IntegrityError('investment account lacks native source origin')
+        elif first_interpretation['facts_type']=='balance':
+            first_facts = StatementFacts.from_dict(json.loads(first_interpretation['facts']))
+            if account['kind'] not in {'depository','liability'}:
+                raise IntegrityError('bank account has a foreign kind')
+        else:
+            raise IntegrityError('unknown account family origin')
         immutable = dict(kind=account_kind_for(first_facts.doc_type), currency=first_facts.currency,
             number=first_facts.account_number, institution=first_facts.institution,
             label=first_facts.account_ref, names=canonical(first_facts.account_names))
@@ -271,8 +316,15 @@ def verify_semantics(store, state):
     for row in state["identity_decisions"].values():
         decision = json.loads(row["body"])
         facts = facts_by_doc.get(row["doc_id"])
-        if facts is None or decision["input"] != facts.to_dict() or decision["policy"] != "source_reference":
+        if facts is None or decision["input"] != facts.to_dict() or decision["policy"] != ("investment_source_reference" if type(facts) is BrokerageFacts else "source_reference"):
             raise IntegrityError("identity input is not its immutable admitted interpretation")
+        if decision["policy"] == "investment_source_reference":
+            if type(facts) is not BrokerageFacts or (facts.doc_id,) not in state["investment_facts"]:
+                raise IntegrityError("native identity lacks its genuine source family")
+            physical=decision["physical_account"]
+            if decision["promoted"] and (facts.doc_id not in periods or periods[facts.doc_id]["account_id"]!=physical):
+                raise IntegrityError("native identity physical source mapping differs")
+            continue
         before = [account for account in accounts if account["creation_order"] < row["created_revision"]]
         keys = {account["account_id"]: account["logical_key"] for account in before}
         historical = [{**claim, "logical_key": keys[claim["account_id"]]} for claim in state["reference_claims"].values()
@@ -287,12 +339,12 @@ def verify_semantics(store, state):
         selected = set()
         for account in before:
             references = [claim for claim in historical if claim["account_id"] == account["account_id"]]
-            positive_match = any(claim["reference"] == facts.source_account_ref
+            positive_match = any(claim["reference"] == source_claim(facts).reference
                 and claim["scope"] == "account" and claim["doc_id"] in captured
                 and SourceAccountIdentity(claim["reference"], claim["doc_id"], claim["page"], claim["identity_page_count"]).eligible()
                 for claim in references)
             overlap = holders.intersection(normalize_name(name) for name in json.loads(account["names"]))
-            if account["logical_key"] == preferred or (account["kind"] == kind and (positive_match or overlap)):
+            if account['logical_key']==preferred or (account['kind']==kind and (positive_match or overlap or type(facts) is BrokerageFacts and account['normalized_number'] and account['normalized_number']==__import__('viva.ledger.identity',fromlist=['usable_full_number']).usable_full_number(facts.account_number))):
                 selected.add(account["account_id"])
         closure = [account for account in before if account["account_id"] in selected]
         mapping = {account["logical_key"]: account["account_id"] for account in closure}

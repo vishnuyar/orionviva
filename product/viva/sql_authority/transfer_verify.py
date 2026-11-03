@@ -25,6 +25,29 @@ def verify(store,state,export):
     seen_docs=set(); admission_buckets={}
     account_rows={}; transaction_rows={}; keymap={row["account_id"]:row["logical_key"] for row in state["account_keys"].values()}
 
+    def payroll_source(doc):
+        interpreted=state['interpretations'].get((doc,))
+        return (interpreted is not None and interpreted['facts_type']=='payroll'
+                and (doc,) in state['payroll_facts'])
+
+    def investment_source(doc, physical, native_seen):
+        interpretation=state['interpretations'].get((doc,))
+        if interpretation is None or interpretation['facts_type']!='investment':
+            return False
+        if doc not in native_seen:
+            raise IntegrityError('investment accepted before its actual native snapshot')
+        from .investment import decode
+        facts=decode(json.loads(interpretation['facts']))
+        native=state['investment_facts'].get((doc,))
+        component=state['investment_components'].get((doc,))
+        if native is None or native['body']!=interpretation['facts'] or component is None or component['snapshot_state']!='accepted' or component['account_id']!=physical:
+            raise IntegrityError('accepted investment source ownership differs')
+        snapshot=state['investment_snapshots'].get((component['snapshot_id'],))
+        account=state['accounts'].get((physical,))
+        if snapshot is None or snapshot['doc_id']!=doc or snapshot['account_id']!=physical or snapshot['currency']!=facts.currency or account is None or account['kind']!='investment':
+            raise IntegrityError('accepted investment source has no native population')
+        return True
+
     def fail(message):
         raise IntegrityError("transfer semantic mismatch: "+message)
 
@@ -66,12 +89,18 @@ def verify(store,state,export):
     # original transaction line indices, never transfer-family operation order.
     expected_inventory={}; expected_bindings={}; promoted=set(); source_order=0
     from ..ledger.postings import counter_account
+    native_seen=set()
     for ops in operations:
         for operation in ops:
             source=operation["row"]
+            if operation["table"]=="investment_snapshots":
+                native_seen.add(source["doc_id"])
             if operation["table"]!="items" or source["state"]!="accepted" or source["doc_id"] in promoted:
                 continue
-            doc=source["doc_id"]; physical=source["account_id"]
+            doc=source["doc_id"]
+            if payroll_source(doc) or investment_source(doc,source["account_id"],native_seen):
+                continue
+            physical=source["account_id"]
             promoted.add(doc); logical=keymap[physical]
             facts=json.loads(state["interpretations"][(doc,)]["facts"])
             kind=state["accounts"][(physical,)]["kind"]
@@ -108,11 +137,14 @@ def verify(store,state,export):
         return not relationship or relationship_complete(
             source,counterpart,available(source),counterpart_available)
 
+    native_seen=set()
     for ops in operations:
         admissions=[]; actual_assertions=[]; actual_runs=[]
         for op in ops:
             table,row=op["table"],op["row"]
-            if table=="accounts":
+            if table=="investment_snapshots":
+                native_seen.add(row["doc_id"])
+            elif table=="accounts":
                 account_rows[row["account_id"]]=row
             elif table=="transactions":
                 transaction_rows[row["txn_id"]]=row
@@ -136,6 +168,8 @@ def verify(store,state,export):
                 admission_buckets.setdefault((new.currency,abs(new.amount),flow),[]).append(key)
             elif table=="items" and row["state"]=="accepted" and row["doc_id"] not in seen_docs:
                 doc=row["doc_id"]
+                if payroll_source(doc) or investment_source(doc,row["account_id"],native_seen):
+                    continue
                 physical=row["account_id"]
                 logical=keymap[physical]
                 if logical not in inventory:
