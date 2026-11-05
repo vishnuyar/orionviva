@@ -208,7 +208,7 @@ def verify_compact_views(state):
         raise IntegrityError("compact references disagree with immutable claim semantics")
 
 
-def verify_semantics(store, state):
+def _advance_semantics(store, state, checked_decisions=()):
     """Recompute admission, claims, candidate closure and resolution independently."""
     from ..ingest.statement import StatementFacts
     from ..ingest.registry import account_kind_for
@@ -221,8 +221,18 @@ def verify_semantics(store, state):
         interpretation = state["interpretations"].get((doc_id,))
         if receipt is None:
             raise IntegrityError("source admission has no raw receipt")
+        from .curated_instrument_contract import FAMILIES, INTERPRETATION_KIND
+        reading = json.loads(receipt["body"])
+        if reading.get("doc_type") in FAMILIES:
+            from .curated import instrument_inputs
+            instrument_inputs(store, receipt, reading, derive=False)
+            if interpretation is not None and interpretation["facts_type"] != INTERPRETATION_KIND:
+                raise IntegrityError("curated instrument interpretation kind differs")
+            if any(key[0] == doc_id for key in state["source_occurrences"]):
+                raise IntegrityError("curated instrument acquired financial source occurrences")
+            continue
         try:
-            facts, occurrences = derive(store, receipt, json.loads(receipt["body"]))
+            facts, occurrences = derive(store, receipt, reading)
         except (AuthorityError, ValueError, KeyError, TypeError, IndexError, StopIteration) as error:
             raise IntegrityError("source admission cannot be independently authenticated") from error
         actual_occurrences = {key: row for key, row in state["source_occurrences"].items() if key[0] == doc_id}
@@ -313,7 +323,9 @@ def verify_semantics(store, state):
         for row in accounts for name in json.loads(row["names"]) if name.strip()}
     if expected_holders != state["holder_index"]:
         raise IntegrityError("holder index disagrees with immutable account metadata")
-    for row in state["identity_decisions"].values():
+    for key, row in state["identity_decisions"].items():
+        if key in checked_decisions:
+            continue
         decision = json.loads(row["body"])
         facts = facts_by_doc.get(row["doc_id"])
         if facts is None or decision["input"] != facts.to_dict() or decision["policy"] != ("investment_source_reference" if type(facts) is BrokerageFacts else "source_reference"):
@@ -365,3 +377,12 @@ def verify_semantics(store, state):
             chosen = "" if expected_resolution["verdict"] == "ambiguous" else mapping.get(expected_resolution["account_id"], "")
             if physical != chosen or (period is not None and accepted_revisions.get(facts.doc_id) == row["created_revision"]):
                 raise IntegrityError("held identity mapping differs from its resolver attempt")
+
+    return tuple(state["identity_decisions"])
+
+
+def verify_semantics(store, state):
+    """Recompute every admission, claim and complete historical resolution."""
+    decisions=_advance_semantics(store,state)
+    collector=getattr(store,'_semantic_collection',None)
+    if collector is not None:collector['decisions']=decisions

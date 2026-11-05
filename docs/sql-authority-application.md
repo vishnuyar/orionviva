@@ -3,9 +3,10 @@
 Production vaults still use their existing event-log format. A prepared additive
 [SQL application storage boundary](sql-authority-live-history.md) now wraps the
 engine with mandatory sealed live history, custody and explicit recovery. Its
-separate storage candidate stopped with 188 passes and 34 failures among 222
-controls; it is not an accepted storage candidate or actual application factory
-activation. Prepared [SQL payroll explanations](sql-authority-payroll.md) add a
+historical storage candidate first stopped with 188 passes and 34 failures among 222
+controls; a later test-only fixture/oracle repair passed those 222 controls. Those
+predecessor results are not fresh qualification of this consolidated source or
+actual application factory activation. Prepared [SQL payroll explanations](sql-authority-payroll.md) add a
 new direct-engine family but do not qualify or retry that storage repair. The experimental
 SQL authority now has a selectable complete-verification profile in preparation
 for an application adapter. Current additive SQL source preparation does not
@@ -21,8 +22,12 @@ Step A prepares fresh prototype-v5/schema5 and engine-v3; old root formats are r
 connection with no automatic migration. A future production factory must explicitly choose complete.
 Unknown or malformed selections are refused before root creation or opening.
 
-Complete mode retains indexed deterministic admission and adds full verification
-before each canonical read decision and each actual write transaction. It checks
+Complete mode retains indexed deterministic admission and checked canonical decisions
+inside held read snapshots or actual write transactions. The experimental application
+adapter can reuse handle-local checked-state evidence after fresh binding to the
+current owned state; covered changes extend that evidence and uncovered changes
+require full verification. Initial readiness, explicit verification and recovery
+retain full checks. Full verification checks
 SQLCipher page authentication, SQLite structure and foreign keys, reconstructs
 the authenticated SQL audit, compares audited tables, runs the existing identity
 and transfer semantics, independently checks payroll and investment financial state and causal
@@ -43,7 +48,8 @@ A read holds an actual SQLite snapshot from a real database read through full
 verification and its answer. A write acquires `BEGIN IMMEDIATE` before checking
 the committed preimage and retains the existing atomic audited commit. Nested
 internal getters can share that one held operation under the instance lock.
-Nothing is cached across decisions, handles or revisions. Explicit verification
+Checked-state evidence can survive decisions only under the experimental adapter's
+fresh ownership/binding checks; it is not transferable between handles. Explicit verification
 refuses incompatible in-flight work without committing or rolling it back. The
 external extraction callback runs outside financial transactions.
 
@@ -51,8 +57,9 @@ The canonical API covers the head, documents, originals, receipts, accounts,
 transactions, postings, balance observations, source admission and occurrences,
 source identity resolution, transfer inventory and actions/history, audit export
 and explicit verification. Direct-engine payroll facts, components, decisions
-and effective postings are also canonical; the application forwarding list is
-unchanged and does not yet expose these payroll getters. Dependency query plans are diagnostics. Curated-source
+and effective postings are also canonical; the experimental application forwarding
+list now exposes these payroll getters. This does not select that adapter in the
+normal Vault factory. Dependency query plans are diagnostics. Curated-source
 attachment is configuration; closing a handle is cleanup. Detached
 `check_export_structure` remains structural-only and cannot authenticate a live
 authority. A supplied expected head remains a separately trusted completeness
@@ -121,12 +128,25 @@ remain unchanged. The separately archived economic repair executed under the
 actual owner's bounded V3 grant: 381 cases, 380 passes and one failed transfer-test
 assumption, with independent terminal integrity PASS. A rival suggestion survived
 unlink; the later target-pair reconfirmation and Background/relink branch were not
-reached. The exception is consumed and repair/retry remains stopped. It derives bank direction from authenticated source kind and
+reached. That exception is consumed; the separate selected-pair exception below does not retry product repairs. It derives bank direction from authenticated source kind and
 original transaction, retaining raw native postings and allocation conventions.
 The card, mixed cash/card and coherent old-sign oracle controls passed at this
 bounded boundary; no whole-brief, package/full or production acceptance follows.
 Later documentation reconciliation carries product/test/runtime evidence without
 claiming the final whole-source identity received a fresh suite run.
+The owner-authorized selected-pair correction subsequently passed all 381 focused
+cases with zero failures, errors or skips, independent terminal integrity PASS
+and bounded Director acceptance. Its 20 unconditional target assertions actually
+completed rival preservation, selected-source absence, immediate confirmation
+refusal, genuine admission, refreshed suggestion, reconfirmation and report, cash
+and history checks. All product and runtime bytes remain unchanged. Ten family
+invocations and four unsuccessful candidates remain recorded; prior failures
+remain intact and the grant is consumed. These are synthetic composed-boundary
+checks, not source-PDF or corpus proof. Documentation-only reconciliation carries
+the tested executable evidence without a fresh final whole-source suite pass.
+No further runtime, recovery, package/full, main merge, production application
+or same-794 acceptance follows from this bounded result.
+
 The new reader uses held complete verification
 plus a separately reconstructed native-state output oracle, and reports admitted
 subtotals/coverage gaps without household or net-worth parity. It does not add an

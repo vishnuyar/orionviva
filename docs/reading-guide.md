@@ -1,5 +1,11 @@
 # Reading Guide — where every document sits
 
+Current local work is recorded in [Consolidated source and qualification state](consolidation/README.md). The durable branch preserves retained and prototype work with per-path provenance. Normal vault authority remains unchanged; canonical SQL remains experimental. The targeted evidence covers 925 unique cases across two executions, with the original guard failure preserved. Frontend execution, four subprocess controls, full-package acceptance and normal-route/full-794 performance remain open.
+
+## Historical storage slice records
+
+The following storage status paragraphs describe their original stages. The current source and qualification record above supersedes their pending/failed status descriptions; earlier outcomes remain evidence.
+
 Current storage experiment: [Encrypted SQLite financial authority prototype](sql-authority-prototype.md)
 records the isolated staging, validation and atomic acceptance design, integrity
 limits, fixed experiment gates and migration prerequisites. Production vaults
@@ -30,6 +36,8 @@ focused controls passed before investment shared-owner edits; that result is
 historical rather than a current combined-candidate pass. Application payroll getter integration, all-sixty
 source acceptance and the remaining investment/instrument families are still
 open; no mixed-794 performance claim follows from this source preparation.
+
+## Other document directions
 
 Current accounting direction: [Automatic accounting and correction learning](automatic-accounting.md), with [ADR-017](decisions/ADR-017-automatic-accounting.md). Classification review is superseded by reversible interpretation. Selected corrections describe the counterpart of the recorded source; remembered treatment can fill an otherwise matching default-unknown purpose while preserving known distinctions. Categories and treatment require no proof; evidence remains required for source numbers. Independent verification is recorded; complete acceptance, real-document testing and signed release readiness remain open.
 
@@ -237,7 +245,17 @@ one failed global empty-suggestion assumption after unlink; its later target-pai
 reconfirmation and Background/relink branch were not reached. Independent terminal
 integrity passed, and card direction, mixed economics and old-sign oracle refusal
 controls passed. The ninth invocation and fourth unsuccessful candidate remain
-counted; no retry is authorized. Native postings, actual source-kind direction,
+counted; the separately authorized selected-pair correction is recorded next. Native postings, actual source-kind direction,
 supported-activity gaps and the independent authenticated-state oracle remain.
+The separately authorized selected-pair correction passed all 381 focused cases
+with zero failures, errors or skips, independent terminal verification and bounded
+Director acceptance. It actually completed exact rival preservation, selected-source
+absence, real confirmation refusal, genuine Background admission, refreshed target
+suggestion, reconfirmation and report/cash/history assertions. Product/runtime bytes
+and all 381 identities/order are preserved. Ten invocations/four unsuccessful
+candidates remain counted; prior failures are retained and the grant is consumed.
+Post-run documentation-only updates carry unchanged executable evidence, not a
+fresh final whole-source suite pass. No further runtime or main merge is authorized.
+
 Owner-directed local WIP consolidation is separate from qualification; no
 all794/performance, production adoption or delivery result follows.

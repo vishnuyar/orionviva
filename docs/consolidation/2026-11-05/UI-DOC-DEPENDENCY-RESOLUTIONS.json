@@ -1,0 +1,190 @@
+{
+  "default_backend_migration": false,
+  "new_commits": 0,
+  "no_original_source_or_index_changes": true,
+  "original_inputs": "/Users/vishnu/OrionViva-Preservation/2026-11-05-consolidation",
+  "pushes": 0,
+  "records": [
+    {
+      "path": "desktop/src-tauri/src/browser.rs",
+      "prepared_conflict_sha256": "b306dcaddcbd81b1b6a87f52dd7737f6399904efcaa0b4caf7e442b6121d9baf",
+      "prototype_sha256": "f20be2bf19c45a3d5b6cc522842b4474a3fdc2d621166b29f7f0ffed62d5d4f1",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "f20be2bf19c45a3d5b6cc522842b4474a3fdc2d621166b29f7f0ffed62d5d4f1",
+      "retained_sha256": "9d08bd254f25180a5f9830bfb4636bc653bf9ea8af08e59e9612f55af3007ecc"
+    },
+    {
+      "path": "desktop/src/app/App.documents.test.tsx",
+      "prepared_conflict_sha256": "73e66d8404c169bce492b891bd011df293a596c7d1542f2a5eebb2b3045ccfbe",
+      "prototype_sha256": "d1149ab464555fdaf4ab89ceeeec8bd33329c68884d48566e480e3f656d1a3f5",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "d1149ab464555fdaf4ab89ceeeec8bd33329c68884d48566e480e3f656d1a3f5",
+      "retained_sha256": "918f7568d33ec48703884d2bba0d48af608dfe498e5231458d5963dba64b65de"
+    },
+    {
+      "path": "desktop/src/app/App.tsx",
+      "prepared_conflict_sha256": "1b08e317faab37034bf39f1ad241ff8fae7104cbfb9b98781493c1d895b949ba",
+      "prototype_sha256": "87fc95c34aa2a0aabeda29fa46d28970d98bbf12a4209ab3d4a4ac713912c3b7",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "87fc95c34aa2a0aabeda29fa46d28970d98bbf12a4209ab3d4a4ac713912c3b7",
+      "retained_sha256": "61ef417d96fadbe6e73cd948c519b922550968a99d3f0aa0233944bfca10c40e"
+    },
+    {
+      "path": "desktop/src/bridge/browser-transport.test.ts",
+      "prepared_conflict_sha256": "6371eeed36a1e0a36d2919ddefe9a7f953e884258b67c2fce428b4a72d53af8c",
+      "prototype_sha256": "3cca6adebd00e880a6052aeb0a90c95dda2de5dabea3b5e352d31ebd0eed2d08",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "3cca6adebd00e880a6052aeb0a90c95dda2de5dabea3b5e352d31ebd0eed2d08",
+      "retained_sha256": "9785bb417ab28d9913c0379bf7da46daa1e8dec61ab5ddbd6c5507ca81e9c891"
+    },
+    {
+      "path": "desktop/src/bridge/browser-transport.ts",
+      "prepared_conflict_sha256": "08ef3c7076cea7cf59d764ec24a52d88a0f71ed3dd9da3b289c09e9c815c5693",
+      "prototype_sha256": "abf59e109e50c2161cfe481f61f485324fd7a196ac7a533436c005c4b646787b",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "abf59e109e50c2161cfe481f61f485324fd7a196ac7a533436c005c4b646787b",
+      "retained_sha256": "150d77952488b01e6362934ba847421e2db7d4a6906f29697bda99f4c171da8a"
+    },
+    {
+      "path": "desktop/src/bridge/client.test.ts",
+      "prepared_conflict_sha256": "2a7aa7af3f65c9145791cdae71bb6168c89c8a82d4e989216b02cb98c64b0833",
+      "prototype_sha256": "928f5a0ded8c11c147974b9d67df48e4fd9c56fe0f8f8b62ad68f1dc84e4b38d",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "928f5a0ded8c11c147974b9d67df48e4fd9c56fe0f8f8b62ad68f1dc84e4b38d",
+      "retained_sha256": "fad0ecd9772e792548d06483419d25f660902bb46f143e479e33af876419dd35"
+    },
+    {
+      "path": "desktop/src/features/conversation/ConversationDrawer.test.tsx",
+      "prepared_conflict_sha256": "d0f90d8107b120bd00b89abbf31bd42ec5a3d88c6b3c56bc07527ba711ac8138",
+      "prototype_sha256": "0c86a96b21a4f6fdbb8a1f576d254732fd549b812afd7f2e60dd3ff121031a26",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "0c86a96b21a4f6fdbb8a1f576d254732fd549b812afd7f2e60dd3ff121031a26",
+      "retained_sha256": "8786aa2cc1f19046a8c11eeeedf3bb0271f9a6909879bcbe0f9f8890cc40e1b3"
+    },
+    {
+      "path": "desktop/src/features/conversation/ConversationDrawer.tsx",
+      "prepared_conflict_sha256": "7c552329197d434f4a6a91158b156e84420257ae5cb8ecd9510caf113b201c8c",
+      "prototype_sha256": "bb8e8c01d8502168b6058a5acb9c46e2ca55540a6a357b1a5e743bd697bf93ee",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "bb8e8c01d8502168b6058a5acb9c46e2ca55540a6a357b1a5e743bd697bf93ee",
+      "retained_sha256": "8080f849ab21b9fef01c18903e0f66fecd4bd0bc0cd23e867b750466c2e45e98"
+    },
+    {
+      "path": "desktop/src/features/documents/Documents.test.tsx",
+      "prepared_conflict_sha256": "1aef1e31858ce4d1e21b50051bbe91185f4f3529d5669a66314f07dc89a14649",
+      "prototype_sha256": "8ebd9151fc57e6e6430cbf373ecddb00b1eadd3c4b7a73e2aec84220e03bcd7f",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "8ebd9151fc57e6e6430cbf373ecddb00b1eadd3c4b7a73e2aec84220e03bcd7f",
+      "retained_sha256": "ce159440dde7d7935482f2679e1553c37a20465c91a424ce373161d068cecde4"
+    },
+    {
+      "path": "desktop/src/features/documents/Documents.tsx",
+      "prepared_conflict_sha256": "248b81f4d82cd0a8774fff68f6a07a8c8835056e55724b770fef90341b2c8d84",
+      "prototype_sha256": "16ca22128a97130bee7816746d72ba41c3247a42bb7bc72315525cd8db4b7814",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "16ca22128a97130bee7816746d72ba41c3247a42bb7bc72315525cd8db4b7814",
+      "retained_sha256": "97fbb4e0b16c0fb0bd755be8c60b3516d4b22f6fafab741646b48cb019d26e30"
+    },
+    {
+      "path": "desktop/src/styles/documents.css",
+      "prepared_conflict_sha256": "b4efac89b943ebf7ff2c4c2b27b18168ab1e8056f9c4cd1eb0d07b58d5ce804a",
+      "prototype_sha256": "175a7cde98e980a0fc857f78c9dd59529f2f152ec726a7a38122514377180519",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "175a7cde98e980a0fc857f78c9dd59529f2f152ec726a7a38122514377180519",
+      "retained_sha256": "258acd4a25edbf78114c4f8be6857a8dbd3608d472ef22d63cb76008ff0b6ea6"
+    },
+    {
+      "path": "desktop/src/surface/adapters/documents.test.ts",
+      "prepared_conflict_sha256": "6185d0e39d13fcdbe41aef1e6dd89b0abf89592f663c50f36e49cab423f9d221",
+      "prototype_sha256": "97b5c6f756d110b9314ed2c2a12d0f97670cf853fd605d1be6fa2173fbc63e93",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "97b5c6f756d110b9314ed2c2a12d0f97670cf853fd605d1be6fa2173fbc63e93",
+      "retained_sha256": "8f7bf247ffb6320e8b13f93b9005bba744584b4c1e19101efd262f7608088f3b"
+    },
+    {
+      "path": "desktop/src/surface/adapters/documents.ts",
+      "prepared_conflict_sha256": "34c46a28dddbd45f04069bec898403c02aa15653f8f6dcafc051945a525b73e9",
+      "prototype_sha256": "24af9e2c897bc27672c2df1572055fceec209907de8421976e365a3c3a7e0514",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "24af9e2c897bc27672c2df1572055fceec209907de8421976e365a3c3a7e0514",
+      "retained_sha256": "530e2970dfb796b0ad8e850799c8f3d5e33d5e46718077552d6af1af6b353357"
+    },
+    {
+      "path": "desktop/src/surface/load-private-snapshot.ts",
+      "prepared_conflict_sha256": "411b42689acbcf672f345cbbac7dfa5ccef711dbb643acd350612e2cda14fdd7",
+      "prototype_sha256": "1e0c0ebe6f325241866ccefc3b48c3a744a1ef8da5a66f3dc9b5b9d145209c3d",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "1e0c0ebe6f325241866ccefc3b48c3a744a1ef8da5a66f3dc9b5b9d145209c3d",
+      "retained_sha256": "288b3f9882036e2270e6cc5716df7947049526059ecd9a6b8f937a8bc053554d"
+    },
+    {
+      "path": "desktop/src/surface/types.ts",
+      "prepared_conflict_sha256": "5309d65ceb5eb97563d87672e467fde66eccd4e7cd168dd3b7c7e4a5967bcc00",
+      "prototype_sha256": "24f1ba1f962b1d2d5905e68f8f5447f36fe31de7fd3dfa17e2138dd221411e2a",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Reviewed R-to-P source delta preserves prior single-file, paging, source and conversation contracts while extending bulk/resumable/retained-reading consent routes and authenticated page/bulk ownership cleanup. P tests retain existing named cases; the former single-only gesture case is superseded by exact single-selection plus bounded multi-selection coverage. No SQL backend default activation.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "24f1ba1f962b1d2d5905e68f8f5447f36fe31de7fd3dfa17e2138dd221411e2a",
+      "retained_sha256": "5a609af02d4fa695464bff01100a7dbc58f0aef3156edb59650caa329eb94899"
+    },
+    {
+      "path": "docs/financial-analysis-measurements-and-scenarios.md",
+      "prepared_conflict_sha256": "cdbe302b88be03bf082be46cd519270be9254f7442aeabc9a40be87b724a438a",
+      "prototype_sha256": "d71fcbee6949a846d6f851586edbbbd05a8eae35b2d1e244d3160818f9975036",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Preserves earlier meanings/resources and qualification holds; successor documents already-existing prompt/schema versions and bounded selected-account/instrument contracts, explicitly retaining prior resources and unverified acceptance dispositions.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "d71fcbee6949a846d6f851586edbbbd05a8eae35b2d1e244d3160818f9975036",
+      "retained_sha256": "884deb973f1a8647f954a21c36bdc82e89f7f7302bc4fe72acc4398e07ec41f1"
+    },
+    {
+      "path": "docs/prompts-as-files.md",
+      "prepared_conflict_sha256": "e19e6e4c5e941fa49784f6c154586b4deef9f097eefa5e9ec260b73e462816ae",
+      "prototype_sha256": "f723c10da7f2944d8cee8679dc06d6cd9b75e75b08786efd9ffb3ce4b7473a26",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Preserves earlier meanings/resources and qualification holds; successor documents already-existing prompt/schema versions and bounded selected-account/instrument contracts, explicitly retaining prior resources and unverified acceptance dispositions.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "f723c10da7f2944d8cee8679dc06d6cd9b75e75b08786efd9ffb3ce4b7473a26",
+      "retained_sha256": "38484e65adde5c78c6f9074e1080798df6da8160ce07712682a4dd3f553fb978"
+    },
+    {
+      "path": "product/pyproject.toml",
+      "prepared_conflict_sha256": "26cd5cd0341df56b5d009ee357737cc33ad72912517cbbac9ebc98561959a310",
+      "prototype_sha256": "f11bddf9e38b852dc3db322bd73b44be2673e9a524cc0471982ad1608bf4030c",
+      "qualification": "Source comparison only; targeted compile/tests and independent review pending.",
+      "rationale": "Retained bytes exactly match 68d ancestor; successor only adds immutable sample snapshot JSON/ZIP package resources. Existing dependencies preserved.",
+      "resolution": "reviewed-forward-source-version",
+      "result_sha256": "f11bddf9e38b852dc3db322bd73b44be2673e9a524cc0471982ad1608bf4030c",
+      "retained_sha256": "8d2dc1080e7e0ce21ae109df70fee76250fba94bd8ffc9d9980d0700e02cefea"
+    }
+  ],
+  "scope": "Root desktop/docs/dependency conflict resolutions only"
+}

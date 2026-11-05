@@ -196,6 +196,8 @@ class SQLAuthority:
         self.last_vm_steps = 0
         self._fault = lambda _point: None
         self._curated_owner = None
+        self._verification_originals = None
+        self._semantic_collection = None
         self.last_source_timings = {}
         self.last_source_metrics = self.last_source_timings
         self._progress_callback = None
@@ -369,7 +371,8 @@ class SQLAuthority:
             with self._snapshot():
                 self._verified_operation = True
                 try:
-                    self._verify_current()
+                    if not self._application_event("_bind_certified_read"):
+                        self._verify_current()
                     yield
                 finally:
                     self._verified_operation = False
@@ -440,7 +443,8 @@ class SQLAuthority:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 if self._verification == "complete":
-                    self._verify_current()
+                    if not self._application_event("_bind_certified_preimage"):
+                        self._verify_current()
                     self._verified_operation = True
                 revision, previous = self._check_terminal()
                 self._revision = revision + 1
@@ -465,6 +469,10 @@ class SQLAuthority:
                     self._db.execute("UPDATE control SET revision=?,head=?,mac=? WHERE singleton=1", (self._revision, digest, mac))
                     self._fault("before_commit")
                 self._application_event("prepare_transaction")
+                from .cd_receipt_verify import verify_new_record
+                verify_new_record(self, revision, previous)
+                from .curated_instrument_verify import verify_new_record as verify_curated_instrument
+                verify_curated_instrument(self, revision, previous)
                 self._db.execute("COMMIT")
                 self._verified_operation = False
                 self._application_event("complete_transaction")
@@ -501,11 +509,22 @@ class SQLAuthority:
         return self._original(doc_id)
 
     def _original(self, doc_id):
+        data, _commitment = self._original_with_commitment(doc_id)
+        return data
+
+    def _original_with_commitment(self, doc_id):
         if type(doc_id) is not str or len(doc_id) != 64 or any(char not in "0123456789abcdef" for char in doc_id):
             raise AuthorityError("invalid document address")
         _regular(self.root / "originals" / (doc_id + ".blob"))
-        return self._raw.get_bounded(doc_id, max_plaintext=MAX_SOURCE_BYTES,
-                                     max_envelope=72 * 1024 * 1024)
+        data, commitment = self._raw._get_bounded_with_commitment(doc_id, max_plaintext=MAX_SOURCE_BYTES,
+                                                                 max_envelope=72 * 1024 * 1024)
+        if self._verification_originals is not None:
+            observed = (commitment,len(data))
+            if doc_id in self._verification_originals and self._verification_originals[doc_id] != observed:
+                raise IntegrityError("original changed between authenticated verification reads")
+            self._verification_originals[doc_id] = observed
+        self._application_event("_checked_original",doc_id,commitment,len(data))
+        return data, commitment
 
     @_canonical_read
     def receipt(self, doc_id):
@@ -575,7 +594,9 @@ class SQLAuthority:
         self.attach_curated(source)
         self.last_source_timings = {}
         self.last_source_metrics = self.last_source_timings
-        return self._ingest(original, None, contract=CONTRACT, source=source)
+        from .incremental import _automatic
+        with _automatic(self,original,source):
+            return self._ingest(original, None, contract=CONTRACT, source=source)
 
     def ingest(self, original, reader, *, contract):
         return self._ingest(original, reader, contract=contract)
@@ -614,23 +635,35 @@ class SQLAuthority:
                     result = copy.deepcopy(reader(original, doc_id))
                 if type(result) is not ReadResult:
                     raise AuthorityError("reader must return ReadResult")
-                retained = _encode(result)
-                body = canonical(retained)
-                if len(body.encode()) > MAX_RECEIPT_BYTES:
-                    raise AuthorityError("extraction receipt exceeds bound")
                 facts = result.facts
                 from .reading import capture_types
                 from ..ingest.paystub import PayStubFacts
                 from ..ingest.brokerage import BrokerageFacts
-                facts_type = "curated" if source is not None else "balance" if type(facts) is StatementFacts else "payroll" if type(facts) is PayStubFacts else "investment" if type(facts) is BrokerageFacts else "unsupported"
-                facts_json = canonical(_encode(facts))
+                from ..ingest.instrument_read import InstrumentReadFacts
+                from ..ingest.instrument_contracts import DepositFacts
+                ordinary_cd = (source is None and type(facts) is InstrumentReadFacts
+                               and type(facts.payload) is DepositFacts)
+                if ordinary_cd:
+                    from .cd_receipts import encode_ordinary_cd_receipt
+                    captured_cd = encode_ordinary_cd_receipt(result, read_context_id=context_id)
+                    body, facts_json = captured_cd["body"], captured_cd["facts"]
+                    tags_json = captured_cd["capture_types"]
+                    facts_type = "cd_capture_v1"
+                else:
+                    retained = _encode(result)
+                    body = canonical(retained)
+                    if len(body.encode()) > MAX_RECEIPT_BYTES:
+                        raise AuthorityError("extraction receipt exceeds bound")
+                    facts_type = "curated" if source is not None else "balance" if type(facts) is StatementFacts else "payroll" if type(facts) is PayStubFacts else "investment" if type(facts) is BrokerageFacts else "unsupported"
+                    facts_json = canonical(_encode(facts))
+                    tags_json = canonical({**capture_types(facts), "read_context_id": context_id})
                 receipt_started = time.perf_counter()
                 with self._transaction():
                     if admission is not None:
                         self._put("source_admissions", dict(doc_id=doc_id, body=canonical({**admission, "read_context_id": context_id})))
                     self._put("receipts", dict(doc_id=doc_id, contract=contract, body=body,
                                                facts_type=facts_type, facts=facts_json,
-                                               capture_types=canonical({**capture_types(facts), "read_context_id": context_id})))
+                                               capture_types=tags_json))
                     self._item(doc_id, "staged", "retained extraction awaiting validation")
                 if source is not None:
                     self.last_source_timings["receipt_seconds"] = time.perf_counter()-receipt_started
@@ -1035,33 +1068,57 @@ class SQLAuthority:
             raise IntegrityError("trusted audit boundary mismatch")
         return {"structural": True, "authenticated": False, "revision": export["revision"]}
 
+    def _advance_reconstruction(self, state, record, commit):
+        sequence, previous, envelope, _digest = record
+        if not hmac.compare_digest(commit[2], self._mac(commit[0], commit[1])):
+            raise IntegrityError("audit commit MAC mismatch")
+        payload = json.loads(open_sealed(self._audit_key, json.loads(envelope), aad=canonical([sequence, previous]).encode()))
+        if type(payload) is not dict or set(payload) != {"version", "operations"} or type(payload["version"]) is not int or payload["version"] != 1 or type(payload["operations"]) is not list or not payload["operations"]:
+            raise IntegrityError("unknown audit payload")
+        for operation in payload["operations"]:
+            if type(operation) is not dict or set(operation) != {"table", "row"}:
+                raise IntegrityError("unknown audit operation")
+            table, row = operation["table"], operation["row"]
+            if not valid_row(table, row):
+                raise IntegrityError("unknown audited row")
+            key = tuple(row[column] for column in KEYS[table])
+            if key in state[table] and table not in MUTABLE:
+                raise IntegrityError("immutable audited row rewritten")
+            state[table][key] = row
+        from .cd_receipt_verify import verify_operations
+        verify_operations(self, state, payload["operations"], revision=sequence)
+        from .curated_instrument_verify import verify_operations as verify_curated_instruments
+        verify_curated_instruments(self, state, payload["operations"], revision=sequence)
+        return payload['operations']
+
+    def _finish_reconstruction(self,state,export):
+        expected_sources = [{"doc_id": row["doc_id"], "sha256": row["doc_id"], "byte_count": row["byte_count"]}
+                            for _key, row in sorted(state["documents"].items())]
+        if expected_sources != export["sources"]:
+            raise IntegrityError("exported sources disagree with authenticated audit")
+
     def _reconstruct(self, export, expected_head):
         self.check_export_structure(export, expected_head=expected_head)
         if not hmac.compare_digest(export["mac"], self._mac(export["revision"], export["head"])):
             raise IntegrityError("audit head MAC mismatch")
         state = {table: {} for table in TABLES}
-        for record, commit in zip(export["records"], export["commits"]):
-            sequence, previous, envelope, _digest = record
-            if not hmac.compare_digest(commit[2], self._mac(commit[0], commit[1])):
-                raise IntegrityError("audit commit MAC mismatch")
-            payload = json.loads(open_sealed(self._audit_key, json.loads(envelope), aad=canonical([sequence, previous]).encode()))
-            if type(payload) is not dict or set(payload) != {"version", "operations"} or type(payload["version"]) is not int or payload["version"] != 1 or type(payload["operations"]) is not list or not payload["operations"]:
-                raise IntegrityError("unknown audit payload")
-            for operation in payload["operations"]:
-                if type(operation) is not dict or set(operation) != {"table", "row"}:
-                    raise IntegrityError("unknown audit operation")
-                table, row = operation["table"], operation["row"]
-                if not valid_row(table, row):
-                    raise IntegrityError("unknown audited row")
-                key = tuple(row[column] for column in KEYS[table])
-                if key in state[table] and table not in MUTABLE:
-                    raise IntegrityError("immutable audited row rewritten")
-                state[table][key] = row
-        expected_sources = [{"doc_id": row["doc_id"], "sha256": row["doc_id"], "byte_count": row["byte_count"]}
-                            for _key, row in sorted(state["documents"].items())]
-        if expected_sources != export["sources"]:
-            raise IntegrityError("exported sources disagree with authenticated audit")
+        for record, commit in zip(export['records'],export['commits']):
+            self._advance_reconstruction(state,record,commit)
+        self._finish_reconstruction(state,export)
         return state
+
+    def _fresh_physical_checks(self):
+        self._application_event("verify_schema")
+        if self._verification == "complete":
+            if self._db.execute("SELECT * FROM format").fetchall() != [(FORMAT, SCHEMA_VERSION)]:
+                raise IntegrityError("unknown authority schema")
+            _cipher_capability(self._db)
+            if self._db.execute("PRAGMA cipher_integrity_check").fetchall():
+                raise IntegrityError("encrypted page integrity failure")
+            if self._db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+                raise IntegrityError("database structural integrity failure")
+            if self._db.execute("PRAGMA foreign_key_check").fetchall():
+                raise IntegrityError("database reference integrity failure")
 
     def _verify_current(self, *, expected_head=None):
         if not self._db.in_transaction or self._verifying:
@@ -1069,45 +1126,96 @@ class SQLAuthority:
         self._verifying = True
         prior_operation = self._verified_operation
         self._verified_operation = True
+        previous_originals = self._verification_originals
+        self._verification_originals = {}
+        previous_collection=self._semantic_collection
+        self._semantic_collection={}
         try:
-            self._application_event("verify_schema")
-            if self._verification == "complete":
-                if self._db.execute("SELECT * FROM format").fetchall() != [(FORMAT, SCHEMA_VERSION)]:
-                    raise IntegrityError("unknown authority schema")
-                _cipher_capability(self._db)
-                if self._db.execute("PRAGMA cipher_integrity_check").fetchall():
-                    raise IntegrityError("encrypted page integrity failure")
-                if self._db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
-                    raise IntegrityError("database structural integrity failure")
-                if self._db.execute("PRAGMA foreign_key_check").fetchall():
-                    raise IntegrityError("database reference integrity failure")
+            self._fresh_physical_checks()
             export = self._export_current()
-            self._application_event("verify_representation", export)
+            representation = self._application_event("verify_representation", export)
             state = self._reconstruct(export, expected_head)
+            from . import certified_state as certified
+            checked_export_digest = self._certified_sql_digest(export) if representation is not None else None
+            checked_tables = []
             counts = {}
             for table, columns in TABLES.items():
                 actual = {tuple(row[columns.index(key)] for key in KEYS[table]): dict(zip(columns, row)) for row in self._db.execute(f"SELECT {','.join(chr(34) + column + chr(34) for column in columns)} FROM {table}").fetchall()}
                 if actual != state[table]:
                     raise IntegrityError(f"audited state mismatch: {table}")
                 counts[table] = len(actual)
+                if representation is not None:
+                    checked_tables.append((table,certified._table_digest(table,columns,actual.values())))
             from .investment_verify import verify as verify_investment
             verify_investment(self,state,export)
             from .identity import verify_semantics
-            verify_semantics(self, state)
+            verify_semantics(self,state)
             from .payroll_verify import verify as verify_payroll
             from .transfer_verify import verify as verify_transfers
             with localcontext() as arithmetic:
-                arithmetic.prec = 28
-                arithmetic.traps[Inexact] = True
-                verify_payroll(self, state, export)
-                verify_transfers(self, state, export)
+                arithmetic.prec=28;arithmetic.traps[Inexact]=True
+                verify_payroll(self,state,export)
+                verify_transfers(self,state,export)
             for key, document in state["documents"].items():
                 if len(self._original(key[0])) != document["byte_count"]:
                     raise IntegrityError("source size mismatch")
+            if representation is not None:
+                observed = tuple(sorted((doc,digest,size) for doc,(digest,size) in self._verification_originals.items()))
+                if observed != representation.originals:
+                    raise IntegrityError("complete source reads differ from checked custody proof")
+                self._application_event("_accept_full_verification",representation,checked_export_digest,tuple(checked_tables))
+                self._application_event("_accept_full_semantics",state,export,self._semantic_collection['investment'],self._semantic_collection['payroll'],self._semantic_collection['transfer'],self._semantic_collection['decisions'])
             return {"verified": True, "revision": export["revision"], "head": export["head"], "counts": counts}
         finally:
+            self._semantic_collection=previous_collection
+            self._verification_originals = previous_originals
             self._verified_operation = prior_operation
             self._verifying = False
+
+    def _certified_sql_digest(self, export):
+        from . import certified_state as certified
+        control = self._db.execute("SELECT singleton,revision,head,mac FROM control ORDER BY singleton").fetchall()
+        formats = self._db.execute("SELECT version,schema_version FROM format").fetchall()
+        if control != [(1,export['revision'],export['head'],export['mac'])] or formats != [(FORMAT,SCHEMA_VERSION)]:
+            raise IntegrityError("complete control or format membership differs")
+        return certified._digest({'export':export,'control':control,'format':formats})
+
+    def _bind_verified_state(self, proof, *, initial=False):
+        if self._application_binding is None or self._verification != "complete" or not self._db.in_transaction:
+            raise AuthorityError("certified binding requires an owned complete application snapshot")
+        from .application import _owned_binding
+        from . import certified_state as certified
+        owner = _owned_binding(self._application_binding,self)
+        certified._owner(proof,owner)
+        self._fresh_physical_checks()
+        if self._certified_sql_digest(self._export_current()) != proof.sql_digest:
+            raise IntegrityError("SQL differs from authoritative sealed operations")
+        checked = []
+        actual_tables = {}
+        for table, columns in TABLES.items():
+            rows = [dict(zip(columns,row)) for row in self._db.execute(
+                f"SELECT {','.join(chr(34)+column+chr(34) for column in columns)} FROM {table}").fetchall()]
+            checked.append((table,certified._table_digest(table,columns,rows)))
+            actual_tables[table] = {tuple(row[key] for key in KEYS[table]):row for row in rows}
+        if tuple(checked) != proof.tables:
+            raise IntegrityError("materialized state differs from fully checked state")
+        previous_binding = owner._binding_certificate
+        previous_operation = self._verified_operation
+        owner._binding_certificate = proof
+        self._verified_operation = True
+        try:
+            owner._bind_representation(proof.representation,initial=initial)
+            if actual_tables['source_admissions']:
+                from .curated import authenticate
+                for (doc,),_admission in actual_tables['source_admissions'].items():
+                    receipt=actual_tables['receipts'].get((doc,))
+                    if receipt is None:
+                        raise IntegrityError("checked source admission has no raw receipt")
+                    authenticate(self,receipt,json.loads(receipt['body']))
+            owner._bind_history(proof.representation)
+        finally:
+            self._verified_operation = previous_operation
+            owner._binding_certificate = previous_binding
 
     def verify(self, *, expected_head=None):
         with self._application_context("decision"), self._snapshot():

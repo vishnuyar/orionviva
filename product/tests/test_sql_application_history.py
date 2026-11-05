@@ -414,3 +414,289 @@ def test_engine_handoff_cannot_cross_another_threads_held_operation(tmp_path):
                 with pytest.raises(AuthorityError, match="another thread"):
                     future.result(timeout=5)
         assert owner.account(accepted.account_id)["running_balance"] == "90"
+
+
+def test_application_family_reader_parity(tmp_path):
+    from decimal import Decimal
+    from test_sql_payroll import _deposit, _payroll
+    from test_sql_investment import _investment
+    for application in (False, True):
+        root = tmp_path.resolve() / ("family-application" if application else "family-native")
+        with SQLAuthority.create(root, secrets.token_urlsafe(32), verification="complete",
+                                 application=application) as owner:
+            bank = _deposit(owner)
+            payroll = _payroll(owner)
+            investment = _investment(owner)
+            assert bank.status == payroll.status == investment.status == "accepted"
+            head, audit = owner.head, owner.export_audit()
+            terminal = owner.terminal if application else None
+            history = ({str(path.relative_to(root)): path.read_bytes()
+                        for path in (root / "history").iterdir() if path.is_file()} if application else None)
+            cases = [
+                ("investment_component", (investment.doc_id,), {}),
+                ("income_expense", (), {}),
+                ("investment_snapshot", (investment.account_id,), {"as_of": "2026-01-31"}),
+                ("investment_cash_period", (investment.doc_id,), {}),
+                ("investment_activity", (investment.doc_id,), {}),
+                ("investment_postings", (investment.doc_id,), {}),
+                ("investment_history", (investment.doc_id,), {}),
+                ("payroll_facts", (payroll.doc_id,), {}),
+                ("payroll_component", (payroll.doc_id,), {}),
+                ("payroll_decisions", (payroll.doc_id,), {}),
+                ("payroll_postings", (payroll.doc_id,), {}),
+            ]
+            answers = {}
+            for name, args, kwargs in cases:
+                answers[name] = getattr(owner, name)(*args, **kwargs)
+                if application:
+                    assert answers[name] == getattr(owner._engine, name)(*args, **kwargs)
+            assert len(answers) == 11
+            assert answers["payroll_facts"]["gross"] == "100"
+            assert answers["payroll_facts"]["net"] == "80"
+            assert answers["payroll_component"]["state"] == "accepted"
+            assert [row["action"] for row in answers["payroll_decisions"]] == ["activate"]
+            assert sorted(Decimal(row["amount"]) for row in answers["payroll_postings"]) == [Decimal("-100"), Decimal("20"), Decimal("80")]
+            assert owner.payroll_postings() == owner.payroll_postings(None) == answers["payroll_postings"]
+            assert owner.account(bank.account_id)["running_balance"] == "80"
+            assert answers["investment_component"]["snapshot_state"] == "accepted"
+            assert answers["investment_component"]["activity_state"] == "accepted"
+            snapshot = answers["investment_snapshot"]
+            assert (snapshot["cash"], snapshot["total"], snapshot["currency"]) == ("10", "30", "USD")
+            assert [(row["instrument"], row["units"], row["market_value"]) for row in snapshot["positions"]] == [("SYNTH-SEC", "2", "20")]
+            period = answers["investment_cash_period"]
+            assert (period["opening_cash"], period["closing_cash"], period["state"]) == ("9", "10", "accepted")
+            assert [row["amount"] for row in answers["investment_activity"]] == ["1"]
+            assert sorted(Decimal(row["amount"]) for row in answers["investment_postings"]) == [Decimal("-1"), Decimal("1")]
+            assert any(row["account"] == "Income:Interest" for row in answers["investment_postings"])
+            assert len(answers["investment_history"]["witnesses"]) == 1
+            assert answers["investment_history"]["postings"] == answers["investment_postings"]
+            assert answers["income_expense"]["by_currency"]["USD"] == dict(
+                admitted_income="101", admitted_expenses="20", admitted_net="81",
+                provisional_income="0", provisional_expenses="0", unavailable=[])
+            filtered = owner.income_expense(start="2026-01-15", end="2026-01-15")
+            assert filtered["by_currency"] == answers["income_expense"]["by_currency"]
+            assert owner.income_expense(start="2026-02-01", end="2026-02-28")["lines"] == []
+            assert owner.investment_snapshot(investment.account_id, as_of="2025-12-31") is None
+            if application:
+                assert filtered == owner._engine.income_expense(start="2026-01-15", end="2026-01-15")
+                assert owner.payroll_postings() == owner._engine.payroll_postings()
+                assert owner.payroll_postings(None) == owner._engine.payroll_postings(None)
+                assert owner.terminal == terminal
+                assert history == {str(path.relative_to(root)): path.read_bytes()
+                                   for path in (root / "history").iterdir() if path.is_file()}
+            assert owner.head == head and owner.export_audit() == audit
+            assert owner.verify(expected_head=head)["verified"]
+
+
+def test_application_family_reader_refuses_invalid_boundary(tmp_path):
+    from viva.sql_authority import AuthorityError, IntegrityError
+    from viva.sql_authority.application_io import RecoveryRequired
+    from test_sql_payroll import _deposit, _payroll
+    from test_sql_investment import _investment
+    with SQLAuthority.create(tmp_path.resolve() / "family-boundary", secrets.token_urlsafe(32),
+                             verification="complete", application=True) as owner:
+        bank = _deposit(owner)
+        payroll = _payroll(owner)
+        investment = _investment(owner)
+        assert bank.status == payroll.status == investment.status == "accepted"
+        calls = [
+            ("investment_component", (investment.doc_id,), {}),
+            ("income_expense", (), {"start": "2026-01-01", "end": "2026-01-31"}),
+            ("investment_snapshot", (investment.account_id,), {"as_of": "2026-01-31"}),
+            ("investment_cash_period", (investment.doc_id,), {}),
+            ("investment_activity", (investment.doc_id,), {}),
+            ("investment_postings", (investment.doc_id,), {}),
+            ("investment_history", (investment.doc_id,), {}),
+            ("payroll_facts", (payroll.doc_id,), {}),
+            ("payroll_component", (payroll.doc_id,), {}),
+            ("payroll_decisions", (payroll.doc_id,), {}),
+            ("payroll_postings", (), {}),
+        ]
+        head, terminal = owner.head, owner.terminal
+        pending = owner.root / "pending" / ("f" * 64)
+        pending.mkdir(mode=0o700)
+        try:
+            for name, args, kwargs in calls:
+                with pytest.raises(RecoveryRequired):
+                    getattr(owner, name)(*args, **kwargs)
+        finally:
+            pending.rmdir()
+        assert owner.head == head and owner.terminal == terminal
+        assert owner.verify(expected_head=head, expected_terminal=terminal)["verified"]
+        changed = owner._engine._db.execute(
+            "UPDATE postings SET amount='999' WHERE doc_id=? AND account_id=?",
+            (bank.doc_id, bank.account_id))
+        assert changed.rowcount == 1
+        for name, args, kwargs in calls:
+            with pytest.raises(IntegrityError):
+                getattr(owner, name)(*args, **kwargs)
+        owner.close()
+        with pytest.raises(AuthorityError) as reference:
+            owner.head
+        for name, args, kwargs in calls:
+            with pytest.raises(type(reference.value)) as refused:
+                getattr(owner, name)(*args, **kwargs)
+            assert type(refused.value) is type(reference.value)
+            assert refused.value.args == reference.value.args
+
+
+def _payload_reuse_chain(root):
+    from viva.sql_authority import application_history as history
+    passphrase = secrets.token_urlsafe(32)
+    with SQLAuthority.create(root, passphrase, verification="complete", application=True) as owner:
+        accepted = _accepted_statement(owner)
+        assert owner.reject_transfer("synthetic missing noop reference", today="2026-02-01") is False
+        sql_head = owner.head
+        fired = []
+        def interrupt(point):
+            if point == "after_prepared_file" and not fired:
+                fired.append(point)
+                raise RuntimeError("controlled prepared no-op interruption")
+        owner._fault = interrupt
+        try:
+            with pytest.raises(RuntimeError, match="controlled prepared no-op interruption"):
+                owner.reject_transfer("synthetic interrupted noop reference", today="2026-02-02")
+        finally:
+            owner._fault = lambda point: None
+        assert fired == ["after_prepared_file"]
+        assert not list((root / "pending").iterdir())
+        assert owner.head == sql_head
+        assert owner.account(accepted.account_id)["running_balance"] == "90"
+        assert len(owner.transactions(accepted.account_id)) == 1
+        assert [row["amount"] for row in owner.postings(accepted.doc_id)] == ["-10", "10"]
+        assert owner.original(accepted.doc_id) == b"synthetic source"
+        terminal, records, payloads = owner._history.scan(expected=owner.terminal)
+        assert {record["kind"] for record in records} == {"genesis", "custody", "sql_commit", "noop", "interrupted_abort"}
+        aborts = [payload for record, payload in zip(records, payloads) if record["kind"] == "interrupted_abort"]
+        assert len(aborts) == 1
+        proposed = aborts[0]["body"]["superseded_publication"]
+        assert proposed is not None and history.decode(proposed)["kind"] == "noop"
+        assert history.digest(proposed.encode()) == aborts[0]["body"]["prepared_sha256"]
+        assert owner.verify(expected_head=sql_head, expected_terminal=terminal)["verified"]
+        checked = history.History(root, terminal["root_id"], owner._key)
+    return passphrase, accepted, sql_head, terminal, records, payloads, checked
+
+
+def test_history_same_call_payload_reuse_preserves_keyed_chain_and_abort(tmp_path, monkeypatch):
+    import copy
+    from viva.sql_authority import application_history as history
+    root = tmp_path.resolve() / "payload-chain"
+    passphrase, accepted, sql_head, terminal, records, payloads, checked = _payload_reuse_chain(root)
+    expected = copy.deepcopy((terminal, records, payloads))
+    original_decrypt = history.open_sealed
+    decryptions = []
+    def decrypt(key, envelope, *, aad):
+        decryptions.append((history.encoded(envelope), aad))
+        return original_decrypt(key, envelope, aad=aad)
+    with monkeypatch.context() as patch:
+        patch.setattr(history, "open_sealed", decrypt)
+        actual = checked.scan(expected=terminal)
+        assert actual == expected
+        # One top-level envelope for each real member, plus the proposed no-op
+        # embedded in the single authenticated interrupted-abort record.
+        assert len(decryptions) == len(records) + 1
+        assert len(set(decryptions)) == len(decryptions)
+        previous = None
+        for record, payload in zip(records, payloads):
+            decryptions.clear()
+            result = checked._record_and_payload(history.encoded(record), previous=previous)
+            assert result == (record, payload)
+            assert len(decryptions) == (2 if record["kind"] == "interrupted_abort" else 1)
+            assert len(set(decryptions)) == len(decryptions)
+            decryptions.clear()
+            assert checked.record(history.encoded(record), previous=previous) == record
+            assert len(decryptions) == (2 if record["kind"] == "interrupted_abort" else 1)
+            previous = history.terminal_of(record)
+        noop = next((record, payload) for record, payload in zip(records, payloads) if record["kind"] == "noop")
+        decryptions.clear()
+        made = checked.make(noop[1]["issued"], "noop", noop[1]["body"], noop[1]["issued"]["prior_sql"])
+        assert len(decryptions) == 1, "make retains its existing validating decrypt round trip"
+        assert checked.payload(history.decode(made), previous=noop[1]["issued"]["prior_terminal"]) == noop[1]
+    actual[1][0]["kind"] = "noop"
+    actual[2][-1]["issued"]["prior_sql"]["head"] = "0" * 64
+    assert checked.scan(expected=terminal) == expected
+    with SQLAuthority.open(root, passphrase, verification="complete", application=True) as reopened:
+        assert reopened.head == sql_head and reopened.terminal == terminal
+        assert reopened.account(accepted.account_id)["running_balance"] == "90"
+        assert len(reopened.transactions(accepted.account_id)) == 1
+        assert reopened.original(accepted.doc_id) == b"synthetic source"
+        assert reopened._history.scan() == expected
+        assert reopened.verify(expected_head=sql_head, expected_terminal=terminal)["verified"]
+
+
+def test_history_same_call_payload_reuse_retains_corruption_and_keyless_boundaries(tmp_path):
+    import base64
+    import copy
+    from viva.crypto import CryptoError, seal
+    from viva.sql_authority import IntegrityError
+    from viva.sql_authority import application_history as history
+    root = tmp_path.resolve() / "payload-corruption"
+    passphrase, accepted, sql_head, terminal, records, payloads, checked = _payload_reuse_chain(root)
+    original_files = {str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    keyless = history.History(root, terminal["root_id"])
+    assert keyless.scan(expected=terminal) == (terminal, records, [])
+    previous = None
+    for record in records:
+        assert keyless._record_and_payload(history.encoded(record), previous=previous) == (record, None)
+        previous = history.terminal_of(record)
+    position = next(i for i, record in enumerate(records) if record["kind"] == "noop")
+    record, payload = records[position], payloads[position]
+    prior = history.terminal_of(records[position - 1])
+    def repack(value, inner=None):
+        value = copy.deepcopy(value)
+        if inner is not None:
+            value["payload"] = history.encoded(seal(checked.keys["payload"], history.encoded(inner), aad=history.aad(value))).decode()
+        content = {name: item for name, item in value.items() if name not in {"record_hash", "mac"}}
+        value["record_hash"] = history.digest(history.encoded(content))
+        value["mac"] = history.mac(checked.keys["history"], [value["root_id"], value["sequence"], value["record_hash"]])
+        return value
+    bad_mac = copy.deepcopy(record)
+    bad_mac["mac"] = ("1" if bad_mac["mac"][0] == "0" else "0") + bad_mac["mac"][1:]
+    assert keyless.record(history.encoded(bad_mac), previous=prior) == bad_mac
+    with pytest.raises(IntegrityError, match="MAC"):
+        checked.record(history.encoded(bad_mac), previous=prior)
+    cipher = history.decode(record["payload"])
+    ciphertext = bytearray(base64.b64decode(cipher["ct"]));ciphertext[0] ^= 1
+    cipher["ct"] = base64.b64encode(ciphertext).decode()
+    bad_cipher = repack({**record, "payload": history.encoded(cipher).decode()})
+    assert keyless.record(history.encoded(bad_cipher), previous=prior) == bad_cipher
+    with pytest.raises((IntegrityError, CryptoError)):
+        checked.record(history.encoded(bad_cipher), previous=prior)
+    for mutation in ("issued", "body"):
+        inner = copy.deepcopy(payload)
+        if mutation == "issued":
+            inner["issued"]["operation_id"] = "0" * 64
+        else:
+            inner["body"]["intent_sha256"] = "0" * 64
+        forged = repack(record, inner)
+        assert keyless.record(history.encoded(forged), previous=prior) == forged
+        with pytest.raises(IntegrityError):
+            checked.record(history.encoded(forged), previous=prior)
+    wrong_previous = {**prior, "head": "0" * 64}
+    for reader in (checked, keyless):
+        with pytest.raises(IntegrityError, match="continuity"):
+            reader.record(history.encoded(record), previous=wrong_previous)
+    abort_position = next(i for i, value in enumerate(records) if value["kind"] == "interrupted_abort")
+    abort_record, abort_payload = records[abort_position], copy.deepcopy(payloads[abort_position])
+    abort_prior = history.terminal_of(records[abort_position - 1])
+    for mutation in ("preparation_digest", "foreign_issued"):
+        inner = copy.deepcopy(abort_payload)
+        if mutation == "preparation_digest":
+            inner["body"]["prepared_sha256"] = "0" * 64
+        else:
+            foreign = copy.deepcopy(inner["issued"])
+            foreign["operation_id"] = ("1" if foreign["operation_id"][0] == "0" else "0") + foreign["operation_id"][1:]
+            proposed = checked.make(foreign, "noop", {"intent_sha256": history.digest(history.encoded(foreign))}, foreign["prior_sql"])
+            inner["body"]["superseded_publication"] = proposed.decode()
+            inner["body"]["prepared_sha256"] = history.digest(proposed)
+        forged = repack(abort_record, inner)
+        assert keyless.record(history.encoded(forged), previous=abort_prior) == forged
+        with pytest.raises(IntegrityError):
+            checked.record(history.encoded(forged), previous=abort_prior)
+    with pytest.raises(IntegrityError, match="MAC"):
+        history.History(root, terminal["root_id"], secrets.token_bytes(32)).scan(expected=terminal)
+    assert original_files == {str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    with SQLAuthority.open(root, passphrase, verification="complete", application=True) as reopened:
+        assert reopened.head == sql_head and reopened.terminal == terminal
+        assert reopened.account(accepted.account_id)["running_balance"] == "90"
+        assert reopened.verify(expected_head=sql_head, expected_terminal=terminal)["verified"]

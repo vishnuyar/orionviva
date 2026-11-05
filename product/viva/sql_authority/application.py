@@ -107,6 +107,9 @@ class ApplicationSQLAuthority:
         "identity_decision", "resolve_source_identity", "export_audit", "ingest", "ingest_curated",
         "attach_curated", "resume", "confirm_transfer", "reject_transfer", "unlink_transfer",
         "dependency_plans", "transfer_dependency_plans",
+        "investment_component", "income_expense", "investment_snapshot", "investment_cash_period",
+        "investment_activity", "investment_postings", "investment_history", "payroll_facts",
+        "payroll_component", "payroll_decisions", "payroll_postings",
     })
     _METRICS = frozenset({"last_queries", "last_rows_read", "last_vm_steps", "last_source_timings", "last_source_metrics"})
 
@@ -125,6 +128,14 @@ class ApplicationSQLAuthority:
         self._committed = False
         self._bootstrapping = False
         self._recovering = False
+        self._certificate = None
+        self._pending_certificate = None
+        self._binding_certificate = None
+        self._initial_intent = None
+        self._incremental_checkpoint = None
+        self._pending_incremental_checkpoint = None
+        self._automatic_import = None
+        self._incremental_metrics = dict(full_bootstraps=0,advances=0,custody_extensions=0,lock_extensions=0,fallbacks={})
         self._fault = lambda _point: None
         self.lifecycle_timings = {}
         self._binding = _Binding(self)
@@ -162,10 +173,14 @@ class ApplicationSQLAuthority:
                 return dict(self._observed)
 
     def _check_open(self):
-        if _owned_binding(self._binding, self._engine) is not self:
-            raise AuthorityError("foreign application owner binding")
-        if self._closed:
-            raise AuthorityError("application owner is closed")
+        try:
+            if _owned_binding(self._binding, self._engine) is not self:
+                raise AuthorityError("foreign application owner binding")
+            if self._closed:
+                raise AuthorityError("application owner is closed")
+        except BaseException:
+            self._invalidate_certificates()
+            raise
 
     @classmethod
     def create(cls, root, passphrase):
@@ -201,7 +216,7 @@ class ApplicationSQLAuthority:
                 body = dict(metadata_sha256=history.digest(io.read(root / "application.json")),
                             sql_metadata_sha256=history.digest(io.read(root / "sql" / "authority.json")),
                             sql_format=SQL_FORMAT, sql_schema_version=SCHEMA_VERSION,
-                            schema_contract=history.digest(schema.expected().encode("utf-8")))
+                            schema_contract=history.digest(schema.contract().encode("utf-8")))
                 owner._prepare(issued, "genesis", body, {"revision": 0, "head": ZERO})
                 owner._publish()
                 owner._bootstrapping = False
@@ -316,10 +331,29 @@ class ApplicationSQLAuthority:
             io.directory(path)
 
     def _check_ready(self):
+        try:
+            return self._check_ready_inside()
+        except BaseException:
+            self._invalidate_certificates()
+            raise
+
+    def _check_ready_inside(self):
         self._layout(pending=True)
         if list((self.root / "pending").iterdir()) or (self.root / "terminal.next").exists() or (self.root / "sql" / "authority.db-journal").exists():
+            self._invalidate_certificates()
             raise RecoveryRequired("application has unfinished publication")
         self._layout()
+        if self._certificate is not None:
+            try:
+                from . import certified_state as certified
+                certified._owner(self._certificate,self)
+                if self._bind_history(self._certificate.representation,allow_extension=True):
+                    checked_terminal=history.decode(self._certificate.representation.terminal_wire)
+                    return {name:checked_terminal[name] for name in history.BOUNDARY}
+                self._invalidate_certificates()
+            except BaseException:
+                self._invalidate_certificates()
+                raise
         terminal, _records, _bodies = self._history.scan(prefix=self._observed)
         self._observed = terminal
         return terminal
@@ -337,12 +371,17 @@ class ApplicationSQLAuthority:
                     raise AuthorityError("nested application writer refused")
                 if self._engine._db.in_transaction or self._engine._verified_operation:
                     raise AuthorityError("writer requires independent committed application operation")
-                self._begin(self._issue("transaction"))
+                try:
+                    self._begin(self._issue("transaction"))
+                except BaseException:
+                    self._invalidate_certificates()
+                    raise
             self._depth += 1
             self._thread = threading.get_ident()
             try:
                 yield
             except BaseException:
+                self._invalidate_certificates()
                 if kind == "transaction" and self._pending is not None and not self._committed:
                     if not self._engine._db.in_transaction:
                         try:
@@ -355,6 +394,141 @@ class ApplicationSQLAuthority:
                 self._depth -= 1
                 if not self._depth:
                     self._thread = None
+
+    def _invalidate_certificates(self, *, preserve_incremental=False):
+        self._certificate = self._pending_certificate = self._binding_certificate = None
+        self._initial_intent = None
+        if not preserve_incremental:
+            self._incremental_checkpoint = self._pending_incremental_checkpoint = None
+
+    def _bind_history(self, representation, *, allow_extension=False):
+        self._layout(pending=self._pending is not None or self._recovering)
+        for name,digest in representation.metadata:
+            if history.digest(io.read(self.root/name)) != digest:
+                raise IntegrityError("checked application metadata changed")
+        if history.digest(schema.contract().encode()) != representation.schema_contract:
+            raise IntegrityError("checked software schema contract changed")
+        names=tuple(sorted(path.name for path in (self.root/"history").iterdir()))
+        expected=tuple(name for name,_digest in representation.history)
+        if names[:len(expected)] != expected:
+            raise IntegrityError("checked history membership or prefix changed")
+        for name,digest in representation.history:
+            if history.digest(io.read(self.root/"history"/name)) != digest:
+                raise IntegrityError("previously checked history bytes changed")
+        if names != expected:
+            if allow_extension:return False
+            raise IntegrityError("unverified history extension during state binding")
+        if history.digest(io.read(self.root/"terminal.json")) != representation.terminal_digest:
+            if allow_extension:return False
+            raise IntegrityError("checked application terminal changed")
+        return True
+
+    def _initial_preimage(self,proof):
+        if (self._pending is None or self._extension is not None or self._committed or self._initial_intent is None
+                or (self.root/'terminal.next').exists() or (self.root/'sql'/'authority.next').exists()
+                or (self.root/'sql'/'authority.db-journal').exists()):
+            raise IntegrityError("initial preimage ownership is unavailable")
+        path,issued=self._pending
+        if (path!=self.root/"pending"/issued['operation_id']
+                or tuple((self.root/"pending").iterdir())!=(path,) or {p.name for p in path.iterdir()}!={"intent.json"}
+                or io.read(path/"intent.json")!=self._initial_intent):
+            raise IntegrityError("initial pending bytes or membership differ")
+        intent,inner=self._history.read_intent(self._initial_intent)
+        prior=history.decode(proof.representation.terminal_wire)
+        prior={name:prior[name] for name in history.BOUNDARY}
+        if (intent['stage']!='initial' or inner['issued']!=issued or issued['kind']!='transaction'
+                or issued['prior_terminal']!=prior
+                or issued['prior_sql']!={'revision':prior['sql_revision'],'head':prior['sql_head']}
+                or any(inner[name] is not None for name in ('prepared_name','prepared_sha256','superseded_name','superseded_sha256'))):
+            raise IntegrityError("initial intent is not the certified preimage")
+
+    def _bind_representation(self,representation,*,initial=False):
+        if self._root_lock.owner!=threading.get_ident():
+            raise AuthorityError("fresh representation binding requires root ownership")
+        self._bind_history(representation)
+        if initial:
+            self._initial_preimage(self._binding_certificate)
+        elif self._pending is not None or list((self.root/'pending').iterdir()) or (self.root/'terminal.next').exists():
+            raise RecoveryRequired("certified read has pending publication")
+        originals=self.root/'sql'/'originals'
+        if tuple(sorted(path.name for path in originals.iterdir()))!=representation.original_members:
+            raise IntegrityError("checked original membership changed")
+        for member in originals.iterdir():io.regular(member)
+        from .incremental import _lock_identity
+        if tuple(sorted(_lock_identity(originals/name) for name in representation.original_members if name.endswith('.lock')))!=representation.locks:
+            raise IntegrityError("checked document lock changed")
+        for doc,digest,size in representation.originals:
+            path=originals/(doc+".blob")
+            before=io.regular(path)
+            data,actual=self._engine._original_with_commitment(doc)
+            after=io.regular(path)
+            if ((before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns)
+                    !=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns)
+                    or actual!=digest or len(data)!=size):
+                raise IntegrityError("checked custody bytes changed")
+        if tuple(sorted(path.name for path in originals.iterdir()))!=representation.original_members:
+            raise IntegrityError("original membership changed during fresh binding")
+
+    def _bind_certified_read(self):
+        proof=self._certificate
+        if proof is None:return False
+        try:
+            if proof.representation.pending:
+                raise IntegrityError("pending proof cannot admit a canonical read")
+            self._engine._bind_verified_state(proof)
+            return True
+        except BaseException:
+            self._invalidate_certificates()
+            raise
+
+    def _bind_certified_preimage(self):
+        proof=self._certificate
+        try:
+            if proof is None:return False
+            if proof.representation.pending:
+                raise IntegrityError("pending proof cannot admit a writer preimage")
+            self._engine._bind_verified_state(proof,initial=True)
+            return True
+        finally:
+            from .incremental import _capability
+            self._invalidate_certificates(preserve_incremental=_capability(self))
+
+    def _accept_full_verification(self,representation,sql_digest,tables):
+        if (not self._engine._verifying or not self._engine._db.in_transaction
+                or self._engine._verification_originals is None
+                or self._root_lock.owner!=threading.get_ident()):
+            self._invalidate_certificates()
+            raise AuthorityError("proof issuance requires active independent complete verification")
+        from . import certified_state as certified
+        proof=certified._verified(self,representation,sql_digest,tables)
+        self._certificate=None
+        self._pending_certificate=None
+        if self._extension is not None:
+            self._pending_certificate=proof
+        elif self._pending is None and not self._recovering and not self._bootstrapping:
+            try:
+                self._engine._bind_verified_state(proof)
+                self._certificate=proof
+            except BaseException:
+                self._invalidate_certificates()
+                raise
+
+    def _accept_full_semantics(self,state,export,investment,payroll,transfer,decisions):
+        if not self._engine._verifying or not self._engine._db.in_transaction:
+            raise AuthorityError("semantic checkpoint requires independent verification")
+        from .incremental import _accept_full
+        _accept_full(self,state,export,investment,payroll,transfer,decisions)
+
+    def _checked_original(self,doc,digest,size):
+        if self._engine._verifying:return
+        proof=self._binding_certificate or self._certificate
+        if proof is not None:
+            from . import certified_state as certified
+            certified._owner(proof,self)
+            expected={key:(value,count) for key,value,count in proof.representation.originals}
+            if doc not in expected or expected[doc]!=(digest,size):
+                self._invalidate_certificates()
+                raise IntegrityError("original differs from checked operation state")
 
     def _issue(self, kind, capture=None):
         prior = self._observed
@@ -377,12 +551,14 @@ class ApplicationSQLAuthority:
         self._pending = (path, issued)
         self._extension = None
         self._committed = False
+        self._initial_intent = None
         self._set_intent("initial")
 
     def _set_intent(self, stage, prepared=None, superseded=None):
         path, issued = self._pending
         data = self._history.intent(issued, stage, prepared, superseded)
         io.replace_head(path / "intent.json", data, temporary="intent.next", allow_absent=stage == "initial")
+        self._initial_intent = data if stage == "initial" else None
         self._fault("after_" + stage + "_intent")
 
     def _prepare(self, issued, kind, body, sql_head, *, abort=False, superseded=None):
@@ -412,7 +588,9 @@ class ApplicationSQLAuthority:
         self._committed = True
         self._fault("after_sql_commit")
         with self._engine._snapshot():
-            self._engine._verify_current()
+            from .incremental import _try_advance
+            if not _try_advance(self):
+                self._engine._verify_current()
         self._publish()
 
     def verify_schema(self):
@@ -421,6 +599,7 @@ class ApplicationSQLAuthority:
         schema.verify(self._engine._db)
 
     def verify_representation(self, export):
+        self._layout(pending=self._pending is not None or self._recovering)
         if self._bootstrapping and not list((self.root / "history").iterdir()):
             if export["revision"] != 0 or export["records"] or export["sources"]:
                 raise IntegrityError("creation child is not empty")
@@ -428,19 +607,29 @@ class ApplicationSQLAuthority:
             if list((self.root / "sql" / "originals").iterdir()):
                 raise IntegrityError("creation child has unexpected original membership")
             return
-        terminal, records, payloads = self._history.scan(prefix=self._observed, allow_terminal_lag=self._recovering)
+        terminal, records, payloads, checked = self._history._scan_with_proof(prefix=self._observed, allow_terminal_lag=self._recovering)
+        checked_members, checked_terminal = checked
         if self._extension is not None:
-            prepared = self._history.record(self._extension, previous=terminal)
-            payloads.append(self._history.payload(prepared, previous=terminal))
+            prepared, prepared_payload = self._history._record_and_payload(self._extension, previous=terminal)
+            payloads.append(prepared_payload)
             records.append(prepared)
+            checked_members += ((f"{prepared['sequence']:020d}.json",history.digest(history.encoded(prepared))),)
+            checked_terminal = self._history.terminal_bytes(prepared)
+        metadata = None
+        checked_schema = None
         expected_records, expected_commits, custody = [], [], {}
         for record, payload in zip(records, payloads):
             if record["kind"] == "genesis":
                 body = payload["body"]
-                if (body["metadata_sha256"] != history.digest(io.read(self.root / "application.json"))
-                        or body["sql_metadata_sha256"] != history.digest(io.read(self.root / "sql" / "authority.json"))
-                        or body["schema_contract"] != history.digest(schema.expected().encode("utf-8"))):
+                checked_outer = io.read(self.root / "application.json")
+                checked_child = io.read(self.root / "sql" / "authority.json")
+                checked_schema = history.digest(schema.contract().encode("utf-8"))
+                if (body["metadata_sha256"] != history.digest(checked_outer)
+                        or body["sql_metadata_sha256"] != history.digest(checked_child)
+                        or body["schema_contract"] != checked_schema):
                     raise IntegrityError("genesis metadata or software schema differs")
+                metadata = (("application.json",history.digest(checked_outer)),
+                            ("sql/authority.json",history.digest(checked_child)))
             elif record["kind"] == "sql_commit":
                 expected_records.append(payload["body"]["record"])
                 expected_commits.append(payload["body"]["commit"])
@@ -453,19 +642,24 @@ class ApplicationSQLAuthority:
             raise IntegrityError("SQL differs from authoritative sealed operations")
         originals = self.root / "sql" / "originals"
         actual = set()
+        checked_original_members = []
+        checked_locks = []
         for member in originals.iterdir():
             io.regular(member)
+            checked_original_members.append(member.name)
             if member.suffix == ".lock":
                 history.hexadecimal(member.stem)
+                from .incremental import _lock_identity
+                checked_locks.append(_lock_identity(member))
                 continue
             if member.suffix != ".blob" or member.stem not in custody:
                 raise IntegrityError("unknown original lacks authenticated custody")
             body = custody[member.stem]
             if member.stat().st_size > 72 * 1024 * 1024:
                 raise IntegrityError("captured original exceeds existing envelope bound")
-            if history.digest(io.read(member)) != body["blob_sha256"]:
+            plain, ciphertext_digest = self._engine._original_with_commitment(member.stem)
+            if ciphertext_digest != body["blob_sha256"]:
                 raise IntegrityError("captured ciphertext differs from custody")
-            plain = self._engine._original(member.stem)
             if len(plain) != body["byte_count"]:
                 raise IntegrityError("captured plaintext length differs")
             actual.add(member.stem)
@@ -473,6 +667,14 @@ class ApplicationSQLAuthority:
             raise IntegrityError("SQL sources or custody members differ")
         if self._extension is None:
             self._observed = terminal
+        if self._recovering:
+            return
+        if metadata is None or checked_terminal is None or checked_schema is None:
+            raise IntegrityError("checked representation proof is incomplete")
+        from . import certified_state as certified
+        return certified._representation(checked_members,checked_terminal,metadata,
+            tuple(sorted((doc,body["blob_sha256"],body["byte_count"]) for doc,body in custody.items())),
+            tuple(sorted(checked_original_members)),checked_schema,self._extension is not None,tuple(sorted(checked_locks)))
 
     def _publish(self):
         path, issued = self._pending
@@ -511,6 +713,27 @@ class ApplicationSQLAuthority:
         self._cleanup(inner, data)
         self._observed = history.terminal_of(record)
         self._pending, self._extension = None, None
+        self._initial_intent = None
+        promotion = self._pending_certificate
+        semantic_promotion = self._pending_incremental_checkpoint
+        self._pending_incremental_checkpoint = None
+        self._incremental_checkpoint = None
+        self._pending_certificate = None
+        self._certificate = None
+        if promotion is not None:
+            try:
+                with self._engine._snapshot():
+                    self._engine._bind_verified_state(promotion)
+                from . import certified_state as certified
+                self._certificate = certified._promoted(promotion,self)
+                if semantic_promotion is not None:
+                    from dataclasses import replace
+                    from .incremental import _owned
+                    _owned(semantic_promotion,self)
+                    self._incremental_checkpoint=replace(semantic_promotion,proof=self._certificate)
+            except BaseException:
+                self._invalidate_certificates()
+                raise
 
     def _cleanup(self, inner, published):
         path, issued = self._pending
@@ -538,13 +761,17 @@ class ApplicationSQLAuthority:
         self._fault("after_pending_cleanup")
 
     def _abort(self):
+        self._invalidate_certificates()
         path, issued = self._pending
         old = issued["prior_sql"]
         self._extension = None
         if {"revision": self._engine._check_terminal()[0], "head": self._engine._check_terminal()[1]} != old:
             raise RecoveryRequired("SQL commit outcome needs explicit recovery")
         with self._engine._snapshot():
-            self._engine._verify_current()
+            if self._recovering is True:
+                self._recovery_full_verify()
+            else:
+                self._engine._verify_current()
         original = io.read(path / "prepared-publication.json") if (path / "prepared-publication.json").exists() else None
         if original is not None:
             proposed = self._history.record(original, previous=issued["prior_terminal"])
@@ -560,16 +787,28 @@ class ApplicationSQLAuthority:
     @contextmanager
     def document_lock(self, doc_id):
         history.hexadecimal(doc_id)
-        # The document lock is acquired without root and survives the reader.
         lock = None
         with self._root_lock.hold():
             self._check_ready()
+            from .incremental import _capability, _extend_lock
+            oldproof=self._certificate if _capability(self,doc_id) else None
+            if oldproof is not None:
+                with self._engine._snapshot():self._engine._bind_verified_state(oldproof)
+            else:
+                self._invalidate_certificates()
             path = self.root / "sql" / "originals" / (doc_id + ".lock")
             try:
                 lock = io.FileLock(path, create=True)
                 io.sync_directory(path.parent)
             except FileExistsError:
                 lock = io.FileLock(path)
+            try:
+                if oldproof is not None and not _extend_lock(self,oldproof,lock):
+                    self._invalidate_certificates()
+            except BaseException:
+                self._invalidate_certificates()
+                lock.close()
+                raise
         try:
             with lock.hold():
                 yield
@@ -578,10 +817,18 @@ class ApplicationSQLAuthority:
 
     def capture(self, doc_id, original):
         self._check_open()
+        from .incremental import _capability, _extend_custody
+        automatic=_capability(self,doc_id) and self._certificate is not None and self._incremental_checkpoint is not None
+        if not automatic:self._invalidate_certificates()
         with self._root_lock.hold():
             self._check_ready()
             with self._engine._snapshot():
-                self._engine._verify_current()
+                if automatic:
+                    self._engine._bind_verified_state(self._certificate)
+                else:
+                    self._engine._verify_current()
+            oldproof=self._certificate
+            if not automatic:self._invalidate_certificates()
             final = self.root / "sql" / "originals" / (doc_id + ".blob")
             if final.exists():
                 if self._engine._original(doc_id) != original:
@@ -598,6 +845,9 @@ class ApplicationSQLAuthority:
                 raise IntegrityError("published original differs from prepared ciphertext")
             self._fault("after_original_publication")
             self._prepare(issued, "custody", {name: issued["capture"][name] for name in ("doc_id", "byte_count", "blob_sha256")}, issued["prior_sql"])
+            if automatic and not _extend_custody(self,oldproof,original):
+                self._invalidate_certificates()
+                raise IntegrityError("automatic custody checkpoint unavailable")
             self._publish()
 
     def verify(self, *, expected_head=None, expected_terminal=None):
@@ -723,6 +973,34 @@ class ApplicationSQLAuthority:
             if not final.exists() or history.digest(io.read(final)) != inner["prepared_sha256"]:
                 raise IntegrityError("published intent lacks exact accepted record")
 
+    def _recovery_full_verify(self):
+        """Run the full checker inside an already owned recovery transaction."""
+        self._check_open()
+        engine = self._engine
+        thread = threading.get_ident()
+        if self._recovering is not True or engine is None:
+            raise AuthorityError("full recovery verification requires recovery ownership")
+        if (_owned_binding(self._binding, engine) is not self
+                or engine._application_binding is not self._binding
+                or engine.root != self.root / "sql" or engine.verification != "complete"):
+            raise AuthorityError("full recovery verification engine binding differs")
+        if self._root_lock.owner != thread or self._root_lock.depth < 1:
+            raise AuthorityError("full recovery verification requires the current root owner")
+        self._root_lock._check()
+        sql_owned = getattr(engine._lock, "_is_owned", None)
+        if not callable(sql_owned) or sql_owned() is not True:
+            raise AuthorityError("full recovery verification requires the current SQL lock owner")
+        if not engine._db.in_transaction or engine._verifying:
+            raise AuthorityError("full recovery verification requires an independent owned transaction")
+        depth, previous_thread = self._depth, self._thread
+        if type(depth) is not int or depth < 0 or (depth and previous_thread != thread):
+            raise AuthorityError("full recovery verification has a foreign application phase")
+        self._depth, self._thread = depth + 1, thread
+        try:
+            return engine._verify_current()
+        finally:
+            self._depth, self._thread = depth, previous_thread
+
     @classmethod
     def recover(cls, root, passphrase, *, curated_source=None, expected_prefix=None):
         if curated_source is not None:
@@ -760,7 +1038,7 @@ class ApplicationSQLAuthority:
                         owner._observed = terminal
                         owner._open_engine(passphrase, curated_source=curated_source)
                         with owner._engine._snapshot():
-                            owner._engine._verify_current()
+                            owner._recovery_full_verify()
                         io.rmdir(path)
                         io.sync_directory(path.parent)
                         result = dict(status="ready", root_id=metadata["root_id"], terminal=terminal,
@@ -820,10 +1098,10 @@ class ApplicationSQLAuthority:
                     or actual_sql != {"revision": 0, "head": ZERO}
                     or body["metadata_sha256"] != history.digest(io.read(self.root / "application.json"))
                     or body["sql_metadata_sha256"] != history.digest(io.read(self.root / "sql" / "authority.json"))
-                    or body["schema_contract"] != history.digest(schema.expected().encode())):
+                    or body["schema_contract"] != history.digest(schema.contract().encode())):
                 raise IntegrityError("initial prepared genesis differs")
             with self._engine._snapshot():
-                self._engine._verify_current()
+                self._recovery_full_verify()
             self._set_intent("prepared", ("prepared-publication.json", history.digest(prepared)))
             outer, inner = self._history.read_intent(io.read(path / "intent.json"))
         if inner["prepared_name"] is not None:
@@ -849,7 +1127,7 @@ class ApplicationSQLAuthority:
             self._observed = history.terminal_of(record)
             self._bootstrapping = False
             with self._engine._snapshot():
-                self._engine._verify_current()
+                self._recovery_full_verify()
             self._publish()
             outcome = "cleanup_only"
         elif issued["kind"] == "capture":
@@ -867,12 +1145,12 @@ class ApplicationSQLAuthority:
             if actual_sql == intended_sql and outer["stage"] != "initial":
                 self._extension = prepared
                 with self._engine._snapshot():
-                    self._engine._verify_current()
+                    self._recovery_full_verify()
                 if record["kind"] == "genesis":
                     body = payload["body"]
                     if (body["metadata_sha256"] != history.digest(io.read(self.root / "application.json"))
                             or body["sql_metadata_sha256"] != history.digest(io.read(self.root / "sql" / "authority.json"))
-                            or body["schema_contract"] != history.digest(schema.expected().encode())):
+                            or body["schema_contract"] != history.digest(schema.contract().encode())):
                         raise IntegrityError("prepared genesis metadata differs")
                 self._publish()
                 outcome = {"sql_commit": "committed", "noop": "noop", "interrupted_abort": "aborted", "genesis": "genesis"}[record["kind"]]
@@ -981,7 +1259,7 @@ class ApplicationSQLAuthority:
             try:
                 engine._db.execute("BEGIN IMMEDIATE")
                 owned_transaction = True
-                engine._verify_current()
+                self._recovery_full_verify()
                 exported = engine._export_current()
                 control = engine._db.execute("SELECT singleton,revision,head,mac FROM control").fetchall()
                 if (len(control) != 1 or control[0][0] != 1
@@ -992,7 +1270,7 @@ class ApplicationSQLAuthority:
                 engine._db.execute("PRAGMA main.user_version=" + str(captured))
                 if self._journal_user_version() != captured:
                     raise IntegrityError("native journal header changed")
-                engine._verify_current()
+                self._recovery_full_verify()
                 if (engine._export_current() != exported
                         or engine._db.execute("SELECT singleton,revision,head,mac FROM control").fetchall() != control
                         or self._old_journal_context() != (preserved, terminal)
@@ -1003,7 +1281,7 @@ class ApplicationSQLAuthority:
                 if journal.exists():
                     raise RecoveryRequired("native journal remains after finalization")
                 with engine._snapshot():
-                    engine._verify_current()
+                    self._recovery_full_verify()
                     if (engine._export_current() != exported
                             or engine._db.execute("SELECT singleton,revision,head,mac FROM control").fetchall() != control
                             or self._old_journal_context() != (preserved, terminal)
@@ -1019,7 +1297,7 @@ class ApplicationSQLAuthority:
         path, issued = self._pending
         self._extension = None
         with self._engine._snapshot():
-            self._engine._verify_current()
+            self._recovery_full_verify()
         abort = path / "prepared-abort.json"
         if abort.exists():
             data = io.read(abort)
@@ -1081,7 +1359,7 @@ class ApplicationSQLAuthority:
         else:
             self._prepare(issued, "custody", {name: capture[name] for name in ("doc_id", "byte_count", "blob_sha256")}, issued["prior_sql"])
         with self._engine._snapshot():
-            self._engine._verify_current()
+            self._recovery_full_verify()
         self._publish()
 
     def close(self):
@@ -1094,6 +1372,7 @@ class ApplicationSQLAuthority:
         self._root_lock.close()
 
     def _dispose(self, *, close_lock=True):
+        self._invalidate_certificates()
         if self._engine is not None:
             self._engine.close()
         self._closed = True

@@ -1,0 +1,47 @@
+Source-only normal-route measurement preparation, 2026-11-05. No runtime admission or performance conclusion.
+
+Source is /Users/vishnu/orionviva-consolidated, codex/consolidated-sqlite-performance. Fresh post-test source/runtime/dependency/public-input/checkpoint pins are required before execution. The older NORMAL-MAIN-DIAGNOSTIC-BRIEF is useful for controls but its original Main/index/frontier assumptions are stale. Existing source qualification tests come first.
+
+Actual API sequence (external fixed driver; no new product adapter):
+from viva.sample.resources import load_pack
+from viva.sample.curation import CuratedReader
+from viva.vault import Vault
+from viva.ingest import capture_and_ingest, sweep
+from viva.demo import _prepare_demo_read_store
+pack = load_pack()
+reader = CuratedReader(pack)
+vault = Vault.open(owned_new_root, ram_secret, start_read_store_worker=False)
+try:
+    for document in pack.documents[:25]:
+        # Start per-document timer/profile before original retrieval.
+        original = pack.original(document)
+        result = capture_and_ingest(vault.raw, vault.ledger, original, reader,
+            filename=document['file'], captured_at=utc_timestamp)
+        # Stop ingress timing before durable progress publication.
+        # Keep actual action/grade/holds; sanitize any diagnostic output.
+    swept = sweep(vault.ledger)
+    _prepare_demo_read_store(vault)
+    identity = vault.ledger.store.verify_committed_log()
+    # Check exact25 capture/raw sets, original byte equality, genuine local
+    # reading envelope/acquisition conservation, and SQL source count/head.
+finally:
+    vault.close()
+vault = Vault.open(owned_new_root, ram_secret, create=False,
+                   start_read_store_worker=False)
+try:
+    _prepare_demo_read_store(vault)
+    # Recheck canonical/SQL identity, capture/raw/receipt conservation.
+finally:
+    vault.close()
+
+utc_timestamp is an actual timezone-aware timestamp, owned_new_root is a fresh isolated partial root, and ram_secret is a unique caller-owned secret transported only through the existing bounded RAM stdin protocol. Neither is a new worker request field. The outline above is not a runnable harness or an authorization to execute.
+
+Normal call chain: capture_and_ingest -> raw document lock/put -> ledger.projection duplicate check -> CuratedReader actual PDF/cell/parser validation -> DocumentCaptured append -> curated ReadRecorded append -> Ledger.stage_atomically -> deterministic native financial projectors/healing/transfers -> one durable settlement append. SQLAuthority is not on this path. No sample build_instance/_worker/_launch/fixed sample credential or activation is required.
+
+Financial fold reuse IS present: ledger/ledger.py::_append_decision calls _advance_cache, applying only suffix events to the private reusable basis; decisions and returned views are detached. Staged settlement uses the same mechanism. However EventStore.append_atomically constructs tuple(_events_unlocked()) (store.py:602) on every append; _events_unlocked parses/recomputes the entire record hash chain (store.py:887), reusing only unchanged-record decryption. Multiple capture/receipt/settlement appends repeat this work. Ledger decision/read-view deepcopy and staged decision copying scale with the existing basis. Family healing may scan relevant current state. These are source-proven candidates, not measured dominance or a claim that every financial fold replays.
+
+Keep explicit full verification at the end. verify_committed_log deliberately authenticates the whole physical committed log; final SQL generation publication and reopen are separate phases. Do not add per-document explicit replay checks to the timed route. Existing verify_replay_agreement is a distinct optional full financial replay oracle, not a required per-document call.
+
+Minimal measurement: reuse the qualified external owned-process supervisor/credential/isolation/scrub controls, a thin normal-route worker and the existing cProfile JSON export approach. Profile only ingress on its owning thread (disable in finally), with source.original inside each document scope; measure source retrieval and capture call separately as well as their combined wall time. Record progress fsync separately. Also time imports/source validation (including CuratedReader second pack validation), create/KDF, sweep, SQL catch-up, canonical/conservation checks, close, reopen/check/close and entire composed call. Bounded profile rows contain trusted relative function/name/line/call counts/self/cumulative times only. Nested cumulative times overlap. Label all timings PROFILED DIAGNOSTIC NONCOMPARATIVE; no ratio against prior SQLAuthority or unprofiled runs.
+
+Result remains engineering_partial after25 documents, even when all checks succeed. Preserve holds, failed/unknown parses, partial root, zero provider/model/child attempts, source/runtime drift and cleanup evidence. No full794 completion oracle, no invented SQL facts=null requirement, no financial-output normalizer, no default-backend change. Runtime admission, current accounting and watchdog must be frozen separately after tests; this source-only report does not reuse an old grant.

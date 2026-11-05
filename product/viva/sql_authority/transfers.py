@@ -212,13 +212,17 @@ def settle_dirty(store,boundary,admissions):
     seeds=[key for (key,) in store._read("SELECT movement FROM transfer_dirty WHERE active=1 ORDER BY movement")]
     if not seeds:
         return
+    endpoint_writes={op["row"]["movement"]:dict(op["row"]) for op in store._operations or ()
+                     if op["table"]=="transfer_endpoints"}
     visited=set(); queue=list(seeds); endpoint_snapshot={}
     while queue:
         key=queue.pop()
         if key in visited:
             continue
         visited.add(key)
-        endpoint=store._row("transfer_endpoints","movement=?",(key,))
+        endpoint=endpoint_writes.get(key)
+        if endpoint is None:
+            endpoint=store._row("transfer_endpoints","movement=?",(key,))
         endpoint_snapshot[key]=endpoint
         if not endpoint["active"]:
             continue
@@ -257,7 +261,7 @@ def settle_dirty(store,boundary,admissions):
             body=json.loads(row["body"])
             if not body["candidates"] or not all(is_linked(store,c) for c in body["candidates"]):
                 initial_open.add(key)
-    del endpoint_snapshot, snapshot_bindings
+    del endpoint_snapshot, endpoint_writes, snapshot_bindings
     store._fault("after_transfer_snapshot")
     run_id=secrets.token_hex(16); assertions=[]; consumed=set()
     for key in sorted(graph):

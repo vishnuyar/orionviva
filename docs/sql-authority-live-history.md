@@ -1,8 +1,10 @@
 # SQL application live history
 
-This experimental storage implementation executed its bounded controls and
-remains stopped after the final repair yielded 188 passes and 34 failures. It
-has not been accepted. The actual application factory still uses the event-log vault.
+The Director accepted this experimental storage boundary at bounded Checkpoint 2
+after a test-only recovery fixture and oracle repair. Fresh independent execution
+passed all 222 controls with zero failures, errors or skips in 470.945980 seconds
+complete path. The earlier 188-pass/34-failure result remains historical failed
+evidence. The actual application factory still uses the event-log vault.
 There is no migration, default switch, new document-family settlement or current
 794-document performance result in this change.
 
@@ -30,13 +32,17 @@ from financial acceptance. A zero-change transaction records a noop; an
 interrupted rollback records an abort retaining original proposed bytes when
 they existed, without counting those bytes as accepted financial operations.
 
-Every answer performs complete keyed checks within its actual SQL snapshot.
-Each actual writer checks inside `BEGIN IMMEDIATE`. Exact software schema,
-history equality and the entire custody set are checked as well. Unexpected
+Every answer retains fresh keyed binding to its actual owned SQL snapshot.
+Each actual writer checks inside `BEGIN IMMEDIATE`. The experimental adapter
+may reuse and extend handle-local checked-state evidence for covered changes;
+explicit verification, recovery and uncovered changes retain full checks.
+Software schema, history and custody remain part of the checked boundary. Unexpected
 triggers, views, indexes, substituted tables or sources refuse. The expected
 schema is constructed from installed DDL on a separate native in-memory
 connection, never learned from the target. Only the software descriptor can be
-retained across operations; target verification results cannot.
+retained without fresh target binding. Scoped checked-state evidence may cross
+operations only through the certified ownership and extension protocol; it is
+never a transferable assertion about an unchecked target.
 
 Root ownership precedes instance/SQL ownership. Document exclusion precedes
 root ownership and survives the reader callback, which holds neither root nor
@@ -86,8 +92,9 @@ Immutable publication uses native no-replace operations and directory durability
 even an existing empty directory cannot be overwritten. Only mutable protocol
 heads use application-local descriptor-relative `os.replace`, exact installed
 identity/bytes checks and fsync on the same continuously held parent descriptor.
-No descriptor-path namespace or shared legacy-helper change is used. The base candidate has native controls, with the two journal-retention
-recovery failures retained below; the final repair failed qualification and remains held. Windows currently refuses before root effects because equivalent
+No descriptor-path namespace or shared legacy-helper change is used. The current
+bounded storage controls qualify the native recovery boundaries described below;
+the earlier journal-retention and qualification failures remain retained. Windows currently refuses before root effects because equivalent
 safe directory ownership is not implemented. Unsupported primitives/filesystems
 or durability refuse. Process termination and injected flush failures remain
 distinct controls; neither proves arbitrary hardware power loss.
@@ -119,10 +126,28 @@ unchanged. A separate four-arm native experiment established journal removal
 for authenticated PREPARED-OLD cases using a single assignment of the actual
 current `main.user_version`, with complete logical equality and retained
 pending evidence. It does not establish INITIAL-OLD, nonzero headers, maintenance
-crashes, other platforms or production application acceptance. The final repair
+crashes, other platforms or production application acceptance. The earlier repair
 executed 222 controls: 188 passed and 34 failed, with all original 178 passing.
 The added 44 controls yielded 10 passes and 34 failures; many stopped before
-maintenance-helper entry. That failed result and the no-retry hold remain.
+maintenance-helper entry. That failed result and its exhausted admission remain
+preserved; the later test-only repair used a separate bounded admission.
+
+The unchanged RED reproduced the earlier fixture/oracle failure before maintenance
+assignment. The test-only repair then passed the 44 added controls, followed by
+fresh independent execution of the full 222 controls: 222 passed, zero failures,
+errors or skips, in 470.945980 seconds complete path. The Director accepted this
+bounded storage result. The original 178 controls, their 524-line source prefix
+and the 44 added case IDs/order remain unchanged. Residual-journal fixtures now
+establish genuine native maintenance entry; production initialization and all
+production code remain unchanged. Source and runtime identities were stable during
+execution, and the owned process group was absent afterward. The retained report,
+independent terminal review and Director ruling are under
+`runs/sample-completion/continuation-20261105/storage-test-repair-v1/`.
+
+This documentation reconciliation follows that execution; it is not a fresh test
+run or whole-source identity claim. No application activation, other-platform
+qualification, original financial acceptance or 794-document performance result
+follows from these storage controls.
 Historical foundation 202-focused/425-package/
 7,421-full passes are predecessor evidence, not a current storage-candidate or
 original-acceptance pass.
@@ -156,6 +181,10 @@ rollback applies only to a transaction actually owned and still active. A crash
 before COMMIT retains the authenticated OLD context for a later explicit recovery.
 A crash after COMMIT but before abort publication retains the original pending
 bytes and uses the existing journal-absent route. Partial work is never READY.
-The native phase/header/crash controls and labeled faults were included in the
-failed final repair. Their intended maintenance boundaries remain unqualified;
-no arbitrary hardware-power-loss or new platform qualification follows.
+The current passing controls establish genuine INITIAL/PREPARED maintenance entry,
+same-current signed/nonzero header assignment and native commit, four maintenance
+crash milestones, and the scoped labeled refusal/fault boundaries. Strict financial,
+header, history, original, pending-byte, exactly-one-abort, idempotence and keyless
+assertions remain. Earlier failed controls remain historical evidence. These
+synthetic native controls do not establish arbitrary hardware-power-loss behavior,
+other-platform support or installed application acceptance.

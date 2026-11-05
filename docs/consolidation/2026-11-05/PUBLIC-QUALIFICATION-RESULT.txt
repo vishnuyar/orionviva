@@ -1,0 +1,15 @@
+Consolidated branch targeted offline qualification — 2026-11-05
+
+925 unique cases have passing evidence:585 main cases from invocation43 plus340 fresh main cases from invocation44. This is an evidence union, not a fresh925-case run or full product acceptance.
+
+Invocation43 stopped with585PASS/1FAIL/0errors/skips and339 unreached cases. Its diagnostics case attempted an unregistered read-only Git revision lookup. The guard blocked it before the assertions; that failed result remains preserved. Invocation44 separately admitted only the two exact read-only Git commands and ran the failed case plus339 previously unreached cases:340PASS/0FAIL/errors/skips. All subtest counts were0. The925 passing IDs form an independently checked disjoint union.
+
+Actual44 OS exit0; all340 selected cases completed in frozen order. Worker154.367493seconds. Nice15 and positive process-group ownership were checked; the owned group was absent at terminal. Exactly two declared read-only Git children exited0 in that same group. Network attempts, paid calls and private-vault calls were0. All2446 source and9349 runtime-dependency hashes remained unchanged, as did the frozen coverage record.
+
+Five read-only guards passed: surface contract, explicit interface-impact declaration, privacy denylist, style tokens and UI architecture boundaries. Earlier declaration-input failure and sandbox predispatch denial remain preserved. Privacy results apply to the exact scanned path list; later documents need final checking.
+
+Four subprocess controls were explicitly excluded and have no fresh coverage; the real local-HTTP core transport owner was also not run. Desktop typechecks and14 selected Vitest files remain pending: source/dependency bindings are prepared, but a suitable existing control binding was not found. Browser/native installed-host acceptance and full affected-package suites/builds remain open.
+
+No product or test assertion was changed by qualification. No model call, full794 load, benchmark, default SQL migration, staging, commit or push occurred. No normal-route performance claim follows from these checks. Existing data, failed history and holds remain preserved.
+
+Supporting evidence:44 raw result752ba8aa2e25b4deb07972fb1e02d755eba821a2c95bda4f7c5f857b5a4bcf5c; officialJUnit6c954007eb1f6eb1daf50910f2a2bd5f026d4c3d9c05a671450ac0aea53b3b6e; independentunion a24a067555f141ca26b3e13217d03a1c0041ed62fd0bbb36fff2c5661fdc9ff7. Exact coverage is recorded by case ID in EVIDENCE-UNION.json, not inferred from file counts.

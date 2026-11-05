@@ -278,6 +278,10 @@ class SQLGuard:
             "SELECT revision,head,mac FROM control WHERE singleton=1",
             "SELECT head,mac FROM commits WHERE revision=?",
             "SELECT record_hash FROM audit WHERE sequence=?",
+            "SELECT sequence,previous_hash,envelope,record_hash FROM audit WHERE sequence=?",
+            "SELECT revision,head,mac FROM commits WHERE revision=?",
+            "SELECT doc_id FROM payroll_dependencies WHERE currency=? AND net_key=? AND pay_date>=? AND pay_date<=? AND active=1 ORDER BY doc_id",
+            "SELECT doc_id FROM investment_dependencies WHERE signal_kind=? AND signal=? AND active=1",
             "SELECT account_id,identity FROM accounts WHERE kind=? AND normalized_number=?",
             "SELECT " + ",".join(TABLES["accounts"]) + " FROM accounts WHERE identity=?",
             "SELECT " + ",".join(TABLES["account_keys"]) + " FROM account_keys WHERE logical_key=?",
@@ -293,6 +297,9 @@ class SQLGuard:
             "SELECT h.account_id FROM holder_index h JOIN accounts a ON a.account_id=h.account_id WHERE h.normalized_name=? AND a.kind=?",
             "SELECT account_id,reference,positive_claim_id,history_claim_id FROM reference_views WHERE account_id=?",
         ))
+        self.reads.update(self.normalize("SELECT 1 FROM receipts WHERE facts_type=? AND doc_id IN ("
+                                         + ",".join("?" for _ in range(size)) + ") LIMIT 1")
+                          for size in range(1,201))
         # These are complete indexed dependency shapes, never full exports.
         transfer_shapes = [
             "SELECT e.movement FROM transfer_tokens t JOIN transfer_endpoints e ON e.account=t.account WHERE t.token=? AND e.active=1 ORDER BY e.movement",

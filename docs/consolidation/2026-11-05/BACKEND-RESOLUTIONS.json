@@ -1,0 +1,1408 @@
+{
+  "status": "STATIC_BACKEND_RESOLUTION_COMPLETE_RUNTIME_PENDING",
+  "source_roots": {
+    "base": "/Users/vishnu/OrionViva-Preservation/2026-11-05-consolidation/sources/base",
+    "retained-working": "/Users/vishnu/OrionViva-Preservation/2026-11-05-consolidation/sources/retained-working",
+    "prototype-working": "/Users/vishnu/OrionViva-Preservation/2026-11-05-consolidation/sources/prototype-working"
+  },
+  "resolutions": [
+    {
+      "path": "product/viva/ingest/instrument_contracts.py",
+      "retained_sha256": "f351776cc353bfb7b52bd25cd4caf8832d0c3fb5d1e76717a0d8cd23ea64f2f2",
+      "prototype_sha256": "aa932574dc8bfe98dd70e723b79a6e66bed491e9a65417a2d6c369dba251d349",
+      "base_sha256": null,
+      "result_sha256": "aa932574dc8bfe98dd70e723b79a6e66bed491e9a65417a2d6c369dba251d349",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains every closed contract/dataclass and validator; caches immutable declared-field/type-hint metadata instead of recomputing reflection. No financial field or admission rule removed.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/investment/authenticated.py",
+      "retained_sha256": "273acf576717cdbc7d7f58f4bf61ddb08804411c69cead800efbe8b9e2786c4b",
+      "prototype_sha256": "b31d08b6be91ea2d9588620a04c0e739d718df287339be0132b94eb33547948b",
+      "base_sha256": null,
+      "result_sha256": "b31d08b6be91ea2d9588620a04c0e739d718df287339be0132b94eb33547948b",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains authenticated source count/head publication and wraps materialization in the existing publication-local memo lifetime; no result or source-authentication bypass.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_investment_evidence_authenticated.py",
+        "product/tests/test_investment_evidence_source_projector.py",
+        "product/tests/test_investment_evidence_registered.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/investment/events.py",
+      "retained_sha256": "2952b6ef119ab9a8f6717f0d7e9e90999ccf4daa9ffb8be643373cffcf2e24ae",
+      "prototype_sha256": "31218e0e2c1409cf8db8412ebb1df3d80bc479c126ffb115fb73690abf82c2ca",
+      "base_sha256": null,
+      "result_sha256": "31218e0e2c1409cf8db8412ebb1df3d80bc479c126ffb115fb73690abf82c2ca",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Keeps source-change/observation collision, predecessor, funding and prefix checks; routes atomic writes through Ledger.append_atomically and shared owned prefix proofs instead of manual projection-cache replacement. Removed private _json_primitives moves to prefix_proofs with callers updated.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_investment_evidence_authenticated.py",
+        "product/tests/test_investment_evidence_source_projector.py",
+        "product/tests/test_investment_evidence_registered.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/investment/funding.py",
+      "retained_sha256": "dbd077367aba561ce86b5914a3faaf6271c15e8a160e704bd75f28eb9de50d89",
+      "prototype_sha256": "91cd6a0bd26dd2c0081d888e403f1e522e87a654c8bf54b68885c2e7bb8b407c",
+      "base_sha256": null,
+      "result_sha256": "91cd6a0bd26dd2c0081d888e403f1e522e87a654c8bf54b68885c2e7bb8b407c",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains fresh account/cash uniqueness and accepts an exact already-validated equivalent funding citation only after canonical witness/source comparison. Preferred-witness preservation is bounded by existing source-reference evidence.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_investment_evidence_authenticated.py",
+        "product/tests/test_investment_evidence_source_projector.py",
+        "product/tests/test_investment_evidence_registered.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/investment/healing.py",
+      "retained_sha256": "facade43f8c15d4ac286379fd620e70abd74df1a4815ed5b9caae8fbe5945399",
+      "prototype_sha256": "5cca0266c5966d56b566c42d46bbd31f330f5173ceaa309930f1beb24cfab321",
+      "base_sha256": null,
+      "result_sha256": "5cca0266c5966d56b566c42d46bbd31f330f5173ceaa309930f1beb24cfab321",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains deterministic source/copy correction plans and adds operation-owned planning reuse with invalidation. Returned proposals are detached; no financial family/default activation change.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_investment_evidence_authenticated.py",
+        "product/tests/test_investment_evidence_source_projector.py",
+        "product/tests/test_investment_evidence_registered.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/investment/lifecycle.py",
+      "retained_sha256": "ba938ad26823150e09f4405ba48fd08e3be217f8def2968b6dd6e17bc1801fbe",
+      "prototype_sha256": "f67bf92421a1387913d0de255170fa29479bcf809aef581ece3ea2518909e512",
+      "base_sha256": null,
+      "result_sha256": "f67bf92421a1387913d0de255170fa29479bcf809aef581ece3ea2518909e512",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains source selection, correction/retraction and prefix checks while sharing owned prefix proof computation for the same authenticated event population.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_investment_evidence_authenticated.py",
+        "product/tests/test_investment_evidence_source_projector.py",
+        "product/tests/test_investment_evidence_registered.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/investment/payroll.py",
+      "retained_sha256": "7df6ca78bdec05c88ea41d42c97b10d6b556f7252c99c0339be17fe208a9bf90",
+      "prototype_sha256": "d7e00382f47c3aa22ad37d8c6f646a57e622f1d9d8711b108a2b3dda1875dee7",
+      "base_sha256": null,
+      "result_sha256": "d7e00382f47c3aa22ad37d8c6f646a57e622f1d9d8711b108a2b3dda1875dee7",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains payroll source/decomposition/net-deposit/history checks and atomic observation/retraction. Private owned runners reuse exact prefix evidence while public contexts retain complete mutable-input validation.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_investment_evidence_authenticated.py",
+        "product/tests/test_investment_evidence_source_projector.py",
+        "product/tests/test_investment_evidence_registered.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/retirement_funding/population.py",
+      "retained_sha256": "ed10c1c1e44d9794a1a804b54a939b474fe0f1517bd676257427048272fd3b0b",
+      "prototype_sha256": "ee517557848e42575c085245aedf452f2fd027d9233e796d9d96e306827363aa",
+      "base_sha256": null,
+      "result_sha256": "ee517557848e42575c085245aedf452f2fd027d9233e796d9d96e306827363aa",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Preserves all population/retraction predecessor and source rules; uses Ledger.append_atomically rather than independently overwriting Ledger projection cache after EventStore writes.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/sample/activation.py",
+      "retained_sha256": "d30e49e701904b109661cb8bd957ad1b8dd564df3d5e20102e30a75c3ef791df",
+      "prototype_sha256": "ab9333565c056ced6c3374b56fc2b043ff376c002e022a821c76822437838e57",
+      "base_sha256": null,
+      "result_sha256": "ab9333565c056ced6c3374b56fc2b043ff376c002e022a821c76822437838e57",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains normal sample activation boundary and adds durable base fsync; active pointer moves only after a prepared sample is ready, never on allocation or incomplete restore.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_sample_worker.py",
+        "product/tests/sample_life/test_activation.py",
+        "product/tests/sample_life/test_resource_contract.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/sample/instances.py",
+      "retained_sha256": "f7abfa4e71fbb0ff5c697e83845cb6fdb3c92ca9657c780837829328b228a0e9",
+      "prototype_sha256": "49328f3970b12656fd0af3314229b24ba6b558513ed61f4f6f3dc871bc730559",
+      "base_sha256": null,
+      "result_sha256": "49328f3970b12656fd0af3314229b24ba6b558513ed61f4f6f3dc871bc730559",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains normal Vault/CuratedReader/capture/sweep/read-store APIs and partial/full distinctions; adds prepared snapshot restore/qualification and source/cache safeguards. No SQLAuthority default route.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_sample_worker.py",
+        "product/tests/sample_life/test_activation.py",
+        "product/tests/sample_life/test_resource_contract.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/sample/resources.py",
+      "retained_sha256": "ec98b4b113c28969c38a7a4384cf6fee59d2cbec8cc053f6d968132202dac1e8",
+      "prototype_sha256": "5287d1bacc48769585e85f23a3b21368c3a032cda78d09756a2488293b13a5eb",
+      "base_sha256": null,
+      "result_sha256": "5287d1bacc48769585e85f23a3b21368c3a032cda78d09756a2488293b13a5eb",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains complete public source manifest/readings/PDF/page validation; adds explicitly unbuilt prepared-snapshot metadata, not invented ready qualification.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_sample_worker.py",
+        "product/tests/sample_life/test_activation.py",
+        "product/tests/sample_life/test_resource_contract.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/sample/worker.py",
+      "retained_sha256": "5a8205d333d24e15caa2cbcad4f13e4854abcc2ab4b3c978320f6bc208ba5d04",
+      "prototype_sha256": "4559fd4c4d698f9cc289f72ebec789fa22924178c6f4b0792a105aedd94fabac",
+      "base_sha256": null,
+      "result_sha256": "4559fd4c4d698f9cc289f72ebec789fa22924178c6f4b0792a105aedd94fabac",
+      "resolution": "advance_exact_older_retained_content_to_reviewed_prototype",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9",
+      "rationale": "Retains closed build/reopen dispatch and adds existing restore operation with normal instance checks; no new arbitrary command or credential transport.",
+      "caller_controls": [
+        "product/tests/investment_evidence",
+        "product/tests/retirement_funding",
+        "product/tests/sample_life",
+        "product/tests/test_sample_worker.py"
+      ],
+      "static_ast_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_sample_worker.py",
+        "product/tests/sample_life/test_activation.py",
+        "product/tests/sample_life/test_resource_contract.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/answer_program/execute.py",
+      "retained_sha256": "20e27fdb376bac3cb472bb6330e99295c90ce0a791c82c95bec8c9c248afd019",
+      "prototype_sha256": "7a9130aafebb13419a1922937168f50231c86fe8991552e576c6c1b696038fa7",
+      "base_sha256": "2cd71f9bdd0826137c77421763846877a929e0209a46483afb25c19f6545a7bf",
+      "result_sha256": "7a9130aafebb13419a1922937168f50231c86fe8991552e576c6c1b696038fa7",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains pinned instrument execution; adds selected-account report with source-current, payload and deadline bounds.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_answer_program_contracts.py",
+        "product/tests/test_financial_capability_answering.py",
+        "product/tests/test_instrument_c_registry.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/answer_program/instrument_families.py",
+      "retained_sha256": "5e99d0e66ce83b4b9d379d01e6ad1d666d03651577006b702d1f8896d1b9844c",
+      "prototype_sha256": "2e9185e658b9fad8c71e3277235cc6d96a518b406ec76ac0f9526acbc414d673",
+      "base_sha256": null,
+      "result_sha256": "2e9185e658b9fad8c71e3277235cc6d96a518b406ec76ac0f9526acbc414d673",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves existing families; composes monthly loan payment from reviewed principal and escrow components with internal-only principal claim.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_answer_program_contracts.py",
+        "product/tests/test_financial_capability_answering.py",
+        "product/tests/test_instrument_c_registry.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/answer_program/intents.py",
+      "retained_sha256": "e2e49f9d5dad597fdb7d7c55f2f554ad2212fdf19abd1a7a0c506ed1e79fd5a1",
+      "prototype_sha256": "ac5bdf21f998c8df9a00b538062053d8a6db68ec54ee92ac6159e11acd107ed0",
+      "base_sha256": "822d5cd2a7f79ac324f04332208c0b0eeff6ab9c83825d11f7ad1614d7c573dc",
+      "result_sha256": "ac5bdf21f998c8df9a00b538062053d8a6db68ec54ee92ac6159e11acd107ed0",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves semantic registry; adds bounded selected-account family, incompatible-component refusal and exact160-source admission closure.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_answer_program_contracts.py",
+        "product/tests/test_financial_capability_answering.py",
+        "product/tests/test_instrument_c_registry.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/answer_program/runtime.py",
+      "retained_sha256": "b650c78003d92f510965e0386c9575f437721f8e675f6aca88721af553a59f79",
+      "prototype_sha256": "fe0cbfa7715a01a3e27e88a717e0d2c5cba4adf92479b4c3e93de6c81aea8712",
+      "base_sha256": "1a4b3237744122953bba7bb03616e9845e51f0271bba846df5770cd935069973",
+      "result_sha256": "fe0cbfa7715a01a3e27e88a717e0d2c5cba4adf92479b4c3e93de6c81aea8712",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves answer bindings; selected-account receipts require actual run/source and per-account evidence, keeping missing fields unavailable.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_answer_program_contracts.py",
+        "product/tests/test_financial_capability_answering.py",
+        "product/tests/test_instrument_c_registry.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/answer_program/validate.py",
+      "retained_sha256": "d21d8cd09ec4cf80c5b8b9bc8310ec71650d430f199a0962eff9e2e778e93735",
+      "prototype_sha256": "150b7ce0d6c75859046a70e9c0a6cd993a897cdf1d254051a7e3cf0184086439",
+      "base_sha256": "c615c03a9b1d27cf726d83ea0f3afd2cdc15e6c9c16ce66aa08a3913a16fed73",
+      "result_sha256": "150b7ce0d6c75859046a70e9c0a6cd993a897cdf1d254051a7e3cf0184086439",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Keeps binding validation; selected-account report requires exact identities and finite7-account/14-invocation bounds.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_answer_program_contracts.py",
+        "product/tests/test_financial_capability_answering.py",
+        "product/tests/test_instrument_c_registry.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/debug/claim.py",
+      "retained_sha256": "07cfce1fcb55ad55176483410fc4c0e238fe4a2f8359ddad0b27cbee7d9f539d",
+      "prototype_sha256": "660eaf2c3a620aa47e86f7fd9bda88b15e395e2d996ae8bb2d585a78a66583ff",
+      "base_sha256": "06fbdd1b6951edcbb87ef37b0445263841b25bb1c93cc895ebd81451c1b8a66f",
+      "result_sha256": "660eaf2c3a620aa47e86f7fd9bda88b15e395e2d996ae8bb2d585a78a66583ff",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Keeps diagnostics and adds actual extraction-response metadata; unknown usage remains unavailable.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/debug/vault.py",
+      "retained_sha256": "bfa25475839da7256c46d867691187c0c5312ad4624371e5fd312c214208aa39",
+      "prototype_sha256": "76307cc40ff39ccc2e0b77e64f3b9b9e63de26295da283285554f1a2653d60e6",
+      "base_sha256": "5c1a2c3f2775c20f4597af8bb50ba3b8ad22498a3f6ef96b6f1446cd8d630a78",
+      "result_sha256": "76307cc40ff39ccc2e0b77e64f3b9b9e63de26295da283285554f1a2653d60e6",
+      "resolution": "reviewed_clean_textual_merge",
+      "rationale": "Clean merge retains diagnostics and adds transport metadata with explicit unknown cost.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/desktop_bridge/__main__.py",
+      "retained_sha256": "86f63d73a4293894c72da0957216521f48aaca0990cadc15b0e5d75faf551f16",
+      "prototype_sha256": "9340febb18f1806dbdbf2d77e60354095eec3bf809817903a4ac4dc456bf2b6c",
+      "base_sha256": "b78f61f7458e4927e5203d6f33d8261c7331cd366dcf0be406a71a160f4ec1ea",
+      "result_sha256": "9340febb18f1806dbdbf2d77e60354095eec3bf809817903a4ac4dc456bf2b6c",
+      "resolution": "reviewed_clean_textual_merge",
+      "rationale": "Clean merge retains line dispatch and stops active bulk owner at EOF.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_desktop_bridge_read_store.py",
+        "product/tests/test_bulk_upload.py",
+        "product/tests/test_document_actions.py",
+        "product/tests/test_versions.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/desktop_bridge/documents_page.py",
+      "retained_sha256": "b8c55b6d0378e8f4bfbf73f6d711c31426d32ba980908b181bc6a579a590d4eb",
+      "prototype_sha256": "c780fd697c03c6b5ad74828850e12d6f815bd63b7c05ab14cdeaa596ae0df1bd",
+      "base_sha256": null,
+      "result_sha256": "c780fd697c03c6b5ad74828850e12d6f815bd63b7c05ab14cdeaa596ae0df1bd",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains selected document guards; retry tokens bind current source identity and capture commitment with response/deadline bounds.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_desktop_bridge_read_store.py",
+        "product/tests/test_bulk_upload.py",
+        "product/tests/test_document_actions.py",
+        "product/tests/test_versions.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/desktop_bridge/handlers.py",
+      "retained_sha256": "25ea5044d825ec729795649755f2671f3277be8b7e398e1506595a646bbc192c",
+      "prototype_sha256": "a974f3c9d26820b2cdfab057991dc03120a9198cb9de8182b862533fa215b968",
+      "base_sha256": "f58f3facb020dd35b91ab6540971552d61db25133614acdaa130b2524e3ebacb",
+      "result_sha256": "a974f3c9d26820b2cdfab057991dc03120a9198cb9de8182b862533fa215b968",
+      "resolution": "reviewed_clean_textual_merge",
+      "rationale": "Clean merge keeps existing handlers and adds imports.read/upload_many.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_desktop_bridge_read_store.py",
+        "product/tests/test_bulk_upload.py",
+        "product/tests/test_document_actions.py",
+        "product/tests/test_versions.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/desktop_bridge/pyi_rth_admission_sources.py",
+      "retained_sha256": "f8190727ffe59d85f9392bcb09783f79d6996bd50a56122d3462196d050123c1",
+      "prototype_sha256": "4112d7de6976158d127df22105a8daf010a0d1265e665f7bae82515c79fb72f0",
+      "base_sha256": "d451394f5172649ab6b6e4de6bc0f2fe10028ad4989106b258a535793a6bd172",
+      "result_sha256": "4112d7de6976158d127df22105a8daf010a0d1265e665f7bae82515c79fb72f0",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains frozen artifact checks and extends exact source-map closure consistently to160.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_desktop_bridge_read_store.py",
+        "product/tests/test_bulk_upload.py",
+        "product/tests/test_document_actions.py",
+        "product/tests/test_versions.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/desktop_bridge/trust_actions.py",
+      "retained_sha256": "0fab434b65ed669b911c066e2fb0766d17f87203358ed38ef3651a93139fe3ec",
+      "prototype_sha256": "3208e1b98dd029287feabcf6be4a503bc5270a757fc196ebbe835f7a517747d4",
+      "base_sha256": "5384e468e0ba05af1cc412f4d9a30dabca57b731dc1444a4cc022d486a0a2042",
+      "result_sha256": "3208e1b98dd029287feabcf6be4a503bc5270a757fc196ebbe835f7a517747d4",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Keeps allowlisted diagnostics; adds extraction response count without widening financial admission.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_desktop_bridge_read_store.py",
+        "product/tests/test_bulk_upload.py",
+        "product/tests/test_document_actions.py",
+        "product/tests/test_versions.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/desktop_bridge/viva-desktop-bridge.spec",
+      "retained_sha256": "7e4220fc8b9b813cd74f4c9eecabeca1fcbf39c5f1923c5b6421decb3e7b8c3b",
+      "prototype_sha256": "581b68f1c9d788c305d11ec02c0b98af06bf0e3d5c7857d4c07b8fbe60a16b2a",
+      "base_sha256": "f985bc18a53c4133f8ae41d47d2ed7232759f44d510ac68592d96f63bb8ec25b",
+      "result_sha256": "581b68f1c9d788c305d11ec02c0b98af06bf0e3d5c7857d4c07b8fbe60a16b2a",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Keeps existing packaged sources and hooks; adds new closure resources with include_py_files and matching160-source map.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_desktop_bridge_read_store.py",
+        "product/tests/test_bulk_upload.py",
+        "product/tests/test_document_actions.py",
+        "product/tests/test_versions.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/brokerage.py",
+      "retained_sha256": "14d455b8e9c0e067611a995ebcf68528f839106f3ba0d1394c67cf2e20bce96c",
+      "prototype_sha256": "533cb029adb28158386cb5180f037f25081b809ce817734297dfd48d307edce7",
+      "base_sha256": "556fbe3c015e6e5e3c4b314da52f3f1ac13a09f3a97afc60ec5f6fcc2041e758",
+      "result_sha256": "533cb029adb28158386cb5180f037f25081b809ce817734297dfd48d307edce7",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Keeps existing facts fields and wire; optional validated_source_page_count serializes only when present.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/brokerage_projector.py",
+      "retained_sha256": "f37fad069cae71f5d391b313673dc883cd762dd5fb28a468c1fd3813b6ef6f56",
+      "prototype_sha256": "734ba5489e550a1aba1949fe4087e15de88169c7da36c82d6da0b1e12c67931f",
+      "base_sha256": "603f3ff2b6b12af641b6bcc509ba0eb54dc1ed7b6c3920afcefec3d5cc8e59d5",
+      "result_sha256": "734ba5489e550a1aba1949fe4087e15de88169c7da36c82d6da0b1e12c67931f",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Keeps holdings and activity semantics; requires source-backed identity/opening/period before cash seed, holding unsupported activity.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/instrument_parser.py",
+      "retained_sha256": "da784a30bf4cdbc4fa818c386404f9bc3fdb53ed21f934b98c33528df8e5da4f",
+      "prototype_sha256": "d601b0fdd2664aaeb17966e012f77b2805ec8dbbd180d259226fe0a9261b6d57",
+      "base_sha256": null,
+      "result_sha256": "d601b0fdd2664aaeb17966e012f77b2805ec8dbbd180d259226fe0a9261b6d57",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Keeps legacy parser defaults; optional contract/page bound enforces explicit signed-balance convention without inferred signs.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/instrument_read.py",
+      "retained_sha256": "14ea5a0628ebb87f93bfa9131ce04e6b5737823246e0c9c8bd85baf90059ac7b",
+      "prototype_sha256": "995f07c389fbf5c80aed9be899c34bc9514d7dc60d93d9ee0a1d3613072ca10c",
+      "base_sha256": null,
+      "result_sha256": "995f07c389fbf5c80aed9be899c34bc9514d7dc60d93d9ee0a1d3613072ca10c",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves parser_for defaults; optional source_contract/page_count pass through to guarded parser.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/pipeline.py",
+      "retained_sha256": "0b66047290f3a3c33e6ce450f998c4cb1fbaa524911aea84570513503e454854",
+      "prototype_sha256": "d59785fe3029d6e5c86d7b340a76de8cb9fcb41eaa23af761e9d47c88d7c3208",
+      "base_sha256": "6ad601a5ddc92da2caa4e8b5297e56928bbfccc66e337599662ca06b76be38b8",
+      "result_sha256": "d59785fe3029d6e5c86d7b340a76de8cb9fcb41eaa23af761e9d47c88d7c3208",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves normal capture/read/settle route; adds owned bulk flow and retained transport receipts with authenticated identity/order/link checks.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/pipeline_models.py",
+      "retained_sha256": "e095661f5619b8165501c39a36b5d833b5b024ec5c0e6db52423c73010f74399",
+      "prototype_sha256": "678532e51a38d8735d3453aa84a6b3d25a6ccba714998ab4d96d93c013fa87df",
+      "base_sha256": "c9d5fcf0d8b5df9475f6141eb6943aed03227f213279226a7116024e93cc94ed",
+      "result_sha256": "678532e51a38d8735d3453aa84a6b3d25a6ccba714998ab4d96d93c013fa87df",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains all original result types; optional transport metadata and bounded revocable single-use confirmation tokens are gesture admission only.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/reader.py",
+      "retained_sha256": "911354e21ae09ee51e8ddcb4904be7c555e6a0fdf43ebc4cf0961f21cfb19ce9",
+      "prototype_sha256": "a3150c9a1b715521f4b18eaa13cd11371e179f01368288c2008e9b85e6b1f988",
+      "base_sha256": "c714d7eb4adaf54f63a875fcaec2dae0dfac3cfde4f78d3d04fab346f7a4d26b",
+      "result_sha256": "a3150c9a1b715521f4b18eaa13cd11371e179f01368288c2008e9b85e6b1f988",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves ordinary extraction defaults; adds optional response/phase sinks, prepared reads and guarded schema2 context while retaining failed-attempt receipts.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/registry.py",
+      "retained_sha256": "0beb7e4ec1cdea50ead6efd53ea89d7c8ec61dff4b613ddf6e79f04939aaf490",
+      "prototype_sha256": "e0b51ac064ebb99b546418f56f98f2c89c282bee41b14b41e563b0a4f513f6b5",
+      "base_sha256": "b535416ee6efb234a61407c67126abc7f7535f203d1faf191fb3b675ce43c189",
+      "result_sha256": "e0b51ac064ebb99b546418f56f98f2c89c282bee41b14b41e563b0a4f513f6b5",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Keeps released prompt closure; forward profiles add guarded source contracts for mortgage, brokerage and term deposit.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/statement.py",
+      "retained_sha256": "2b2428bc54d51bfb429889929659a839dd96cf209fa12eb680b3e366cdcb2e78",
+      "prototype_sha256": "a3c3ac0dab9e75f501eaee4cea77b75420e03db685987f9389846db558e945c3",
+      "base_sha256": "7f566b4a74a20c759a069cd90f4330a3075e6570ca72174a104dbe575b2f9d17",
+      "result_sha256": "a3c3ac0dab9e75f501eaee4cea77b75420e03db685987f9389846db558e945c3",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves prior facts wire; optional validated_source_page_count is omitted when absent.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ingest/statement_projector.py",
+      "retained_sha256": "de0c1dcdfea55d5ad58f44724316ce5f57e981741ccc85db22dc290bf9ed00d4",
+      "prototype_sha256": "406c7c34b85b48348d45cf450dff3857618dc937f0bee7a968b9e3ec2796258f",
+      "base_sha256": "570b4f6887f7117ff9765556efe482e33da25d70145d363f63ef69ee0ac762fc",
+      "result_sha256": "406c7c34b85b48348d45cf450dff3857618dc937f0bee7a968b9e3ec2796258f",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves account-kind separation; optional printed page-bound identity and currency constrain resolution.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_reader_retry.py",
+        "product/tests/test_brokerage.py",
+        "product/tests/test_statement.py",
+        "product/tests/normalization/test_legacy_rebuild.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/instrument_claims.py",
+      "retained_sha256": "836cf707ed8b196dc94c91845d5b88b8e763943b8554817207c2562983844fed",
+      "prototype_sha256": "bf4eb5be47542082f3073914235a81d1911c337d3f5666c33d51d457b997e6b0",
+      "base_sha256": null,
+      "result_sha256": "bf4eb5be47542082f3073914235a81d1911c337d3f5666c33d51d457b997e6b0",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Adds repayment principal internally while explicitly excluding it from public claim exposure.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/investment/projector.py",
+      "retained_sha256": "6f2bd22d3612b59b622d2462733e24935ff86ce1afeeb6f3c1e2fa6f832405ae",
+      "prototype_sha256": "27bef4d71ff277e68b6dd4af05c7c005d8389927f166bd8373de903fbaaaf7c4",
+      "base_sha256": null,
+      "result_sha256": "27bef4d71ff277e68b6dd4af05c7c005d8389927f166bd8373de903fbaaaf7c4",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves native projection; shared resolver requires same canonical account before source reuse.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_investment_evidence_authenticated.py",
+        "product/tests/test_investment_evidence_source_projector.py",
+        "product/tests/test_investment_evidence_registered.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ledger/events.py",
+      "retained_sha256": "79306bf2f315d6e6f5581b31a0324de9d2e78c8b0878fd3ecc9e7ca8059243bf",
+      "prototype_sha256": "b404cdf4e2aae2c1e95b8b37ce02095c53a931a1e600880c931f7ce1276a709e",
+      "base_sha256": "24fb887ea5de0489a32952fc3b08a1a62d5d5ffe7adb2340550fc65f7f23c4ce",
+      "result_sha256": "b404cdf4e2aae2c1e95b8b37ce02095c53a931a1e600880c931f7ce1276a709e",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves existing ReadRecorded fields; validates optional scoped transport receipt shape and new response event body.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_instrument_projector_b.py",
+        "product/tests/test_investment_evidence_source_projector.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ledger/instruments.py",
+      "retained_sha256": "a59f8ddf1fcfe3b54f2d4b5c024b622ae7faa5a07791ba53431ed38863403de9",
+      "prototype_sha256": "71e87e0e1cfb8d3eb359a241f4d70df24efea8f028118ffd4fddb3cc8e088123",
+      "base_sha256": null,
+      "result_sha256": "71e87e0e1cfb8d3eb359a241f4d70df24efea8f028118ffd4fddb3cc8e088123",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains reflection and reference semantics; optional validated page-count is bounded and legacy wire remains unchanged.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_instrument_projector_b.py",
+        "product/tests/test_investment_evidence_source_projector.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ledger/projection/__init__.py",
+      "retained_sha256": "89285bbf156fd061e388d5eb446de0e5da3f6f3e244440dc1b32f94696d91685",
+      "prototype_sha256": "cf0fa953dca9341ee7955ea82233bd3659ae71664f0c7322e6bcbbb01e3c495c",
+      "base_sha256": "915d42082ce56627885d9fcfc032dca74f8da31b6e37b97925e11121dc738cff",
+      "result_sha256": "cf0fa953dca9341ee7955ea82233bd3659ae71664f0c7322e6bcbbb01e3c495c",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains public projection methods; owned prefix reuse revokes on mutable event exposure and strengthens invalidation for source/allocation changes.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_instrument_projector_b.py",
+        "product/tests/test_investment_evidence_source_projector.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ledger/projection/core.py",
+      "retained_sha256": "d911bc98cd240e1eb5cf2acc1824a3644cf26bb63e5c5b8ed5c9d11c027171d3",
+      "prototype_sha256": "df08e54cf47f7dd59c44318dad754df99cb0c3df420e34f70f77d46b32b02c8e",
+      "base_sha256": "e6bec3acda21b931d8622ffdc2261ebebc7110f63f84b09714edf44048eeff1d",
+      "result_sha256": "df08e54cf47f7dd59c44318dad754df99cb0c3df420e34f70f77d46b32b02c8e",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves event application; indexes authenticated classifier/source evidence and copies ruling bodies instead of mutating canonical events.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_instrument_projector_b.py",
+        "product/tests/test_investment_evidence_source_projector.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/ledger/projection/coverage.py",
+      "retained_sha256": "df449cb53d79a5f5a164606e90ab3bccf78004724d738ac345ba8339ed4c74ba",
+      "prototype_sha256": "a6429ac187ac198f535e92e720a778d94e318b099d226bf462c352f2752b1bf2",
+      "base_sha256": "baffb2350251685d42083d1e22af42b7b2901544cd7e495f1dcc38d8cbbef10a",
+      "result_sha256": "a6429ac187ac198f535e92e720a778d94e318b099d226bf462c352f2752b1bf2",
+      "resolution": "reviewed_clean_textual_merge",
+      "rationale": "Clean merge keeps raw capture; effective type requires valid preceding classifier receipt, contradictions remain unknown.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_pipeline.py",
+        "product/tests/test_instrument_projector_b.py",
+        "product/tests/test_investment_evidence_source_projector.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/normalization_context.py",
+      "retained_sha256": "8f540a02c0293e93f6bd3aa3294fe75619a581747d2ba20071d0331e0bc57239",
+      "prototype_sha256": "7b6acb1a777edf5a9e194930cd7cc7760deb24ee7dcc9f803af91b52e602e57e",
+      "base_sha256": null,
+      "result_sha256": "7b6acb1a777edf5a9e194930cd7cc7760deb24ee7dcc9f803af91b52e602e57e",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves exact schema1; schema2 requires known mortgage contract and matching prompt family/version.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/persona/contracts.py",
+      "retained_sha256": "1651420067605632cb0ddacb776cb0f0e08d0c7f9f51bdf3dd5a622b74d21d04",
+      "prototype_sha256": "4d12133c665a565c6bd352f9aef02284107f44403ef3e4747a51303a9c8c838f",
+      "base_sha256": "1659ce0afdcd5a96526e59dd0462e26ca702213581d98928a1e93ed9014b3f69",
+      "result_sha256": "4d12133c665a565c6bd352f9aef02284107f44403ef3e4747a51303a9c8c838f",
+      "resolution": "reviewed_clean_textual_merge",
+      "rationale": "Clean merge adds finite stopping-read jobs and transport audit roles without removing existing contracts.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/read_store/document_index.py",
+      "retained_sha256": "6f28ba31782d42d9d821d61098c878af7504a392b3b7995b1416b9e748638fcd",
+      "prototype_sha256": "72476cf65c44d8d3178b8ad8377a83594556fc1d2a623553861c5247db74b605",
+      "base_sha256": null,
+      "result_sha256": "72476cf65c44d8d3178b8ad8377a83594556fc1d2a623553861c5247db74b605",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains document detail/audit; adds authenticated response/classification indexes and bounded capture identity metadata.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_read_store_documents.py",
+        "product/tests/test_read_store_historical.py",
+        "product/tests/test_read_store_write_coherence.py",
+        "product/tests/test_instrument_authority_views.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/read_store/documents_page.py",
+      "retained_sha256": "6601a822fdd3addf67c33f4672e5a8b5822c59ef077b454b20a563661b848f32",
+      "prototype_sha256": "e98a631095a7f8ede47b42646c7901a2a9eac47389a708092b2cc019ff4a7638",
+      "base_sha256": null,
+      "result_sha256": "e98a631095a7f8ede47b42646c7901a2a9eac47389a708092b2cc019ff4a7638",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves immutable selected-page guards; bounded retained retry advice refuses foreign financial provenance.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_read_store_documents.py",
+        "product/tests/test_read_store_historical.py",
+        "product/tests/test_read_store_write_coherence.py",
+        "product/tests/test_instrument_authority_views.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/read_store/instrument_authority.py",
+      "retained_sha256": "967238f7e2a298fdb018187903b68f1963060eda2b7b2e21f882f62311c45560",
+      "prototype_sha256": "d3a3826bc77a72400cf7604d3c1e1498911a0a65622d4160b0bd2df9158384cb",
+      "base_sha256": null,
+      "result_sha256": "d3a3826bc77a72400cf7604d3c1e1498911a0a65622d4160b0bd2df9158384cb",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains public period defaults; internal principal mode uses closed claim/scope and source/currency/deadline checks.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_read_store_documents.py",
+        "product/tests/test_read_store_historical.py",
+        "product/tests/test_read_store_write_coherence.py",
+        "product/tests/test_instrument_authority_views.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/read_store/instrument_sql.py",
+      "retained_sha256": "1e885716b0a15db3a838ce92cfb2a97be13fbdace73ada1bbd34bd19023d84c9",
+      "prototype_sha256": "dc163b44653dd519224f9df897e7cdb648d6d5cc8ed2fdb1ce475d98ae165803",
+      "base_sha256": null,
+      "result_sha256": "dc163b44653dd519224f9df897e7cdb648d6d5cc8ed2fdb1ce475d98ae165803",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves instrument SQL materialization; nullable validated source page-count follows guarded reference events.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_read_store_documents.py",
+        "product/tests/test_read_store_historical.py",
+        "product/tests/test_read_store_write_coherence.py",
+        "product/tests/test_instrument_authority_views.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/read_store/store.py",
+      "retained_sha256": "842a376f78176ecd66e2192622f447f79ef48fa29a2f0a7003b1ce6ce56c2383",
+      "prototype_sha256": "72f591c94019220ae451fcbff4a24f0182b3cf29d031e8178c0a85a30056a6ef",
+      "base_sha256": "61828f60ba65cef555bef555050722e8a4f8e8e6ec78432a7944b19b26a536bf",
+      "result_sha256": "72f591c94019220ae451fcbff4a24f0182b3cf29d031e8178c0a85a30056a6ef",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains complete immutable-generation/cursor/authentication machinery; schema39/projector30/resolver3 adds response/classification materialization.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_read_store_documents.py",
+        "product/tests/test_read_store_historical.py",
+        "product/tests/test_read_store_write_coherence.py",
+        "product/tests/test_instrument_authority_views.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/rebuild.py",
+      "retained_sha256": "266d6f4775781196891225c055ab6c97c5e96894031ccfeac6d20c5d618f687c",
+      "prototype_sha256": "fc625c26db63584c56e11b1e86e45c252a52e382e974568fa4998f3a9dd2b292",
+      "base_sha256": "d1c2e484eaf2613d0e15da0f486e733c5f8404cdf32f49c4bfae258978c24439",
+      "result_sha256": "fc625c26db63584c56e11b1e86e45c252a52e382e974568fa4998f3a9dd2b292",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves historical no-context dialect; new mortgage contract requires matching context/rendered page count and complete transport receipts.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/sample/curation.py",
+      "retained_sha256": "1c0333c0a8f9ffaf52291839babf33584a3f05c5db332d735a691ea3b39cd1ca",
+      "prototype_sha256": "4d7981859f7e8cfc7479bcb1e21fe3c6ae43f2e556471c6ea92a224b4f0b30e3",
+      "base_sha256": null,
+      "result_sha256": "4d7981859f7e8cfc7479bcb1e21fe3c6ae43f2e556471c6ea92a224b4f0b30e3",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Retains normal CuratedReader and native financial projectors; carries actual rendered page count and validates declared references.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_sample_worker.py",
+        "product/tests/sample_life/test_activation.py",
+        "product/tests/sample_life/test_resource_contract.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/surface/capabilities.py",
+      "retained_sha256": "fc6b67c7eab263e2faa25add8e069dec18d8f1b1ada2064829e8bf08ace1241d",
+      "prototype_sha256": "2a49cb4d1b2369f6fb3f6e2a39c97d93523b529e1deec730792d5fa8a802d532",
+      "base_sha256": "590ffad04252c3e2e423004b1ae35279c938972bc629d4813ad8d6b4954acab6",
+      "result_sha256": "2a49cb4d1b2369f6fb3f6e2a39c97d93523b529e1deec730792d5fa8a802d532",
+      "resolution": "reviewed_clean_textual_merge",
+      "rationale": "Clean merge adds upload_many while retaining upload/cancel/recover.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_surface_contract.py",
+        "product/tests/test_surface_capability_coverage.py",
+        "product/tests/test_surface_accounting.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/surface/fixtures/surface-v1.json",
+      "retained_sha256": "7c564f31bf8398e1b83a292ea37d151e75e5ae61b014b72e3a7bdb7551167f7d",
+      "prototype_sha256": "6242f45400bcf868282c66fed307f916f97a180d82fdaa65ae080dda820bdc96",
+      "base_sha256": "d1523e0ee619cb5a94b5f648d9a530788583f01e79f8bddaa4af886d374ccf16",
+      "result_sha256": "6242f45400bcf868282c66fed307f916f97a180d82fdaa65ae080dda820bdc96",
+      "resolution": "reviewed_clean_textual_merge",
+      "rationale": "Clean merge retains original surface operations and adds upload_many.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": false,
+      "static_json_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_surface_contract.py",
+        "product/tests/test_surface_capability_coverage.py",
+        "product/tests/test_surface_accounting.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/surface/numerical_receipts.py",
+      "retained_sha256": "6f65f67a718e5bb484b105ca6edab58327bfe07aede9b18ceccfb4df7b9e911a",
+      "prototype_sha256": "212dd16e2a9d440b0a9d2e80268d021ea52cfe3305eed2dc4c629c33386abf3c",
+      "base_sha256": "ef3b64713a8d4432b6801fe7c09d466248554a4ad7f24bea5c5b455816202050",
+      "result_sha256": "212dd16e2a9d440b0a9d2e80268d021ea52cfe3305eed2dc4c629c33386abf3c",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves existing instrument/investment receipt channels; adds bounded source/run/producer-bound account evidence.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_surface_contract.py",
+        "product/tests/test_surface_capability_coverage.py",
+        "product/tests/test_surface_accounting.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/surface/operations.py",
+      "retained_sha256": "036e1098b7eed383f2afd289421e9eded66108f5e006ddb80b683c8b30b0b54e",
+      "prototype_sha256": "e46b46542b55fe923248cd48640d6d8399fca231f766a3ce27118d808daa2463",
+      "base_sha256": "ff46c7d45cca00552395b28cb060a56f04ca3a90e2e61f457906f88e45d41456",
+      "result_sha256": "e46b46542b55fe923248cd48640d6d8399fca231f766a3ce27118d808daa2463",
+      "resolution": "reviewed_clean_textual_merge",
+      "rationale": "Clean merge retains existing operations and adds imports.read.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_surface_contract.py",
+        "product/tests/test_surface_capability_coverage.py",
+        "product/tests/test_surface_accounting.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/surface/outbound.py",
+      "retained_sha256": "1b969ef3145b62eac5f7a3a1a6ab3a721a604f9a5e22789ffe811fb2ddfc33f4",
+      "prototype_sha256": "0b9e03332697581d592e74c89d3d7e11c97d4df4798d82d87b12def4fcfbc134",
+      "base_sha256": "9a21a3fd13337a507ef73d6efa68a5419f8ec67f397b9afb1ad430801723ad89",
+      "result_sha256": "0b9e03332697581d592e74c89d3d7e11c97d4df4798d82d87b12def4fcfbc134",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves outbound audit; counts unique transport responses plus legacy unlinked usage without inventing missing cost or double counting.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_surface_contract.py",
+        "product/tests/test_surface_capability_coverage.py",
+        "product/tests/test_surface_accounting.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/tools/__init__.py",
+      "retained_sha256": "80fe12f093903200676bb2815e65574f4ba357eff3201ed0766b5dc6de5f2207",
+      "prototype_sha256": "6f2f52a33d7d043745a785e0b73225022f28db1022b886276bbbc6b7c7ae7c84",
+      "base_sha256": "e03f5bb2f4262e2895a46c238e01c9d12a52d4c6c7408b438541ed9b1d3ab078",
+      "result_sha256": "6f2f52a33d7d043745a785e0b73225022f28db1022b886276bbbc6b7c7ae7c84",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves existing public tools; internal principal claim stays hidden and selected balances have finite7-account/14-call admission.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/tools/instruments.py",
+      "retained_sha256": "b719a7982421e85136bed61c99bea90c5618fa53391d917e580ea1b41e1ddd6b",
+      "prototype_sha256": "afb8ffdb29ec7c1ddd5027545d48330dda85bef63d8d98a2411fc1b7f55592b6",
+      "base_sha256": null,
+      "result_sha256": "afb8ffdb29ec7c1ddd5027545d48330dda85bef63d8d98a2411fc1b7f55592b6",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves authority revision/refusal semantics; shares result formatter for existing instrument paths.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/tools/runner.py",
+      "retained_sha256": "8f9b400f7a3bdaaed26c34b31a7ebf48a5a1aaa9626e8f1ad57922046efbb89b",
+      "prototype_sha256": "396164e9c4739fc2f4eb3be739a0034102278e167fa9de018b320ee72ff92193",
+      "base_sha256": "0ee91b1d3cbd4b90a4ed45d7c0b9b7e7607e8eae1d1920ca51dc053f3df5565c",
+      "result_sha256": "396164e9c4739fc2f4eb3be739a0034102278e167fa9de018b320ee72ff92193",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves existing assertion authentication; selected report assertions require genuine current-run origin.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": true,
+      "static_json_parsed": false,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    },
+    {
+      "path": "product/viva/versions.json",
+      "retained_sha256": "5a5c623bb5e0547420d08bf1d3ceb5ac95a650dc00ee74022f41a21013fac197",
+      "prototype_sha256": "145b36528119de0da8f32ae6cc3345d83de443503b22c818fc5a9aa4dd942825",
+      "base_sha256": "463e0e1041ce43971485d8632f6c78b15b350c926c74fa4185ae8add823a5e24",
+      "result_sha256": "145b36528119de0da8f32ae6cc3345d83de443503b22c818fc5a9aa4dd942825",
+      "resolution": "reviewed_prototype_forward_extension",
+      "rationale": "Preserves released hashes; retains compatible forward tools29/schema19/semantic21/retry19/persona62 and new immutable prompt hashes.",
+      "caller_controls": [
+        "existing retained tests preserved as prototype prefix/successors; static source closure reviewed",
+        "product/tests (independent test owner); runtime qualification pending"
+      ],
+      "static_ast_parsed": false,
+      "static_json_parsed": true,
+      "runtime_verified": false,
+      "caller_test_files": [
+        "product/tests/test_versions.py",
+        "product/tests/test_instrument_c_registry.py",
+        "product/tests/test_pipeline.py"
+      ],
+      "qualification": "STATIC_REVIEW_ONLY_NOT_EXECUTED"
+    }
+  ],
+  "execution": {
+    "product_imports": 0,
+    "tests": 0,
+    "probes": 0,
+    "loads": 0,
+    "model_calls": 0
+  },
+  "counts": {
+    "text_conflicts_resolved": 52,
+    "clean_merges_reviewed": 8,
+    "total_reviewed": 60
+  },
+  "static_verification": {
+    "all_viva_python_files_ast_parsed": 335,
+    "resolution_result_and_immutable_input_hashes_verified": 60,
+    "conflict_markers_in_reviewed_paths": 0,
+    "versions_json_parsed": true,
+    "surface_fixture_json_parsed": true,
+    "tests_executed": 0,
+    "product_imports": 0
+  }
+}

@@ -1,0 +1,120 @@
+Consolidated-root bounded offline qualification, 2026-11-05
+
+Status: source review complete; runtime NOT started. Proposed admission, not a pass claim.
+Root /Users/vishnu/orionviva-consolidated; branch codex/consolidated-sqlite-performance.
+MASTER-COVERAGE SHA256 34f799cc22aeee0036194b944db145e2441005a625c410a91193d787b24b960e.
+2446 product coverage paths exactly qualified prototype P. Reuse prior P/40 source-specific
+functional evidence and preserved 41/42 pair measurement only as historical evidence;
+neither proves fresh consolidated-root execution. No financial policy/default SQL change found.
+
+Execution controls shared by all phases:
+One independent executor, sequential commands, nice >=15, isolated owned /private/tmp
+HOME/TMPDIR/cache/output/basetemp; empty disposable environment file, no original vaults,
+credentials, providers, model calls, network, installation, benchmark or full794.
+Pin source/dependency roots before and after. Reuse qualified existing launcher/worker;
+no new harness framework. Product imports must resolve under this consolidated root,
+dependencies under existing primary .venv. No pytest auto-loaded third-party plugins.
+Preserve stdout/stderr/JUnit/actual OS exits; stop first failure and retain unreached IDs.
+No automatic retry, source repair, snapshot update, commit, staging or push.
+
+Phase A: read-only architecture/privacy guards, each 120 sec, 480 total incl cleanup.
+cwd consolidated: scripts/check_surface_contract.py --check; scripts/check_surface_impact.py;
+scripts/check_denylist.py --patterns /Users/vishnu/orionviva/.denylist --paths <explicit
+2446 frozen coverage paths plus changed docs/UI/test paths>. Do not print pattern values.
+Git read-only subprocesses allowed. Source AST/markers/coverage already checked; reuse them.
+Run desktop scripts/check-ui-boundaries.mjs and scripts/check-style-tokens.mjs separately.
+No --write flags. Privacy scanner absent/empty configuration is failure, never a pass.
+
+Phase B: finite Python owners below, whole files except four named child controls.
+Use one admitted collection of ONLY this list (180 sec), then freeze actual node inventory;
+one run -q -x --import-mode=importlib --basetemp OWNED --junitxml OWNED (1800 worker,
+2100 supervisor, 60 cleanup included). Child-free main phase: deny process spawn/network/
+provider transport using existing qualified controls; ordinary threading permitted.
+No claim about case count until actual collection. Collect/execution needs Director grant.
+
+product/tests/test_versions.py
+product/tests/test_prompt_library.py
+product/tests/test_native_host_contract.py
+product/tests/test_native_packaging.py
+product/tests/test_packaged_admission_sources.py
+product/tests/sample_life/test_resource_contract.py
+product/tests/test_pipeline.py
+product/tests/test_reader_retry.py
+product/tests/test_bulk_upload.py
+product/tests/test_retained_bulk_reading.py
+product/tests/test_sample_worker.py
+product/tests/sample_life/test_activation.py
+product/tests/test_extraction_responses.py
+product/tests/test_extraction_response_disclosure.py
+product/tests/test_read_store.py
+product/tests/test_read_store_write_coherence.py
+product/tests/test_read_store_import_publication.py
+product/tests/test_read_store_documents.py
+product/tests/test_desktop_bridge_read_store.py
+product/tests/test_read_store_historical.py
+product/tests/test_financial_capability_answering.py
+product/tests/test_instrument_authority_views.py
+product/tests/test_investment_evidence_source_projector.py
+product/tests/test_tool_contract.py
+product/tests/test_card_counterpart_contract.py
+product/tests/test_sql_incremental_complete.py::test_automatic_mixed_prefixes_equal_fresh_full_reference_without_rebootstrap
+product/tests/test_sql_incremental_complete.py::test_recovery_full_verification_phase_requires_real_lock_and_binding_ownership
+
+Explicit main-phase deselections (not silent missing coverage):
+test_native_packaging.py::test_sidecar_launcher_uses_configured_external_python_without_a_target_venv
+test_native_packaging.py::test_sidecar_launcher_uses_path_python_when_clean_target_has_no_venv
+test_packaged_admission_sources.py::test_admission_authenticates_overview_without_importing_the_surface
+test_sample_worker.py::test_real_isolated_source_parent_builds_only_one_engineering_document
+These four require separately admitted bounded exact Node->Python, Python -c, and isolated
+Python-parent->sample-worker program closures, using existing qualified full-suite controls.
+No actual packaging/build/install/signing or browser host is requested. Prior exact-P results
+can be carried with that explicit limit; do not call fresh native closure complete.
+
+Coverage rationale: pipeline cached-projection/fresh-replay + extraction default sink,
+response ordering/prefix failures; ReadStore schema39 legacy rebuild, authenticated suffix,
+currentness/corruption, interruption recovery, publication/write coherence; normal bulk,
+retained-reading ownership/resume, curated sample activation; financial caller contracts;
+versions/source hashes/admission resources. Existing assertions are unchanged.
+
+Phase C: desktop dependency resolution and checks; no npm install/build or server.
+Existing desktop/node_modules absent in consolidated root; primary has existing dependencies.
+Director may authorize ignored node_modules symlink to primary solely for resolution.
+No original dependency writes permitted: use tsc --noEmit -p tsconfig.app.json and
+tsc --noEmit --incremental false --composite false -p tsconfig.node.json (not tsc -b).
+Each typecheck <=180sec. Use existing pinned Node/TypeScript/Vitest packages.
+Vitest run exact files below, --pool=threads --maxWorkers=1 --no-file-parallelism,
+scratch-only Vite cache config using existing qualified configuration mechanism; 900sec
+worker/1050 total/30 cleanup included. Declare exact existing esbuild service subprocess
+if config loading requires it; thread workers permitted, no other process/network.
+Do not launch until CLI/cache/child binding is frozen; fallback is a scope blocker, not install.
+
+src/app/App.documents.test.tsx
+src/app/App.documentsPaging.test.tsx
+src/app/App.conversation.test.tsx
+src/app/useDocumentIntake.bulk.test.ts
+src/bridge/browser-transport.test.ts
+src/bridge/client.test.ts
+src/features/conversation/ConversationDrawer.test.tsx
+src/features/documents/Documents.test.tsx
+src/features/documents/Documents.focus.test.tsx
+src/features/documents/BulkDocumentSelection.test.tsx
+src/surface/adapters/documents.test.ts
+src/surface/adapters/bulk-documents.test.ts
+src/surface/adapters/conversation.test.ts
+src/surface/load-private-snapshot.test.ts
+
+These include bulk intake queue, intentionally superseded single-only behavior, paging,
+single-document fallback and conversation/bridge successors. Actual assertions determine
+coverage; no unsupported browser/native acceptance claim.
+
+Admission distinction: source reads/AST/provenance checks were authorized and performed.
+The owner has authorized offline qualification; no new owner approval is needed. Exact
+bounded collection/runtime/process/dependency-link admission remains required under the
+current campaign controls. Director can admit phases independently so Phase A/B need not
+wait on desktop resolution. No mandatory new design cycle is proposed.
+
+Limits: targeted root confidence is not full affected-package acceptance. WORKFLOW full
+package suites/builds and interface/Witness gates remain open where applicable. No new
+real-document check warranted solely by byte-identical consolidation; previous unresolved
+Witness holds persist. An optional bounded full-suite run can follow targeted results,
+using existing qualified full-suite runner and explicit child inventory, without full794.

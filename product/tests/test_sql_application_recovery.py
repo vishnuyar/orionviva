@@ -635,6 +635,14 @@ def _assert_one_old_abort(fixture, before, user_version):
 def test_native_authenticated_phase_old_abort_keeps_financial_boundary(tmp_path, monkeypatch, stage, termination):
     if termination == "sigkill" and os.name == "nt":
         pytest.skip("native SIGKILL is unavailable on this target")
+    if stage == "prepared":
+        fixture = _residual_old_fixture(tmp_path, termination=termination)
+        with pytest.raises(RecoveryRequired):
+            SQLAuthority.open(fixture.root, fixture.passphrase, verification="complete", application=True)
+        with _ResidualScope(fixture) as scope:
+            _assert_residual_old_abort(fixture, scope)
+        assert scope.proxy.writes == ["PRAGMA main.user_version=0"]
+        return
     fixture = _phase_old_fixture(tmp_path, stage=stage, termination=termination)
     root, passphrase, *_rest = fixture
     before = _pending_bytes(root)
@@ -656,18 +664,10 @@ def test_native_authenticated_phase_old_abort_keeps_financial_boundary(tmp_path,
 
 @pytest.mark.parametrize("user_version", [17, -2147483648, 2147483647])
 def test_native_old_journal_preserves_nonzero_signed_header(tmp_path, monkeypatch, user_version):
-    fixture = _phase_old_fixture(tmp_path, user_version=user_version)
-    assert fixture[-1]["journal"] is True
-    before = _pending_bytes(fixture[0])
-    writes = []
-    opened = ApplicationSQLAuthority._open_engine
-    def instrument(owner, *args, **kwargs):
-        result = opened(owner, *args, **kwargs)
-        owner._engine._db = _MaintenanceConnection(owner._engine._db, writes=writes)
-        return result
-    monkeypatch.setattr(ApplicationSQLAuthority, "_open_engine", instrument)
-    _assert_one_old_abort(fixture, before, user_version)
-    assert writes == ["PRAGMA main.user_version=" + str(user_version)]
+    fixture = _residual_old_fixture(tmp_path, user_version=user_version)
+    with _ResidualScope(fixture) as scope:
+        _assert_residual_old_abort(fixture, scope)
+    assert scope.proxy.writes == ["PRAGMA main.user_version=" + str(user_version)]
 
 
 class _MaintenanceRows:
@@ -705,23 +705,14 @@ class _MaintenanceConnection:
 
 @pytest.mark.parametrize("rows", [[], [(True,)], [("0",)], [(2147483648,)], [(-2147483649,)], [(0, 1)], [(0,), (0,)]])
 def test_labeled_malformed_header_refuses_before_assignment_preserving_pending(tmp_path, monkeypatch, rows):
-    fixture = _phase_old_fixture(tmp_path)
-    root, passphrase, *_rest = fixture
-    before = _pending_bytes(root)
-    proxies = []
-    opened = ApplicationSQLAuthority._open_engine
-    def instrument(owner, *args, **kwargs):
-        result = opened(owner, *args, **kwargs)
-        proxy = _MaintenanceConnection(owner._engine._db, header=rows)
-        owner._engine._db = proxy
-        proxies.append(proxy)
-        return result
-    monkeypatch.setattr(ApplicationSQLAuthority, "_open_engine", instrument)
-    with pytest.raises(IntegrityError, match="header integer"):
-        ApplicationSQLAuthority.recover(root, passphrase)
-    assert proxies and proxies[0].writes == [] and proxies[0].rollback_count == 1
-    assert _pending_bytes(root) == before
-    assert not (root / "terminal.next").exists()
+    fixture = _residual_old_fixture(tmp_path)
+    with _ResidualScope(fixture, header=rows) as scope:
+        with pytest.raises(IntegrityError, match="header integer"):
+            ApplicationSQLAuthority.recover(fixture.root, fixture.passphrase, expected_prefix=fixture.trusted_prefix)
+    assert scope.header_injections == 1 and scope.context_success >= 2
+    assert scope.proxy.writes == [] and scope.proxy.rollback_count == 1
+    assert scope.rollback_kinds == ["writer"]
+    scope.assert_refusal_preserved()
 
 
 @pytest.mark.parametrize("mutation", ["missing", "corrupt", "foreign", "unknown"])
@@ -758,101 +749,37 @@ def test_old_journal_refuses_changed_preparation_before_native_assignment(tmp_pa
 
 @pytest.mark.parametrize("context", ["owner", "root", "thread", "recovering", "pending", "extension", "capture", "creation", "committed", "abort_prepared"])
 def test_labeled_wrong_old_context_refuses_before_native_assignment(tmp_path, monkeypatch, context):
-    import threading
-    from viva.sql_authority import application_io as io
-    fixture = _phase_old_fixture(tmp_path)
-    root, passphrase, *_rest = fixture
-    before = _pending_bytes(root)
-    writes = []
-    original = ApplicationSQLAuthority._finalize_old_journal
-    opened = ApplicationSQLAuthority._open_engine
-    def instrument(owner, *args, **kwargs):
-        result = opened(owner, *args, **kwargs)
-        owner._engine._db = _MaintenanceConnection(owner._engine._db, writes=writes)
-        return result
-    def wrong(owner):
-        binding = owner._binding
-        engine_root = owner._engine.root
-        if context == "owner":
-            owner._binding = object()
-        elif context == "root":
-            owner._engine.root = owner.root
-        elif context == "thread":
-            owner._root_lock.owner = threading.get_ident() + 1
-        elif context == "recovering":
-            owner._recovering = False
-        elif context == "pending":
-            owner._pending = (owner.root / "pending" / ("f" * 64), owner._pending[1])
-        elif context == "extension":
-            owner._extension = b"synthetic unissued extension"
-        elif context in {"capture", "creation"}:
-            path, issued = owner._pending
-            owner._pending = path, dict(issued, kind=context)
-        elif context == "committed":
-            owner._observed = dict(owner._observed, sequence=owner._observed["sequence"] + 1)
-        else:
-            path, issued = owner._pending
-            data = owner._history.intent(issued, "abort_prepared", ("prepared-abort.json", "0" * 64))
-            io.replace_head(path / "intent.json", data, temporary="intent.next")
-        try:
-            return original(owner)
-        finally:
-            owner._binding = binding
-            owner._engine.root = engine_root
-            # Disposal still owns the original root lock.
-            if context == "thread":
-                owner._root_lock.owner = threading.get_ident()
-    monkeypatch.setattr(ApplicationSQLAuthority, "_open_engine", instrument)
-    monkeypatch.setattr(ApplicationSQLAuthority, "_finalize_old_journal", wrong)
-    with pytest.raises((AuthorityError, IntegrityError, RecoveryRequired)):
-        ApplicationSQLAuthority.recover(root, passphrase)
-    assert writes == []
-    if context != "abort_prepared":
-        assert _pending_bytes(root) == before
-    else:
-        after = _pending_bytes(root)
-        assert after["prepared-publication.json"] == before["prepared-publication.json"]
-        assert after["intent.json"] != before["intent.json"]
-    assert not (root / "terminal.next").exists()
+    fixture = _residual_old_fixture(tmp_path)
+    with _ResidualScope(fixture, wrong_context=context) as scope:
+        with pytest.raises((AuthorityError, IntegrityError, RecoveryRequired)):
+            ApplicationSQLAuthority.recover(fixture.root, fixture.passphrase, expected_prefix=fixture.trusted_prefix)
+    assert scope.context_requested == 1 and scope.context_success == 0
+    assert scope.proxy.writes == [] and scope.writer_begin_success == 0
+    scope.assert_refusal_preserved(changed_intent=context == "abort_prepared")
 
 
 @pytest.mark.parametrize("fault", ["before_write", "assignment", "commit", "remaining_journal", "postcommit_verify"])
 def test_labeled_maintenance_fault_never_publishes_abort_or_discards_evidence(tmp_path, monkeypatch, fault):
-    from viva.sql_authority import application_io as io
-    fixture = _phase_old_fixture(tmp_path)
-    root, passphrase, *_rest = fixture
-    before = _pending_bytes(root)
-    proxies = []
-    opened = ApplicationSQLAuthority._open_engine
-    def instrument(owner, *args, **kwargs):
-        result = opened(owner, *args, **kwargs)
-        proxy = _MaintenanceConnection(owner._engine._db, fault=fault)
-        owner._engine._db = proxy
-        proxies.append(proxy)
-        verify = owner._engine._verify_current
-        def checked(*a, **kw):
-            if fault == "before_write" and owner._engine._db.in_transaction:
-                raise OSError("labeled prewrite refusal")
-            if fault == "postcommit_verify" and proxy.commit_count:
-                raise IntegrityError("labeled postcommit refusal")
-            return verify(*a, **kw)
-        owner._engine._verify_current = checked
-        return result
-    exists = Path.exists
-    def journal_exists(path):
-        if fault == "remaining_journal" and path == root / "sql" / "authority.db-journal" and proxies and proxies[0].commit_count:
-            return True
-        return exists(path)
-    monkeypatch.setattr(ApplicationSQLAuthority, "_open_engine", instrument)
-    monkeypatch.setattr(Path, "exists", journal_exists)
-    with pytest.raises((OSError, IntegrityError, RecoveryRequired)):
-        ApplicationSQLAuthority.recover(root, passphrase)
-    proxy = proxies[0]
+    fixture = _residual_old_fixture(tmp_path)
+    with _ResidualScope(fixture, fault=fault) as scope:
+        with pytest.raises((OSError, IntegrityError, RecoveryRequired)):
+            ApplicationSQLAuthority.recover(fixture.root, fixture.passphrase, expected_prefix=fixture.trusted_prefix)
+    proxy = scope.proxy
+    assert scope.context_success >= 1 and scope.writer_begin_success == 1
     assert proxy.writes == ([] if fault == "before_write" else ["PRAGMA main.user_version=0"])
     assert proxy.rollback_count == (1 if fault in {"before_write", "assignment", "commit", "postcommit_verify"} else 0)
-    assert _pending_bytes(root) == before
-    assert not (root / "terminal.next").exists()
-    assert len(list((root / "history").iterdir())) == fixture[3]["sequence"]
+    if fault == "before_write":
+        assert scope.assignment_success == 0 and scope.rollback_kinds == ["writer"]
+    elif fault == "assignment":
+        assert scope.assignment_refusals == 1 and scope.assignment_success == 0 and scope.rollback_kinds == ["writer"]
+    elif fault == "commit":
+        assert scope.commit_refusals == 1 and scope.writer_commit_success == 0 and scope.rollback_kinds == ["writer"]
+    elif fault == "postcommit_verify":
+        assert scope.writer_commit_success == 1 and scope.rollback_kinds == ["snapshot"]
+    else:
+        assert scope.writer_commit_success == 1 and scope.journal_absent_after_commit and scope.rollback_kinds == []
+    scope.assert_refusal_preserved()
+    assert len(list((fixture.root / "history").iterdir())) == fixture.prior_terminal["sequence"]
 
 
 _MAINTENANCE_INTERRUPTED_RECOVERY = """
@@ -901,93 +828,457 @@ raise AssertionError("maintenance interruption was not reached")
 def test_native_interrupted_maintenance_retains_owned_old_recovery(tmp_path, point, termination):
     if termination == "sigkill" and os.name == "nt":
         pytest.skip("native SIGKILL is unavailable on this target")
-    fixture = _phase_old_fixture(tmp_path)
-    root, passphrase, *_rest = fixture
-    before = _pending_bytes(root)
-    assert fixture[-1]["journal"] is True
-    result = _process(_MAINTENANCE_INTERRUPTED_RECOVERY,
-                      dict(root=str(root), passphrase=passphrase, point=point, termination=termination), root)
+    fixture = _residual_old_fixture(tmp_path)
+    result = _process(_RESIDUAL_MAINTENANCE_INTERRUPTED_RECOVERY,
+                      dict(root=str(fixture.root), passphrase=fixture.passphrase, trusted_prefix=fixture.trusted_prefix,
+                           point=point, termination=termination), fixture.root)
     assert result.returncode == (-9 if termination == "sigkill" else 74), result.stderr
     event = json.loads(result.stdout)
     assert event["point"] == point and event["stage"] == "prepared" and event["kind"] == "transaction"
     assert event["journal"] is (point == "after_assignment")
-    assert _pending_bytes(root) == before
-    _assert_one_old_abort(fixture, before, 0)
+    assert event["normalization_verified"] is True and event["assignment_success"] == 1
+    assert event["writer_commit_success"] == (1 if point == "after_commit" else 0)
+    import hashlib
+    expected_digest = hashlib.sha256(json.dumps({k: hashlib.sha256(v).hexdigest() for k,v in fixture.canonical.items()}, sort_keys=True).encode()).hexdigest()
+    assert event["canonical_sha256"] == expected_digest
+    assert _pending_bytes(fixture.root) == fixture.canonical
+    assert _residual_history_bytes(fixture.root) == fixture.history_before
+    fixture.prior_terminal, fixture.prior_sql = event["prior_terminal"], event["prior_sql"]
+    assert fixture.prior_terminal["root_id"] == fixture.trusted_prefix["root_id"]
+    assert fixture.prior_terminal["sequence"] >= fixture.trusted_prefix["sequence"]
+    result = ApplicationSQLAuthority.recover(fixture.root, fixture.passphrase, expected_prefix=fixture.prior_terminal)
+    _assert_residual_completed(fixture, fixture.canonical, result)
 
 
 @pytest.mark.parametrize("setting,value", [("journal_mode", "persist"), ("synchronous", 1), ("cipher_use_hmac", 0), ("locking_mode", "exclusive")])
 def test_labeled_unsupported_native_profile_is_not_changed_or_written(tmp_path, monkeypatch, setting, value):
-    fixture = _phase_old_fixture(tmp_path)
-    root, passphrase, *_rest = fixture
-    before = _pending_bytes(root)
-    proxies = []
-    opened = ApplicationSQLAuthority._open_engine
-    class ProfileConnection(_MaintenanceConnection):
-        def execute(self, sql, *args):
-            if sql == "PRAGMA " + setting:
-                return _MaintenanceRows([(value,)])
-            return super().execute(sql, *args)
-    def instrument(owner, *args, **kwargs):
-        result = opened(owner, *args, **kwargs)
-        proxy = ProfileConnection(owner._engine._db)
-        owner._engine._db = proxy
-        proxies.append(proxy)
-        return result
-    monkeypatch.setattr(ApplicationSQLAuthority, "_open_engine", instrument)
-    with pytest.raises(AuthorityError, match="durability profile"):
-        ApplicationSQLAuthority.recover(root, passphrase)
-    assert proxies[0].writes == [] and proxies[0].rollback_count == 0
-    assert _pending_bytes(root) == before
+    fixture = _residual_old_fixture(tmp_path)
+    with _ResidualScope(fixture, profile=(setting, value)) as scope:
+        with pytest.raises(AuthorityError, match="durability profile"):
+            ApplicationSQLAuthority.recover(fixture.root, fixture.passphrase, expected_prefix=fixture.trusted_prefix)
+    assert scope.context_success == 1 and scope.profile_injections == 1
+    assert scope.proxy.writes == [] and scope.proxy.rollback_count == 0
+    assert scope.writer_begin_success == 0
+    scope.assert_refusal_preserved()
 
 
 @pytest.mark.parametrize("phase", ["before_commit", "after_commit"])
 def test_labeled_header_equality_mismatch_blocks_abort(tmp_path, monkeypatch, phase):
-    fixture = _phase_old_fixture(tmp_path)
-    root, passphrase, *_rest = fixture
-    before = _pending_bytes(root)
-    proxies = []
-    opened = ApplicationSQLAuthority._open_engine
-    def instrument(owner, *args, **kwargs):
-        result = opened(owner, *args, **kwargs)
-        proxy = _MaintenanceConnection(owner._engine._db)
-        owner._engine._db = proxy
-        proxies.append(proxy)
-        query = owner._journal_user_version
-        def mismatch():
-            captured = query()
-            if proxy.assigned and ((phase == "before_commit" and not proxy.commit_count)
-                                   or (phase == "after_commit" and proxy.commit_count)):
-                return captured + 1
-            return captured
-        owner._journal_user_version = mismatch
-        return result
-    monkeypatch.setattr(ApplicationSQLAuthority, "_open_engine", instrument)
-    with pytest.raises(IntegrityError, match="header changed|committed state changed"):
-        ApplicationSQLAuthority.recover(root, passphrase)
-    assert proxies[0].writes == ["PRAGMA main.user_version=0"]
-    assert proxies[0].rollback_count == 1
-    assert _pending_bytes(root) == before
-    assert not (root / "terminal.next").exists()
+    fixture = _residual_old_fixture(tmp_path)
+    with _ResidualScope(fixture, mismatch=phase) as scope:
+        with pytest.raises(IntegrityError, match="header changed|committed state changed"):
+            ApplicationSQLAuthority.recover(fixture.root, fixture.passphrase, expected_prefix=fixture.trusted_prefix)
+    assert scope.proxy.writes == ["PRAGMA main.user_version=0"]
+    assert scope.proxy.rollback_count == 1 and scope.assignment_success == 1
+    assert scope.rollback_kinds == (["writer"] if phase == "before_commit" else ["snapshot"])
+    assert scope.writer_commit_success == (1 if phase == "after_commit" else 0)
+    scope.assert_refusal_preserved()
 
 
 def test_labeled_preexisting_transaction_is_never_rolled_back_by_maintenance(tmp_path, monkeypatch):
-    fixture = _phase_old_fixture(tmp_path)
-    root, passphrase, *_rest = fixture
-    before = _pending_bytes(root)
-    finalize = ApplicationSQLAuthority._finalize_old_journal
-    def independent_writer(owner):
-        connection = owner._engine._db
-        proxy = _MaintenanceConnection(connection)
-        owner._engine._db = proxy
-        connection.execute("BEGIN IMMEDIATE")
-        try:
-            with pytest.raises(AuthorityError, match="independent writer"):
-                finalize(owner)
-            assert connection.in_transaction and proxy.writes == [] and proxy.rollback_count == 0
-        finally:
-            connection.execute("ROLLBACK")
-        raise AuthorityError("labeled foreign writer refused")
-    monkeypatch.setattr(ApplicationSQLAuthority, "_finalize_old_journal", independent_writer)
-    with pytest.raises(AuthorityError, match="foreign writer"):
-        ApplicationSQLAuthority.recover(root, passphrase)
-    assert _pending_bytes(root) == before
+    fixture = _residual_old_fixture(tmp_path)
+    with _ResidualScope(fixture, preexisting=True) as scope:
+        with pytest.raises(AuthorityError, match="foreign writer"):
+            ApplicationSQLAuthority.recover(fixture.root, fixture.passphrase, expected_prefix=fixture.trusted_prefix)
+    assert scope.foreign_refused and scope.context_success == 1
+    assert scope.proxy.writes == [] and scope.proxy.rollback_count == 0
+    assert scope.writer_begin_success == 0
+    scope.assert_refusal_preserved()
+
+
+class _ResidualFixture:
+    def __repr__(self):
+        return "<fresh synthetic residual-journal fixture>"
+
+
+def _residual_history_bytes(root):
+    values = {p.name: p.read_bytes() for p in (root / "history").iterdir()}
+    values["terminal.json"] = (root / "terminal.json").read_bytes()
+    assert not (root / "terminal.next").exists()
+    return values
+
+
+def _residual_journal(root):
+    import stat
+    value = (root / "sql" / "authority.db-journal").lstat()
+    assert stat.S_ISREG(value.st_mode) and value.st_nlink == 1
+    return value.st_dev, value.st_ino
+
+
+def _residual_old_fixture(tmp_path, *, termination="exit", user_version=0):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    fixture = _ResidualFixture()
+    fixture.root = tmp_path.resolve() / "application"
+    fixture.passphrase = secrets.token_urlsafe(32)
+    fixture.user_version = user_version
+    with SQLAuthority.create(fixture.root, fixture.passphrase, verification="complete", application=True) as owner:
+        fixture.accepted = _accepted_statement(owner)
+        fixture.trusted_prefix = owner.terminal
+        fixture.postings = owner.postings(fixture.accepted.doc_id)
+        fixture.original = owner.original(fixture.accepted.doc_id)
+        if user_version:
+            owner._engine._db.execute("PRAGMA main.user_version=" + str(user_version))
+        assert owner._engine._db.execute("PRAGMA main.user_version").fetchall() == [(user_version,)]
+    completed = _process(_INTERRUPTED_TRANSACTION,
+                         dict(root=str(fixture.root), passphrase=fixture.passphrase,
+                              point="initial_intent_file_fsync", termination=termination), fixture.root)
+    assert completed.returncode == (-9 if termination == "sigkill" else 73), completed.stderr
+    marker = json.loads(completed.stdout)
+    assert marker["interrupted"] == "initial_intent_file_fsync" and marker["actual_process"] is True
+    fixture.raw = _pending_bytes(fixture.root)
+    assert set(fixture.raw) == {"intent.json", "intent.next", "prepared-publication.json"}
+    fixture.canonical = {"intent.json": fixture.raw["intent.next"],
+                         "prepared-publication.json": fixture.raw["prepared-publication.json"]}
+    fixture.history_before = _residual_history_bytes(fixture.root)
+    fixture.journal_identity = _residual_journal(fixture.root)
+    fixture.prior_terminal = fixture.prior_sql = None
+    return fixture
+
+
+class _ResidualMaintenanceConnection(_MaintenanceConnection):
+    def __init__(self, connection, scope):
+        super().__init__(connection)
+        self.scope = scope
+        self.transaction_kind = None
+
+    def execute(self, sql, *args):
+        scope = self.scope
+        active = scope.active
+        if active and sql == "PRAGMA main.user_version" and scope.header is not None:
+            scope.header_injections += 1
+            return _MaintenanceRows(scope.header)
+        if active and scope.phase == "profile" and sql in scope.profile_queries:
+            scope.profile_seen.append(sql)
+            if scope.profile is not None and sql == "PRAGMA " + scope.profile[0]:
+                scope.profile_injections += 1
+                return _MaintenanceRows([(scope.profile[1],)])
+        assignment = sql.startswith("PRAGMA main.user_version=")
+        if assignment:
+            self.writes.append(sql)
+            if active and scope.fault == "assignment":
+                scope.assignment_refusals += 1
+                raise OSError("labeled assignment refusal")
+        if sql == "COMMIT" and self.assigned:
+            self.commit_count += 1
+            if active and scope.fault == "commit" and not scope.writer_commit_success:
+                scope.commit_refusals += 1
+                raise OSError("labeled commit refusal")
+        if sql == "ROLLBACK":
+            self.rollback_count += 1
+        kind = self.transaction_kind
+        result = self.connection.execute(sql, *args)
+        if sql == "BEGIN IMMEDIATE":
+            self.transaction_kind = "writer"
+            if active:
+                scope.writer_begin_success += 1
+                scope.phase = "writer"
+        elif sql == "BEGIN":
+            self.transaction_kind = "snapshot"
+        elif assignment:
+            self.assigned = True
+            if active:
+                scope.assignment_success += 1
+                if scope.crash_point == "after_assignment":
+                    scope.crash(self.scope.owner)
+        elif sql == "COMMIT":
+            self.transaction_kind = None
+            if active and kind == "writer":
+                scope.writer_commit_success += 1
+                scope.phase = "postcommit"
+                try:
+                    (scope.fixture.root / "sql" / "authority.db-journal").lstat()
+                except FileNotFoundError:
+                    scope.journal_absent_after_commit = True
+                if scope.crash_point == "after_commit":
+                    scope.crash(scope.owner)
+        elif sql == "ROLLBACK":
+            self.transaction_kind = None
+            if active:
+                scope.rollback_kinds.append(kind)
+        return result
+
+
+class _ResidualScope:
+    profile_queries = ("PRAGMA journal_mode", "PRAGMA synchronous", "PRAGMA cipher_use_hmac", "PRAGMA locking_mode")
+
+    def __init__(self, fixture, *, header=None, fault=None, wrong_context=None,
+                 profile=None, mismatch=None, preexisting=False, crash_point=None, crash=None):
+        self.fixture = fixture
+        self.header, self.fault, self.wrong_context = header, fault, wrong_context
+        self.profile, self.mismatch, self.preexisting = profile, mismatch, preexisting
+        self.crash_point, self.crash = crash_point, crash
+        self.active = False
+        self.phase = "inactive"
+        self.normalizer_calls = self.entry_count = self.context_requested = self.context_success = 0
+        self.precondition_context_calls = 0
+        self.writer_begin_success = self.assignment_success = self.writer_commit_success = 0
+        self.header_injections = self.profile_injections = 0
+        self.assignment_refusals = self.commit_refusals = 0
+        self.verify_success = 0
+        self.profile_seen, self.header_values, self.rollback_kinds = [], [], []
+        self.journal_absent_after_commit = False
+        self.before = None
+        self.proxy = self.owner = None
+        self.foreign_refused = False
+        self.saved = {}
+
+    def __enter__(self):
+        from viva.sql_authority import application_history as history
+        cls = ApplicationSQLAuthority
+        for name in ("_recover_intent_head", "_finalize_old_journal", "_old_journal_context", "_journal_user_version"):
+            self.saved[name] = getattr(cls, name)
+        original_normalizer = self.saved["_recover_intent_head"]
+        original_finalize = self.saved["_finalize_old_journal"]
+        original_context = self.saved["_old_journal_context"]
+        original_header = self.saved["_journal_user_version"]
+        fixture = self.fixture
+        scope = self
+
+        def normalizer(owner, path):
+            if owner.root != fixture.root:
+                return original_normalizer(owner, path)
+            assert scope.normalizer_calls == 0
+            raw = _pending_bytes(owner.root)
+            assert raw == fixture.raw and set(raw) == {"intent.json", "intent.next", "prepared-publication.json"}
+            assert _residual_history_bytes(owner.root) == fixture.history_before
+            current, initial = owner._history.read_intent(raw["intent.json"])
+            successor, prepared = owner._history.read_intent(raw["intent.next"])
+            assert current["stage"] == "initial" and successor["stage"] == "prepared"
+            issued = initial["issued"]
+            assert issued == prepared["issued"] and issued["kind"] == "transaction"
+            assert current["operation_id"] == successor["operation_id"] == path.name == issued["operation_id"]
+            assert current["root_id"] == successor["root_id"] == owner._metadata["root_id"]
+            assert initial["prepared_name"] is initial["prepared_sha256"] is None
+            assert initial["superseded_name"] is initial["superseded_sha256"] is None
+            assert prepared["prepared_name"] == "prepared-publication.json"
+            assert prepared["prepared_sha256"] == history.digest(raw["prepared-publication.json"])
+            assert prepared["superseded_name"] is prepared["superseded_sha256"] is None
+            assert not (owner.root / "history" / ("%020d.json" % (issued["prior_terminal"]["sequence"] + 1))).exists()
+            assert not (owner.root / "terminal.next").exists()
+            owner._validate_issued_frontier(issued)
+            owner._validate_prepared_members(path, successor, prepared)
+            record = owner._history.record(raw["prepared-publication.json"], previous=issued["prior_terminal"])
+            assert record["kind"] == "sql_commit"
+            assert owner._history.payload(record, previous=issued["prior_terminal"])["issued"] == issued
+            result = original_normalizer(owner, path)
+            scope.normalizer_calls += 1
+            assert result[0]["stage"] == "prepared" and result[1]["issued"] == issued
+            assert _pending_bytes(owner.root) == fixture.canonical
+            assert _residual_history_bytes(owner.root) == fixture.history_before
+            fixture.prior_terminal, fixture.prior_sql = issued["prior_terminal"], issued["prior_sql"]
+            assert fixture.prior_terminal["root_id"] == fixture.trusted_prefix["root_id"]
+            assert fixture.prior_terminal["sequence"] >= fixture.trusted_prefix["sequence"]
+            scope.before = dict(fixture.canonical)
+            return result
+
+        def context(owner):
+            if scope.active and owner is scope.owner:
+                scope.context_requested += 1
+            value = original_context(owner)
+            if scope.active and owner is scope.owner:
+                scope.context_success += 1
+                if scope.context_success == 1:
+                    scope.phase = "profile"
+            return value
+
+        def header(owner):
+            value = original_header(owner)
+            if scope.active and owner is scope.owner:
+                scope.header_values.append(value)
+                if scope.proxy.assigned and ((scope.mismatch == "before_commit" and not scope.writer_commit_success)
+                                             or (scope.mismatch == "after_commit" and scope.writer_commit_success)):
+                    return value + 1
+            return value
+
+        def finalize(owner):
+            if owner.root != fixture.root:
+                return original_finalize(owner)
+            assert scope.entry_count == 0 and scope.normalizer_calls == 1
+            scope.entry_count += 1
+            scope.owner = owner
+            identity = _residual_journal(owner.root)
+            assert identity == fixture.journal_identity
+            assert _pending_bytes(owner.root) == scope.before
+            assert _residual_history_bytes(owner.root) == fixture.history_before
+            preserved, terminal = original_context(owner)
+            scope.precondition_context_calls += 1
+            assert preserved == scope.before and terminal == fixture.prior_terminal
+            assert _residual_journal(owner.root) == identity
+            assert _pending_bytes(owner.root) == scope.before
+            raw_db = owner._engine._db
+            scope.proxy = _ResidualMaintenanceConnection(raw_db, scope)
+            owner._engine._db = scope.proxy
+            verified = owner._engine._verify_current
+
+            def verify(*args, **kwargs):
+                if scope.active and scope.fault == "before_write" and scope.proxy.transaction_kind == "writer" and not scope.proxy.assigned:
+                    raise OSError("labeled prewrite refusal")
+                if scope.active and scope.fault == "postcommit_verify" and scope.writer_commit_success:
+                    raise IntegrityError("labeled postcommit refusal")
+                result = verified(*args, **kwargs)
+                if scope.active:
+                    scope.verify_success += 1
+                return result
+
+            owner._engine._verify_current = verify
+            saved_fields = (owner._binding, owner._engine.root, owner._root_lock.owner,
+                            owner._recovering, owner._pending, owner._extension, owner._observed)
+            scope.active = True
+            scope.phase = "context"
+            if scope.preexisting:
+                raw_db.execute("BEGIN IMMEDIATE")
+            try:
+                _residual_mutate_context(owner, scope.wrong_context)
+                if scope.preexisting:
+                    with pytest.raises(AuthorityError, match="independent writer"):
+                        original_finalize(owner)
+                    assert raw_db.in_transaction and scope.proxy.writes == [] and scope.proxy.rollback_count == 0
+                    scope.foreign_refused = True
+                    raise AuthorityError("labeled foreign writer refused")
+                return original_finalize(owner)
+            finally:
+                scope.active = False
+                owner._engine._verify_current = verified
+                owner._binding, owner._engine.root, owner._root_lock.owner, owner._recovering, owner._pending, owner._extension, owner._observed = saved_fields
+                if scope.preexisting and raw_db.in_transaction:
+                    raw_db.execute("ROLLBACK")
+
+        self.saved_exists = Path.exists
+        def exists(path):
+            if (scope.active and scope.fault == "remaining_journal" and scope.writer_commit_success
+                    and path == fixture.root / "sql" / "authority.db-journal"):
+                return True
+            return scope.saved_exists(path)
+        cls._recover_intent_head = normalizer
+        cls._old_journal_context = context
+        cls._journal_user_version = header
+        cls._finalize_old_journal = finalize
+        Path.exists = exists
+        return self
+
+    def __exit__(self, *exc):
+        for name, value in self.saved.items():
+            setattr(ApplicationSQLAuthority, name, value)
+        Path.exists = self.saved_exists
+        return False
+
+    def assert_refusal_preserved(self, *, changed_intent=False):
+        assert self.normalizer_calls == self.entry_count == self.precondition_context_calls == 1
+        after = _pending_bytes(self.fixture.root)
+        if changed_intent:
+            assert set(after) == set(self.before)
+            assert after["prepared-publication.json"] == self.before["prepared-publication.json"]
+            assert after["intent.json"] != self.before["intent.json"]
+        else:
+            assert after == self.before
+        assert _residual_history_bytes(self.fixture.root) == self.fixture.history_before
+        assert not (self.fixture.root / "terminal.next").exists()
+        assert not list((self.fixture.root / "pending").rglob("prepared-abort.json"))
+
+    def assert_success(self):
+        assert self.normalizer_calls == self.entry_count == self.precondition_context_calls == 1
+        assert self.context_requested == self.context_success == 4
+        assert self.profile_seen == list(self.profile_queries)
+        assert self.writer_begin_success == self.assignment_success == self.writer_commit_success == 1
+        assert self.verify_success == 3
+        assert self.header_values == [self.fixture.user_version] * 4
+        assert self.journal_absent_after_commit and self.proxy.rollback_count == 0
+
+
+def _residual_mutate_context(owner, context):
+    import threading
+    from viva.sql_authority import application_io as io
+    if context is None:
+        return
+    if context == "owner":
+        owner._binding = object()
+    elif context == "root":
+        owner._engine.root = owner.root
+    elif context == "thread":
+        owner._root_lock.owner = threading.get_ident() + 1
+    elif context == "recovering":
+        owner._recovering = False
+    elif context == "pending":
+        owner._pending = owner.root / "pending" / ("f" * 64), owner._pending[1]
+    elif context == "extension":
+        owner._extension = b"synthetic unissued extension"
+    elif context in {"capture", "creation"}:
+        owner._pending = owner._pending[0], dict(owner._pending[1], kind=context)
+    elif context == "committed":
+        owner._observed = dict(owner._observed, sequence=owner._observed["sequence"] + 1)
+    elif context == "abort_prepared":
+        path, issued = owner._pending
+        io.replace_head(path / "intent.json", owner._history.intent(issued, "abort_prepared", ("prepared-abort.json", "0" * 64)), temporary="intent.next")
+    else:
+        raise AssertionError("unknown labeled context")
+
+
+def _assert_residual_completed(fixture, before, result):
+    root, passphrase, accepted = fixture.root, fixture.passphrase, fixture.accepted
+    trusted, head = fixture.prior_terminal, fixture.prior_sql
+    assert result["outcome"] == "aborted"
+    assert not (root / "sql" / "authority.db-journal").exists()
+    assert not list((root / "pending").iterdir())
+    with SQLAuthority.open(root, passphrase, verification="complete", application=True) as owner:
+        assert owner.head == head
+        assert owner.account(accepted.account_id)["running_balance"] == "90"
+        assert len(owner.transactions(accepted.account_id)) == 1
+        assert owner.postings(accepted.doc_id) == fixture.postings
+        assert owner.original(accepted.doc_id) == fixture.original
+        assert owner._engine._db.execute("PRAGMA main.user_version").fetchall() == [(fixture.user_version,)]
+        assert owner.verify()["counts"]["transactions"] == 1
+        _terminal, records, payloads = owner._history.scan()
+        aborted = [payload for record, payload in zip(records, payloads) if record["kind"] == "interrupted_abort"]
+        assert len(aborted) == 1
+        assert aborted[0]["body"]["superseded_publication"].encode() == before["prepared-publication.json"]
+        terminal = owner.terminal
+        assert terminal["sequence"] == trusted["sequence"] + 1
+        assert records[-1]["previous_hash"] == trusted["head"]
+        assert aborted[0]["issued"]["prior_sql"] == head
+    assert ApplicationSQLAuthority.recover(root, passphrase, expected_prefix=trusted)["outcome"] == "already_ready"
+    from test_sql_application_history import _fresh_keyless_check
+    assert _fresh_keyless_check(root, terminal)["result"]["structural"] is True
+
+
+def _assert_residual_old_abort(fixture, scope):
+    result = ApplicationSQLAuthority.recover(fixture.root, fixture.passphrase, expected_prefix=fixture.trusted_prefix)
+    scope.assert_success()
+    _assert_residual_completed(fixture, scope.before, result)
+
+
+_RESIDUAL_MAINTENANCE_INTERRUPTED_RECOVERY = """
+import hashlib, os, signal
+from pathlib import Path
+from test_sql_application_recovery import _ResidualFixture, _ResidualScope, _pending_bytes, _residual_history_bytes
+from viva.sql_authority.application import ApplicationSQLAuthority
+root = Path(request["root"])
+fixture = _ResidualFixture()
+fixture.root = root
+fixture.raw = _pending_bytes(root)
+assert set(fixture.raw) == {"intent.json", "intent.next", "prepared-publication.json"}
+fixture.canonical = {"intent.json": fixture.raw["intent.next"], "prepared-publication.json": fixture.raw["prepared-publication.json"]}
+fixture.history_before = _residual_history_bytes(root)
+fixture.trusted_prefix = request["trusted_prefix"]
+fixture.user_version = 0
+from test_sql_application_recovery import _residual_journal
+fixture.journal_identity = _residual_journal(root)
+fixture.prior_terminal = fixture.prior_sql = None
+def stop(owner):
+    assert _pending_bytes(root) == fixture.canonical
+    assert _residual_history_bytes(root) == fixture.history_before
+    assert scope.entry_count == scope.precondition_context_calls == scope.normalizer_calls == 1
+    assert scope.context_success >= 2 and scope.writer_begin_success == 1 and scope.assignment_success == 1
+    assert scope.writer_commit_success == (1 if request["point"] == "after_commit" else 0)
+    print(json.dumps({"point": request["point"], "stage": "prepared", "kind": "transaction",
+                      "journal": (root / "sql" / "authority.db-journal").exists(),
+                      "normalization_verified": True,
+                      "canonical_sha256": hashlib.sha256(json.dumps({k: hashlib.sha256(v).hexdigest() for k,v in fixture.canonical.items()}, sort_keys=True).encode()).hexdigest(),
+                      "prior_terminal": fixture.prior_terminal, "prior_sql": fixture.prior_sql,
+                      "assignment_success": scope.assignment_success, "writer_commit_success": scope.writer_commit_success}), flush=True)
+    if request["termination"] == "sigkill":
+        os.kill(os.getpid(), signal.SIGKILL)
+    os._exit(74)
+with _ResidualScope(fixture, crash_point=request["point"], crash=stop) as scope:
+    ApplicationSQLAuthority.recover(root, request["passphrase"], expected_prefix=fixture.trusted_prefix)
+raise AssertionError("maintenance interruption was not reached")
+"""

@@ -132,6 +132,10 @@ def derive(store, receipt, reading):
     """Pure source interpretation; no authority rows are created here."""
     started = time.perf_counter()
     original, admitted = authenticate(store, receipt, reading)
+    from .curated_instrument_contract import FAMILIES
+    if reading.get("doc_type") in FAMILIES:
+        instrument_inputs(store, receipt, reading, derive=False)
+        return None, []
     body = {"doc_id": receipt["doc_id"], "doc_type": reading["doc_type"],
             "response_text": reading["raw_text"], "parse_ok": True, "parse_error": None,
             "phase": "extract", "acquisition": admitted["acquisition"],
@@ -215,3 +219,52 @@ def interpret_curated(store, receipt, reading):
     for occurrence in occurrences:
         store._put("source_occurrences", occurrence)
     return facts
+
+
+def instrument_inputs(store, receipt, reading, *, lookup=None, derive=True):
+    """Authenticate custody and installed context before any typed derivation."""
+    from .curated_instrument_contract import FAMILIES
+    from .reading import current_read_context
+    from .store import IntegrityError
+    from ..crypto import CryptoError
+    try:
+        original, admitted = authenticate(store, receipt, reading)
+        doc_type = reading["doc_type"]
+        if (doc_type not in FAMILIES or receipt["facts_type"] != "curated"
+                or receipt["facts"] != "null" or reading["facts"] is not None):
+            raise ValueError("curated instrument raw reading differs")
+        tags = json.loads(receipt["capture_types"])
+        context_id = tags["read_context_id"]
+        _reading, expected_admission = issue(store._curated_owner, original, receipt["doc_id"])
+        if canonical(admitted) != canonical({**expected_admission, "read_context_id": context_id}):
+            raise ValueError("curated instrument admission differs")
+        if lookup is None:
+            captured = store._row("read_contexts", "context_id=?", (context_id,))
+        else:
+            captured = lookup("read_contexts", (context_id,))
+            if lookup("source_admissions", (receipt["doc_id"],)) != dict(doc_id=receipt["doc_id"], body=canonical(admitted)):
+                raise ValueError("curated instrument admission prefix differs")
+            document = lookup("documents", (receipt["doc_id"],))
+            if document is None or document["byte_count"] != len(original) or document["contract"] != receipt["contract"]:
+                raise ValueError("curated instrument custody prefix differs")
+        if (captured is None or hashlib.sha256(captured["body"].encode()).hexdigest() != context_id
+                or captured["body"] != canonical(current_read_context(store._implementation_identity))):
+            raise ValueError("curated instrument read context differs")
+        from ..ingest.registry import profile_for, INSTRUMENT_IDENTITY
+        profile = profile_for(doc_type)
+        if profile is None or profile.identity != INSTRUMENT_IDENTITY:
+            raise ValueError("curated instrument profile is missing")
+        result = dict(doc_type=doc_type, admitted=admitted, profile=profile)
+        if derive:
+            body = {"doc_id": receipt["doc_id"], "doc_type": doc_type, "response_text": reading["raw_text"],
+                    "parse_ok": True, "parse_error": None, "phase": "extract", "acquisition": admitted["acquisition"],
+                    "normalization_locale": admitted["locale"], "source_currency": admitted["currency"]}
+            text = curation.decode_retained_input(body)
+            envelope = curation.decode_envelope(body["response_text"], doc_type)
+            pages = curation.validate_pdf_cells(original, envelope)
+            if pages != admitted["document"]["page_count"]:
+                raise ValueError("curated instrument page count differs")
+            result.update(text=text, page_count=pages, validated_cell_count=len(envelope["source_cells"]))
+        return result
+    except (AuthorityError, ValueError, TypeError, KeyError, IndexError, StopIteration, OSError, CryptoError) as error:
+        raise IntegrityError("curated instrument authenticated inputs differ") from error

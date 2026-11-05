@@ -19,6 +19,12 @@ from .store import canonical, AuthorityError
 
 _IMPLEMENTATION_MODULES = (
     "viva.sql_authority", "viva.sql_authority.store", "viva.sql_authority.schema",
+    "viva.sql_authority.certified_state", "viva.sql_authority.incremental", "viva.ingest.raw_store",
+    "viva.sql_authority.cd_capture_contract", "viva.sql_authority.cd_receipt_verify",
+    "viva.sql_authority.curated_instrument_contract", "viva.sql_authority.curated_instrument",
+    "viva.sql_authority.curated_instrument_verify",
+    "viva.sql_authority.cd_receipts", "viva.ingest.instrument_read",
+    "viva.ingest.instrument_parser",
     "viva.sql_authority.bank", "viva.sql_authority.reading", "viva.sql_authority.curated",
     "viva.sql_authority.identity", "viva.sql_authority.transfer_schema",
     "viva.sql_authority.transfers", "viva.sql_authority.transfer_verify",
@@ -95,7 +101,9 @@ def profile_descriptor(profile):
 
 def current_read_context(implementation):
     """Capture trusted installed contracts before admitting a reader request."""
+    from .curated_instrument_contract import PROFILE, descriptor
     return {"format": FORMAT, "schema_version": SCHEMA_VERSION,
+            "receipt_profiles": {PROFILE: descriptor()},
             "implementation": implementation,
             "normalization_rules_version": normalize.RULES_VERSION,
             "profiles": {name: profile_descriptor(profile) for name, profile in sorted(registry._INDEX.items())}}
@@ -153,10 +161,88 @@ def _facts_shape(value, tags):
     return True
 
 
+def _retained_cd_interpretation(store, receipt):
+    """Describe the retained proposal without promoting financial observations."""
+    from ..ingest.instrument_read import InstrumentReadFacts, parser_for
+    from .cd_capture_contract import PROFILE, INTERPRETATION_KIND
+    from .store import IntegrityError
+
+    reading = json.loads(receipt["body"])
+    facts = InstrumentReadFacts.from_dict(json.loads(receipt["facts"]))
+    tags = json.loads(receipt["capture_types"])
+    context_id = tags["read_context_id"]
+    captured = store._row("read_contexts", "context_id=?", (context_id,))
+    if captured is None:
+        raise IntegrityError("CD read context is missing")
+    read_context = json.loads(captured["body"])
+    if (hashlib.sha256(captured["body"].encode()).hexdigest() != context_id
+            or read_context != current_read_context(store._implementation_identity)):
+        raise IntegrityError("CD read context differs from installed contracts")
+    profile = read_context["profiles"].get(reading["doc_type"].strip().lower())
+    binding, linkage = "matched", "not_evaluated"
+    if facts.doc_id != receipt["doc_id"]:
+        binding, reason = "different", "document_mismatch"
+    elif reading["doc_type"] != facts.doc_type:
+        binding, reason = "different", "classification_mismatch"
+    elif reading["error"] is not None:
+        reason = "reader_error"
+    elif not reading["raw_text"]:
+        reason = "no_raw_response"
+    else:
+        inputs = reading["normalization_context"]
+        if inputs is None or inputs["parser_currency"] is None or not inputs["parser_currency"].strip():
+            reason = "no_parser_context"
+        elif inputs["parser_currency"] != facts.currency:
+            reason, linkage = "context_currency_mismatch", "different"
+        else:
+            proposal, error = parser_for("term_deposit_statement")(
+                reading["raw_text"], receipt["doc_id"], inputs["parser_locale"], inputs["parser_currency"])
+            if proposal is None or error:
+                reason, linkage = "parser_refused", "invalid"
+            elif (proposal.doc_id != facts.doc_id or proposal.doc_type != facts.doc_type
+                  or proposal.currency != facts.currency or proposal.payload != facts.payload):
+                reason, linkage = "facts_differ", "different"
+            else:
+                reason, linkage = "matched", "matched"
+    context = {
+        "format": read_context["format"], "schema_version": read_context["schema_version"],
+        "implementation": read_context["implementation"],
+        "normalization_rules_version": read_context["normalization_rules_version"],
+        "profile_version": profile["profile_version"] if profile else None,
+        "profile_identity": profile["identity"] if profile else None,
+        "profile_kind": profile["account_kind"] if profile else None,
+        "profile_descriptor": profile,
+        "cd_capture": {"version": 1, "profile": PROFILE, "claim_binding": binding,
+                       "raw_linkage": linkage, "reason": reason},
+    }
+    return dict(doc_id=receipt["doc_id"], facts_type=INTERPRETATION_KIND,
+                facts=receipt["facts"], context=canonical(context))
+
+
 def interpret(store, receipt):
     """Interpret only after the complete returned reading is durable."""
     existing = store._row("interpretations", "doc_id=?", (receipt["doc_id"],))
+    if receipt["facts_type"] == "cd_capture_v1":
+        row = _retained_cd_interpretation(store, receipt)
+        if existing is not None:
+            if existing != row:
+                from .store import IntegrityError
+                raise IntegrityError("CD interpretation differs from retained inputs")
+            return existing
+        store._put("interpretations", row)
+        return row
     reading = json.loads(receipt["body"])
+    from .curated_instrument_contract import FAMILIES
+    if receipt["facts_type"] == "curated" and reading.get("doc_type") in FAMILIES:
+        from .curated_instrument import interpretation
+        row = interpretation(store, receipt)
+        if existing is not None:
+            if existing != row:
+                from .store import IntegrityError
+                raise IntegrityError("curated instrument interpretation differs")
+            return existing
+        store._put("interpretations", row)
+        return row
     if receipt["facts_type"] == "curated":
         from .curated import authenticate
         try:

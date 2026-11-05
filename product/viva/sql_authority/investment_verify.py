@@ -879,106 +879,140 @@ def _identity_decision(frontier, operations, index, row, facts_by_doc, revision)
                 fail('held identity mapping differs from actual resolution')
 
 
-def verify(store, state, export):
+def _bootstrap():
     prefix={table:{} for table in TABLES}
     facts_by_doc={};contexts={};source_cache={}
     expected_active={};expected_effects={};expected_legs={};expected_adjustments={}
     previous_decisions={};next_ordinal=1
     interpretation_revisions={}
-    for revision,previous,envelope,_digest in export['records']:
-        payload=json.loads(open_sealed(store._audit_key,json.loads(envelope),aad=canonical([revision,previous]).encode()))
-        operations=payload['operations']
-        if sum(op['table']=='interpretations' and op['row']['facts_type']=='investment' for op in operations)>1:
-            fail('one public writer contains multiple first investment interpretations')
-        before={table:dict(values) for table,values in prefix.items()}
-        final={table:dict(values) for table,values in prefix.items()}
-        for op in operations:
-            row=op['row'];table=op['table'];final[table][tuple(row[k] for k in KEYS[table])]=row
-        boundary=_cause_boundary(operations,before,final)
-        needed={json.loads(op['row']['body'])['known_operation'] for op in operations if op['table']=='identity_decisions' and json.loads(op['row']['body']).get('policy')=='investment_source_reference'}
-        frontiers={}
-        new_accounts=set();native_creation=False;attempted_native=set()
-        for index,op in enumerate(operations):
-            if index in needed:
-                frontiers[index]={name:dict(values) for name,values in prefix.items()}
-            table,row=op['table'],op['row']
-            if table=='interpretations' and row['facts_type']=='investment':
-                doc=row['doc_id']
-                receipt=prefix['receipts'].get((doc,))
-                cache_key=(doc,canonical(receipt),row['facts'],row['context'])
-                if cache_key not in source_cache:
-                    source_cache[cache_key]=_source(store,prefix,doc,row)
-                facts,context=source_cache[cache_key]
-                facts_by_doc[doc]=facts;contexts[doc]=context
-                interpretation_revisions.setdefault(doc,revision)
-            if table=='investment_facts':
-                doc=row['doc_id']
-                if (doc,) in prefix['investment_facts'] or interpretation_revisions.get(doc)!=revision or row['created_revision']!=revision or (doc,) not in prefix['interpretations']:
-                    fail('facts creation revision is not its genuine first interpretation writer')
-            if table=='accounts' and (row['account_id'],) not in prefix['accounts']:
-                new_accounts.add(row['account_id'])
-                native_creation=native_creation or row['kind']=='investment'
-                if native_creation and len(new_accounts)>1:
-                    fail('second physical creation violates actual writer revision uniqueness')
-            if table=='identity_decisions' and json.loads(row['body']).get('policy')=='investment_source_reference':
-                known=json.loads(row['body'])['known_operation']
-                if type(known) is not int or known not in frontiers or known>index:
-                    fail('native resolver frontier is not actual earlier operation')
-                initial=_required_resolver_attempt(frontiers[known],before,operations,known,row['doc_id'],facts_by_doc,attempted_native)
-                body=json.loads(row['body'])
-                if body['promoted'] and body['resolution']['verdict']=='new' and not initial:
-                    fail('an already pending source created a second independent physical origin')
-                _identity_decision(frontiers[known],operations,index,row,facts_by_doc,revision)
-            if table=='investment_bases':
-                _basis_creation(prefix,facts_by_doc,row,revision,index)
-            elif table=='investment_groups':
-                _group(prefix,facts_by_doc,row)
-                if row['created_revision']!=revision:
-                    fail('cash group backdated revision')
-            elif table=='investment_decisions':
-                if row['ordinal']!=next_ordinal or row['revision']!=revision or row['boundary']!=boundary or not json.loads(boundary)['causes']:
-                    fail('decision order/revision/input boundary differs')
-                group=prefix['investment_groups'].get((row['group_id'],))
-                if group is None:
-                    fail('decision cites a future cash group')
-                prior=expected_active.get((row['group_id'],))
-                eligible,basis=_desired(prefix,facts_by_doc,group,prior)
-                expected_action='activate' if eligible and (prior is None or not prior['active']) else 'deactivate' if not eligible and prior and prior['active'] else 'rebind' if eligible and prior and prior['basis_id']!=basis['basis_id'] else None
-                expected_basis=prior['basis_id'] if expected_action=='deactivate' else basis['basis_id'] if basis else None
-                if row['action']!=expected_action or row['basis_id']!=expected_basis or row['previous_ordinal']!=previous_decisions.get(row['group_id']):
-                    fail('activation/reversal/rebind eligibility or prior basis differs')
-                if row['action']=='activate' and not any(e['group_id']==row['group_id'] for e in expected_effects.values()):
-                    effects,legs=_effect_templates(prefix,facts_by_doc,group,basis)
-                    expected_effects.update(effects);expected_legs.update(legs)
-                if row['action']!='rebind':
-                    for effect in expected_effects.values():
-                        if effect['group_id']!=row['group_id']:
-                            continue
-                        for (effect_id,leg),template in expected_legs.items():
-                            if effect_id==effect['effect_id']:
-                                value=dict(decision_ordinal=row['ordinal'],**template,date=effect['date'])
-                                if row['action']=='deactivate':
-                                    value['amount']=display(negate(scalar(template['amount'])))
-                                expected_adjustments[(row['ordinal'],effect_id,leg)]=value
-                expected_active[(row['group_id'],)]=dict(group_id=row['group_id'],active=int(row['action']!='deactivate'),decision_ordinal=row['ordinal'],basis_id=None if row['action']=='deactivate' else row['basis_id'],revision=revision)
-                previous_decisions[row['group_id']]=row['ordinal'];next_ordinal+=1
-            prefix[table][tuple(row[k] for k in KEYS[table])]=row
-        _static(prefix,facts_by_doc,contexts,interpretation_revisions)
-        _final_eligibility(prefix,facts_by_doc,expected_active)
-        _cash_accounts(prefix,facts_by_doc,before)
-        for account_id in new_accounts:
-            account=prefix['accounts'][(account_id,)]
-            if account['kind']!='investment':
-                continue
-            first=next((op['row'] for op in operations if op['table']=='investment_snapshots' and op['row']['account_id']==account_id),None)
-            if first is None or prefix['investment_facts'][(first['doc_id'],)]['created_revision']!=revision:
-                fail('pending or foreign source created an independent new account')
-            facts=facts_by_doc[first['doc_id']]
-            inserted=next(op['row'] for op in operations if op['table']=='accounts' and op['row']['account_id']==account_id)
-            expected=dict(kind='investment',currency=facts.currency,number=facts.account_number,normalized_number=usable_full_number(facts.account_number),institution=facts.institution,label=facts.account_ref,names=canonical(facts.account_names),earliest_amount=display(facts.cash),earliest_date=facts.as_of,current_amount=display(facts.cash),current_date=facts.as_of)
-            if any(inserted[k]!=v for k,v in expected.items()):
-                fail('native account creation metadata is not source-owned')
-        if prefix['investment_active']!=expected_active or prefix['investment_effects']!=expected_effects or prefix['investment_legs']!=expected_legs or prefix['investment_adjustments']!=expected_adjustments:
-            fail('immutable effect multiplicity/current pointers/signed history differs')
+    return dict(prefix=prefix,facts_by_doc=facts_by_doc,contexts=contexts,source_cache=source_cache,expected_active=expected_active,expected_effects=expected_effects,expected_legs=expected_legs,expected_adjustments=expected_adjustments,previous_decisions=previous_decisions,next_ordinal=next_ordinal,interpretation_revisions=interpretation_revisions)
+
+
+def _advance(store,checkpoint,revision,operations):
+    """Check one authenticated prefix with the full verifier's operation frontiers."""
+    prefix=checkpoint['prefix']
+    facts_by_doc=checkpoint['facts_by_doc']
+    contexts=checkpoint['contexts']
+    source_cache=checkpoint['source_cache']
+    expected_active=checkpoint['expected_active']
+    expected_effects=checkpoint['expected_effects']
+    expected_legs=checkpoint['expected_legs']
+    expected_adjustments=checkpoint['expected_adjustments']
+    previous_decisions=checkpoint['previous_decisions']
+    next_ordinal=checkpoint['next_ordinal']
+    interpretation_revisions=checkpoint['interpretation_revisions']
+    if sum(op['table']=='interpretations' and op['row']['facts_type']=='investment' for op in operations)>1:
+        fail('one public writer contains multiple first investment interpretations')
+    before={table:dict(values) for table,values in prefix.items()}
+    final={table:dict(values) for table,values in prefix.items()}
+    for op in operations:
+        row=op['row'];table=op['table'];final[table][tuple(row[k] for k in KEYS[table])]=row
+    boundary=_cause_boundary(operations,before,final)
+    needed={json.loads(op['row']['body'])['known_operation'] for op in operations if op['table']=='identity_decisions' and json.loads(op['row']['body']).get('policy')=='investment_source_reference'}
+    frontiers={}
+    new_accounts=set();native_creation=False;attempted_native=set()
+    for index,op in enumerate(operations):
+        if index in needed:
+            frontiers[index]={name:dict(values) for name,values in prefix.items()}
+        table,row=op['table'],op['row']
+        if table=='interpretations' and row['facts_type']=='investment':
+            doc=row['doc_id']
+            receipt=prefix['receipts'].get((doc,))
+            cache_key=(doc,canonical(receipt),row['facts'],row['context'])
+            if cache_key not in source_cache:
+                source_cache[cache_key]=_source(store,prefix,doc,row)
+            facts,context=source_cache[cache_key]
+            facts_by_doc[doc]=facts;contexts[doc]=context
+            interpretation_revisions.setdefault(doc,revision)
+        if table=='investment_facts':
+            doc=row['doc_id']
+            if (doc,) in prefix['investment_facts'] or interpretation_revisions.get(doc)!=revision or row['created_revision']!=revision or (doc,) not in prefix['interpretations']:
+                fail('facts creation revision is not its genuine first interpretation writer')
+        if table=='accounts' and (row['account_id'],) not in prefix['accounts']:
+            new_accounts.add(row['account_id'])
+            native_creation=native_creation or row['kind']=='investment'
+            if native_creation and len(new_accounts)>1:
+                fail('second physical creation violates actual writer revision uniqueness')
+        if table=='identity_decisions' and json.loads(row['body']).get('policy')=='investment_source_reference':
+            known=json.loads(row['body'])['known_operation']
+            if type(known) is not int or known not in frontiers or known>index:
+                fail('native resolver frontier is not actual earlier operation')
+            initial=_required_resolver_attempt(frontiers[known],before,operations,known,row['doc_id'],facts_by_doc,attempted_native)
+            body=json.loads(row['body'])
+            if body['promoted'] and body['resolution']['verdict']=='new' and not initial:
+                fail('an already pending source created a second independent physical origin')
+            _identity_decision(frontiers[known],operations,index,row,facts_by_doc,revision)
+        if table=='investment_bases':
+            _basis_creation(prefix,facts_by_doc,row,revision,index)
+        elif table=='investment_groups':
+            _group(prefix,facts_by_doc,row)
+            if row['created_revision']!=revision:
+                fail('cash group backdated revision')
+        elif table=='investment_decisions':
+            if row['ordinal']!=next_ordinal or row['revision']!=revision or row['boundary']!=boundary or not json.loads(boundary)['causes']:
+                fail('decision order/revision/input boundary differs')
+            group=prefix['investment_groups'].get((row['group_id'],))
+            if group is None:
+                fail('decision cites a future cash group')
+            prior=expected_active.get((row['group_id'],))
+            eligible,basis=_desired(prefix,facts_by_doc,group,prior)
+            expected_action='activate' if eligible and (prior is None or not prior['active']) else 'deactivate' if not eligible and prior and prior['active'] else 'rebind' if eligible and prior and prior['basis_id']!=basis['basis_id'] else None
+            expected_basis=prior['basis_id'] if expected_action=='deactivate' else basis['basis_id'] if basis else None
+            if row['action']!=expected_action or row['basis_id']!=expected_basis or row['previous_ordinal']!=previous_decisions.get(row['group_id']):
+                fail('activation/reversal/rebind eligibility or prior basis differs')
+            if row['action']=='activate' and not any(e['group_id']==row['group_id'] for e in expected_effects.values()):
+                effects,legs=_effect_templates(prefix,facts_by_doc,group,basis)
+                expected_effects.update(effects);expected_legs.update(legs)
+            if row['action']!='rebind':
+                for effect in expected_effects.values():
+                    if effect['group_id']!=row['group_id']:
+                        continue
+                    for (effect_id,leg),template in expected_legs.items():
+                        if effect_id==effect['effect_id']:
+                            value=dict(decision_ordinal=row['ordinal'],**template,date=effect['date'])
+                            if row['action']=='deactivate':
+                                value['amount']=display(negate(scalar(template['amount'])))
+                            expected_adjustments[(row['ordinal'],effect_id,leg)]=value
+            expected_active[(row['group_id'],)]=dict(group_id=row['group_id'],active=int(row['action']!='deactivate'),decision_ordinal=row['ordinal'],basis_id=None if row['action']=='deactivate' else row['basis_id'],revision=revision)
+            previous_decisions[row['group_id']]=row['ordinal'];next_ordinal+=1
+        prefix[table][tuple(row[k] for k in KEYS[table])]=row
+    _static(prefix,facts_by_doc,contexts,interpretation_revisions)
+    _final_eligibility(prefix,facts_by_doc,expected_active)
+    _cash_accounts(prefix,facts_by_doc,before)
+    for account_id in new_accounts:
+        account=prefix['accounts'][(account_id,)]
+        if account['kind']!='investment':
+            continue
+        first=next((op['row'] for op in operations if op['table']=='investment_snapshots' and op['row']['account_id']==account_id),None)
+        if first is None or prefix['investment_facts'][(first['doc_id'],)]['created_revision']!=revision:
+            fail('pending or foreign source created an independent new account')
+        facts=facts_by_doc[first['doc_id']]
+        inserted=next(op['row'] for op in operations if op['table']=='accounts' and op['row']['account_id']==account_id)
+        expected=dict(kind='investment',currency=facts.currency,number=facts.account_number,normalized_number=usable_full_number(facts.account_number),institution=facts.institution,label=facts.account_ref,names=canonical(facts.account_names),earliest_amount=display(facts.cash),earliest_date=facts.as_of,current_amount=display(facts.cash),current_date=facts.as_of)
+        if any(inserted[k]!=v for k,v in expected.items()):
+            fail('native account creation metadata is not source-owned')
+    if prefix['investment_active']!=expected_active or prefix['investment_effects']!=expected_effects or prefix['investment_legs']!=expected_legs or prefix['investment_adjustments']!=expected_adjustments:
+        fail('immutable effect multiplicity/current pointers/signed history differs')
+    checkpoint['next_ordinal']=next_ordinal
+    return checkpoint
+
+
+def _finish(checkpoint,state):
+    prefix=checkpoint['prefix']
     if any(prefix[table]!=state[table] for table in TABLES if table.startswith('investment_')):
         fail('final investment representation differs from audited prefixes')
+
+
+def _verify_prefixes(store,state,export):
+    checkpoint=_bootstrap()
+    for revision,previous,envelope,_digest in export['records']:
+        payload=json.loads(open_sealed(store._audit_key,json.loads(envelope),aad=canonical([revision,previous]).encode()))
+        _advance(store,checkpoint,revision,payload['operations'])
+    _finish(checkpoint,state)
+    return checkpoint
+
+
+def verify(store,state,export):
+    checkpoint=_verify_prefixes(store,state,export)
+    collector=getattr(store,'_semantic_collection',None)
+    if collector is not None:collector['investment']=checkpoint

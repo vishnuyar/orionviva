@@ -1,0 +1,97 @@
+{
+  "status": "ALL_95_CONFLICTS_AND_15_CLEAN_MERGES_SOURCE_REVIEWED_RUNTIME_PENDING",
+  "records": [
+    {
+      "path": "core/vivacore/models/openai_compat.py",
+      "retained_sha256": "e006ab5170336d07390f42f02b0d60eab8fef45be4f5d9beae4e5f2582a0c175",
+      "prototype_sha256": "6e7d3d35714daebb6dc7065adb07e92ac0dcd36bc3709840454acf1e661673e1",
+      "result_sha256": "6e7d3d35714daebb6dc7065adb07e92ac0dcd36bc3709840454acf1e661673e1",
+      "resolution": "reviewed-forward-source-version",
+      "rationale": "Adds scoped pre-transport admission before _post and response retention immediately after transport, including non-200 responses; retains existing retries/body/provider handling. No scope must remain no-op; scoped admission and retention order/failure require existing extraction transport/observer tests. No provider call was made during review.",
+      "existing_check_owners": [
+        "core/tests/test_extraction_transport.py",
+        "core/tests/test_extraction_observer.py",
+        "core/tests/test_openai_local_transport.py"
+      ],
+      "qualification": "Source review only; no runtime acceptance claimed."
+    },
+    {
+      "path": "desktop/src/app/session.test.ts",
+      "retained_sha256": "6cf50f693f71c7147abdcae080f67c7ca5223247ddb3ee2e80668e78760abbca",
+      "prototype_sha256": "771d5149547b305c730a787a4fa519d396a5208cbacde1562d233e122668ae25",
+      "result_sha256": "771d5149547b305c730a787a4fa519d396a5208cbacde1562d233e122668ae25",
+      "resolution": "reviewed-forward-source-version",
+      "rationale": "Existing upload timeout test now follows queue-based upload_many and import-session discovery. Timeout remains unknown rather than automatic retry; single-upload API remains in client/contracts and separate existing tests.",
+      "existing_check_owners": [
+        "desktop/src/app/session.test.ts",
+        "desktop/src/app/App.documents.test.tsx"
+      ],
+      "qualification": "Source review only; no runtime acceptance claimed."
+    },
+    {
+      "path": "desktop/src/bridge/client.ts",
+      "retained_sha256": "0b4a73c79a04d4f0ab2e081a8486b0eca846211c5442f6752c01ad217f3ab386",
+      "prototype_sha256": "7ab3e044caa6455dd143a635f8a877e9b50abba5b715ed61fa466e942adc640b",
+      "result_sha256": "7ab3e044caa6455dd143a635f8a877e9b50abba5b715ed61fa466e942adc640b",
+      "resolution": "reviewed-forward-source-version",
+      "rationale": "Retains uploadDocument operation/payload and all old client methods; adds optional multi-select forwarding, explicit retained-reading confirmation and queue/list/inspect/resume/bulk methods. Paired contracts/backend source checked; runtime compatibility remains owed.",
+      "existing_check_owners": [
+        "desktop/src/bridge/client.test.ts",
+        "desktop/src/app/session.test.ts"
+      ],
+      "qualification": "Source review only; no runtime acceptance claimed."
+    },
+    {
+      "path": "desktop/src/bridge/contracts.ts",
+      "retained_sha256": "c7a300eb0007ace79f6c7201351bb0a0f9cf7a3709109ff6caf92c5cbf533ab6",
+      "prototype_sha256": "054f4f74716e9406bcfd735c519af74070c1d66a0e274a331dff65f726558d03",
+      "result_sha256": "054f4f74716e9406bcfd735c519af74070c1d66a0e274a331dff65f726558d03",
+      "resolution": "reviewed-forward-source-version",
+      "rationale": "All old members retained; new multi-picker and bulk/retained/session methods are optional for older hosts. Does not turn single-file chooser into implicit bulk transport. Type and bridge tests required.",
+      "existing_check_owners": [
+        "desktop/src/bridge/client.test.ts",
+        "desktop/src/bridge/browser-transport.test.ts"
+      ],
+      "qualification": "Source review only; no runtime acceptance claimed."
+    },
+    {
+      "path": "desktop/src/surface/adapters/conversation.ts",
+      "retained_sha256": "18c500d5aeb69426eda267096014996b7aa0c9a078dfd5a63fcfa485bda12b8d",
+      "prototype_sha256": "acd86ea19189a8adb072ef4c58471121579821fe200484336f49dca71b502d7c",
+      "result_sha256": "acd86ea19189a8adb072ef4c58471121579821fe200484336f49dca71b502d7c",
+      "resolution": "reviewed-forward-source-version",
+      "rationale": "Intentional behavior change: missing.source keeps the uncertainty row present but is no longer copied into its display label. Question then explicit human label then structural fallback governs rendered text, avoiding raw internal source tags. Original row is not silently dropped. Existing ConversationDrawer fallback/precedence tests cover successor rendering; adapter integration/type checks remain owed.",
+      "existing_check_owners": [
+        "desktop/src/surface/adapters/conversation.test.ts",
+        "desktop/src/features/conversation/ConversationDrawer.test.tsx"
+      ],
+      "qualification": "Source review only; no runtime acceptance claimed."
+    },
+    {
+      "path": "docs/user-interface-implementation-status.md",
+      "retained_sha256": "c909680bfad5f91f787c4f44d57cba4de6022cf6a008de251d5354d2419021d9",
+      "prototype_sha256": "c4676d59ed9b9f397c4bc7d708c9c8c3f228068e6e08d11531216cb31345016d",
+      "result_sha256": "c4676d59ed9b9f397c4bc7d708c9c8c3f228068e6e08d11531216cb31345016d",
+      "resolution": "reviewed-forward-source-version",
+      "rationale": "Adds source-only bulk/session/receipt and retained-reading statements, explicitly retaining browser/paid/installation acceptance gaps; narrows old receipt-navigation statement to single-upload path. Does not claim complete persona or installed delivery.",
+      "existing_check_owners": [
+        "desktop/src/app/App.documents.test.tsx",
+        "product/tests/test_bulk_document_classification.py"
+      ],
+      "qualification": "Source review only; no runtime acceptance claimed."
+    }
+  ],
+  "other_resolution_records": [
+    "UI-DOC-DEPENDENCY-RESOLUTIONS.json",
+    "BACKEND-RESOLUTIONS.json",
+    "TEST-RESOLUTIONS.json"
+  ],
+  "source_coverage": "COVERAGE-VERIFIED.json",
+  "invariants": [
+    "Original trees and Primary index untouched",
+    "No default canonical SQL migration",
+    "No tests weakened or financial meaning assumed confirmed",
+    "No private documents or credentials included",
+    "No runtime checks or commit implied by source coverage"
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "phase": "DOCUMENTATION_ONLY_AFTER_INVOCATION44_TERMINAL",
+  "created_utc": "2026-11-05T20:29:50.683797+00:00",
+  "source_baseline": "COVERAGE-VERIFIED.json",
+  "qualification_source_code_unchanged": true,
+  "original_2446_source_versions_preserved": true,
+  "changes": [
+    {
+      "path": "docs/reading-guide.md",
+      "before_sha256": "53d40d5c6043665f2a291a2668ff5f42b99a3377415461f4d5afc6743d0b0e65",
+      "after_sha256": "62c6205b1ea47dde4805640f78f3aec92a1b8451f1815472eadad79991822a12",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/reading-guide.md",
+      "before_sha256": "62c6205b1ea47dde4805640f78f3aec92a1b8451f1815472eadad79991822a12",
+      "after_sha256": "87220785889463e29a8d4715660c591f6b713e449c8aba9fea993080977e7fc7",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/sql-authority-application.md",
+      "before_sha256": "cdc79ad195fa73023c46c4c2336e26617fc7673a514e98b0fddaa98ac092b286",
+      "after_sha256": "908f511fd505632905fd724da982a5232bab008f197e9f34b10dc12b640b657b",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/sql-authority-application.md",
+      "before_sha256": "908f511fd505632905fd724da982a5232bab008f197e9f34b10dc12b640b657b",
+      "after_sha256": "9ba9c85882a313f2db7a81ffa85340490f5f14493e15d6889ce25f5404678e9e",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/sql-authority-application.md",
+      "before_sha256": "9ba9c85882a313f2db7a81ffa85340490f5f14493e15d6889ce25f5404678e9e",
+      "after_sha256": "9a96f0dce49abb9fc4204dec8785194705243f77f35ab1a328a150fc5ad75d8e",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/sql-authority-application.md",
+      "before_sha256": "9a96f0dce49abb9fc4204dec8785194705243f77f35ab1a328a150fc5ad75d8e",
+      "after_sha256": "c23aec23b3c790e63006ea278d264ac1b737c890bb3d7b8cb194814a6259b51c",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/sql-authority-payroll.md",
+      "before_sha256": "113affb09c020aa82de1921cd7a19b05a7351878256dc9a224b434d81142e7ce",
+      "after_sha256": "a5ded24e7ef6ffbcfe4907ab886e8e831c69ab11242a468eeced1785b3a56fed",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/sql-authority-payroll.md",
+      "before_sha256": "a5ded24e7ef6ffbcfe4907ab886e8e831c69ab11242a468eeced1785b3a56fed",
+      "after_sha256": "029cd7d4f481bddf6f6b7678e7c90c81a222752326009ecc62ea6c31e599bced",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/sql-authority-live-history.md",
+      "before_sha256": "a8deaea0d959d8e1bc043797e5d586fb428f95bbb533a6074c500b132407dd2e",
+      "after_sha256": "2ab958c0f30c564f301bed6535c52c177ef73c48ba5de621fbd1bae57c78b081",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/sql-authority-live-history.md",
+      "before_sha256": "2ab958c0f30c564f301bed6535c52c177ef73c48ba5de621fbd1bae57c78b081",
+      "after_sha256": "e96e2f817daab2e309f64aba039674995acd05001786e830d5aa7b0ae9167919",
+      "reason": "Reconcile current source/status after the unchanged-source targeted qualification; documentation only."
+    },
+    {
+      "path": "docs/sql-authority-application.md",
+      "before_sha256": "c23aec23b3c790e63006ea278d264ac1b737c890bb3d7b8cb194814a6259b51c",
+      "after_sha256": "6700fb18ae07394d96b77325f4821f8bf48d9070133e004e4f9b2caef34a62d4",
+      "reason": "Join possessive correctly; documentation only."
+    }
+  ]
+}

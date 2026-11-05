@@ -284,7 +284,8 @@ def test_manual_transfer_changes_current_treatment_without_changing_source_cash(
     store=accounting_store
     fixed_initial(store)
     before_accounts=store._read('SELECT account_id,current_amount,earliest_amount FROM accounts ORDER BY account_id');before=store.income_expense()
-    suggestion=store.transfer_suggestions()[0];a,b=suggestion['a'],suggestion['candidates'][0]
+    initial_suggestions=store.transfer_suggestions()
+    suggestion=initial_suggestions[0];a,b=suggestion['a'],suggestion['candidates'][0]
     assert store.confirm_transfer(a,b,today='2024-03-01')
     linked=store.income_expense(start='2024-02-01',end='2024-02-29')
     assert len(linked['suppressed'])==2 and all(r['reason']=='live_transfer' and r['relationship']==sorted([a,b]) for r in linked['suppressed'])
@@ -293,7 +294,10 @@ def test_manual_transfer_changes_current_treatment_without_changing_source_cash(
     assert store.unlink_transfer(a,b,today='2024-03-02')
     unlinked=store.income_expense()
     assert unlinked['lines']==before['lines'] and unlinked['suppressed']==[]
-    assert not store.transfer_suggestions()
+    remaining_suggestions=store.transfer_suggestions()
+    expected_rivals=[row for row in initial_suggestions if row['a'] not in {a,b}]
+    assert expected_rivals and remaining_suggestions==expected_rivals
+    assert all(row['a']!=a for row in remaining_suggestions)
     assert not store.confirm_transfer(a,b,today='2024-03-03')
     assert store.income_expense()==unlinked
     from test_sql_authority_transfers import admit

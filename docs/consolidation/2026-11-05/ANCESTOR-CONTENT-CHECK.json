@@ -1,0 +1,386 @@
+{
+  "historical_matches": [
+    {
+      "path": "desktop/src/features/conversation/ConversationDrawer.test.tsx",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "desktop/src/features/conversation/ConversationDrawer.tsx",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/pyproject.toml",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/_source_emitter_support.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/investment_evidence/test_nonbank_funding.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/investment_evidence/test_payroll_annual_payload.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/investment_evidence/test_source_projector.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/investment_evidence/test_wire.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/retirement_funding/retirement_wire_fixture.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/sample_life/test_activation.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/test_investment_evidence_source_projector.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/test_investment_evidence_wire.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/tests/test_sample_worker.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/ingest/instrument_contracts.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/investment/authenticated.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/investment/events.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/investment/funding.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/investment/healing.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/investment/lifecycle.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/investment/payroll.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/retirement_funding/population.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/sample/activation.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/sample/instances.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/sample/resources.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    },
+    {
+      "path": "product/viva/sample/worker.py",
+      "retained_matches_ancestor": "68d29178a2c21c57523913f59bc2074fb05239a9"
+    }
+  ],
+  "requires_semantic_merge": [
+    {
+      "path": "desktop/src-tauri/src/browser.rs",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/app/App.documents.test.tsx",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/app/App.tsx",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/bridge/browser-transport.test.ts",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/bridge/browser-transport.ts",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/bridge/client.test.ts",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/features/documents/Documents.test.tsx",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/features/documents/Documents.tsx",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/styles/documents.css",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/surface/adapters/documents.test.ts",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/surface/adapters/documents.ts",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/surface/load-private-snapshot.ts",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "desktop/src/surface/types.ts",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "docs/financial-analysis-measurements-and-scenarios.md",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "docs/prompts-as-files.md",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/normalization/test_rebuild_context.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_answer_program_contracts.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_card_counterpart_contract.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_instrument_c_semantics.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_instrument_reader_b.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_instrument_repair2_b.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_native_packaging.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_packaged_admission_sources.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_persona_pack.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_prompt_library.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_scenario_numeric_prompt_contract.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_scenario_tools.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_tool_contract.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_tool_vocabulary.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/tests/test_versions.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/answer_program/execute.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/answer_program/instrument_families.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/answer_program/intents.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/answer_program/runtime.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/answer_program/validate.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/debug/claim.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/desktop_bridge/documents_page.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/desktop_bridge/pyi_rth_admission_sources.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/desktop_bridge/trust_actions.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/desktop_bridge/viva-desktop-bridge.spec",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/brokerage.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/brokerage_projector.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/instrument_parser.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/instrument_read.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/pipeline.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/pipeline_models.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/reader.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/registry.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/statement.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ingest/statement_projector.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/instrument_claims.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/investment/projector.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ledger/events.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ledger/instruments.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ledger/projection/__init__.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/ledger/projection/core.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/normalization_context.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/read_store/document_index.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/read_store/documents_page.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/read_store/instrument_authority.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/read_store/instrument_sql.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/read_store/store.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/rebuild.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/sample/curation.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/surface/numerical_receipts.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/surface/outbound.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/tools/__init__.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/tools/instruments.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/tools/runner.py",
+      "retained_matches_ancestor": null
+    },
+    {
+      "path": "product/viva/versions.json",
+      "retained_matches_ancestor": null
+    }
+  ]
+}

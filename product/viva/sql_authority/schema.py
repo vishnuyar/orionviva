@@ -1,7 +1,7 @@
 """Closed rows and indexes for the isolated experimental authority."""
 
-FORMAT = "viva-sql-authority-prototype-v5"
-SCHEMA_VERSION = 5
+FORMAT = "viva-sql-authority-prototype-v7"
+SCHEMA_VERSION = 7
 TABLES = {
     "documents": ("doc_id", "byte_count", "contract"),
     "source_admissions": ("doc_id", "body"),
@@ -131,8 +131,8 @@ def valid_row(table, row):
         ("dependencies", "direction"): {"forward", "backward"},
         ("postings", "grade"): {"verified", "unverified"},
         ("balance_observations", "grade"): {"corroborated"},
-        ("receipts", "facts_type"): {"balance", "payroll", "investment", "curated", "unsupported"},
-        ("interpretations", "facts_type"): {"balance", "payroll", "investment", "invalid_investment", "invalid_payroll", "invalid_balance", "invalid_reading", "contract_changed", "source_rejected", "unsupported"},
+        ("receipts", "facts_type"): {"balance", "payroll", "investment", "curated", "unsupported", "cd_capture_v1"},
+        ("interpretations", "facts_type"): {"balance", "payroll", "investment", "invalid_investment", "invalid_payroll", "invalid_balance", "invalid_reading", "contract_changed", "source_rejected", "unsupported", "cd_retained_v1", "curated_instrument_retained_v1"},
     }
     for column, value in row.items():
         if value is None:
@@ -149,6 +149,8 @@ def valid_row(table, row):
                 return False
             continue
         limit = 8 * 1024 * 1024 if column in {"body", "facts", "names", "context"} else 4096
+        if table == "receipts" and row["facts_type"] == "cd_capture_v1" and column == "capture_types":
+            limit = 8 * 1024 * 1024
         if column in {"logical_key", "normalized_name"}:
             limit = 16384
         if table == "accounts" and row["kind"] == "investment" and column in {"earliest_amount","current_amount"}:

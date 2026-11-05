@@ -12,8 +12,24 @@ unlink; a rival suggestion remained. Its later target-pair reconfirmation and
 Background/relink branch were not reached. Card direction, mixed cash/card totals
 and coherent old-sign oracle refusal passed. Nine worker invocations and four
 unsuccessful implemented family candidates remain recorded; the exception is
-consumed and no repair or retry is authorized. This document does not establish all-family,
+consumed; the selected-pair exception recorded next is separate. This document does not establish all-family,
 794-document, production application, performance or installed delivery acceptance.
+
+The separately authorized selected-pair correction executed all 381 cases with
+381 passes and zero failures, errors or skips. Independent terminal review
+verified the complete frozen input/runtime identities and native owned-group
+absence; the Director accepted this bounded focused correction. Its target case
+completed all 20 unconditional assertions: exact surviving rival bodies/order,
+selected-source absence, real immediate confirmation refusal, genuine Background
+admission, refreshed target suggestion, successful reconfirmation, report and
+suppression restoration, cash invariance and retained history. No product code or
+runtime changed. Ten family invocations and four unsuccessful candidates remain
+counted; the original 380-pass/one-failure result is retained and the grant is
+consumed. External 121.02 seconds and launcher 116.29499587509781 seconds are
+supporting-test costs, not 794-document performance. Later factual documentation
+updates carry this evidence for unchanged product/test/runtime bytes; the final
+whole-source identity has no fresh suite pass. No additional runtime, retry,
+package/full admission, main merge or production acceptance follows.
 
 The direct engine adds `SQLAuthority.income_expense(start='', end='')` as a
 canonical read requiring `verification='complete'`. The indexed experimental
@@ -108,11 +124,13 @@ two parameterless controls: checking income 300 plus cash expense 40/card expens
 output must be rejected by the independently reconstructed oracle. Manual relink
 requires an immediate refusal, then a genuine March Background source, an actual
 fresh suggestion and successful confirmation, with February lines/suppression,
-source cash and retained history specified. In the actual 381-case run, the
+source cash and retained history specified. In the earlier failed 381-case run, the
 transfer function stopped before that new branch at its overbroad global
-empty-suggestion assertion. Those later assertions receive no coverage credit.
-Both failed B1 results remain preserved. Separately admitted package/full gates
-and any new bounded implementation exception remain required.
+empty-suggestion assertion. That failed run receives no later-branch coverage credit.
+Both failed B1 results remain preserved. The subsequent selected-pair run completed
+this branch, as recorded above. Separately admitted package/full gates and any
+new bounded implementation exception remain required; no further execution is
+authorized by the consumed selected-pair grant.
 
 Funding and corrections, remaining family capabilities, actual application
 session/provider/manual/evidence integration, same-794 correctness/performance

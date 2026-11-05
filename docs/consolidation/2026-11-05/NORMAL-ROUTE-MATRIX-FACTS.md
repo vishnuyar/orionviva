@@ -1,0 +1,19 @@
+# Independent narrow semantic matrix review
+
+2026-11-05. Reviewed NORMAL-ROUTE-COMPATIBILITY.md SHA256c15ababceb8887b4cd385ba02c0359cc2c75b736ab13ec48d839a57ff853bd92 against Primary INDEX selected blobs/actual callers and prior independent source factsb006b6c3fdf4ba693f5a89f974449fc82df080a26e051602d25e5381dd2c24f6, routing reportd2b09d2080476b96e751631f4e82bed34d61f305817243df478f720af6fd1496, offline-path facts aea842a8f73196815dd1493b60bf9d7e383c58c291f42134a6ea1ff2bafcaa18. No broad repeat, imports/build/tests/probes/queries/vault access/source/index/worktree/runtime changes. Only this new note written.
+
+No material functional source mismatch found. One citation correction: the UI provider path is product/viva/desktop_bridge/vault_surface.py, not product/viva/vault_surface.py. Design notified; source conclusion is unchanged.
+
+| ID | Source-factual finding |
+|---|---|
+| M1 |Primary raw indexced1ce44124ba828467a2c2f866c338d587c1b7ce6e3d7f2ecf6ba3d7284791a and all six named working override hashes match matrix. Retained index/working policy state remains preserved. |
+| M2 |Present/different/absent classification correctly recognizes existing SQLCipher ReadStore/cursor suffix caching/materialization and actual JSONL canonical Vault route. It does not infer absence from SQLAuthority package name. Canonical SQL owner/DTO/revision/format/pending history is a distinct contract. |
+| M3 |Checked EventStore.append_atomically callback tuple[Event] and Ledger.append_atomically callback LedgerProjection/return record list; IngestResult fields and four projector signatures match stated APIs. Prototype staging/fold/deferral are conditional event-route candidates, not already selected or qualified Main changes. |
+| M4 |Missing transfer_admission/SourceAccountIdentity/resolve kwargs/page evidence/parser kwargs are genuine canonical-SQL compatibility gaps. Existing Main CuratedReader/rebuild uses its own signatures correctly, so they are NOT blockers to measuring existing Main. No dropping evidence/financial meaning to make a port work. |
+| M5 |Proposed direct load_pack/Vault uniqueRAM/CuratedReader/capture/sweep/finalSQL path is an existing real offline seam. _worker/_launch remain evidence only because of fixed public credential/unbounded transport/raw failure text. Source pack97a/dbd verified previously; no model or private input needed. |
+| M6 |Matrix correctly separates fresh rebuilding's deferred percommit SQL work from final synchronize/authenticated count/head, and warm worker lifecycle. Prefix25 remains engineering_partial; no all794 ready/financial claim. Exact receipts/actions/holds/raw/event/SQL conservation and explicit normal reopen must be retained by the next bounded diagnostic brief. |
+| M7 |Measured performance is still absent for current Main. Ledger reconstruction/SQL copying are source hypotheses, not measured winners. Optional cProfile or count/timing observers must be separately reviewed and label their overhead/noncomparative timing. No heavy profiling prerequisite or prototype3.682x transfer to Main. |
+
+This is factual support for completing the map and preparing a bounded existing-path diagnostic; it chooses no architecture, approves no repair, and admits no execution. Next actual measurement needs exact Main source/index/override/runtime/native pins, finite owned process controls, closed sanitized outputs and unchanged financial/receipt/hold assertions. Full source financial qualification and UI/background behavior remain distinct. Keep prototype full load/integration/new-worktree edits held under current scope.
+
+Glossary: source-compatible seam is an existing callable route, not runtime proof; different contracts are not missing SQLite; engineering_partial is scoped source coverage; attribution under profiler is not unprofiled speedup evidence.

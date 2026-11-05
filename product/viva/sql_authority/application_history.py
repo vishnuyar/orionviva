@@ -10,7 +10,7 @@ from . import application_io as io
 
 
 FORMAT = "viva-sql-application-v1"
-ENGINE_FORMAT = "viva-sql-application-engine-v3"
+ENGINE_FORMAT = "viva-sql-application-engine-v5"
 MAX_SEQUENCE = 2 ** 63 - 1
 BOUNDARY = {"root_id", "sequence", "head", "sql_revision", "sql_head"}
 RECORD = {"version", "root_id", "sequence", "previous_hash", "kind", "operation_id",
@@ -151,6 +151,10 @@ class History:
         self.keys = keys(key) if key is not None else None
 
     def record(self, data, *, previous=None):
+        record, _payload = self._record_and_payload(data, previous=previous)
+        return record
+
+    def _record_and_payload(self, data, *, previous=None):
         record = fields(decode(data), RECORD)
         if type(record["version"]) is not int or record["version"] != 1 or record["root_id"] != self.root_id:
             raise IntegrityError("unknown application record identity")
@@ -175,11 +179,12 @@ class History:
                     or record["kind"] == "genesis" or record["sql_revision"] != previous["sql_revision"] + increment
                     or (not increment and record["sql_head"] != previous["sql_head"])):
                 raise IntegrityError("application publication continuity mismatch")
+        checked_payload = None
         if self.keys is not None:
             if not hmac.compare_digest(record["mac"], mac(self.keys["history"], [self.root_id, record["sequence"], record["record_hash"]])):
                 raise IntegrityError("application record MAC differs")
-            self.payload(record, previous=previous)
-        return record
+            checked_payload = self.payload(record, previous=previous)
+        return record, checked_payload
 
     def payload(self, record, *, previous):
         payload = fields(decode(open_sealed(self.keys["payload"], decode(record["payload"]), aad=aad(record))), {"issued", "body"})
@@ -191,7 +196,7 @@ class History:
             fields(body, {"metadata_sha256", "sql_metadata_sha256", "sql_format", "sql_schema_version", "schema_contract"})
             for name in ("metadata_sha256", "sql_metadata_sha256", "schema_contract"):
                 hexadecimal(body[name])
-            if issued["kind"] != "creation" or type(body["sql_format"]) is not str or type(body["sql_schema_version"]) is not int or (body["sql_format"], body["sql_schema_version"]) not in {("viva-sql-authority-prototype-v3", 3), ("viva-sql-authority-prototype-v4", 4), ("viva-sql-authority-prototype-v5", 5)}:
+            if issued["kind"] != "creation" or type(body["sql_format"]) is not str or type(body["sql_schema_version"]) is not int or (body["sql_format"], body["sql_schema_version"]) not in {("viva-sql-authority-prototype-v3", 3), ("viva-sql-authority-prototype-v4", 4), ("viva-sql-authority-prototype-v5", 5), ("viva-sql-authority-prototype-v6", 6), ("viva-sql-authority-prototype-v7", 7)}:
                 raise IntegrityError("invalid genesis representation")
         elif kind == "sql_commit":
             fields(body, {"record", "commit"})
@@ -226,8 +231,7 @@ class History:
                     raise IntegrityError("abort preparation differs")
                 if fields(decode(original), RECORD)["kind"] == "interrupted_abort":
                     raise IntegrityError("recursive abort preparation")
-                proposed = self.record(original, previous=previous)
-                proposed_payload = self.payload(proposed, previous=previous)
+                proposed, proposed_payload = self._record_and_payload(original, previous=previous)
                 if proposed["kind"] == "interrupted_abort" or proposed_payload["issued"] != issued:
                     raise IntegrityError("recursive or foreign abort")
         return payload
@@ -253,7 +257,12 @@ class History:
         return encoded(value)
 
     def terminal(self):
-        value = fields(decode(io.read(self.root / "terminal.json")), BOUNDARY | {"version", "mac"})
+        value, _checked = self._terminal_with_bytes()
+        return value
+
+    def _terminal_with_bytes(self):
+        checked = io.read(self.root / "terminal.json")
+        value = fields(decode(checked), BOUNDARY | {"version", "mac"})
         if type(value["version"]) is not int or value["version"] != 1:
             raise IntegrityError("invalid terminal version")
         public = boundary({name: value[name] for name in BOUNDARY})
@@ -262,9 +271,14 @@ class History:
         hexadecimal(value["mac"])
         if self.keys is not None and not hmac.compare_digest(value["mac"], mac(self.keys["terminal"], {name: item for name, item in value.items() if name != "mac"})):
             raise IntegrityError("terminal MAC differs")
-        return public
+        return public, checked
 
     def scan(self, *, expected=None, prefix=None, allow_terminal_lag=False):
+        terminal, records, bodies, _proof = self._scan_with_proof(expected=expected,prefix=prefix,
+                                                                allow_terminal_lag=allow_terminal_lag)
+        return terminal, records, bodies
+
+    def _scan_with_proof(self, *, expected=None, prefix=None, allow_terminal_lag=False):
         if expected is not None:
             boundary(expected)
         if prefix is not None:
@@ -272,17 +286,20 @@ class History:
         io.directory(self.root / "history")
         names = sorted(path.name for path in (self.root / "history").iterdir())
         previous, records, bodies = None, [], []
+        checked_members = []
         for index, name in enumerate(names, 1):
             if name != f"{index:020d}.json":
                 raise IntegrityError("history member missing, reordered or unknown")
-            record = self.record(io.read(self.root / "history" / name), previous=previous)
+            checked = io.read(self.root / "history" / name)
+            record, payload = self._record_and_payload(checked, previous=previous)
+            checked_members.append((name,digest(checked)))
             if self.keys is not None:
-                bodies.append(self.payload(record, previous=previous))
+                bodies.append(payload)
             previous = terminal_of(record)
             records.append(record)
         if not records:
             raise io.RecoveryRequired("application genesis incomplete")
-        terminal = self.terminal() if (self.root / "terminal.json").exists() else None
+        terminal, terminal_bytes = self._terminal_with_bytes() if (self.root / "terminal.json").exists() else (None,None)
         if terminal is None and not allow_terminal_lag:
             raise io.RecoveryRequired("application terminal incomplete")
         if terminal != previous and not allow_terminal_lag:
@@ -291,7 +308,7 @@ class History:
             raise IntegrityError("trusted final application boundary differs")
         if prefix is not None and (prefix["sequence"] > len(records) or terminal_of(records[prefix["sequence"] - 1]) != prefix):
             raise IntegrityError("observed application prefix lost")
-        return previous, records, bodies
+        return previous, records, bodies, (tuple(checked_members),terminal_bytes)
 
     def intent(self, issued, stage, prepared=None, superseded=None):
         validate_issued(issued, self.root_id)

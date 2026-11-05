@@ -54,16 +54,17 @@ legs and checks the entire activation/deactivation history. Agreement with audit
 rows alone is insufficient: a consistently audited wrong income amount, missing
 leg/witness or false causal boundary must still be refused. Ordinary settlement
 uses indexed SQL and never rebuilds a Ledger projection or scans all payroll for
-an unrelated capture. Full prefix reconstruction is explicit verification work
-required by the owner's complete-every-decision policy.
+an unrelated capture. Full prefix reconstruction remains explicit verification
+work. The experimental application adapter can extend certified financial state
+under fresh owned-state binding, with full fallback for uncovered changes.
 
 Direct `SQLAuthority` exposes `payroll_facts(doc_id)`,
 `payroll_component(doc_id)`, `payroll_decisions(doc_id)` and
 `payroll_postings(doc_id=None)`. These are held canonical read decisions with
 detached return values. A document-specific posting read resolves a current
 accepted explanation, including a duplicate witness; the no-argument read returns
-each active explanation once. Application storage's closed forwarding list is
-unchanged, so these getters are not yet exposed through the application adapter.
+each active explanation once. The experimental application storage forwarding
+list now exposes these getters; normal Vault selection remains unchanged.
 
 Typed PayStubFacts and exact Decimal/Deduction types are checked before financial
 acceptance. Retained payroll source extensions preserve their explicit v1 or v2

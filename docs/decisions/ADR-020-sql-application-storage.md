@@ -1,8 +1,10 @@
 # ADR-020 — Sealed authoritative history around SQL application storage
 
-Status: experimental implementation; the final bounded repair executed 222
-controls with 188 passes and 34 failures and remains stopped. No production
-activation, migration or Checkpoint 2 acceptance.
+Status: experimental storage boundary accepted at bounded Director Checkpoint 2
+after a test-only recovery fixture and oracle repair. Fresh independent execution
+passed 222 controls with zero failures, errors or skips in 470.945980 seconds
+complete path. The earlier 188-pass/34-failure result remains historical failed
+evidence. No production activation or migration follows.
 
 ## Context
 
@@ -51,14 +53,20 @@ from stored MACs. External anchoring is still unimplemented; a fresh unanchored
 process cannot detect a coherent older whole-root replacement.
 
 No factory switch, adoption, all-family settlement, migration, legacy ZIP adapter,
-browser/native delivery or performance result follows. POSIX base controls executed with two retained recovery failures; the narrow
-journal-finalization repair failed its qualification and remains held. Windows safe directory ownership is not implemented and refuses
+browser/native delivery or performance result follows. The current bounded native
+journal-finalization controls pass after the test-only repair; earlier base and
+qualification failures remain retained. Windows safe directory ownership is not implemented and refuses
 before effects. Process death and injected faults do not prove arbitrary power loss.
 
 The meaningful original regression is retained. The first candidate focused run was 176 passed and two failed out of 178.
-Its code and failed evidence remain archived. The final repair executed 222
+Its code and failed evidence remain archived. The earlier repair executed 222
 controls: 188 passed and 34 failed, including all original 178 passing. The new
-44 controls yielded 10 passes and 34 failures. No retry is authorized. Original
+44 controls yielded 10 passes and 34 failures. That exhausted admission remains
+historical; the test-only repair used a separate bounded admission. An unchanged
+RED reproduced the fixture/oracle failure before maintenance assignment. The
+corrected 44-control candidate passed, then fresh independent execution passed all
+222 controls. The Director accepted that bounded storage result; no further run
+is authorized by this evidence. Original
 financial/manual/source/native acceptance stays
 open. See [the owning contract](../sql-authority-live-history.md). Historical
 foundation passes and failed composition work do not qualify this candidate.
@@ -88,9 +96,19 @@ header value, `schema_version`, table-update fallback, mode change or acceptance
 proposed financial work is introduced. Journal-absent recovery remains unchanged.
 
 The original 178 case IDs/assertions and original interrupted child remain intact.
-New phase-specific INITIAL/PREPARED, signed/nonzero header, invalid context,
-maintenance-fault and native maintenance-crash controls were included in the
-failed 44-control addition. Many failures preceded maintenance-helper entry; no
-phase, header or crash qualification follows from that failed run.
-The experiment does not prequalify those controls or production app integration,
-all document families, the 794 replay, installed/native delivery or performance.
+The 44 added case IDs/order and original 524-line source prefix remain unchanged.
+The test-only residual-journal fixture/oracle repair preserves production
+initialization and all production code. Current execution establishes genuine
+INITIAL/PREPARED maintenance entry, signed/nonzero same-current native header
+assignment and commit, scoped invalid-context/fault refusals, and four native
+maintenance-crash milestones. Strict financial, header, history, original,
+pending-byte, exactly-one-abort, idempotence and keyless assertions remain.
+The failed 44-control addition remains historical; its failures did not themselves
+qualify these boundaries.
+
+The independent terminal review and Director ruling are retained under
+`runs/sample-completion/continuation-20261105/storage-test-repair-v1/`.
+This post-test documentation-only reconciliation is not a new execution or a
+whole-source identity claim. Bounded storage acceptance does not qualify
+production app integration, other platforms, all document families, the 794 replay,
+installed/native delivery or performance.

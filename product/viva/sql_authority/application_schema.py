@@ -1,5 +1,6 @@
 """Software-owned exact SQL schema contract, independent of stored rows."""
 import functools
+import json
 
 from sqlcipher3 import dbapi2 as sql
 
@@ -44,3 +45,11 @@ def verify(db):
     if descriptor(db) != contract:
         raise IntegrityError("application SQL schema differs from software contract")
     return contract
+
+
+def contract():
+    """Bind the exact SQL descriptor and the closed receipt interpretation profiles."""
+    from .cd_capture_contract import PROFILE, descriptor as receipt_descriptor
+    from .curated_instrument_contract import PROFILE as INSTRUMENT_PROFILE, descriptor as instrument_descriptor
+    return canonical({"version": 1, "sql_schema": json.loads(expected()),
+                      "receipt_profiles": {PROFILE: receipt_descriptor(), INSTRUMENT_PROFILE: instrument_descriptor()}})

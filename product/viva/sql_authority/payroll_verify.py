@@ -16,6 +16,32 @@ from .bank import amount_key
 from .payroll import decode
 
 
+
+_NORMALIZATION_MEMO_LIMIT = 16 * 1024 * 1024
+
+
+class _NormalizationMemo:
+    def __init__(self):
+        self.facts = {}
+        self.encoded_bytes = 0
+
+    def clear(self):
+        self.facts.clear()
+        self.encoded_bytes = 0
+
+    def remember(self, key, wire):
+        size = len(key.encode('utf-8')) + len(wire.encode('utf-8'))
+        if size > _NORMALIZATION_MEMO_LIMIT:
+            return
+        old = self.facts.get(key)
+        previous = len(key.encode('utf-8')) + len(old.encode('utf-8')) if old is not None else 0
+        if self.encoded_bytes - previous + size > _NORMALIZATION_MEMO_LIMIT:
+            self.clear()
+            previous = 0
+        self.facts[key] = wire
+        self.encoded_bytes = self.encoded_bytes - previous + size
+
+
 def _fail(message):
     raise IntegrityError('payroll semantic mismatch: '+message)
 
@@ -35,7 +61,7 @@ def _arithmetic(facts):
         return check_paystub_identity(facts.gross,[d.amount for d in facts.deductions],facts.net).passed
 
 
-def _source(store,prefix,doc,interpretation):
+def _source(store,prefix,doc,interpretation,memo=None):
     receipt=prefix['receipts'].get((doc,))
     if receipt is None:
         _fail('payroll interpretation has no receipt')
@@ -55,12 +81,23 @@ def _source(store,prefix,doc,interpretation):
     metadata_valid=(all(type(reading.get(k)) is str for k in ('doc_type','raw_text','source_locale'))
         and (reading.get('error') is None or type(reading.get('error')) is str))
     normalized=None
+    memo_key=None;memo_wire=None
     try:
         if receipt['facts_type']=='curated':
-            from .curated import derive
-            facts,occurrences=derive(store,receipt,reading)
-            if facts is not None and facts.doc_type=='pay_stub' and not occurrences:
-                normalized=decode(facts.to_dict())
+            from .curated import authenticate, derive
+            original,admitted=authenticate(store,receipt,reading)
+            if memo is not None:
+                memo_key=canonical({'receipt':receipt,'interpretation':interpretation,
+                    'read_context':captured,'source_admission':prefix['source_admissions'].get((doc,)),
+                    'authenticated_admission':admitted,'implementation':store._implementation_identity,
+                    'original_byte_count':len(original),'original_sha256':hashlib.sha256(original).hexdigest()})
+                memo_wire=memo.facts.get(memo_key)
+            if memo_wire is not None:
+                normalized=decode(json.loads(memo_wire))
+            else:
+                facts,occurrences=derive(store,receipt,reading)
+                if facts is not None and facts.doc_type=='pay_stub' and not occurrences:
+                    normalized=decode(facts.to_dict())
         else:
             raw_facts=json.loads(receipt['facts'])
             if canonical(raw_facts)!=canonical(reading.get('facts')):
@@ -92,6 +129,8 @@ def _source(store,prefix,doc,interpretation):
             _fail('payroll interpretation context differs from captured contract')
         if interpretation['facts_type']!='payroll' or interpretation['facts']!=canonical(normalized.to_dict()):
             _fail('valid retained payroll interpretation omitted or changed')
+        if memo_key is not None and memo_wire is None:
+            memo.remember(memo_key,canonical(normalized.to_dict()))
     elif interpretation['facts_type']=='payroll':
         _fail('payroll source not independently admitted')
     return normalized,context_id
@@ -138,84 +177,113 @@ def _causes(ops,prefix):
 
 
 def verify(store,state,export):
+    memo=_NormalizationMemo()
+    try:
+        checkpoint=_verify_prefixes(store,state,export,memo)
+        collector=getattr(store,'_semantic_collection',None)
+        if collector is not None:collector['payroll']=checkpoint
+    finally:
+        memo.clear()
+
+
+def _bootstrap():
     prefix={table:{} for table in TABLES}
     expected={table:{} for table in TABLES if table.startswith('payroll_')}
     effective=set();ordinal=0
-    for revision,previous,envelope,_digest in export['records']:
-        payload=json.loads(open_sealed(store._audit_key,json.loads(envelope),aad=canonical([revision,previous]).encode()))
-        operations=payload['operations']
-        for operation in operations:
-            table,row=operation['table'],operation['row']
-            prefix[table][tuple(row[k] for k in KEYS[table])]=row
-        facts_by_doc={}
-        for (doc,),interpretation in prefix['interpretations'].items():
-            receipt=prefix['receipts'].get((doc,))
-            if receipt is None:
-                continue
-            reading=json.loads(receipt['body'])
-            is_payroll=(receipt['facts_type']=='payroll' or receipt['facts_type']=='curated' and reading.get('doc_type')=='pay_stub')
-            if not is_payroll:
-                if interpretation['facts_type']=='payroll':
-                    _fail('foreign payroll interpretation')
-                continue
-            facts,context_id=_source(store,prefix,doc,interpretation)
-            if facts is None:
-                continue
-            facts_by_doc[doc]=facts
-            row=dict(doc_id=doc,currency=facts.currency,pay_date=facts.pay_date,period_start=facts.period_start,
-                period_end=facts.period_end,gross=str(facts.gross),net=str(facts.net),net_key=amount_key(facts.net),
-                body=canonical(facts.to_dict()),context_id=context_id,source_kind='curated' if receipt['facts_type']=='curated' else 'typed')
-            expected['payroll_facts'][(doc,)]=row
-            expected['payroll_dependencies'][(doc,)]=dict(doc_id=doc,currency=facts.currency,net_key=amount_key(facts.net),pay_date=facts.pay_date,active=int(_arithmetic(facts)))
-        choices={doc:_candidates(prefix,facts) if _arithmetic(facts) else [] for doc,facts in facts_by_doc.items()}
-        signatures={}
-        for doc,found in choices.items():
-            for binding in found:
-                signatures.setdefault(binding['movement'],set()).add(_signature(facts_by_doc[doc],binding['movement']))
-        desired=set();components={}
-        for doc in sorted(facts_by_doc):
-            facts=facts_by_doc[doc];found=choices[doc]
-            status='arithmetic_conflict' if not _arithmetic(facts) else 'awaiting_deposit' if not found else 'ambiguous'
-            eid=None;physical=None
-            if len(found)==1:
-                binding=found[0];body=_signature(facts,binding['movement']);candidate=hashlib.sha256(body.encode()).hexdigest()
-                if (candidate,) not in expected['payroll_explanations']:
-                    explanation=dict(explanation_id=candidate,movement=binding['movement'],txn_id=binding['txn_id'],source_doc=doc,
-                        currency=facts.currency,pay_date=facts.pay_date,gross=str(facts.gross),net=str(facts.net),signature=body)
-                    expected['payroll_explanations'][(candidate,)]=explanation
-                    event=paystub_decomposition(facts.gross,facts.net,facts.deductions,'',facts.pay_date)
-                    if sum((Decimal(p['amount']) for p in event.body['postings']),Decimal(0))!=0:
-                        _fail('unbalanced payroll decomposition')
-                    for leg,posting in enumerate(event.body['postings']):
-                        expected['payroll_legs'][(candidate,leg)]=dict(explanation_id=candidate,leg=leg,account_id=posting['account'],amount=posting['amount'],currency=facts.currency,grade=posting['grade'],doc_id=doc,page=facts.gross_page if leg==0 else facts.net_page if leg==1 else None)
-                expected['payroll_witnesses'][(doc,candidate)]=dict(doc_id=doc,explanation_id=candidate)
-                if len(signatures[binding['movement']])==1:
-                    eid=candidate;physical=binding['physical_account'];desired.add(eid)
-                    owner=expected['payroll_explanations'][(eid,)]['source_doc']
-                    status='accepted' if owner==doc else 'duplicate'
-            prior=expected['payroll_components'].get((doc,))
-            row=dict(doc_id=doc,state=status,reason='' if eid else status,explanation_id=eid,account_id=physical,revision=revision)
-            if prior is not None and all(prior[k]==row[k] for k in row if k!='revision'):
-                row=prior
-            components[(doc,)]=row
-        transitions=[(eid in desired,eid) for eid in effective.symmetric_difference(desired)]
-        boundary=canonical({'version':1,'causes':_causes(operations,prefix)})
-        for activation,eid in sorted(transitions):
-            if not json.loads(boundary)['causes']:
-                _fail('financial change without authenticated causal input')
-            ordinal+=1
-            explanation=expected['payroll_explanations'][(eid,)]
-            expected['payroll_decisions'][(ordinal,)]=dict(ordinal=ordinal,explanation_id=eid,action='activate' if activation else 'deactivate',revision=revision,boundary=boundary)
-            expected['payroll_active'][(eid,)]=dict(explanation_id=eid,movement=explanation['movement'],active=int(activation),decision_ordinal=ordinal,revision=revision)
-        expected['payroll_components']=components
-        effective=desired
-        for table,rows in expected.items():
-            if prefix[table]!=rows:
-                _fail('authenticated prefix differs: '+table+' at revision '+str(revision))
-        for (doc,),component in components.items():
-            item=prefix['items'].get((doc,))
-            if item is None or item['state']!=('accepted' if component['explanation_id'] else 'pending') or item['account_id']!=(component['account_id'] or '') or item['reason']!=component['reason'] or item['revision']!=component['revision']:
-                _fail('payroll item does not match effective component')
+    return dict(prefix=prefix,expected=expected,effective=effective,ordinal=ordinal)
+
+
+def _advance(store, checkpoint, revision, operations, memo):
+    """Check one actual authenticated prefix using independent current-boundary rules."""
+    prefix=checkpoint['prefix'];expected=checkpoint['expected']
+    effective=checkpoint['effective'];ordinal=checkpoint['ordinal']
+    for operation in operations:
+        table,row=operation['table'],operation['row']
+        prefix[table][tuple(row[k] for k in KEYS[table])]=row
+    facts_by_doc={}
+    for (doc,),interpretation in prefix['interpretations'].items():
+        receipt=prefix['receipts'].get((doc,))
+        if receipt is None:
+            continue
+        reading=json.loads(receipt['body'])
+        is_payroll=(receipt['facts_type']=='payroll' or receipt['facts_type']=='curated' and reading.get('doc_type')=='pay_stub')
+        if not is_payroll:
+            if interpretation['facts_type']=='payroll':
+                _fail('foreign payroll interpretation')
+            continue
+        facts,context_id=_source(store,prefix,doc,interpretation,memo)
+        if facts is None:
+            continue
+        facts_by_doc[doc]=facts
+        row=dict(doc_id=doc,currency=facts.currency,pay_date=facts.pay_date,period_start=facts.period_start,
+            period_end=facts.period_end,gross=str(facts.gross),net=str(facts.net),net_key=amount_key(facts.net),
+            body=canonical(facts.to_dict()),context_id=context_id,source_kind='curated' if receipt['facts_type']=='curated' else 'typed')
+        expected['payroll_facts'][(doc,)]=row
+        expected['payroll_dependencies'][(doc,)]=dict(doc_id=doc,currency=facts.currency,net_key=amount_key(facts.net),pay_date=facts.pay_date,active=int(_arithmetic(facts)))
+    choices={doc:_candidates(prefix,facts) if _arithmetic(facts) else [] for doc,facts in facts_by_doc.items()}
+    signatures={}
+    for doc,found in choices.items():
+        for binding in found:
+            signatures.setdefault(binding['movement'],set()).add(_signature(facts_by_doc[doc],binding['movement']))
+    desired=set();components={}
+    for doc in sorted(facts_by_doc):
+        facts=facts_by_doc[doc];found=choices[doc]
+        status='arithmetic_conflict' if not _arithmetic(facts) else 'awaiting_deposit' if not found else 'ambiguous'
+        eid=None;physical=None
+        if len(found)==1:
+            binding=found[0];body=_signature(facts,binding['movement']);candidate=hashlib.sha256(body.encode()).hexdigest()
+            if (candidate,) not in expected['payroll_explanations']:
+                explanation=dict(explanation_id=candidate,movement=binding['movement'],txn_id=binding['txn_id'],source_doc=doc,
+                    currency=facts.currency,pay_date=facts.pay_date,gross=str(facts.gross),net=str(facts.net),signature=body)
+                expected['payroll_explanations'][(candidate,)]=explanation
+                event=paystub_decomposition(facts.gross,facts.net,facts.deductions,'',facts.pay_date)
+                if sum((Decimal(p['amount']) for p in event.body['postings']),Decimal(0))!=0:
+                    _fail('unbalanced payroll decomposition')
+                for leg,posting in enumerate(event.body['postings']):
+                    expected['payroll_legs'][(candidate,leg)]=dict(explanation_id=candidate,leg=leg,account_id=posting['account'],amount=posting['amount'],currency=facts.currency,grade=posting['grade'],doc_id=doc,page=facts.gross_page if leg==0 else facts.net_page if leg==1 else None)
+            expected['payroll_witnesses'][(doc,candidate)]=dict(doc_id=doc,explanation_id=candidate)
+            if len(signatures[binding['movement']])==1:
+                eid=candidate;physical=binding['physical_account'];desired.add(eid)
+                owner=expected['payroll_explanations'][(eid,)]['source_doc']
+                status='accepted' if owner==doc else 'duplicate'
+        prior=expected['payroll_components'].get((doc,))
+        row=dict(doc_id=doc,state=status,reason='' if eid else status,explanation_id=eid,account_id=physical,revision=revision)
+        if prior is not None and all(prior[k]==row[k] for k in row if k!='revision'):
+            row=prior
+        components[(doc,)]=row
+    transitions=[(eid in desired,eid) for eid in effective.symmetric_difference(desired)]
+    boundary=canonical({'version':1,'causes':_causes(operations,prefix)})
+    for activation,eid in sorted(transitions):
+        if not json.loads(boundary)['causes']:
+            _fail('financial change without authenticated causal input')
+        ordinal+=1
+        explanation=expected['payroll_explanations'][(eid,)]
+        expected['payroll_decisions'][(ordinal,)]=dict(ordinal=ordinal,explanation_id=eid,action='activate' if activation else 'deactivate',revision=revision,boundary=boundary)
+        expected['payroll_active'][(eid,)]=dict(explanation_id=eid,movement=explanation['movement'],active=int(activation),decision_ordinal=ordinal,revision=revision)
+    expected['payroll_components']=components
+    effective=desired
+    for table,rows in expected.items():
+        if prefix[table]!=rows:
+            _fail('authenticated prefix differs: '+table+' at revision '+str(revision))
+    for (doc,),component in components.items():
+        item=prefix['items'].get((doc,))
+        if item is None or item['state']!=('accepted' if component['explanation_id'] else 'pending') or item['account_id']!=(component['account_id'] or '') or item['reason']!=component['reason'] or item['revision']!=component['revision']:
+            _fail('payroll item does not match effective component')
+    checkpoint['effective']=effective;checkpoint['ordinal']=ordinal
+    return checkpoint
+
+
+def _finish(checkpoint,state):
+    expected=checkpoint['expected']
     for table,rows in expected.items():
         if state[table]!=rows:
             _fail('current payroll view differs: '+table)
+
+
+def _verify_prefixes(store,state,export,memo):
+    checkpoint=_bootstrap()
+    for revision,previous,envelope,_digest in export['records']:
+        payload=json.loads(open_sealed(store._audit_key,json.loads(envelope),aad=canonical([revision,previous]).encode()))
+        _advance(store,checkpoint,revision,payload['operations'],memo)
+    _finish(checkpoint,state)
+    return checkpoint

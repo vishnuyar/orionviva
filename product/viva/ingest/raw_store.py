@@ -100,6 +100,13 @@ class RawStore:
 
     def get_bounded(self, doc_id: str, *, max_plaintext: int = 8 * 1024 * 1024,
                     max_envelope: int = 12 * 1024 * 1024) -> bytes:
+        """Authenticate and return bounded bytes without following blob symlinks."""
+        data, _commitment = self._get_bounded_with_commitment(doc_id, max_plaintext=max_plaintext,
+                                                               max_envelope=max_envelope)
+        return data
+
+    def _get_bounded_with_commitment(self, doc_id: str, *, max_plaintext: int = 8 * 1024 * 1024,
+                                     max_envelope: int = 12 * 1024 * 1024):
         """Authenticate a bounded regular blob without following symlinks.
 
         Opening relative to an already opened directory avoids a pathname
@@ -149,7 +156,7 @@ class RawStore:
         data = open_sealed(self._key, sealed, aad=doc_id.encode("ascii"))
         if hashlib.sha256(data).hexdigest() != doc_id:
             raise ValueError("original address mismatch")
-        return data
+        return data, hashlib.sha256(encoded).hexdigest()
 
     def doc_ids(self, *, max_count: int | None = None) -> list[str]:
         ids = []

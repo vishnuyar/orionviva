@@ -94,7 +94,7 @@ def test_raw_receipt_precedes_parse_and_owner_required_for_resume(source, store,
 
 
 def test_nonbalance_members_are_retained_and_refused(source, store):
-    document = member(source, "pay_stub")
+    document = member(source, "term_deposit_statement")
     outcome = store.ingest_curated(source.original(document["sha256"]), source)
     assert outcome.status == "unsupported" and outcome.reason == "unsupported_family"
     assert store.receipt(outcome.doc_id)["reading"]["raw_text"]
@@ -546,6 +546,8 @@ def test_curated_existing_lock_path_checks_remain_fail_closed(source,store,unsaf
         path.mkdir(mode=0o700)
     else:
         path.touch(mode=0o644)
+        path.chmod(0o644)
+        assert path.stat().st_mode & 0o077 != 0
     with pytest.raises((AuthorityError,OSError)):
         store.ingest_curated(source.original(document["sha256"]),source)
     assert outside.read_bytes()==b"synthetic untouched sentinel"

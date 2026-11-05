@@ -819,7 +819,7 @@ def test_new_investment_engine_refuses_old_v2_before_connect_with_unchanged_file
         with owner._root_lock.hold():
             path=owner.root/'sql'/'authority.json'
             metadata=history.decode(path.read_bytes())
-            assert metadata['format']=='viva-sql-application-engine-v3'
+            assert metadata['format']=='viva-sql-application-engine-v5'
             metadata['format']='viva-sql-application-engine-v2'
             path.write_bytes(history.encoded(metadata))
             before={p.relative_to(owner.root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in owner.root.rglob('*') if p.is_file()}

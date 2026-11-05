@@ -155,3 +155,83 @@ def test_transfer_scoring_does_not_inherit_callers_decimal_precision(store):
         admit(store,"b",number="200000002222",institution="Gamma",label="B",amount="10.001",description="incoming",opening="100.123")
     assert store.transfer_assertions()[-1]["body"]["evidence"]["amount"]=="10.001"
     assert store.verify()["verified"]
+
+
+def test_transfer_endpoint_snapshot_uses_latest_writes_and_historical_fallback(store, monkeypatch):
+    import hashlib
+    import json
+    from viva.sql_authority import transfers
+    source = admit(store, "row reuse source", number="100000001111", institution="Alpha",
+                   description="synthetic to 2222")
+    source_key = next(m.key for m in store.movements() if m.provenance.doc_id == source.doc_id)
+    original_postings = store.postings(source.doc_id)
+    original_row, original_put = store._row, store._put
+    settle = transfers.settle_dirty
+    phase = {"inside": False, "snapshot": False, "fallbacks": [], "assertion": False}
+    destination_id = hashlib.sha256(b"row reuse destination").hexdigest()
+    class RollbackEndpointControl(Exception):
+        pass
+    def observe_row(table, where, parameters):
+        if phase["inside"] and not phase["snapshot"] and table == "transfer_endpoints":
+            phase["fallbacks"].append(parameters[0])
+        return original_row(table, where, parameters)
+    def observe_settle(opened, boundary, admissions):
+        phase["inside"] = True
+        try:
+            return settle(opened, boundary, admissions)
+        finally:
+            phase["inside"] = False
+    def fault(point):
+        if point == "after_transfer_bindings":
+            bindings = [op["row"] for op in store._operations
+                        if op["table"] == "transfer_bindings" and op["row"]["doc_id"] == destination_id]
+            if bindings:
+                phase["before_resume"] = store._check_terminal()
+                key = bindings[0]["movement"]
+                row = original_row("transfer_endpoints", "movement=?", (key,))
+                original_put("transfer_endpoints", dict(row, active=0))
+                original_put("transfer_endpoints", dict(row, active=phase["last_active"]))
+                phase["written"] = key
+        elif point == "after_transfer_snapshot":
+            phase["snapshot"] = True
+            assert source_key in phase["fallbacks"]
+            assert phase["written"] not in phase["fallbacks"]
+        elif point == "after_transfer_settlement" and phase["last_active"] == 0:
+            runs = [op["row"] for op in store._operations if op["table"] == "transfer_runs"]
+            assert len(runs) == 1
+            body = json.loads(runs[0]["body"])
+            assert body["assertions"] == [] and body["graph"] == {}
+            assert original_row("transfer_endpoints", "movement=?", (phase["written"],))["active"] == 0
+            phase["inactive_run"] = True
+            raise RollbackEndpointControl()
+        elif point == "after_transfer_assertion":
+            assert phase["last_active"] == 1 and phase["snapshot"]
+            assert original_row("transfer_endpoints", "movement=?", (source_key,))["active"] == 0
+            assert original_row("transfer_endpoints", "movement=?", (phase["written"],))["active"] == 0
+            phase["assertion"] = True
+            raise RollbackEndpointControl()
+    for last_active in (0, 1):
+        phase.update(last_active=last_active, snapshot=False, fallbacks=[])
+        with monkeypatch.context() as patch:
+            patch.setattr(store, "_row", observe_row)
+            patch.setattr(store, "_fault", fault)
+            patch.setattr(transfers, "settle_dirty", observe_settle)
+            with pytest.raises(RollbackEndpointControl):
+                if last_active == 0:
+                    admit(store, "row reuse destination", number="200000002222", institution="Gamma",
+                          amount="10.00", description="incoming")
+                else:
+                    store.resume(destination_id)
+        assert store._transfer_facts is None
+        assert store.head == {"revision": phase["before_resume"][0], "head": phase["before_resume"][1]}
+        assert store.postings(source.doc_id) == original_postings
+        assert original_row("transfer_endpoints", "movement=?", (phase["written"],)) is None
+        assert store.verify()["verified"]
+    assert phase["inactive_run"] and phase["assertion"]
+    assert store.resume(destination_id).status == "accepted"
+    assert len(store.transfer_links()) == 1
+    assert store.postings(source.doc_id) == original_postings
+    assert original_row("transfer_endpoints", "movement=?", (source_key,))["active"] == 0
+    assert original_row("transfer_endpoints", "movement=?", (phase["written"],))["active"] == 0
+    assert store._transfer_facts is None
+    assert store.verify()["verified"]

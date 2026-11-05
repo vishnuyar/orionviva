@@ -1,0 +1,460 @@
+{
+  "scope_files": 68,
+  "denylist_exit": 0,
+  "denylist_clean": true,
+  "all_scope_bytes_stable": true,
+  "counts": {
+    "comma_group_or_code_argument_shape": 11,
+    "recorded_elapsed_seconds": 1,
+    "synthetic_fixture_or_boundary_control": 68,
+    "account_schema_or_synthetic_fixture_context": 56,
+    "hex_alphabet_or_signed_header_bound": 14,
+    "source_or_audit_hash": 3971,
+    "embedded_source_or_audit_hash": 1,
+    "synthetic_short_number_or_invalid_date_control": 24,
+    "git_mode_metadata": 10858,
+    "git_mode_constants": 8,
+    "dollar_amount_shape": 0
+  },
+  "files": [
+    {
+      "path": "docs/decisions/ADR-020-sql-application-storage.md",
+      "sha256": "d4ef8d50945dfcaa685ab3531da9aa69e255e44eb6ad9cffa604ff538824751e",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/reading-guide.md",
+      "sha256": "53d40d5c6043665f2a291a2668ff5f42b99a3377415461f4d5afc6743d0b0e65",
+      "classified_occurrences": {
+        "comma_group_or_code_argument_shape": 1
+      }
+    },
+    {
+      "path": "docs/sql-authority-application.md",
+      "sha256": "cdc79ad195fa73023c46c4c2336e26617fc7673a514e98b0fddaa98ac092b286",
+      "classified_occurrences": {
+        "comma_group_or_code_argument_shape": 2
+      }
+    },
+    {
+      "path": "docs/sql-authority-income-expense.md",
+      "sha256": "13af22ae960fd4ffd071b6c840b684aa4acebe4dc3670b8cd003271dc628cbc5",
+      "classified_occurrences": {
+        "comma_group_or_code_argument_shape": 1,
+        "recorded_elapsed_seconds": 1
+      }
+    },
+    {
+      "path": "docs/sql-authority-live-history.md",
+      "sha256": "a8deaea0d959d8e1bc043797e5d586fb428f95bbb533a6074c500b132407dd2e",
+      "classified_occurrences": {
+        "comma_group_or_code_argument_shape": 1
+      }
+    },
+    {
+      "path": "product/tests/test_sql_application_history.py",
+      "sha256": "5f1c54aa8f31910959885d690b0929c3ac0ba502ca9d8fd5979b5ae120ab39f6",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/tests/test_sql_application_recovery.py",
+      "sha256": "ec0c56ca6af1a8255b92d68f15f87da96488afc24a58f9c95c905a195da5212d",
+      "classified_occurrences": {
+        "synthetic_fixture_or_boundary_control": 6
+      }
+    },
+    {
+      "path": "product/tests/test_sql_authority_curated.py",
+      "sha256": "5be6b1d07b02b64fe164eb0e395422defa68cb7fd26508d44abe7b6f700ddfb4",
+      "classified_occurrences": {
+        "account_schema_or_synthetic_fixture_context": 1,
+        "synthetic_fixture_or_boundary_control": 1
+      }
+    },
+    {
+      "path": "product/tests/test_sql_authority_transfer_comparison.py",
+      "sha256": "9db45c18238d55e48701658b2c504a662975ae0ecae4a5a56bef06d5ab9bd4d7",
+      "classified_occurrences": {
+        "account_schema_or_synthetic_fixture_context": 1,
+        "synthetic_short_number_or_invalid_date_control": 2
+      }
+    },
+    {
+      "path": "product/tests/test_sql_authority_transfers.py",
+      "sha256": "529a2a4abf80f4f7d1b7c0c58b21e0cc0b7968e4e38b27241818b068f9d2846d",
+      "classified_occurrences": {
+        "account_schema_or_synthetic_fixture_context": 2,
+        "synthetic_fixture_or_boundary_control": 21,
+        "synthetic_short_number_or_invalid_date_control": 4
+      }
+    },
+    {
+      "path": "product/tests/test_sql_income_expense.py",
+      "sha256": "72bae008de3d066387e1a017e5eeff7f70a43268538d4851698bf46d704ddded",
+      "classified_occurrences": {
+        "synthetic_fixture_or_boundary_control": 5,
+        "synthetic_short_number_or_invalid_date_control": 6
+      }
+    },
+    {
+      "path": "product/tests/test_sql_investment.py",
+      "sha256": "5f5d99ecfc60d8e284b625b94ad42ecc8223b040fd0e191b8df8e312ef53bb34",
+      "classified_occurrences": {
+        "account_schema_or_synthetic_fixture_context": 9,
+        "synthetic_fixture_or_boundary_control": 8
+      }
+    },
+    {
+      "path": "product/tests/test_sql_payroll.py",
+      "sha256": "9ca37c2f84f0fef207270b01e406d6d241be42e0b67468bc06949df336d18baa",
+      "classified_occurrences": {
+        "synthetic_short_number_or_invalid_date_control": 5
+      }
+    },
+    {
+      "path": "product/viva/ingest/raw_store.py",
+      "sha256": "412785056a2d24d0a77f2a82ce62762951541ec47ab62be3ab2e70182408857a",
+      "classified_occurrences": {
+        "hex_alphabet_or_signed_header_bound": 2
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/application.py",
+      "sha256": "d6cf08026eae331fe31e53747ebfa13a70457b7874f20b65621fb58ea0e6c5a3",
+      "classified_occurrences": {
+        "hex_alphabet_or_signed_header_bound": 2
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/application_history.py",
+      "sha256": "57bce97d4e24b248a779e9180effb5d355bb5b8e4b4943aa0243764ed17f2039",
+      "classified_occurrences": {
+        "hex_alphabet_or_signed_header_bound": 1
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/application_schema.py",
+      "sha256": "a4e7d7e1e5845d5da13b48412531f8defc293c02afb392ca8cfa4cb09f8d2c60",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/curated.py",
+      "sha256": "651a869786309896d0628bb10cb26795bb6b26b34b8945b89259e72228335452",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/identity.py",
+      "sha256": "6d3b91b1a2e07db848808374617d44145baca8d1446cb5c2b74912f0d503263f",
+      "classified_occurrences": {
+        "account_schema_or_synthetic_fixture_context": 10
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/investment_verify.py",
+      "sha256": "01d1d68a22c55dc4c3fca5a2beb94d6c5b7901288ed63fd4e5ae6d699bd0eda2",
+      "classified_occurrences": {
+        "account_schema_or_synthetic_fixture_context": 23
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/payroll.py",
+      "sha256": "2ed967430d3cdf2ce56613bcd20372f8ba9534e60a96575b3df2582ed662088f",
+      "classified_occurrences": {
+        "hex_alphabet_or_signed_header_bound": 1
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/payroll_verify.py",
+      "sha256": "5f2bed611b8c8128f5738e241e05a8e17939792bc0827df6dce1b67c4c55cae2",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/reading.py",
+      "sha256": "31d2ed3b12c5614e40472adbe716ff1a9317b9d75c5b3efb12e941a94697e5f6",
+      "classified_occurrences": {
+        "account_schema_or_synthetic_fixture_context": 1
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/schema.py",
+      "sha256": "0ec12d9a1ead412fe4b0d6af6fafb1473dc3cf95e68375cbe6c5a97822b64ac0",
+      "classified_occurrences": {
+        "comma_group_or_code_argument_shape": 1,
+        "hex_alphabet_or_signed_header_bound": 3
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/store.py",
+      "sha256": "1bdcb03ca4c940c35496519a2c50d77aad8b9067aeb4d4c15f9a33c1d8735d99",
+      "classified_occurrences": {
+        "hex_alphabet_or_signed_header_bound": 4
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/transfer_verify.py",
+      "sha256": "bbfa4437aa21e966362dfcbc859c9a6ef1ca04aeb432152e94021e3c825f325a",
+      "classified_occurrences": {
+        "account_schema_or_synthetic_fixture_context": 1
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/transfers.py",
+      "sha256": "9d64d5b0b2cb81e6987f208a90c1f0af3af8e1a71537541cae656c5e29e5ffa7",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "scripts/validate_sql_authority.py",
+      "sha256": "a6d70a243a32e05f6bc0a6cbf4e3878e44ff100732186a27360a40c9765ba08c",
+      "classified_occurrences": {
+        "comma_group_or_code_argument_shape": 1,
+        "account_schema_or_synthetic_fixture_context": 7,
+        "synthetic_fixture_or_boundary_control": 24,
+        "source_or_audit_hash": 2,
+        "synthetic_short_number_or_invalid_date_control": 1
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/ANCESTOR-CONTENT-CHECK.json",
+      "sha256": "e2d2278519aa8028f4845082a712a056b25e80cba4ad810e3bf466a5e5c5a05d",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/AUDIT-PROVENANCE.json",
+      "sha256": "39e0c207e35cca28023172802bb13d312e78bfc852e37644dca3f9c22d390012",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/BACKEND-RESOLUTIONS.json",
+      "sha256": "0e4cb67beec8a3c049e5850862bb7d2175d2eb365ba7a72fbc4796aab0fec3d2",
+      "classified_occurrences": {
+        "source_or_audit_hash": 57
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/BACKEND-WALKTHROUGH.txt",
+      "sha256": "4ae88a988c3204509bdf6e0b549dd9bbf8ed2d5c5cdbe9306f506fdb83d1eab0",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/CONSOLIDATION-FINAL-SOURCE-FACTS.md",
+      "sha256": "e161e2a72740cb1bdeead0ae1ac6713d85fad619983d53d78071fffbefde446b",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/CONSOLIDATION-MASTER-SUPPLEMENT.md",
+      "sha256": "e9689d9239c1201b5e10c2ce74f5636ca5c939b748cfa8597a8767e453aed57f",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/COVERAGE-VERIFIED.json",
+      "sha256": "9f39454c970b55ccf7a1bf24d1e060f963a2639ae8a11ff04bd6faa826bc2156",
+      "classified_occurrences": {
+        "source_or_audit_hash": 746,
+        "git_mode_metadata": 2446
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/COVERAGE.json",
+      "sha256": "1c848b3dfbb71ac18b400b1eba159f847025c416bdd3e8331e206f66fb3f0924",
+      "classified_occurrences": {
+        "source_or_audit_hash": 2577,
+        "git_mode_metadata": 8412
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/INTERFACE-SOURCE-REVIEW.md",
+      "sha256": "cf6a3cd26557874a5d41a6d25bd711ff2859cca26acaa2b960d1307fefdbf955",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/MAIN-INTEGRATION-FACTS.md",
+      "sha256": "b006b6c3fdf4ba693f5a89f974449fc82df080a26e051602d25e5381dd2c24f6",
+      "classified_occurrences": {
+        "embedded_source_or_audit_hash": 1,
+        "source_or_audit_hash": 2
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/MAIN-OFFLINE-PATH-FACTS.md",
+      "sha256": "aea842a8f73196815dd1493b60bf9d7e383c58c291f42134a6ea1ff2bafcaa18",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/MASTER-COVERAGE.json",
+      "sha256": "34f799cc22aeee0036194b944db145e2441005a625c410a91193d787b24b960e",
+      "classified_occurrences": {
+        "source_or_audit_hash": 7
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/NORMAL-ROUTE-COMPATIBILITY.md",
+      "sha256": "763bb883adb5a7343a453abe73332a73ae4534ceee68029c28a25a412a9e1f68",
+      "classified_occurrences": {
+        "account_schema_or_synthetic_fixture_context": 1,
+        "source_or_audit_hash": 2
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/NORMAL-ROUTE-MATRIX-FACTS.md",
+      "sha256": "e3adac8fa3d41b0b83d265193b02e3710a2770a8e08b5051da5aa3dbc94b2b17",
+      "classified_occurrences": {
+        "source_or_audit_hash": 1
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/NORMAL-ROUTE-NEXT.md",
+      "sha256": "db33b4740ff2808803842ca7deef426068aba5f0fc30e706153ec2bc489c6f13",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/PREPARATION-RESULT.json",
+      "sha256": "6ad69bb03caf51180738780ca0dcfef5903696689db260ba7dad91bd9af4686a",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/QUALIFICATION-PLAN.txt",
+      "sha256": "e91bdc92e2efa638c080c6730a4fba35bfc905b1e430b21f323104b6d7d06dba",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/TEST-RESOLUTIONS.json",
+      "sha256": "82c86971ca24aaeee8d66617e7bc2f13b46a400f0e3373bd512aadb8ebfd1ccd",
+      "classified_occurrences": {
+        "source_or_audit_hash": 510
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/TEST-SOURCE-CLOSURE.json",
+      "sha256": "005c68add7760fa41f0e7e91aef0999fa580beb3b823a87cc3d106a9c07a3db9",
+      "classified_occurrences": {
+        "source_or_audit_hash": 56
+      }
+    },
+    {
+      "path": "docs/consolidation/2026-11-05/UI-DOC-DEPENDENCY-RESOLUTIONS.json",
+      "sha256": "93397f4bdfe08ad96d5a1d9643446486b3f1bf5dada4bcca139ce37efd2de141",
+      "classified_occurrences": {
+        "source_or_audit_hash": 8
+      }
+    },
+    {
+      "path": "docs/consolidation/README.md",
+      "sha256": "8de59e03e3476f0d8fe0683f86ee5281735353bbd3ef565204b8350767bef355",
+      "classified_occurrences": {
+        "comma_group_or_code_argument_shape": 4,
+        "source_or_audit_hash": 1
+      }
+    },
+    {
+      "path": "product/tests/test_sql_cd_capture_integration.py",
+      "sha256": "774d322fbbc70435e1d1f584c7d1c4de9e23c33675105713dd9a709156697fc0",
+      "classified_occurrences": {
+        "source_or_audit_hash": 1,
+        "synthetic_fixture_or_boundary_control": 2,
+        "synthetic_short_number_or_invalid_date_control": 3
+      }
+    },
+    {
+      "path": "product/tests/test_sql_cd_fields.py",
+      "sha256": "35f84f65d0dd848b101527a771a39a429ada36784ebfd1b2e64cd5cb13ff57ca",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/tests/test_sql_cd_receipts.py",
+      "sha256": "44cca7f2254b685bf5de3a909c5270bee27ee2cd1acf56aca08e7f2f8399573e",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/tests/test_sql_certified_state.py",
+      "sha256": "95b3896da6b3e2ed178262a0a6d5e3fab1234516585b0410e0fbdb0f5a431179",
+      "classified_occurrences": {
+        "synthetic_short_number_or_invalid_date_control": 2
+      }
+    },
+    {
+      "path": "product/tests/test_sql_curated_instrument_retention.py",
+      "sha256": "c11871d5d40a027763b895782913b46cd435269ef2deec98ff0272e31bbc5417",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/tests/test_sql_incremental_complete.py",
+      "sha256": "9b38562004659b17629d4356b44a1711a61254ef0142dad222c2329746170c13",
+      "classified_occurrences": {
+        "synthetic_fixture_or_boundary_control": 1,
+        "synthetic_short_number_or_invalid_date_control": 1
+      }
+    },
+    {
+      "path": "product/tests/test_sql_sample_backend.py",
+      "sha256": "0d3f43092463d27c1a3d3c10c062abc92b0a6096222c27f58a1a6eeb037d1285",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sample/sql_instances.py",
+      "sha256": "0418fca2a8ece3bea058fa192ece37d45f45c726d298fe76f276d177971e2f64",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/cd_capture_contract.py",
+      "sha256": "b43c858e6d67e1aaaee44f8396a75735d50731d4c5a59a851df8622ea4ca0b20",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/cd_fields.py",
+      "sha256": "461d07e1bf7c233238ee522f3ae889e3bf20cb8fc94af85b011a9f8763788049",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/cd_receipt_verify.py",
+      "sha256": "570dc868224c0845fee5d5947fcb71b53bb3d9fd89e41fc884ce05bc674f23c0",
+      "classified_occurrences": {
+        "hex_alphabet_or_signed_header_bound": 1
+      }
+    },
+    {
+      "path": "product/viva/sql_authority/cd_receipts.py",
+      "sha256": "3bf86ef788569ece2ed4d74fd48d22c9ece9f6834fb4e8724399729b47a022dd",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/certified_state.py",
+      "sha256": "2895f76094d0c86f2c69fa9d82c3ba832d683d2136de6aa64422dc3494987c7d",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/curated_instrument.py",
+      "sha256": "c96a41fc43016dba875b971c9e7a1d34687f718979488f3b317f5ec138b99794",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/curated_instrument_contract.py",
+      "sha256": "5cbe73f3280be81cdb13081eb05d2d5813860e81df1ba3cc7c6363d2a4d21fa2",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/curated_instrument_verify.py",
+      "sha256": "fd31bc36d818b66df73250646390adfd9631cd04a5c8e44ddeb5086abb2d8675",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "product/viva/sql_authority/incremental.py",
+      "sha256": "761a058672014b28696620b419417823d3ec48d5bf415d402dc208066a03704f",
+      "classified_occurrences": {}
+    },
+    {
+      "path": "scripts/consolidate_retained_work.py",
+      "sha256": "7bb71ae6c2b1cddce7ceb9e16c35a4c41ad05e42260c425cfce5e980680f0a19",
+      "classified_occurrences": {
+        "source_or_audit_hash": 1,
+        "git_mode_constants": 8
+      }
+    },
+    {
+      "path": "scripts/validate_sql_sample_backend.py",
+      "sha256": "3eb5953272a723f0a8bccef70a53ce1db95df069191eab4a6af524ee71b50626",
+      "classified_occurrences": {}
+    }
+  ],
+  "unresolved": 0,
+  "review_limits": "Exact 68 source/document bytes only; subsequent changes and actual staging require recheck. No private vault/source documents opened."
+}

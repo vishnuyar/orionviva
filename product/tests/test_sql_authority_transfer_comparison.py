@@ -202,3 +202,69 @@ def test_opaque_entropy_body_failure_restores_newly_imported_aliases(monkeypatch
             raise RuntimeError("synthetic body failure")
     assert imported.helper is original and identity.opaque_account_key is original
     assert secrets.token_hex is real_entropy
+
+
+def test_sql_guard_forwards_only_current_bounded_auth_dependency_shapes():
+    class Connection:
+        def __init__(self):
+            self.calls = []
+            self.result = object()
+        def execute(self, statement, parameters=()):
+            self.calls.append((statement, parameters))
+            return self.result
+    connection = Connection()
+    guard = harness.SQLGuard(connection)
+    cases = [
+        ("SELECT sequence,previous_hash,envelope,record_hash FROM audit WHERE sequence=?", 1),
+        ("SELECT revision,head,mac FROM commits WHERE revision=?", 1),
+        ("SELECT doc_id FROM payroll_dependencies WHERE currency=? AND net_key=? AND pay_date>=? AND pay_date<=? AND active=1 ORDER BY doc_id", 4),
+        ("SELECT doc_id FROM investment_dependencies WHERE signal_kind=? AND signal=? AND active=1", 2),
+    ]
+    for size in (1, 200):
+        cases.append(("SELECT 1 FROM receipts WHERE facts_type=? AND doc_id IN ("
+                      + ",".join("?" for _ in range(size)) + ") LIMIT 1", size + 1))
+    cases.append(('\n SELECT "sequence","previous_hash","envelope","record_hash" \t FROM "audit"\n WHERE "sequence"=? \t', 1))
+    assert [count for _, count in cases] == [1, 1, 4, 2, 2, 201, 1]
+    for index, (statement, count) in enumerate(cases, 1):
+        parameters = tuple(range(count))
+        assert guard.execute(statement, parameters) is connection.result
+        assert connection.calls[-1][0] is statement
+        assert connection.calls[-1][1] is parameters
+        assert len(connection.calls) == guard.statements == index
+
+
+def test_sql_guard_rejects_auth_scope_widening_before_forwarding():
+    class Connection:
+        def __init__(self):
+            self.calls = []
+        def execute(self, statement, parameters=()):
+            self.calls.append((statement, parameters))
+            raise AssertionError("widened SQL reached connection")
+    connection = Connection()
+    guard = harness.SQLGuard(connection)
+    cd = "SELECT 1 FROM receipts WHERE facts_type=? AND doc_id IN (?) LIMIT 1"
+    forbidden = [
+        "SELECT sequence,previous_hash,envelope,record_hash FROM audit",
+        "SELECT record_hash FROM audit",
+        "SELECT sequence,previous_hash,envelope,record_hash FROM audit WHERE sequence>=?",
+        "SELECT sequence,previous_hash,envelope,record_hash FROM audit WHERE sequence=? OR 1=1",
+        "SELECT revision,head,mac FROM commits",
+        "SELECT head,mac FROM commits",
+        "SELECT revision,head,mac FROM commits WHERE revision>=?",
+        "SELECT revision,head,mac FROM commits WHERE revision=? OR 1=1",
+        "SELECT 1 FROM receipts WHERE facts_type=? AND doc_id IN () LIMIT 1",
+        "SELECT 1 FROM receipts WHERE facts_type=? AND doc_id IN (" + ",".join("?" for _ in range(201)) + ") LIMIT 1",
+        "SELECT 1 FROM receipts WHERE doc_id IN (?) LIMIT 1",
+        cd.removesuffix(" LIMIT 1"),
+        cd.removesuffix(" LIMIT 1") + " LIMIT 2",
+        cd.replace(" AND doc_id", " OR doc_id"),
+        cd + " OR 1=1",
+        "WITH scoped AS (" + cd + ") SELECT * FROM scoped",
+        "WITH exact_record AS (SELECT revision,head,mac FROM commits WHERE revision=?) SELECT * FROM exact_record",
+    ]
+    for statement in forbidden:
+        parameters = tuple(range(statement.count("?")))
+        with pytest.raises(harness.HarnessFailure, match="^SQL read outside fixed indexed shapes forbidden$"):
+            guard.execute(statement, parameters)
+        assert connection.calls == []
+        assert guard.statements == 0

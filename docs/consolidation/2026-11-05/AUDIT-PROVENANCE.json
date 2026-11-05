@@ -1,0 +1,32 @@
+[
+  {
+    "file": "CONSOLIDATION-FINAL-SOURCE-FACTS.md",
+    "original_location": "/tmp/orionviva-main-integration-stage-20261105/CONSOLIDATION-FINAL-SOURCE-FACTS.md",
+    "sha256": "e161e2a72740cb1bdeead0ae1ac6713d85fad619983d53d78071fffbefde446b",
+    "role": "Read-only historical source audit; not runtime acceptance"
+  },
+  {
+    "file": "MAIN-INTEGRATION-FACTS.md",
+    "original_location": "/tmp/orionviva-main-integration-stage-20261105/MAIN-INTEGRATION-FACTS.md",
+    "sha256": "b006b6c3fdf4ba693f5a89f974449fc82df080a26e051602d25e5381dd2c24f6",
+    "role": "Read-only historical source audit; not runtime acceptance"
+  },
+  {
+    "file": "MAIN-OFFLINE-PATH-FACTS.md",
+    "original_location": "/tmp/orionviva-main-integration-stage-20261105/MAIN-OFFLINE-PATH-FACTS.md",
+    "sha256": "aea842a8f73196815dd1493b60bf9d7e383c58c291f42134a6ea1ff2bafcaa18",
+    "role": "Read-only historical source audit; not runtime acceptance"
+  },
+  {
+    "file": "NORMAL-ROUTE-COMPATIBILITY.md",
+    "original_location": "/tmp/orionviva-main-integration-stage-20261105/NORMAL-ROUTE-COMPATIBILITY.md",
+    "sha256": "763bb883adb5a7343a453abe73332a73ae4534ceee68029c28a25a412a9e1f68",
+    "role": "Read-only historical source audit; not runtime acceptance"
+  },
+  {
+    "file": "NORMAL-ROUTE-MATRIX-FACTS.md",
+    "original_location": "/tmp/orionviva-main-integration-stage-20261105/NORMAL-ROUTE-MATRIX-FACTS.md",
+    "sha256": "e3adac8fa3d41b0b83d265193b02e3710a2770a8e08b5051da5aa3dbc94b2b17",
+    "role": "Read-only historical source audit; not runtime acceptance"
+  }
+]

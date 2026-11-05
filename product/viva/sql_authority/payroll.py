@@ -163,6 +163,17 @@ def causes(operations, binding_lookup):
 
 
 def _affected(store, operations):
+    from .transfers import immutable_row, remember
+    by_transaction={}; conflicts=set()
+    cached=store._transfer_facts
+    bindings=[] if cached is None else [row for row in cached['transfer_bindings'].values() if row is not None]
+    bindings.extend(op['row'] for op in store._operations or () if op['table']=='transfer_bindings')
+    for binding in bindings:
+        txn=binding['txn_id']
+        if txn in by_transaction and by_transaction[txn] != binding:
+            conflicts.add(txn)
+        else:
+            by_transaction[txn]=dict(binding)
     affected=set(); movements=set(); queue=[]
     for operation in operations:
         table,row=operation['table'],operation['row']
@@ -173,10 +184,14 @@ def _affected(store, operations):
         elif table=='transfer_members':
             movements.add(row['movement'])
         elif table=='transactions':
-            for binding in rows(store,'transfer_bindings','txn_id=?',(row['txn_id'],)):
+            txn=row['txn_id']
+            binding=by_transaction.get(txn) if txn not in conflicts else None
+            selected=[binding] if binding is not None else rows(store,'transfer_bindings','txn_id=?',(txn,))
+            for binding in selected:
+                remember(store,'transfer_bindings',binding['movement'],dict(binding))
                 movements.add(binding['movement'])
     def add_near(binding):
-        info=store._row('transfer_inventory','account=?',(binding['account'],))
+        info=immutable_row(store,'transfer_inventory',binding['account'])
         if info is None or info['kind']!='depository' or Decimal(binding['amount'])<=0:
             return
         low,high=bounds(binding['date'])
@@ -184,7 +199,7 @@ def _affected(store, operations):
             if doc not in affected:
                 affected.add(doc);queue.append(doc)
     for movement in sorted(movements):
-        binding=store._row('transfer_bindings','movement=?',(movement,))
+        binding=immutable_row(store,'transfer_bindings',movement)
         if binding is not None:
             add_near(binding)
     seen=set()
@@ -198,7 +213,7 @@ def _affected(store, operations):
             continue
         typed=decode(json.loads(fact['body']))
         for candidate in candidates(store,typed):
-            add_near(store._row('transfer_bindings','movement=?',(candidate['movement'],)))
+            add_near(immutable_row(store,'transfer_bindings',candidate['movement']))
     return sorted(affected)
 
 

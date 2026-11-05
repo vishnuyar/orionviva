@@ -450,7 +450,7 @@ def test_engine_v1_refuses_before_sql_connection_under_actual_owned_context(tmp_
         with owner._root_lock.hold():
             path = owner.root / "sql" / "authority.json"
             metadata = history.decode(path.read_bytes())
-            assert metadata["format"] == "viva-sql-application-engine-v3"
+            assert metadata["format"] == "viva-sql-application-engine-v5"
             metadata["format"] = "viva-sql-application-engine-v1"
             path.write_bytes(history.encoded(metadata))
             before = {p.relative_to(owner.root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -657,3 +657,338 @@ def test_independent_verifier_refuses_consistent_finances_unbound_from_retained_
         assert reconstructed["payroll_active"][(eid,)]["active"] == 1
     with pytest.raises(IntegrityError, match="payroll semantic mismatch"):
         payroll_store.verify()
+
+
+def test_writer_local_payroll_reuses_positive_bindings_and_inventory(payroll_store, monkeypatch):
+    from viva.sql_authority import payroll as payroll_module
+    payroll = _payroll(payroll_store)
+    assert payroll.status == "pending"
+    affected = payroll_module._affected
+    observations = []
+    def observe(store, operations):
+        if not any(op["table"] == "transactions" for op in operations):
+            return affected(store, operations)
+        bindings = [op["row"] for op in operations if op["table"] == "transfer_bindings"]
+        assert bindings
+        for row in bindings:
+            assert store._transfer_facts["transfer_bindings"][row["movement"]] == row
+            assert store._transfer_facts["transfer_inventory"][row["account"]] is not None
+        store._transfer_facts["transfer_bindings"]["synthetic absent binding"] = None
+        queries = []
+        read = store._read
+        def trace(statement, parameters=()):
+            queries.append(statement)
+            return read(statement, parameters)
+        with monkeypatch.context() as patch:
+            patch.setattr(store, "_read", trace)
+            selected = affected(store, operations)
+        assert payroll.doc_id in selected
+        assert not any(" FROM transfer_bindings WHERE " in query or " FROM transfer_inventory WHERE " in query
+                       for query in queries)
+        observations.append(selected)
+        return selected
+    monkeypatch.setattr(payroll_module, "_affected", observe)
+    bank = _deposit(payroll_store)
+    assert observations and bank.status == "accepted"
+    assert payroll_store.payroll_component(payroll.doc_id)["state"] == "accepted"
+    assert len(payroll_store.payroll_postings()) == 3
+    assert payroll_store.account(bank.account_id)["running_balance"] == "80"
+    assert payroll_store._transfer_facts is None
+    assert payroll_store.verify()["verified"]
+
+
+def test_payroll_transaction_cause_falls_back_to_existing_binding(payroll_store, monkeypatch):
+    from viva.sql_authority import payroll as payroll_module
+    from viva.sql_authority import transfers
+    bank = _deposit(payroll_store)
+    payroll = _payroll(payroll_store)
+    txn = payroll_store.transactions(bank.account_id)[0]
+    binding = transfers.rows(payroll_store, "transfer_bindings", "txn_id=?", (txn["txn_id"],))[0]
+    expected_postings = payroll_store.payroll_postings()
+    expected_head = payroll_store.head
+    with payroll_store._transaction():
+        payroll_store._transfer_facts["transfer_bindings"][binding["movement"]] = None
+        queries = []
+        read = payroll_store._read
+        def trace(statement, parameters=()):
+            queries.append(statement)
+            return read(statement, parameters)
+        operations = [{"table": "transactions", "row": txn},
+                      {"table": "transfer_members", "row": {"movement": binding["movement"]}}]
+        with monkeypatch.context() as patch:
+            patch.setattr(payroll_store, "_read", trace)
+            assert payroll_module._affected(payroll_store, operations) == [payroll.doc_id]
+            assert sum(" FROM transfer_bindings WHERE txn_id=?" in query for query in queries) == 1
+            assert payroll_store._transfer_facts["transfer_bindings"][binding["movement"]] == binding
+            queries.clear()
+            assert payroll_module._affected(payroll_store, operations) == [payroll.doc_id]
+            assert not any(" FROM transfer_bindings WHERE " in query or " FROM transfer_inventory WHERE " in query
+                           for query in queries)
+            missing = [{"table": "transactions", "row": {"txn_id": "synthetic absent transaction"}}]
+            queries.clear()
+            assert payroll_module._affected(payroll_store, missing) == []
+            assert payroll_module._affected(payroll_store, missing) == []
+            assert sum(" FROM transfer_bindings WHERE txn_id=?" in query for query in queries) == 2
+    assert payroll_store._transfer_facts is None
+    assert payroll_store.head == expected_head
+    assert payroll_store.payroll_postings() == expected_postings
+    assert payroll_store.verify()["verified"]
+
+
+def _curated_normalization_history(store, source):
+    payroll_document = next(d for d in source.documents if d["doc_type"] == "pay_stub")
+    bank_document = next(d for d in source.documents if d["doc_type"] == "checking_statement")
+    payroll = store.ingest_curated(source.original(payroll_document["sha256"]), source)
+    assert payroll.status == "pending" and store.payroll_postings(payroll.doc_id) == []
+    bank = store.ingest_curated(source.original(bank_document["sha256"]), source)
+    assert bank.status == "accepted" and store.item(payroll.doc_id)["state"] == "accepted"
+    legs = store.payroll_postings(payroll.doc_id)
+    assert len(legs) == 6 and sum(D(row["amount"]) for row in legs) == 0
+    competing = ingest(store, b"synthetic competing curated-payroll deposit", opening="0", closing="12450.00",
+                       movement="12450.00", start="2021-01-25", end="2021-01-25",
+                       number="7654321", institution="SyntheticIssuer")
+    assert competing.status == "accepted"
+    for index in (1, 2):
+        store.ingest(("synthetic unrelated normalization boundary " + str(index)).encode(),
+                     lambda *_args: ReadResult("unknown", 1.0), contract="synthetic-unknown-v1")
+    assert [row["action"] for row in store.payroll_decisions(payroll.doc_id)] == ["activate", "deactivate"]
+    assert store.payroll_component(payroll.doc_id)["state"] == "ambiguous"
+    assert store.payroll_postings(payroll.doc_id) == []
+    assert store._read("SELECT count(*) FROM payroll_legs") == [(6,)]
+    assert D(store.account(bank.account_id)["running_balance"]) == D("105054.45")
+    assert D(store.account(competing.account_id)["running_balance"]) == D("12450.00")
+    assert len(store.transactions(bank.account_id)) == 7
+    assert len(store.transactions(competing.account_id)) == 1
+    assert store.original(payroll.doc_id) == source.original(payroll.doc_id)
+    assert store.receipt(payroll.doc_id)["raw_reading"]["facts"] is None
+    return payroll, bank, competing
+
+
+def _normalization_financial_snapshot(store, payroll, bank, competing):
+    return {"head": store.head, "audit": store.export_audit(),
+            "payroll": store.payroll_facts(payroll.doc_id),
+            "component": store.payroll_component(payroll.doc_id),
+            "decisions": store.payroll_decisions(payroll.doc_id),
+            "postings": store.payroll_postings(payroll.doc_id),
+            "bank": store.transactions(bank.account_id), "bank_postings": store.postings(bank.doc_id),
+            "competing": store.transactions(competing.account_id),
+            "receipt": store.receipt(payroll.doc_id), "original": store.original(payroll.doc_id)}
+
+
+def _observe_normalization_verify(store, monkeypatch, source_hook=None, derive_hook=None):
+    from viva.sql_authority import curated, payroll_verify
+    actual_source, actual_derive, actual_auth = payroll_verify._source, curated.derive, curated.authenticate
+    observed = {"visits": 0, "derivations": 0, "authentications": 0, "hits": 0, "depth": 0, "memos": []}
+    def derive(*args, **kwargs):
+        if observed["depth"]:
+            observed["derivations"] += 1
+            if derive_hook is not None:
+                return derive_hook(actual_derive, observed, *args, **kwargs)
+        return actual_derive(*args, **kwargs)
+    def authenticate(*args, **kwargs):
+        if observed["depth"]:
+            observed["authentications"] += 1
+        return actual_auth(*args, **kwargs)
+    def source(owner, prefix, doc, interpretation, memo=None):
+        observed["visits"] += 1
+        if all(memo is not previous for previous in observed["memos"]):
+            observed["memos"].append(memo)
+        before = observed["derivations"]
+        observed["depth"] += 1
+        try:
+            call = lambda: actual_source(owner, prefix, doc, interpretation, memo=memo)
+            result = source_hook(call, observed, owner, prefix, doc, interpretation, memo) if source_hook else call()
+            if before == observed["derivations"] and result[0] is not None:
+                observed["hits"] += 1
+            return result
+        finally:
+            observed["depth"] -= 1
+    with monkeypatch.context() as patch:
+        patch.setattr(curated, "derive", derive)
+        patch.setattr(curated, "authenticate", authenticate)
+        patch.setattr(payroll_verify, "_source", source)
+        assert store.verify()["verified"]
+    return observed
+
+
+def test_curated_payroll_normalization_reuses_only_within_each_verification(payroll_store, payroll_curated_source, monkeypatch):
+    store = payroll_store
+    payroll, bank, competing = _curated_normalization_history(store, payroll_curated_source)
+    expected = _normalization_financial_snapshot(store, payroll, bank, competing)
+    first = _observe_normalization_verify(store, monkeypatch)
+    second = _observe_normalization_verify(store, monkeypatch)
+    for observed in (first, second):
+        assert observed["visits"] > 2 and observed["hits"] == observed["visits"] - 1
+        assert observed["derivations"] == 1
+        assert observed["authentications"] >= observed["visits"]
+        assert len(observed["memos"]) == 1
+        assert observed["memos"][0].facts == {} and observed["memos"][0].encoded_bytes == 0
+    assert first["memos"][0] is not second["memos"][0]
+    assert _normalization_financial_snapshot(store, payroll, bank, competing) == expected
+    assert [row["action"] for row in expected["decisions"]] == ["activate", "deactivate"]
+    assert expected["component"]["state"] == "ambiguous" and expected["postings"] == []
+
+
+def test_curated_payroll_memo_hit_rechecks_changed_evidence_and_custody(payroll_store, payroll_curated_source, monkeypatch):
+    import copy
+    from test_sql_authority_integrity import _resealed_export
+    from viva.sql_authority import payroll_verify
+    store, source = payroll_store, payroll_curated_source
+    payroll, bank, competing = _curated_normalization_history(store, source)
+    expected = _normalization_financial_snapshot(store, payroll, bank, competing)
+    actual_verify = payroll_verify.verify
+    for changed_input in ("receipt", "context", "admission", "interpretation"):
+        observed = {"hits": 0, "last_checked": False, "derivations": 0, "depth": 0}
+        actual_source = payroll_verify._source
+        from viva.sql_authority import curated
+        actual_derive = curated.derive
+        def counted_derive(*args, **kwargs):
+            if observed["depth"]:
+                observed["derivations"] += 1
+            return actual_derive(*args, **kwargs)
+        def checked_source(owner, prefix, doc, interpretation, memo=None):
+            before = observed["derivations"]
+            observed["depth"] += 1
+            try:
+                result = actual_source(owner, prefix, doc, interpretation, memo=memo)
+                if before == observed["derivations"] and result[0] is not None:
+                    observed["hits"] += 1
+                return result
+            finally:
+                observed["depth"] -= 1
+        def counterfactual(owner, state, exported):
+            final_revision, index = exported["revision"], 0
+            receipt = copy.deepcopy(state["receipts"][(payroll.doc_id,)])
+            context_id = json.loads(receipt["capture_types"])["read_context_id"]
+            table = {"receipt": "receipts", "context": "read_contexts", "admission": "source_admissions",
+                     "interpretation": "interpretations"}[changed_input]
+            key = (context_id,) if changed_input == "context" else (payroll.doc_id,)
+            changed = copy.deepcopy(state[table][key])
+            if changed_input == "receipt":
+                body = json.loads(changed["body"]);body["raw_text"] += " "
+                changed["body"] = canonical(body)
+            elif changed_input == "context":
+                body = json.loads(changed["body"]);body["normalization_rules_version"] = "synthetic-foreign-rules"
+                changed["body"] = canonical(body)
+            elif changed_input == "admission":
+                body = json.loads(changed["body"]);body["locale"] = "de-DE"
+                changed["body"] = canonical(body)
+            else:
+                body = json.loads(changed["facts"]);body["gross"] = "18334.33"
+                changed["facts"] = canonical(body)
+            def mutate(payload):
+                nonlocal index
+                index += 1
+                if index == final_revision:
+                    payload["operations"].append({"table": table, "row": changed})
+            altered = _resealed_export(owner, exported, mutate)
+            if changed_input == "admission":
+                # Prefix-admission identity changes force fresh derivation even
+                # when current authenticated custody still normalizes identically.
+                actual_verify(owner, state, altered)
+                assert observed["derivations"] == 2
+            else:
+                with pytest.raises(IntegrityError, match="payroll"):
+                    actual_verify(owner, state, altered)
+            assert observed["hits"] >= 1, "evidence changes only after a real local memo hit"
+            with pytest.raises(IntegrityError, match="immutable audited row rewritten"):
+                owner._reconstruct(altered, None)
+            observed["last_checked"] = True
+            return actual_verify(owner, state, exported)
+        with monkeypatch.context() as patch:
+            patch.setattr(curated, "derive", counted_derive)
+            patch.setattr(payroll_verify, "_source", checked_source)
+            patch.setattr(payroll_verify, "verify", counterfactual)
+            assert store.verify()["verified"]
+        assert observed["last_checked"]
+        assert _normalization_financial_snapshot(store, payroll, bank, competing) == expected
+
+    for custody_change in ("owner_detached", "owner_replaced", "original_replaced"):
+        visits, memo_hit, altered = [], [], []
+        actual_source, actual_original = payroll_verify._source, store._original
+        def checked_custody(owner, prefix, doc, interpretation, memo=None):
+            visits.append(doc)
+            if len(visits) == 2:
+                assert memo.facts
+                result = actual_source(owner, prefix, doc, interpretation, memo=memo)
+                memo_hit.append(doc)
+                return result
+            if len(visits) == 3:
+                assert memo_hit
+                altered.append(custody_change)
+                if custody_change == "owner_detached":
+                    owner._curated_owner = None
+                elif custody_change == "owner_replaced":
+                    owner._curated_owner = object.__new__(CuratedSource)
+                else:
+                    owner._original = lambda identity: (actual_original(identity) + b" changed synthetic custody"
+                                                        if identity == doc else actual_original(identity))
+            return actual_source(owner, prefix, doc, interpretation, memo=memo)
+        try:
+            with monkeypatch.context() as patch:
+                patch.setattr(payroll_verify, "_source", checked_custody)
+                with pytest.raises(IntegrityError, match="payroll"):
+                    store.verify()
+        finally:
+            store._curated_owner, store._original = source, actual_original
+        assert altered == [custody_change] and memo_hit
+        assert _normalization_financial_snapshot(store, payroll, bank, competing) == expected
+        assert store.verify()["verified"]
+
+
+def test_curated_payroll_memo_detachment_capacity_and_error_fallback(payroll_store, payroll_curated_source, monkeypatch):
+    from viva.sql_authority import payroll_verify
+    store = payroll_store
+    payroll, bank, competing = _curated_normalization_history(store, payroll_curated_source)
+    expected = _normalization_financial_snapshot(store, payroll, bank, competing)
+    returned = []
+    def detached(call, observed, _owner, _prefix, _doc, _interpretation, memo):
+        if returned:
+            returned[0].gross = D("1")
+            returned[0].deductions[0] = Deduction("Synthetic mutated deduction", D("1"), "tax")
+        result = call()
+        assert result[0].gross == D("18333.33")
+        assert result[0].deductions[0].amount == D("3483.33")
+        assert all(result[0] is not previous and result[0].deductions is not previous.deductions for previous in returned)
+        returned.append(result[0])
+        return result
+    detached_result = _observe_normalization_verify(store, monkeypatch, source_hook=detached)
+    assert detached_result["derivations"] == 1 and detached_result["hits"] > 0
+    with monkeypatch.context() as patch:
+        patch.setattr(payroll_verify, "_NORMALIZATION_MEMO_LIMIT", 0)
+        uncached = _observe_normalization_verify(store, monkeypatch)
+    assert uncached["derivations"] == uncached["visits"] and uncached["hits"] == 0
+
+    pressure = []
+    def clear_under_pressure(call, observed, _owner, _prefix, _doc, _interpretation, memo):
+        result = call()
+        if observed["visits"] == 2:
+            assert observed["derivations"] == 1 and memo.facts
+            existing_keys = set(memo.facts)
+            wire = next(iter(memo.facts.values()))
+            with monkeypatch.context() as patch:
+                patch.setattr(payroll_verify, "_NORMALIZATION_MEMO_LIMIT", memo.encoded_bytes + 1)
+                memo.remember("synthetic bounded bookkeeping pressure", wire)
+                assert not existing_keys.intersection(memo.facts)
+                assert memo.encoded_bytes <= payroll_verify._NORMALIZATION_MEMO_LIMIT
+            pressure.append(True)
+        return result
+    cleared = _observe_normalization_verify(store, monkeypatch, source_hook=clear_under_pressure)
+    assert pressure == [True] and cleared["derivations"] == 2
+
+    failures = []
+    def refuse_once(real_derive, _observed, *args, **kwargs):
+        if not failures:
+            failures.append("refused")
+            raise ValueError("controlled pure-normalization refusal")
+        return real_derive(*args, **kwargs)
+    def retry_same_evidence(call, observed, _owner, _prefix, _doc, _interpretation, memo):
+        if observed["visits"] == 1:
+            with pytest.raises(IntegrityError, match="payroll source not independently admitted"):
+                call()
+            assert memo.facts == {} and memo.encoded_bytes == 0
+        return call()
+    retried = _observe_normalization_verify(store, monkeypatch, source_hook=retry_same_evidence, derive_hook=refuse_once)
+    assert failures == ["refused"] and retried["derivations"] == 2 and retried["hits"] > 0
+    assert _normalization_financial_snapshot(store, payroll, bank, competing) == expected
+    assert store.verify()["verified"]

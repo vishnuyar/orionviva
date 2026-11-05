@@ -14,17 +14,41 @@ from .store import canonical, IntegrityError
 from .transfers import Context, transport
 
 
-def verify(store,state,export):
-    from ..crypto import open_sealed
-    operations=[]
-    for sequence,previous,envelope,_hash in export["records"]:
-        payload=json.loads(open_sealed(store._audit_key,json.loads(envelope),aad=canonical([sequence,previous]).encode()))
-        operations.append(payload["operations"])
-    inventory={}; bindings={}; endpoints={}; tokens=set(); edges=set(); dirty=set()
-    pairs={}; suggestions={}; members={}; assertion_expected=[]; run_expected={}
-    seen_docs=set(); admission_buckets={}
-    account_rows={}; transaction_rows={}; keymap={row["account_id"]:row["logical_key"] for row in state["account_keys"].values()}
+def _bootstrap():
+    return None
 
+
+def _advance(store,checkpoint,state,operations,*,finish=True):
+    """Independently fold ordered record batches with the current final-view oracle."""
+    if checkpoint is None:
+        inventory={};bindings={};endpoints={};tokens=set();edges=set();dirty=set()
+        pairs={};suggestions={};members={};assertion_expected=[];run_expected={}
+        seen_docs=set();admission_buckets={};account_rows={};transaction_rows={}
+        expected_inventory={};expected_bindings={};promoted=set();source_order=0
+        pre_native=set();main_native=set()
+    else:
+        inventory=checkpoint['inventory']
+        bindings=checkpoint['bindings']
+        endpoints=checkpoint['endpoints']
+        tokens=checkpoint['tokens']
+        edges=checkpoint['edges']
+        dirty=checkpoint['dirty']
+        pairs=checkpoint['pairs']
+        suggestions=checkpoint['suggestions']
+        members=checkpoint['members']
+        assertion_expected=checkpoint['assertion_expected']
+        run_expected=checkpoint['run_expected']
+        seen_docs=checkpoint['seen_docs']
+        admission_buckets=checkpoint['admission_buckets']
+        account_rows=checkpoint['account_rows']
+        transaction_rows=checkpoint['transaction_rows']
+        expected_inventory=checkpoint['expected_inventory']
+        expected_bindings=checkpoint['expected_bindings']
+        promoted=checkpoint['promoted']
+        source_order=checkpoint['source_order']
+        pre_native=checkpoint['pre_native']
+        main_native=checkpoint['main_native']
+    keymap={row["account_id"]:row["logical_key"] for row in state["account_keys"].values()}
     def payroll_source(doc):
         interpreted=state['interpretations'].get((doc,))
         return (interpreted is not None and interpreted['facts_type']=='payroll'
@@ -87,9 +111,8 @@ def verify(store,state,export):
 
     # Required order comes from ordinary financial promotion assertions and
     # original transaction line indices, never transfer-family operation order.
-    expected_inventory={}; expected_bindings={}; promoted=set(); source_order=0
     from ..ledger.postings import counter_account
-    native_seen=set()
+    native_seen=pre_native
     for ops in operations:
         for operation in ops:
             source=operation["row"]
@@ -137,7 +160,8 @@ def verify(store,state,export):
         return not relationship or relationship_complete(
             source,counterpart,available(source),counterpart_available)
 
-    native_seen=set()
+    pre_native=native_seen
+    native_seen=main_native
     for ops in operations:
         admissions=[]; actual_assertions=[]; actual_runs=[]
         for op in ops:
@@ -280,44 +304,62 @@ def verify(store,state,export):
                             or not (is_transfer_candidate(m(a),m(b)) or is_transfer_candidate(m(b),m(a)))):
                         fail("manual reversal admission")
                 fold_assertion(row)
-    if state["transfer_runs"]!={(key,):row for key,row in run_expected.items()}:
-        fail("decision run inventory")
-    if set(state["transfer_inventory"])!={(key,) for key in inventory} or any(state["transfer_inventory"][(key,)]!=value for key,value in inventory.items()):
-        fail("inventory view")
-    if state["transfer_bindings"]!={(key,):row for key,row in bindings.items()}:
-        fail("movement bindings")
-    if set(state["transfer_tokens"])!=tokens or set(state["transfer_edges"])!=edges:
-        fail("token ownership/candidate edges")
-    from .bank import amount_key
-    expected_endpoints={}
-    for key in bindings:
-        mov=m(key)
-        expected_endpoints[(key,)]=dict(movement=key,account=mov.account,currency=mov.currency,magnitude=amount_key(abs(mov.amount)),flow=_flow(mov),date=mov.date,active=int(key not in members))
-    if state["transfer_endpoints"]!=expected_endpoints:
-        fail("eligible endpoints/live membership")
-    actual_dirty={row["movement"] for row in state["transfer_dirty"].values() if row["active"]}
-    if actual_dirty!=dirty:
-        fail("dirty dependency state")
-    expected_pairs={}
-    first_pairs={}; resident_suggestions={}
-    for row in assertion_expected:
-        body=row["body"]
-        if row["event_type"]=="TransferSuggested":
-            if body["a"] not in resident_suggestions:
-                resident_suggestions[body["a"]]=row["ordinal"]
-        else:
-            first_pairs.setdefault(tuple(sorted((body["a"],body["b"]))),row["ordinal"])
-            resident_suggestions.pop(body["a"],None); resident_suggestions.pop(body["b"],None)
-    for (a,b),info in pairs.items():
-        expected_pairs[a,b]=dict(a=a,b=b,status=info["status"],grade=info.get("grade",""),by=info.get("by",""),decided_by=info.get("decided_by",""),resident=first_pairs[a,b])
-    if state["transfer_pairs"]!=expected_pairs:
-        fail("current pair/resident order")
-    actual_active_suggestions={key[0]:row for key,row in state["transfer_suggestions"].items() if row["active"]}
-    expected_suggestions={key:dict(a=key,body=canonical(body),active=1,resident=resident_suggestions[key]) for key,body in suggestions.items()}
-    if actual_active_suggestions!=expected_suggestions:
-        fail("stored suggestions/resident order")
-    actual_members={key[0]:(row["a"],row["b"]) for key,row in state["transfer_members"].items() if row["active"]}
-    if actual_members!=members:
-        fail("unique live membership")
-    if len(assertion_expected)!=len(state["transfer_assertions"]) or any(row["ordinal"]!=index for index,row in enumerate(assertion_expected,1)):
-        fail("assertion source order")
+    main_native=native_seen
+    if finish:
+        if state["transfer_runs"]!={(key,):row for key,row in run_expected.items()}:
+            fail("decision run inventory")
+        if set(state["transfer_inventory"])!={(key,) for key in inventory} or any(state["transfer_inventory"][(key,)]!=value for key,value in inventory.items()):
+            fail("inventory view")
+        if state["transfer_bindings"]!={(key,):row for key,row in bindings.items()}:
+            fail("movement bindings")
+        if set(state["transfer_tokens"])!=tokens or set(state["transfer_edges"])!=edges:
+            fail("token ownership/candidate edges")
+        from .bank import amount_key
+        expected_endpoints={}
+        for key in bindings:
+            mov=m(key)
+            expected_endpoints[(key,)]=dict(movement=key,account=mov.account,currency=mov.currency,magnitude=amount_key(abs(mov.amount)),flow=_flow(mov),date=mov.date,active=int(key not in members))
+        if state["transfer_endpoints"]!=expected_endpoints:
+            fail("eligible endpoints/live membership")
+        actual_dirty={row["movement"] for row in state["transfer_dirty"].values() if row["active"]}
+        if actual_dirty!=dirty:
+            fail("dirty dependency state")
+        expected_pairs={}
+        first_pairs={}; resident_suggestions={}
+        for row in assertion_expected:
+            body=row["body"]
+            if row["event_type"]=="TransferSuggested":
+                if body["a"] not in resident_suggestions:
+                    resident_suggestions[body["a"]]=row["ordinal"]
+            else:
+                first_pairs.setdefault(tuple(sorted((body["a"],body["b"]))),row["ordinal"])
+                resident_suggestions.pop(body["a"],None); resident_suggestions.pop(body["b"],None)
+        for (a,b),info in pairs.items():
+            expected_pairs[a,b]=dict(a=a,b=b,status=info["status"],grade=info.get("grade",""),by=info.get("by",""),decided_by=info.get("decided_by",""),resident=first_pairs[a,b])
+        if state["transfer_pairs"]!=expected_pairs:
+            fail("current pair/resident order")
+        actual_active_suggestions={key[0]:row for key,row in state["transfer_suggestions"].items() if row["active"]}
+        expected_suggestions={key:dict(a=key,body=canonical(body),active=1,resident=resident_suggestions[key]) for key,body in suggestions.items()}
+        if actual_active_suggestions!=expected_suggestions:
+            fail("stored suggestions/resident order")
+        actual_members={key[0]:(row["a"],row["b"]) for key,row in state["transfer_members"].items() if row["active"]}
+        if actual_members!=members:
+            fail("unique live membership")
+        if len(assertion_expected)!=len(state["transfer_assertions"]) or any(row["ordinal"]!=index for index,row in enumerate(assertion_expected,1)):
+            fail("assertion source order")
+    return dict(inventory=inventory,bindings=bindings,endpoints=endpoints,tokens=tokens,edges=edges,dirty=dirty,pairs=pairs,suggestions=suggestions,members=members,assertion_expected=assertion_expected,run_expected=run_expected,seen_docs=seen_docs,admission_buckets=admission_buckets,account_rows=account_rows,transaction_rows=transaction_rows,expected_inventory=expected_inventory,expected_bindings=expected_bindings,promoted=promoted,source_order=source_order,pre_native=pre_native,main_native=main_native)
+
+
+def _verify_prefixes(store,state,export):
+    from ..crypto import open_sealed
+    operations=[]
+    for sequence,previous,envelope,_hash in export["records"]:
+        payload=json.loads(open_sealed(store._audit_key,json.loads(envelope),aad=canonical([sequence,previous]).encode()))
+        operations.append(payload["operations"])
+    return _advance(store,_bootstrap(),state,operations)
+
+
+def verify(store,state,export):
+    checkpoint=_verify_prefixes(store,state,export)
+    collector=getattr(store,'_semantic_collection',None)
+    if collector is not None:collector['transfer']=checkpoint

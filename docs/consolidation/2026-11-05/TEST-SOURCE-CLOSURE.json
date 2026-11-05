@@ -1,0 +1,1118 @@
+{
+  "active_versions": {
+    "active": {
+      "persona_pack": "pack-v62",
+      "semantic_request": "semantic-request-v21",
+      "semantic_request_retry": "semantic-request-retry-v19",
+      "semantic_request_schema": "semantic-request-schema-v19",
+      "tools": "tools-v29"
+    },
+    "all_active_versions_declared_released": true,
+    "path": "product/viva/versions.json",
+    "sha256": "145b36528119de0da8f32ae6cc3345d83de443503b22c818fc5a9aa4dd942825"
+  },
+  "fixed_wire_guard": {
+    "literal_site_count": 9,
+    "mechanism_and_negative_controls_exact_prototype": [
+      "_literal_version_offenders",
+      "test_fixed_wire_exception_rejects_added_literal_or_changed_ast_site",
+      "test_registry_fixed_wire_exception_rejects_new_literal_or_moved_site",
+      "test_population_fixed_wire_exception_rejects_any_unreviewed_change"
+    ],
+    "repinning_performed": false,
+    "source_count": 6,
+    "sources": [
+      {
+        "exact_approved_sites": [
+          [
+            166,
+            97,
+            "payroll-source-v2"
+          ]
+        ],
+        "full_hash_and_sites_match": true,
+        "path": "product/viva/ingest/paystub.py",
+        "sha256": "90cd4887b8d61fc1de6778ecbb49f83647e8ea61b5f6b3cfa3b2a4afee1598a1"
+      },
+      {
+        "exact_approved_sites": [
+          [
+            103,
+            24,
+            "payroll-source-v2"
+          ]
+        ],
+        "full_hash_and_sites_match": true,
+        "path": "product/viva/ingest/registry.py",
+        "sha256": "e0b51ac064ebb99b546418f56f98f2c89c282bee41b14b41e563b0a4f513f6b5"
+      },
+      {
+        "exact_approved_sites": [
+          [
+            26,
+            50,
+            "payroll-source-v2"
+          ]
+        ],
+        "full_hash_and_sites_match": true,
+        "path": "product/viva/investment/payroll_extraction.py",
+        "sha256": "a3d88941829bc47f53c482422f804223a41b716df8f5f99521652eadbc6801ba"
+      },
+      {
+        "exact_approved_sites": [
+          [
+            74,
+            33,
+            "payroll-source-v2"
+          ]
+        ],
+        "full_hash_and_sites_match": true,
+        "path": "product/viva/retirement_funding/authority.py",
+        "sha256": "26d1655bfbd0f757cfa7245b79e4e264b96da7b12b9a4169696cc267660f6b73"
+      },
+      {
+        "exact_approved_sites": [
+          [
+            24,
+            26,
+            "payroll-source-v2"
+          ],
+          [
+            34,
+            103,
+            "payroll-source-v2"
+          ]
+        ],
+        "full_hash_and_sites_match": true,
+        "path": "product/viva/retirement_funding/payroll_v2.py",
+        "sha256": "9ce976307ea4eac6f3e2889a815e24b6a9e926c722e1e903bca3c66877e4b820"
+      },
+      {
+        "exact_approved_sites": [
+          [
+            92,
+            28,
+            "payroll-source-v2"
+          ],
+          [
+            27,
+            27,
+            "payroll-source-v2"
+          ],
+          [
+            23,
+            53,
+            "payroll-source-v2"
+          ]
+        ],
+        "full_hash_and_sites_match": true,
+        "path": "product/viva/retirement_funding/population.py",
+        "sha256": "ee517557848e42575c085245aedf452f2fd027d9233e796d9d96e306827363aa"
+      }
+    ],
+    "test_path": "product/tests/test_versions.py",
+    "test_sha256": "05e22d7bb9ca499aa44fbaa21786776d7dbc46f0fcda9c72577e6af563cc90d0"
+  },
+  "packaging": {
+    "collect_data_files_include_py_files_true_for": [
+      "merchantcore",
+      "viva",
+      "vivacore"
+    ],
+    "hook_mapping_cardinality_guard_lines": [
+      23
+    ],
+    "hook_path": "product/viva/desktop_bridge/pyi_rth_admission_sources.py",
+    "hook_sha256": "4112d7de6976158d127df22105a8daf010a0d1265e665f7bae82515c79fb72f0",
+    "limits": "Static declared closure only; actual installed bundle/runtime-hook behavior remains for independent execution.",
+    "selected_new_dependencies_present": [
+      "viva.desktop_bridge.bulk_documents",
+      "viva.extraction_responses",
+      "viva.ledger.projection.coverage",
+      "viva.read_store.documents",
+      "viva.vault",
+      "viva.answer_program.selected_balances",
+      "viva.tools.account_balances",
+      "viva.ledger.ledger"
+    ],
+    "source_count": 160,
+    "source_paths_and_hashes": [
+      {
+        "bundled": "viva/speak.py",
+        "module": "viva.speak",
+        "path": "product/viva/speak.py",
+        "sha256": "363cd3c2b5c6a0daba495d5ed9b80b8411dc2c3ebe81a702cd4e4ac2e8ff8b69"
+      },
+      {
+        "bundled": "vivacore/models/spec.py",
+        "module": "vivacore.models.spec",
+        "path": "core/vivacore/models/spec.py",
+        "sha256": "d2602811bb5d4b0d3d7059a325cb16d2e46c250f208cd6c7a1c9f22d152a8d3a"
+      },
+      {
+        "bundled": "viva/ledger/scenarios.py",
+        "module": "viva.ledger.scenarios",
+        "path": "product/viva/ledger/scenarios.py",
+        "sha256": "96974fe2898d88e8ab7b75a28d96216f4cb5f049b596d378dd0bb8f234ad1585"
+      },
+      {
+        "bundled": "viva/ledger/networth.py",
+        "module": "viva.ledger.networth",
+        "path": "product/viva/ledger/networth.py",
+        "sha256": "545dcd0df5db436fa759b00940be76be1c935ee434708a35bce01ae00a698a78"
+      },
+      {
+        "bundled": "viva/ledger/accounting.py",
+        "module": "viva.ledger.accounting",
+        "path": "product/viva/ledger/accounting.py",
+        "sha256": "d3854299230bc5128f5b22bc9c0c5062eedc08bed35af4b5b3c46017d76d5167"
+      },
+      {
+        "bundled": "viva/read_store/overview.py",
+        "module": "viva.read_store.overview",
+        "path": "product/viva/read_store/overview.py",
+        "sha256": "056c7bb6064a5459c4508eb028961184fc7309c4f9f055c4138ea1b8fc29436e"
+      },
+      {
+        "bundled": "viva/surface/overview.py",
+        "module": "viva.surface.overview",
+        "path": "product/viva/surface/overview.py",
+        "sha256": "38c955510a1636d445bbc2a31d1201f9bc04fbe62766ebc7340c1a0d46a70278"
+      },
+      {
+        "bundled": "viva/tools/scenarios.py",
+        "module": "viva.tools.scenarios",
+        "path": "product/viva/tools/scenarios.py",
+        "sha256": "4e0fac5aa0226183c04a3ecb62ff72692daac64c2cfdb9a1cb2f48736617def6"
+      },
+      {
+        "bundled": "viva/answer_program/capability_fixture.py",
+        "module": "viva.answer_program.capability_fixture",
+        "path": "product/viva/answer_program/capability_fixture.py",
+        "sha256": "3ce100706ca8450e5c445a9b1cc58ddd866ef08b8a277972b94a9a815588ddae"
+      },
+      {
+        "bundled": "viva/answer_program/admission_fixture.py",
+        "module": "viva.answer_program.admission_fixture",
+        "path": "product/viva/answer_program/admission_fixture.py",
+        "sha256": "fe013e574dd3e6e7c86f57603d9c4e8aae52f7037fe985feb37b039124c60227"
+      },
+      {
+        "bundled": "viva/answer_program/admission.py",
+        "module": "viva.answer_program.admission",
+        "path": "product/viva/answer_program/admission.py",
+        "sha256": "6952283cfe5cef3eb13c15eba9b30600911149b7f730932dbaa0f9fb727597d0"
+      },
+      {
+        "bundled": "viva/answer_program/eval.py",
+        "module": "viva.answer_program.eval",
+        "path": "product/viva/answer_program/eval.py",
+        "sha256": "ead7e60b9063f26afe561731340be084819003e822450c1c172cd0aa0852729e"
+      },
+      {
+        "bundled": "viva/ledger/movement_identity.py",
+        "module": "viva.ledger.movement_identity",
+        "path": "product/viva/ledger/movement_identity.py",
+        "sha256": "8c5490f7932f80496641e1fe1bce7c422f36ec074288035d4a2efce782899394"
+      },
+      {
+        "bundled": "viva/ledger/events.py",
+        "module": "viva.ledger.events",
+        "path": "product/viva/ledger/events.py",
+        "sha256": "b404cdf4e2aae2c1e95b8b37ce02095c53a931a1e600880c931f7ce1276a709e"
+      },
+      {
+        "bundled": "viva/ledger/postings.py",
+        "module": "viva.ledger.postings",
+        "path": "product/viva/ledger/postings.py",
+        "sha256": "c8aadee3d4feeda5cac06db8b3a57b365a6622c979c8494f7be387d7d4f0e1e0"
+      },
+      {
+        "bundled": "viva/answer_program/intents.py",
+        "module": "viva.answer_program.intents",
+        "path": "product/viva/answer_program/intents.py",
+        "sha256": "ac5bdf21f998c8df9a00b538062053d8a6db68ec54ee92ac6159e11acd107ed0"
+      },
+      {
+        "bundled": "viva/vault.py",
+        "module": "viva.vault",
+        "path": "product/viva/vault.py",
+        "sha256": "d85684af92febe8048c780dfadfb133a67fe0e54b9e21f8eff7b8781dfbeb012"
+      },
+      {
+        "bundled": "viva/answer_program/compiler.py",
+        "module": "viva.answer_program.compiler",
+        "path": "product/viva/answer_program/compiler.py",
+        "sha256": "9c967b76802de7769aab5626d660adea20addb92a264e3a0a83d2c696578d003"
+      },
+      {
+        "bundled": "viva/answer_program/runtime.py",
+        "module": "viva.answer_program.runtime",
+        "path": "product/viva/answer_program/runtime.py",
+        "sha256": "fe0cbfa7715a01a3e27e88a717e0d2c5cba4adf92479b4c3e93de6c81aea8712"
+      },
+      {
+        "bundled": "viva/answer_program/replay.py",
+        "module": "viva.answer_program.replay",
+        "path": "product/viva/answer_program/replay.py",
+        "sha256": "80e15235ce2c4eb6733712b34545bd905d8c13a98cb57aa796b19340d95f0754"
+      },
+      {
+        "bundled": "vivacore/models/openai_compat.py",
+        "module": "vivacore.models.openai_compat",
+        "path": "core/vivacore/models/openai_compat.py",
+        "sha256": "6e7d3d35714daebb6dc7065adb07e92ac0dcd36bc3709840454acf1e661673e1"
+      },
+      {
+        "bundled": "viva/answer_program/capabilities.py",
+        "module": "viva.answer_program.capabilities",
+        "path": "product/viva/answer_program/capabilities.py",
+        "sha256": "ba3aa8474fcb9d4003eea5f3b80cf9e659252cea83c254d71f1d604493558d7d"
+      },
+      {
+        "bundled": "viva/tools/ledger_aggregates.py",
+        "module": "viva.tools.ledger_aggregates",
+        "path": "product/viva/tools/ledger_aggregates.py",
+        "sha256": "3b3cefa25d0a9bf26909fb125e88b307508539778d6299d57e502150bef5aaea"
+      },
+      {
+        "bundled": "viva/tools/ledger_common.py",
+        "module": "viva.tools.ledger_common",
+        "path": "product/viva/tools/ledger_common.py",
+        "sha256": "68a7adbf2792994bedf3df7f6f5ae11ac7cfea6437d330bcc36e67cad8be98e3"
+      },
+      {
+        "bundled": "viva/tools/ledger_movements.py",
+        "module": "viva.tools.ledger_movements",
+        "path": "product/viva/tools/ledger_movements.py",
+        "sha256": "e9c807a71f0144c41439ad56de9fe511f11a32bacb1d1b3faab67ff7ab3e66b7"
+      },
+      {
+        "bundled": "viva/tools/ledger_vocabulary.py",
+        "module": "viva.tools.ledger_vocabulary",
+        "path": "product/viva/tools/ledger_vocabulary.py",
+        "sha256": "03fc471263158b7501982e1cd9ea767061cb363e0e3d9163b8cd40bd61430922"
+      },
+      {
+        "bundled": "viva/ledger/projection/movements.py",
+        "module": "viva.ledger.projection.movements",
+        "path": "product/viva/ledger/projection/movements.py",
+        "sha256": "d0374d811b318239960202179f44ef3c9c98b22c91e31d805e8cef9991fbacca"
+      },
+      {
+        "bundled": "viva/ledger/projection/categories.py",
+        "module": "viva.ledger.projection.categories",
+        "path": "product/viva/ledger/projection/categories.py",
+        "sha256": "01d84721c6532f08a524d239e7ce62c63ec905b3adcc105c456afb096c3ffacd"
+      },
+      {
+        "bundled": "viva/ledger/projection/merchants.py",
+        "module": "viva.ledger.projection.merchants",
+        "path": "product/viva/ledger/projection/merchants.py",
+        "sha256": "b2cd4bc37b42b0bcb5401cb9baf7cab5a836f4760735f838ce2e7b98e0cfe105"
+      },
+      {
+        "bundled": "viva/ledger/statements.py",
+        "module": "viva.ledger.statements",
+        "path": "product/viva/ledger/statements.py",
+        "sha256": "69c0d385621b8f15b96036dbce93b8d850e5f198edb77ef06c9b2b2c6486a0e6"
+      },
+      {
+        "bundled": "viva/tools/__init__.py",
+        "module": "viva.tools",
+        "path": "product/viva/tools/__init__.py",
+        "sha256": "6f2f52a33d7d043745a785e0b73225022f28db1022b886276bbbc6b7c7ae7c84"
+      },
+      {
+        "bundled": "viva/tools/registry.py",
+        "module": "viva.tools.registry",
+        "path": "product/viva/tools/registry.py",
+        "sha256": "12aee2489f0c89529d114ec60d071b9db1e68cd8be8f11a3ec0d91461b6d5129"
+      },
+      {
+        "bundled": "viva/tools/ledger_tools.py",
+        "module": "viva.tools.ledger_tools",
+        "path": "product/viva/tools/ledger_tools.py",
+        "sha256": "9c9fd6bb61f3d3d784b37b07fc610b1f4f44a07061bfaea0fd8472d64013cd65"
+      },
+      {
+        "bundled": "viva/ledger/projection/core.py",
+        "module": "viva.ledger.projection.core",
+        "path": "product/viva/ledger/projection/core.py",
+        "sha256": "df08e54cf47f7dd59c44318dad754df99cb0c3df420e34f70f77d46b32b02c8e"
+      },
+      {
+        "bundled": "viva/ledger/projection/accounts.py",
+        "module": "viva.ledger.projection.accounts",
+        "path": "product/viva/ledger/projection/accounts.py",
+        "sha256": "bb813db10cfd40117a17663fbc5791867fc865660ccd94bb058e4be8cb8aeead"
+      },
+      {
+        "bundled": "viva/ledger/projection/balances.py",
+        "module": "viva.ledger.projection.balances",
+        "path": "product/viva/ledger/projection/balances.py",
+        "sha256": "5e4fb25e5bd8c52ccdfc5bdea6e8cef427e37699b16fe2dfd09c42a564c9243f"
+      },
+      {
+        "bundled": "viva/ledger/projection/rhythm.py",
+        "module": "viva.ledger.projection.rhythm",
+        "path": "product/viva/ledger/projection/rhythm.py",
+        "sha256": "f9d636c555a9b531ae4080a622c4d5999e160afa98f851c609bede1be7c6a5ea"
+      },
+      {
+        "bundled": "viva/ledger/streams.py",
+        "module": "viva.ledger.streams",
+        "path": "product/viva/ledger/streams.py",
+        "sha256": "a3d2afb4dbff59b16912839b547d94902efaece79b149ff35f69f1181f70d1ed"
+      },
+      {
+        "bundled": "viva/tools/measurements.py",
+        "module": "viva.tools.measurements",
+        "path": "product/viva/tools/measurements.py",
+        "sha256": "6ac5641811f5a21b49e03992b02dba3128aeedaebd25064fe98f7577b278256f"
+      },
+      {
+        "bundled": "viva/tools/projections.py",
+        "module": "viva.tools.projections",
+        "path": "product/viva/tools/projections.py",
+        "sha256": "c1a4c534725b3fb5d5eb89e312dd7e6eb703cf600faa6d8fdfdd99511edca2ed"
+      },
+      {
+        "bundled": "viva/ledger/projection/measurements.py",
+        "module": "viva.ledger.projection.measurements",
+        "path": "product/viva/ledger/projection/measurements.py",
+        "sha256": "b71e8a692d550262d2168484ef67d1205900a7e03bbcb6bd17b6e56350f9cb1b"
+      },
+      {
+        "bundled": "viva/ledger/projection/positions.py",
+        "module": "viva.ledger.projection.positions",
+        "path": "product/viva/ledger/projection/positions.py",
+        "sha256": "224729966a562169527f167b59bf811df72bd84d5761443308ac58e62b2e344e"
+      },
+      {
+        "bundled": "viva/ledger/projection/current_period.py",
+        "module": "viva.ledger.projection.current_period",
+        "path": "product/viva/ledger/projection/current_period.py",
+        "sha256": "b18b56cd680695a4a9d59494e16b83b5f17a2607fba08f2a6ad9cfdd120869cf"
+      },
+      {
+        "bundled": "viva/ledger/projection/obligations.py",
+        "module": "viva.ledger.projection.obligations",
+        "path": "product/viva/ledger/projection/obligations.py",
+        "sha256": "03a9bf68d88ac8a2897ddbf2c640ae766e6d67972cfe7ecc12cfa37b2c8d1fb8"
+      },
+      {
+        "bundled": "viva/ledger/projection/goals.py",
+        "module": "viva.ledger.projection.goals",
+        "path": "product/viva/ledger/projection/goals.py",
+        "sha256": "49c7c0a521f348ec86acf54f51b7da533d190177e61c7c5ca035e722cde1375b"
+      },
+      {
+        "bundled": "viva/ingest/brokerage.py",
+        "module": "viva.ingest.brokerage",
+        "path": "product/viva/ingest/brokerage.py",
+        "sha256": "533cb029adb28158386cb5180f037f25081b809ce817734297dfd48d307edce7"
+      },
+      {
+        "bundled": "vivacore/verify/arithmetic.py",
+        "module": "vivacore.verify.arithmetic",
+        "path": "core/vivacore/verify/arithmetic.py",
+        "sha256": "482add0948d3120d19924e2ca61b53f5ab44dd0a2fed06364215397c874ece7b"
+      },
+      {
+        "bundled": "vivacore/verify/normalize.py",
+        "module": "vivacore.verify.normalize",
+        "path": "core/vivacore/verify/normalize.py",
+        "sha256": "74de8bce0de59d19b9a4d23f6ca3d56dc5df73de6aa3ffd02b40abf6fbc4be34"
+      },
+      {
+        "bundled": "viva/ledger/projection/__init__.py",
+        "module": "viva.ledger.projection",
+        "path": "product/viva/ledger/projection/__init__.py",
+        "sha256": "cf0fa953dca9341ee7955ea82233bd3659ae71664f0c7322e6bcbbb01e3c495c"
+      },
+      {
+        "bundled": "viva/answer_program/bind.py",
+        "module": "viva.answer_program.bind",
+        "path": "product/viva/answer_program/bind.py",
+        "sha256": "61355cfdded5d4e7636935eee8c8f75af343ab855b9febb7e29f563e95a87722"
+      },
+      {
+        "bundled": "viva/answer_program/execute.py",
+        "module": "viva.answer_program.execute",
+        "path": "product/viva/answer_program/execute.py",
+        "sha256": "7a9130aafebb13419a1922937168f50231c86fe8991552e576c6c1b696038fa7"
+      },
+      {
+        "bundled": "viva/answer_program/evidence.py",
+        "module": "viva.answer_program.evidence",
+        "path": "product/viva/answer_program/evidence.py",
+        "sha256": "e9f2028c552ae564a586a7be7af412198e97a2f60fea1fdb181997497ee9c6bb"
+      },
+      {
+        "bundled": "viva/answer_program/validate.py",
+        "module": "viva.answer_program.validate",
+        "path": "product/viva/answer_program/validate.py",
+        "sha256": "150b7ce0d6c75859046a70e9c0a6cd993a897cdf1d254051a7e3cf0184086439"
+      },
+      {
+        "bundled": "viva/answer_program/schema.py",
+        "module": "viva.answer_program.schema",
+        "path": "product/viva/answer_program/schema.py",
+        "sha256": "c0497087faa22a6c644de399507b52377203b4ab1d3240cd08ade921ca127733"
+      },
+      {
+        "bundled": "viva/tools/envelope.py",
+        "module": "viva.tools.envelope",
+        "path": "product/viva/tools/envelope.py",
+        "sha256": "88892e004ea91f078db14530118aaafa097c68b4b734bfa44569dbd42b51dcf8"
+      },
+      {
+        "bundled": "viva/tools/boundary.py",
+        "module": "viva.tools.boundary",
+        "path": "product/viva/tools/boundary.py",
+        "sha256": "b4b920a53af030d0b898f989f17f9027322c38b12d6381410cd31d52816f269c"
+      },
+      {
+        "bundled": "viva/tools/shape.py",
+        "module": "viva.tools.shape",
+        "path": "product/viva/tools/shape.py",
+        "sha256": "cb59afcf3bd934f2fe41f5bbdae259fa1515bcf20f54836c7ff61cf2121b0c57"
+      },
+      {
+        "bundled": "viva/tools/runner_binding.py",
+        "module": "viva.tools.runner_binding",
+        "path": "product/viva/tools/runner_binding.py",
+        "sha256": "c77e464e2a253220b1fae6a5130162fccbde1f86715a0f2fd3670fd5da43e090"
+      },
+      {
+        "bundled": "viva/tools/runner_delivery.py",
+        "module": "viva.tools.runner_delivery",
+        "path": "product/viva/tools/runner_delivery.py",
+        "sha256": "154504cbcb064e2257fe496c820360e9a78cdb8bd00ab500efea805e2bc29e1e"
+      },
+      {
+        "bundled": "viva/tools/runner.py",
+        "module": "viva.tools.runner",
+        "path": "product/viva/tools/runner.py",
+        "sha256": "396164e9c4739fc2f4eb3be739a0034102278e167fa9de018b320ee72ff92193"
+      },
+      {
+        "bundled": "viva/tools/compute.py",
+        "module": "viva.tools.compute",
+        "path": "product/viva/tools/compute.py",
+        "sha256": "99cf277e98662c33b8847e33fe1351468abf6272fb5a8504cdf172b8dd1246ac"
+      },
+      {
+        "bundled": "viva/quantity.py",
+        "module": "viva.quantity",
+        "path": "product/viva/quantity.py",
+        "sha256": "c39d764ec994126e3b986269cbbc3e98736a3cf00d740e635f28d2d3e1ad9cc5"
+      },
+      {
+        "bundled": "viva/render.py",
+        "module": "viva.render",
+        "path": "product/viva/render.py",
+        "sha256": "bbcfa54fecd3702abe1b3778956bb17dffe08a68209d438b07ff96012740d6a3"
+      },
+      {
+        "bundled": "viva/instrument_claims.py",
+        "module": "viva.instrument_claims",
+        "path": "product/viva/instrument_claims.py",
+        "sha256": "bf4eb5be47542082f3073914235a81d1911c337d3f5666c33d51d457b997e6b0"
+      },
+      {
+        "bundled": "viva/instrument_evidence.py",
+        "module": "viva.instrument_evidence",
+        "path": "product/viva/instrument_evidence.py",
+        "sha256": "e93d9066a5202293a187ee2202f6a81b2d0e132b9a772005dba79cf210882f84"
+      },
+      {
+        "bundled": "viva/instrument_runtime.py",
+        "module": "viva.instrument_runtime",
+        "path": "product/viva/instrument_runtime.py",
+        "sha256": "50930d52129674a0bc614cabafe98293de5a0ca95d1587a387f3e4e78d691906"
+      },
+      {
+        "bundled": "viva/instrument_conversation.py",
+        "module": "viva.instrument_conversation",
+        "path": "product/viva/instrument_conversation.py",
+        "sha256": "17e4ea861b5ac194fa20639c0bf4d45bed7d8ab16919b4b0780da1855f79e6f9"
+      },
+      {
+        "bundled": "viva/allocation_target.py",
+        "module": "viva.allocation_target",
+        "path": "product/viva/allocation_target.py",
+        "sha256": "ce2f4a65b7a52cc6ef787b3c9fca9dbc4f267c4a75b1e3db2675bae5321bcb4b"
+      },
+      {
+        "bundled": "viva/allocation_continuation.py",
+        "module": "viva.allocation_continuation",
+        "path": "product/viva/allocation_continuation.py",
+        "sha256": "f875243cd849d9ec2a825668ae9bda05c46a0a9e1c4addf1b6cee2de51b69d3f"
+      },
+      {
+        "bundled": "viva/answer_program/instrument_families.py",
+        "module": "viva.answer_program.instrument_families",
+        "path": "product/viva/answer_program/instrument_families.py",
+        "sha256": "2e9185e658b9fad8c71e3277235cc6d96a518b406ec76ac0f9526acbc414d673"
+      },
+      {
+        "bundled": "viva/read_store/instrument_authority.py",
+        "module": "viva.read_store.instrument_authority",
+        "path": "product/viva/read_store/instrument_authority.py",
+        "sha256": "d3a3826bc77a72400cf7604d3c1e1498911a0a65622d4160b0bd2df9158384cb"
+      },
+      {
+        "bundled": "viva/read_store/instrument_authority_contracts.py",
+        "module": "viva.read_store.instrument_authority_contracts",
+        "path": "product/viva/read_store/instrument_authority_contracts.py",
+        "sha256": "b6373a70f0ffdb1af43a1b352ef89a99a31762aa8b16f7faafdfbfa6a92887db"
+      },
+      {
+        "bundled": "viva/read_store/instrument_authority_sql.py",
+        "module": "viva.read_store.instrument_authority_sql",
+        "path": "product/viva/read_store/instrument_authority_sql.py",
+        "sha256": "3f13d27c5c1a93c3742277690ef9b85c242a9b45b7e97c3ad3d868496bcb1456"
+      },
+      {
+        "bundled": "viva/read_store/instrument_math.py",
+        "module": "viva.read_store.instrument_math",
+        "path": "product/viva/read_store/instrument_math.py",
+        "sha256": "08bf4901ac49c9a569fc9889cf0d60949b893641ae1a66cd7580d04497ecbb10"
+      },
+      {
+        "bundled": "viva/read_store/apr_context_sql.py",
+        "module": "viva.read_store.apr_context_sql",
+        "path": "product/viva/read_store/apr_context_sql.py",
+        "sha256": "59ce32ae473402cdb759b9e47acdba94bf463251f4acb71b7d18656c4df5f2de"
+      },
+      {
+        "bundled": "viva/ledger/apr_context.py",
+        "module": "viva.ledger.apr_context",
+        "path": "product/viva/ledger/apr_context.py",
+        "sha256": "bbb63879587a6e939c1e398deb34145c117237121e1bf277581c8c42ce3882b7"
+      },
+      {
+        "bundled": "viva/ledger/instruments.py",
+        "module": "viva.ledger.instruments",
+        "path": "product/viva/ledger/instruments.py",
+        "sha256": "71e87e0e1cfb8d3eb359a241f4d70df24efea8f028118ffd4fddb3cc8e088123"
+      },
+      {
+        "bundled": "viva/ingest/instrument_contracts.py",
+        "module": "viva.ingest.instrument_contracts",
+        "path": "product/viva/ingest/instrument_contracts.py",
+        "sha256": "aa932574dc8bfe98dd70e723b79a6e66bed491e9a65417a2d6c369dba251d349"
+      },
+      {
+        "bundled": "viva/ingest/instrument_parser.py",
+        "module": "viva.ingest.instrument_parser",
+        "path": "product/viva/ingest/instrument_parser.py",
+        "sha256": "d601b0fdd2664aaeb17966e012f77b2805ec8dbbd180d259226fe0a9261b6d57"
+      },
+      {
+        "bundled": "viva/ingest/instrument_observations.py",
+        "module": "viva.ingest.instrument_observations",
+        "path": "product/viva/ingest/instrument_observations.py",
+        "sha256": "f66a5c3762955d9c24275ef40da93f7f1bb549eb2f1a66d26a2d7f8b7ae60f56"
+      },
+      {
+        "bundled": "viva/ingest/instrument_effects.py",
+        "module": "viva.ingest.instrument_effects",
+        "path": "product/viva/ingest/instrument_effects.py",
+        "sha256": "b9a1a95a194e48f72cdc1f845a40961bc4a72f9d7500fd28d44e285e09eea726"
+      },
+      {
+        "bundled": "viva/ingest/instrument_projector.py",
+        "module": "viva.ingest.instrument_projector",
+        "path": "product/viva/ingest/instrument_projector.py",
+        "sha256": "6152408ef5b72cb1aeb319fa6ed476932713d5540db31abb9e2da75978ce35f3"
+      },
+      {
+        "bundled": "viva/ingest/instrument_read.py",
+        "module": "viva.ingest.instrument_read",
+        "path": "product/viva/ingest/instrument_read.py",
+        "sha256": "995f07c389fbf5c80aed9be899c34bc9514d7dc60d93d9ee0a1d3613072ca10c"
+      },
+      {
+        "bundled": "viva/ingest/apr_context_contracts.py",
+        "module": "viva.ingest.apr_context_contracts",
+        "path": "product/viva/ingest/apr_context_contracts.py",
+        "sha256": "78f4b85c00c07476e1f63536506409fb8cec6a600571920d4a48a6e1d28b11ad"
+      },
+      {
+        "bundled": "viva/ingest/apr_context_parser.py",
+        "module": "viva.ingest.apr_context_parser",
+        "path": "product/viva/ingest/apr_context_parser.py",
+        "sha256": "3672754800f214d7813f4ed5690c63bf7a35a5e4fa38843241749c5a57e25ddc"
+      },
+      {
+        "bundled": "viva/ingest/apr_context_grounding.py",
+        "module": "viva.ingest.apr_context_grounding",
+        "path": "product/viva/ingest/apr_context_grounding.py",
+        "sha256": "4c608425592d261a10567139d47f2080e41576d4f04daf06793ebb2f7f4909e6"
+      },
+      {
+        "bundled": "viva/ingest/apr_context_local.py",
+        "module": "viva.ingest.apr_context_local",
+        "path": "product/viva/ingest/apr_context_local.py",
+        "sha256": "0cd2b4bb1b3735d8b65b8efed363c476fc277ff902a5cf6e1de83d385ce677a3"
+      },
+      {
+        "bundled": "viva/ingest/pipeline.py",
+        "module": "viva.ingest.pipeline",
+        "path": "product/viva/ingest/pipeline.py",
+        "sha256": "d59785fe3029d6e5c86d7b340a76de8cb9fcb41eaa23af761e9d47c88d7c3208"
+      },
+      {
+        "bundled": "viva/ingest/reader.py",
+        "module": "viva.ingest.reader",
+        "path": "product/viva/ingest/reader.py",
+        "sha256": "a3150c9a1b715521f4b18eaa13cd11371e179f01368288c2008e9b85e6b1f988"
+      },
+      {
+        "bundled": "viva/ingest/registry.py",
+        "module": "viva.ingest.registry",
+        "path": "product/viva/ingest/registry.py",
+        "sha256": "e0b51ac064ebb99b546418f56f98f2c89c282bee41b14b41e563b0a4f513f6b5"
+      },
+      {
+        "bundled": "viva/ingest/pipeline_models.py",
+        "module": "viva.ingest.pipeline_models",
+        "path": "product/viva/ingest/pipeline_models.py",
+        "sha256": "678532e51a38d8735d3453aa84a6b3d25a6ccba714998ab4d96d93c013fa87df"
+      },
+      {
+        "bundled": "viva/rebuild.py",
+        "module": "viva.rebuild",
+        "path": "product/viva/rebuild.py",
+        "sha256": "fc625c26db63584c56e11b1e86e45c252a52e382e974568fa4998f3a9dd2b292"
+      },
+      {
+        "bundled": "viva/tools/instruments.py",
+        "module": "viva.tools.instruments",
+        "path": "product/viva/tools/instruments.py",
+        "sha256": "afb8ffdb29ec7c1ddd5027545d48330dda85bef63d8d98a2411fc1b7f55592b6"
+      },
+      {
+        "bundled": "viva/session.py",
+        "module": "viva.session",
+        "path": "product/viva/session.py",
+        "sha256": "1ae97377213879f67e3ccdb5b0b8e9ebca3f89e0331977987505e06bf760e51e"
+      },
+      {
+        "bundled": "viva/surface/conversation.py",
+        "module": "viva.surface.conversation",
+        "path": "product/viva/surface/conversation.py",
+        "sha256": "8cbefba1c5f72556e40372d523afdfc40170a656d4191fe8e4856a27dac14721"
+      },
+      {
+        "bundled": "viva/surface/numerical_receipts.py",
+        "module": "viva.surface.numerical_receipts",
+        "path": "product/viva/surface/numerical_receipts.py",
+        "sha256": "212dd16e2a9d440b0a9d2e80268d021ea52cfe3305eed2dc4c629c33386abf3c"
+      },
+      {
+        "bundled": "viva/desktop_bridge/conversation_actions.py",
+        "module": "viva.desktop_bridge.conversation_actions",
+        "path": "product/viva/desktop_bridge/conversation_actions.py",
+        "sha256": "bf2280506cbb6d19c9d75d28faaf12e9512fd1dfa1e80119674385b87dbbdadb"
+      },
+      {
+        "bundled": "viva/desktop_bridge/vault_surface.py",
+        "module": "viva.desktop_bridge.vault_surface",
+        "path": "product/viva/desktop_bridge/vault_surface.py",
+        "sha256": "65e37d57b4331557912e26c314617eab23da77f8afd05dba7388287541943c29"
+      },
+      {
+        "bundled": "viva/read_store/store.py",
+        "module": "viva.read_store.store",
+        "path": "product/viva/read_store/store.py",
+        "sha256": "72f591c94019220ae451fcbff4a24f0182b3cf29d031e8178c0a85a30056a6ef"
+      },
+      {
+        "bundled": "viva/read_store/instrument_sql.py",
+        "module": "viva.read_store.instrument_sql",
+        "path": "product/viva/read_store/instrument_sql.py",
+        "sha256": "dc163b44653dd519224f9df897e7cdb648d6d5cc8ed2fdb1ce475d98ae165803"
+      },
+      {
+        "bundled": "viva/read_store/allocation_continuation.py",
+        "module": "viva.read_store.allocation_continuation",
+        "path": "product/viva/read_store/allocation_continuation.py",
+        "sha256": "f17bc5bc923bd3b8b79528773f18ad380b7fa954452c17f09e06365ca87adc38"
+      },
+      {
+        "bundled": "viva/read_store/document_index.py",
+        "module": "viva.read_store.document_index",
+        "path": "product/viva/read_store/document_index.py",
+        "sha256": "72476cf65c44d8d3178b8ad8377a83594556fc1d2a623553861c5247db74b605"
+      },
+      {
+        "bundled": "viva/read_store/document_sections.py",
+        "module": "viva.read_store.document_sections",
+        "path": "product/viva/read_store/document_sections.py",
+        "sha256": "20a2d6923c1b1431370b849206460c5c090857af2fab09cadd73a97a06c1133b"
+      },
+      {
+        "bundled": "viva/read_store/documents_page.py",
+        "module": "viva.read_store.documents_page",
+        "path": "product/viva/read_store/documents_page.py",
+        "sha256": "e98a631095a7f8ede47b42646c7901a2a9eac47389a708092b2cc019ff4a7638"
+      },
+      {
+        "bundled": "viva/read_store/instrument_review.py",
+        "module": "viva.read_store.instrument_review",
+        "path": "product/viva/read_store/instrument_review.py",
+        "sha256": "2765de4f460c848c683187cbd72c858e74f5536fa134efee85d1bae3363478f7"
+      },
+      {
+        "bundled": "viva/desktop_bridge/documents_page.py",
+        "module": "viva.desktop_bridge.documents_page",
+        "path": "product/viva/desktop_bridge/documents_page.py",
+        "sha256": "c780fd697c03c6b5ad74828850e12d6f815bd63b7c05ab14cdeaa596ae0df1bd"
+      },
+      {
+        "bundled": "viva/desktop_bridge/surface_read.py",
+        "module": "viva.desktop_bridge.surface_read",
+        "path": "product/viva/desktop_bridge/surface_read.py",
+        "sha256": "85a422d9f27545153a0382ea211d03f281ecca319118374a39c1a1223216469c"
+      },
+      {
+        "bundled": "viva/desktop_bridge/rpc.py",
+        "module": "viva.desktop_bridge.rpc",
+        "path": "product/viva/desktop_bridge/rpc.py",
+        "sha256": "d268e86df650be3a4564c7641c29ab7d3e5230e33ca6a51826967837998f6e4d"
+      },
+      {
+        "bundled": "viva/surface/capabilities.py",
+        "module": "viva.surface.capabilities",
+        "path": "product/viva/surface/capabilities.py",
+        "sha256": "2a49cb4d1b2369f6fb3f6e2a39c97d93523b529e1deec730792d5fa8a802d532"
+      },
+      {
+        "bundled": "viva/surface/operations.py",
+        "module": "viva.surface.operations",
+        "path": "product/viva/surface/operations.py",
+        "sha256": "e46b46542b55fe923248cd48640d6d8399fca231f766a3ce27118d808daa2463"
+      },
+      {
+        "bundled": "viva/surface/documents_page.py",
+        "module": "viva.surface.documents_page",
+        "path": "product/viva/surface/documents_page.py",
+        "sha256": "b2fce58b9f08b1031e5520f62e2a4cc2edaa7c27828ef8c9ad0a658c08121e2f"
+      },
+      {
+        "bundled": "viva/acquisition.py",
+        "module": "viva.acquisition",
+        "path": "product/viva/acquisition.py",
+        "sha256": "67db24f7ad3400659c48f36f977b55a1f01c27bdb0a73e145ca8964d9fd2367d"
+      },
+      {
+        "bundled": "viva/demo.py",
+        "module": "viva.demo",
+        "path": "product/viva/demo.py",
+        "sha256": "5fd1c8ad0c9de0e4c5acd7c3316d9c200f38720da4777f681572208d3362f594"
+      },
+      {
+        "bundled": "viva/ingest/mortgage_known_allocation.py",
+        "module": "viva.ingest.mortgage_known_allocation",
+        "path": "product/viva/ingest/mortgage_known_allocation.py",
+        "sha256": "3cb3e24371d6df09aa0356275dc3b491af9ee649962606b3524941e060843e72"
+      },
+      {
+        "bundled": "viva/ingest/paystub.py",
+        "module": "viva.ingest.paystub",
+        "path": "product/viva/ingest/paystub.py",
+        "sha256": "90cd4887b8d61fc1de6778ecbb49f83647e8ea61b5f6b3cfa3b2a4afee1598a1"
+      },
+      {
+        "bundled": "viva/ingest/paystub_projector.py",
+        "module": "viva.ingest.paystub_projector",
+        "path": "product/viva/ingest/paystub_projector.py",
+        "sha256": "b948dec7b20def2b42866929e24cda04ad682ad9a053f80716df6e095ac2be8b"
+      },
+      {
+        "bundled": "viva/investment/__init__.py",
+        "module": "viva.investment",
+        "path": "product/viva/investment/__init__.py",
+        "sha256": "090b3befc54a000d7df10b86dd26e1238a82d2f63e6828b2a55914c949df3b97"
+      },
+      {
+        "bundled": "viva/investment/authenticated.py",
+        "module": "viva.investment.authenticated",
+        "path": "product/viva/investment/authenticated.py",
+        "sha256": "b31d08b6be91ea2d9588620a04c0e739d718df287339be0132b94eb33547948b"
+      },
+      {
+        "bundled": "viva/investment/authority.py",
+        "module": "viva.investment.authority",
+        "path": "product/viva/investment/authority.py",
+        "sha256": "0707fa09d70aedbb16ced869795a316d9d3ce6d2ee67184bfad8044a328484d7"
+      },
+      {
+        "bundled": "viva/investment/composition.py",
+        "module": "viva.investment.composition",
+        "path": "product/viva/investment/composition.py",
+        "sha256": "916fb966bdd0f9ac1ff660f0e5b482ea95a9d1592fe473804268dc85d09b8d66"
+      },
+      {
+        "bundled": "viva/investment/contracts.py",
+        "module": "viva.investment.contracts",
+        "path": "product/viva/investment/contracts.py",
+        "sha256": "e7348254d386fbf9647f2fa076ca2973a51dca81c70c34d206aa8d0df9c98206"
+      },
+      {
+        "bundled": "viva/investment/events.py",
+        "module": "viva.investment.events",
+        "path": "product/viva/investment/events.py",
+        "sha256": "31218e0e2c1409cf8db8412ebb1df3d80bc479c126ffb115fb73690abf82c2ca"
+      },
+      {
+        "bundled": "viva/investment/extraction.py",
+        "module": "viva.investment.extraction",
+        "path": "product/viva/investment/extraction.py",
+        "sha256": "72bffb5d003fc71a0bbd00a31c18efc6c030d7726b3447909fd24ec3683ca4e1"
+      },
+      {
+        "bundled": "viva/investment/funding.py",
+        "module": "viva.investment.funding",
+        "path": "product/viva/investment/funding.py",
+        "sha256": "91cd6a0bd26dd2c0081d888e403f1e522e87a654c8bf54b68885c2e7bb8b407c"
+      },
+      {
+        "bundled": "viva/investment/healing.py",
+        "module": "viva.investment.healing",
+        "path": "product/viva/investment/healing.py",
+        "sha256": "5cca0266c5966d56b566c42d46bbd31f330f5173ceaa309930f1beb24cfab321"
+      },
+      {
+        "bundled": "viva/investment/identity.py",
+        "module": "viva.investment.identity",
+        "path": "product/viva/investment/identity.py",
+        "sha256": "cef0c07e4e7417df695ac7e221f6c3dd96dbf6cb538f778e82cdd7d5da15b6c2"
+      },
+      {
+        "bundled": "viva/investment/lifecycle.py",
+        "module": "viva.investment.lifecycle",
+        "path": "product/viva/investment/lifecycle.py",
+        "sha256": "f67bf92421a1387913d0de255170fa29479bcf809aef581ece3ea2518909e512"
+      },
+      {
+        "bundled": "viva/investment/lineage.py",
+        "module": "viva.investment.lineage",
+        "path": "product/viva/investment/lineage.py",
+        "sha256": "b2c804182cc32af0ef775f5df7361cf8d93f490286cad8d0e13c6e3b7da558ee"
+      },
+      {
+        "bundled": "viva/investment/payroll.py",
+        "module": "viva.investment.payroll",
+        "path": "product/viva/investment/payroll.py",
+        "sha256": "d7e00382f47c3aa22ad37d8c6f646a57e622f1d9d8711b108a2b3dda1875dee7"
+      },
+      {
+        "bundled": "viva/investment/payroll_extraction.py",
+        "module": "viva.investment.payroll_extraction",
+        "path": "product/viva/investment/payroll_extraction.py",
+        "sha256": "a3d88941829bc47f53c482422f804223a41b716df8f5f99521652eadbc6801ba"
+      },
+      {
+        "bundled": "viva/investment/projector.py",
+        "module": "viva.investment.projector",
+        "path": "product/viva/investment/projector.py",
+        "sha256": "27bef4d71ff277e68b6dd4af05c7c005d8389927f166bd8373de903fbaaaf7c4"
+      },
+      {
+        "bundled": "viva/investment/semantic.py",
+        "module": "viva.investment.semantic",
+        "path": "product/viva/investment/semantic.py",
+        "sha256": "ab840e6ae054ba65c6495939e7f38f702718959903d6dcfbae7874bb26b364ec"
+      },
+      {
+        "bundled": "viva/investment/sql.py",
+        "module": "viva.investment.sql",
+        "path": "product/viva/investment/sql.py",
+        "sha256": "46c4a4afd75fa9db2a4bee1ba88720385b5d4489dbc214cc104fe9a261e3d0ea"
+      },
+      {
+        "bundled": "viva/investment/tool.py",
+        "module": "viva.investment.tool",
+        "path": "product/viva/investment/tool.py",
+        "sha256": "258fa02cdf5bdf9d8df64253fabb68e8c38163dd3ce653ae9f2c4cb90e4c7d9b"
+      },
+      {
+        "bundled": "viva/investment/units.py",
+        "module": "viva.investment.units",
+        "path": "product/viva/investment/units.py",
+        "sha256": "63b30130501ba8fde67f363897212307d58d390f11e0304fc7851303a0486dcf"
+      },
+      {
+        "bundled": "viva/normalization_context.py",
+        "module": "viva.normalization_context",
+        "path": "product/viva/normalization_context.py",
+        "sha256": "7b6acb1a777edf5a9e194930cd7cc7760deb24ee7dcc9f803af91b52e602e57e"
+      },
+      {
+        "bundled": "viva/retirement_funding/__init__.py",
+        "module": "viva.retirement_funding",
+        "path": "product/viva/retirement_funding/__init__.py",
+        "sha256": "e2b4b09e6d252b139fd24335c3bbcc89803d08077621ce1a2f94014b19518748"
+      },
+      {
+        "bundled": "viva/retirement_funding/authority.py",
+        "module": "viva.retirement_funding.authority",
+        "path": "product/viva/retirement_funding/authority.py",
+        "sha256": "26d1655bfbd0f757cfa7245b79e4e264b96da7b12b9a4169696cc267660f6b73"
+      },
+      {
+        "bundled": "viva/retirement_funding/catalog.py",
+        "module": "viva.retirement_funding.catalog",
+        "path": "product/viva/retirement_funding/catalog.py",
+        "sha256": "416cd34279e68d964c33703499c6b0a3318bc1924a57d7e73e1e8d9c16237c51"
+      },
+      {
+        "bundled": "viva/retirement_funding/contracts.py",
+        "module": "viva.retirement_funding.contracts",
+        "path": "product/viva/retirement_funding/contracts.py",
+        "sha256": "afeb10896b50d7e30f6ebb74bbaa66d20aecef27d133272d041a8ad69733355b"
+      },
+      {
+        "bundled": "viva/retirement_funding/lineage.py",
+        "module": "viva.retirement_funding.lineage",
+        "path": "product/viva/retirement_funding/lineage.py",
+        "sha256": "d5b8c6c75afafd6aa28e26512cbd4abca9a439798a144021441036066342324f"
+      },
+      {
+        "bundled": "viva/retirement_funding/payroll_v2.py",
+        "module": "viva.retirement_funding.payroll_v2",
+        "path": "product/viva/retirement_funding/payroll_v2.py",
+        "sha256": "9ce976307ea4eac6f3e2889a815e24b6a9e926c722e1e903bca3c66877e4b820"
+      },
+      {
+        "bundled": "viva/retirement_funding/population.py",
+        "module": "viva.retirement_funding.population",
+        "path": "product/viva/retirement_funding/population.py",
+        "sha256": "ee517557848e42575c085245aedf452f2fd027d9233e796d9d96e306827363aa"
+      },
+      {
+        "bundled": "viva/retirement_funding/posting_closure.py",
+        "module": "viva.retirement_funding.posting_closure",
+        "path": "product/viva/retirement_funding/posting_closure.py",
+        "sha256": "dc8c02c8ac4f540c0ad8bf35217cf568a0206288008d0294f072edd2e60b486a"
+      },
+      {
+        "bundled": "viva/retirement_funding/semantic.py",
+        "module": "viva.retirement_funding.semantic",
+        "path": "product/viva/retirement_funding/semantic.py",
+        "sha256": "7e3faa10cfb65246d7f77fe15fbda26950af9bc3d3fa018909e7c32e02b382a0"
+      },
+      {
+        "bundled": "viva/retirement_funding/sql.py",
+        "module": "viva.retirement_funding.sql",
+        "path": "product/viva/retirement_funding/sql.py",
+        "sha256": "794581a10a7650a50e5a5a0284c19eb10c8a82d6de980af0bc0e94adeb6f36ee"
+      },
+      {
+        "bundled": "viva/retirement_funding/tool.py",
+        "module": "viva.retirement_funding.tool",
+        "path": "product/viva/retirement_funding/tool.py",
+        "sha256": "7c574f48cbcf7e021181003021b04fb3abbc5feb14d31f512d0e9c29a012c105"
+      },
+      {
+        "bundled": "viva/sample/__init__.py",
+        "module": "viva.sample",
+        "path": "product/viva/sample/__init__.py",
+        "sha256": "41a8da82e5e647fa7374bc0484017b310f6c129656a0de52a738865953e6b821"
+      },
+      {
+        "bundled": "viva/sample/activation.py",
+        "module": "viva.sample.activation",
+        "path": "product/viva/sample/activation.py",
+        "sha256": "ab9333565c056ced6c3374b56fc2b043ff376c002e022a821c76822437838e57"
+      },
+      {
+        "bundled": "viva/sample/curation.py",
+        "module": "viva.sample.curation",
+        "path": "product/viva/sample/curation.py",
+        "sha256": "4d7981859f7e8cfc7479bcb1e21fe3c6ae43f2e556471c6ea92a224b4f0b30e3"
+      },
+      {
+        "bundled": "viva/sample/instances.py",
+        "module": "viva.sample.instances",
+        "path": "product/viva/sample/instances.py",
+        "sha256": "49328f3970b12656fd0af3314229b24ba6b558513ed61f4f6f3dc871bc730559"
+      },
+      {
+        "bundled": "viva/sample/worker.py",
+        "module": "viva.sample.worker",
+        "path": "product/viva/sample/worker.py",
+        "sha256": "4559fd4c4d698f9cc289f72ebec789fa22924178c6f4b0792a105aedd94fabac"
+      },
+      {
+        "bundled": "viva/extraction_responses.py",
+        "module": "viva.extraction_responses",
+        "path": "product/viva/extraction_responses.py",
+        "sha256": "0c306e2a0c1d26d3df65c5186497bee17d39923c913d5af9b0a50f5473acccad"
+      },
+      {
+        "bundled": "viva/desktop_bridge/bulk_documents.py",
+        "module": "viva.desktop_bridge.bulk_documents",
+        "path": "product/viva/desktop_bridge/bulk_documents.py",
+        "sha256": "be35f2a0f7489c1681b755fc19bba2c5903530d4f48a477c647dd69d3934a447"
+      },
+      {
+        "bundled": "viva/sample/resources.py",
+        "module": "viva.sample.resources",
+        "path": "product/viva/sample/resources.py",
+        "sha256": "5287d1bacc48769585e85f23a3b21368c3a032cda78d09756a2488293b13a5eb"
+      },
+      {
+        "bundled": "viva/ledger/projection/coverage.py",
+        "module": "viva.ledger.projection.coverage",
+        "path": "product/viva/ledger/projection/coverage.py",
+        "sha256": "a6429ac187ac198f535e92e720a778d94e318b099d226bf462c352f2752b1bf2"
+      },
+      {
+        "bundled": "viva/read_store/documents.py",
+        "module": "viva.read_store.documents",
+        "path": "product/viva/read_store/documents.py",
+        "sha256": "89ca4e6966097f1155c8ea5aa31db2ede0e0dbea7b2b0976f9876a5375beab40"
+      },
+      {
+        "bundled": "viva/answer_program/selected_balances.py",
+        "module": "viva.answer_program.selected_balances",
+        "path": "product/viva/answer_program/selected_balances.py",
+        "sha256": "4a7d1ddfd405616c4fca2b9dc0839e883935bccbc0394171b36d96055f6cd057"
+      },
+      {
+        "bundled": "viva/tools/account_balances.py",
+        "module": "viva.tools.account_balances",
+        "path": "product/viva/tools/account_balances.py",
+        "sha256": "da5998efc42c3e34627af1593da1ecbf9fd7e8886caf91b76dafe15afa029847"
+      },
+      {
+        "bundled": "viva/ledger/ledger.py",
+        "module": "viva.ledger.ledger",
+        "path": "product/viva/ledger/ledger.py",
+        "sha256": "904faccd11eff1769390ac7c243f01e1eb640651903bab25d3668df9b4e7347b"
+      }
+    ],
+    "spec_path": "product/viva/desktop_bridge/viva-desktop-bridge.spec",
+    "spec_sha256": "581b68f1c9d788c305d11ec02c0b98af06bf0e3d5c7857d4c07b8fbe60a16b2a",
+    "unique_module_count": 160
+  },
+  "remaining": "Independent Fact/global review and fresh runtime/test/package qualification remain pending.",
+  "scope": "Final static source closure; no product imports, test functions, package build or runtime executed. No test code or expected pin changed.",
+  "test_coverage": {
+    "all_paths_exact_prototype": true,
+    "clean_merge_reviewed": 1,
+    "prototype_added_test_definitions_in_resolved_files": 38,
+    "python_ast_valid": 343,
+    "resolved_conflicts": 25,
+    "retained_test_definitions_in_resolved_files": 502,
+    "source_list_sha256": "501ce9777fa7577ab25e27a17096dd232e6e97d07380bee8ddfcb96ad0df6612",
+    "syntax_errors": 0,
+    "test_paths": 357
+  }
+}
