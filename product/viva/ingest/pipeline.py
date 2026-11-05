@@ -143,11 +143,10 @@ def _capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
         on_captured(doc_id)
     log.info("ingest start: %s (%d bytes) doc_id=%s",
              filename or "<upload>", len(data), doc_id[:12])
-    if ledger.projection().is_resolved(doc_id):
+    if ledger.is_resolved(doc_id):
         log.info("ingest: doc_id=%s already posted/held — skipping", doc_id[:12])
         return IngestResult(doc_id=doc_id, action=DUPLICATE, doc_type="",
                             message="Already posted or held (same content); no change.")
-    posted_before = ledger.projection().posted_doc_ids()
     if before_read is not None:
         before_read(doc_id)
 

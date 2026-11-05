@@ -203,7 +203,7 @@ class Ledger:
         return LedgerProjection(self.store.snapshot_events(),
                                 resolve_keys=self._resolve_keys)
 
-    def _sync_if_external_write(self) -> None:
+    def _sync_if_external_write(self, *, publish: bool = True) -> None:
         # Authentication still checks the entire physical committed chain.
         # Only decryption and financial folds reuse the private canonical basis.
         reusable = self._basis_reusable()
@@ -217,7 +217,7 @@ class Ledger:
                 with span("projection_construction"):
                     projection = self._advance_cache(events, reusable)
                     self._set_basis(projection, identity, witnessed=True)
-            if self._proj is None or _owned_projection_identity(self._proj) is None:
+            if publish and (self._proj is None or _owned_projection_identity(self._proj) is None):
                 self._publish_basis()
         except BaseException:
             self._revoke_cache()
@@ -244,6 +244,13 @@ class Ledger:
             self._sync_if_external_write()
             assert self._proj is not None
             return self._proj
+
+    def is_resolved(self, doc_id: str) -> bool:
+        """Read a document's terminal state without publishing a mutable view."""
+        with self._lock:
+            self._sync_if_external_write(publish=False)
+            assert self._basis is not None
+            return self._basis.is_resolved(doc_id)
 
     def fresh_projection(self) -> LedgerProjection:
         """Replay the durable stream, including writes from other instances."""
