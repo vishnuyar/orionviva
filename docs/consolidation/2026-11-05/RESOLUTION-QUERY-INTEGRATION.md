@@ -1,6 +1,6 @@
 # Resolution query on the consolidated branch
 
-The verified document-resolution optimization is integrated on `codex/consolidated-sqlite-performance` in `/Users/vishnu/orionviva-consolidated-development`, a durable linked worktree of `/Users/vishnu/orionviva`'s Git repository. This work is a local WIP, not a release, push or merge to main.
+The verified document-resolution optimization is integrated on `codex/consolidated-sqlite-performance` in `/Users/vishnu/orionviva-consolidated-development`, a durable linked worktree of `/Users/vishnu/orionviva`'s Git repository. This work was developed as a local WIP. On 2026-11-06 the owner explicitly authorized merging both consolidated repositories into their main branches and pushing them. That publication does not claim release qualification or change the evidence limits below.
 
 `Ledger.is_resolved` acquires the existing RLock, authenticates and refreshes the private canonical basis, and returns the existing posted/held/instrument-component boolean. It avoids publishing a full mutable projection. The pipeline uses this scalar operation and removes its unused early posted-set lookup. Public projections, atomic callbacks, staged settlement, event copies and financial semantics retain their existing isolation boundaries.
 
