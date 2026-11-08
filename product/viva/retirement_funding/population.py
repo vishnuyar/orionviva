@@ -67,7 +67,14 @@ def source_from_facts(facts, events, locale='en-US'):
             from dataclasses import replace
             metadata = {'acquisition': event.body['acquisition']} if local else {}
             parsed=replace(parsed,doc_type=facts.doc_type,doc_type_confidence=facts.doc_type_confidence,**metadata)
-        if parsed is not None and parsed.to_dict() == facts.to_dict():
+        parsed_payload = parsed.to_dict() if parsed is not None else None
+        facts_payload = facts.to_dict()
+        # Rendered page count is backend validation, absent from raw extraction.
+        # Every financial and printed-source field must still match the receipt.
+        if parsed_payload is not None:
+            parsed_payload.pop('validated_source_page_count', None)
+        facts_payload.pop('validated_source_page_count', None)
+        if parsed_payload is not None and parsed_payload == facts_payload:
             if (type(facts.payroll_source) is PayrollSourceExtractionV2 and not local
                     and not event.body.get('prompt_version','').startswith('extract:paystub-base-v2+paystub-v2')):
                 continue

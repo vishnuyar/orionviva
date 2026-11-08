@@ -25,7 +25,8 @@ from decimal import Decimal
 from ..ledger.events import transfer_linked, transfer_suggested, transfer_unlinked
 from ..ledger.identity import account_tokens
 from ..ledger.ledger import Ledger
-from ..ledger.projection import LedgerProjection, MovementInfo
+from ..ledger.projection import (LedgerProjection, MovementInfo, BY_RULING,
+                                 SPENDING, SETTLEMENT, MIXED)
 
 log = logging.getLogger(__name__)
 
@@ -239,7 +240,9 @@ def _candidates(proj: LedgerProjection) -> dict:
     """For each unlinked source movement, the unlinked destination movements it
     could pair with (equal magnitude + same currency + within the date window +
     a different account). The bipartite candidate graph the gate reasons over."""
-    movements = [m for m in proj.movements() if not m.linked]
+    movements = [m for m in proj.movements() if not m.linked
+                 and not (getattr(m, "nature_reason", "") == BY_RULING
+                          and getattr(m, "nature", "") in (SPENDING, SETTLEMENT, MIXED))]
     sources = [m for m in movements if _flow(m) == "source"]
     dests = [m for m in movements if _flow(m) == "destination"]
     by_amount = {}
@@ -296,6 +299,52 @@ def default_profile_for(proj: LedgerProjection):
     return _for
 
 
+def _structured_destinations(proj: LedgerProjection) -> dict[str, str]:
+    """Resolve printed counterparty references inside accepted page custody."""
+    from ..ledger.identity import SourceAccountIdentity
+    from ..ledger.projection.movements import _enumerated
+
+    core = getattr(proj, "core", None)
+    if core is None:
+        return {}
+    references, source_bounds = {}, {}
+    for account, rows in core._instrument_account_refs.items():
+        state = core._acct.get(account)
+        if (state is None or not state.seen or state.origin != "issued"
+                or state.kind not in ("depository", "liability", "investment")):
+            continue
+        for row in rows:
+            claim = SourceAccountIdentity(row["reference"], row["doc_id"],
+                row.get("page"), row.get("identity_page_count"))
+            if (row.get("scope") != "account" or not claim.eligible()
+                    or claim.doc_id not in core._captured):
+                continue
+            references.setdefault(claim.reference, set()).add(account)
+            key = (account, claim.doc_id)
+            source_bounds[key] = max(source_bounds.get(key, 0), claim.page_count)
+    if not references:
+        return {}
+    destinations = {}
+    for key, account, _state, line in _enumerated(core):
+        pair = core._instrument_bank_references.get(line.transaction_id)
+        dependency = core._instrument_cash_dependencies.get(line.transaction_id)
+        if (not pair or not all(type(value) is str and value.strip() for value in pair)
+                or dependency is None):
+            continue
+        _digest, source = dependency
+        page = line.provenance.page
+        if (source.doc_id != line.provenance.doc_id or source.page != page
+                or type(page) is not int
+                or not 1 <= page <= source_bounds.get((account, source.doc_id), 0)):
+            continue
+        owners = references.get(pair[1], set())
+        if len(owners) == 1:
+            destination = next(iter(owners))
+            if destination != account:
+                destinations[key] = destination
+    return destinations
+
+
 def weigh(proj: LedgerProjection, graph: dict, sources: dict,
           distinctive: dict, profile_for=None) -> tuple[dict, dict]:
     """Score every (source, destination) pair.
@@ -304,12 +353,15 @@ def weigh(proj: LedgerProjection, graph: dict, sources: dict,
     produced it. Pure — no ledger and no appends — so `transfer_report` can call
     it to rehearse a scan."""
     parts = {k: _parts_of(s, profile_for) for k, s in sources.items()}
+    structured = _structured_destinations(proj)
     strength: dict[tuple[str, str], int] = {}
     why: dict[tuple[str, str], str] = {}
     for skey, cands in graph.items():
         src, p = sources[skey], parts[skey]
         for c in cands:
-            evidence = _account_evidence(proj, src, c, distinctive, p)
+            evidence = ("source_account_reference"
+                        if structured.get(skey) == c.account else
+                        _account_evidence(proj, src, c, distinctive, p))
             dated = bool(p.date) and _prints_date(p.date, c.date)
             strength[(skey, c.key)] = ((_EV_ACCOUNT if evidence else 0)
                                        + (_EV_DATE if dated else 0))

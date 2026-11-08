@@ -22,11 +22,13 @@ Before a further ruling, provide the causal findings, complete transfer correcti
 
 Issued in the Director’s name.
 
+Historical artifact availability: the factual report was recorded at `/private/tmp/orionviva-sqlite-prototype/runs/sqlite-authority/transfer-factcheck/factual-review.md` and is unavailable in this checkout. The review claim below is retained as a historical record; current verification obligations remain open.
+
 ## Director ruling — Checkpoint 1
 
 **Director ruling — Checkpoint 1: approve the indexed SQL-owned transfer slice, with one scheduling clarification.**
 
-I reviewed clean brief SHA-256 `e9abee7b085f3dd0f78ed4ebc634e82a0ce0e581edb6280f14c6171baa400017` and its [independent factual report](/private/tmp/orionviva-sqlite-prototype/runs/sqlite-authority/transfer-factcheck/factual-review.md): **40 claim groups, none refuted, seven future obligations unproved**. Superseded wording and rejected fixtures remain retained.
+I reviewed clean brief SHA-256 `e9abee7b085f3dd0f78ed4ebc634e82a0ce0e581edb6280f14c6171baa400017` and its independent factual report: **40 claim groups, none refuted, seven future obligations unproved**. Superseded wording and rejected fixtures remain retained.
 
 Choose the indexed graph/global-owner option and fresh **prototype-v3/schema-3** format. It preserves established matching decisions while testing work bounded by relevant dependencies. Reject older/future writer formats; no conversion is approved.
 
@@ -252,7 +254,7 @@ New gates must be executed against deliberate failing controls; inspecting their
 
 ## Performance and qualification
 
-The preimplementation regression definition is **`transfer-fixed-closure-v3`**, retained in the [frozen fixture definition](../runs/sqlite-authority/transfer-factcheck/regression-fixture.json), SHA-256 `32f50d518dae75a44b24fc8ed518b3f11d3f9e85635519294944e950ab8b5077`. The financial fixture and measurement boundary must remain fixed through implementation and review.
+The preimplementation regression definition is **`transfer-fixed-closure-v3`**. Its historical artifact path is `../runs/sqlite-authority/transfer-factcheck/regression-fixture.json`; that artifact has not been recovered for this checkout. The historical checksum remains recorded in Git history, but is unverified and is not current integrity or qualification authority. Recover and independently verify the exact artifact before qualifying this measurement. The financial fixture and measurement boundary below remain fixed; the missing artifact does not authorize a substitute fixture or a performance pass.
 
 The relevant initial component has three genuine accepted synthetic full-number depository accounts:
 

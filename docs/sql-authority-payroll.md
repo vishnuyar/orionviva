@@ -95,3 +95,11 @@ is not a bank deposit candidate and does not grant a payroll explanation or
 funding match. The payroll focused 50-case pass is historical after shared SQL
 owners change. See [the investment contract](sql-authority-investment.md) for
 its historical focused evidence and remaining gates.
+
+## Validated payroll source pages
+
+PayStubFacts can retain an optional validated source-page count supplied after actual capture validation. Raw model JSON cannot supply that authority. The normal reader and acknowledged/resumed import parser retain the count; the closed SQL payroll codec accepts old payloads and validates the optional new field. New native payroll decompositions cite the matching gross-source page only when typed gross/net/currency/pay-date and deduction details agree within that bound. Unsupported evidence leaves the page unavailable. Monetary postings, source identity and duplicate/healing rules remain unchanged. Synthetic reader/resume, codec and posting tests cover this path; historical events and live extraction/UI are not qualified by those tests.
+
+Ordinary-reader canonical-SQL payroll with a retained backend page count now authenticates the original PDF and independently derives its physical extent during interpretation and semantic audit. The captured count must match, parser context must bind locale, currency and rules, and reparsed financial/source fields remain exact. Native V2 unsupported period anchors are removed without granting period authority. Count-bearing citations use matching bounded typed source evidence; an unsupported page remains unavailable. The curated PDF-cell route remains separate, and count-absent legacy payloads retain their prior behavior without acquiring new physical page authority.
+
+Real-PDF, context, coordinated audit-fault, source-closure, legacy, curated and application regressions provide scoped evidence across 335 distinct cases: 299 unchanged carried passes and 36 fresh passes. The earlier combined run remains recorded as 334 passes and one test-fixture failure. These checks do not prove printed financial amounts, migrate a saved authority, qualify a full sample SQL import or establish live extraction/UI behavior.

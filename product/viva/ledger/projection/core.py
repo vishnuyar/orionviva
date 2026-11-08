@@ -95,6 +95,8 @@ class _AccountState:
     # an earlier point on the curve does not move when a later statement
     # arrives. {instrument: [observation, ...]}
     position_history: dict = field(default_factory=dict)
+    investment_snapshots: list = field(default_factory=list)
+    investment_horizon: str = ""
     # Cash/sweep lines recorded as "positions" by a read that did not recognize
     # them. Kept apart: they compose into the account's cash, never its holdings.
     position_cash: dict = field(default_factory=dict)
@@ -113,7 +115,13 @@ class ProjectionCore:
     """
 
     def __init__(self, events: Iterable[Event], as_of: str | None = None,
-                 resolve_keys=None) -> None:
+                 resolve_keys=None, measurement_sources=None) -> None:
+        if measurement_sources is None:
+            from .measurements import MeasurementSources
+            measurement_sources = MeasurementSources()
+        self._measurement_sources = measurement_sources
+        self._source_event_count = 0
+        self._event_source_sequence = -1
         self.as_of = as_of
         self._instrument_families = {}
         self._instrument_observations = {}
@@ -242,21 +250,30 @@ class ProjectionCore:
             if event.event_type == "InstrumentObservationRecorded":
                 fold_change(complete_history, event)
         self._instrument_observations = observations_as_of(complete_history, as_of)
+        sequences = {event.event_id: index for index, event in enumerate(events)}
         for event in visible_events(events, as_of):
-            self.apply(event)
+            self.apply(event, source_sequence=sequences[event.event_id])
+        self._source_event_count = len(events)
+        self._measurement_sources.finish(self, events)
 
-    def apply(self, event: Event) -> None:
+    def apply(self, event: Event, *, source_sequence=None) -> None:
         """Fold one event into the projection (respecting an as_of horizon)."""
+        self._event_source_sequence = (self._source_event_count if source_sequence is None else source_sequence)
+        self._source_event_count = max(self._source_event_count, self._event_source_sequence + 1)
+        self._measurement_sources.observe_source(event)
         # The statement register is derived from this fold, so any event may
         # change it and every event drops it.
         self._statements = None
         if self.as_of is not None and event.occurred_at > self.as_of:
             return          # ISO dates sort lexically; skip the future
         self._apply(event)
+        self._measurement_sources.after_event(self, event, self._event_source_sequence)
         self._classification_revision = (self._classification_revision[0] + 1, event.event_id)
 
     def _state(self, account: str) -> _AccountState:
-        return self._acct.setdefault(account, _AccountState())
+        state = self._acct.setdefault(account, _AccountState())
+        state.investment_horizon = self.as_of or "9999-12-31"
+        return state
 
     def _apply(self, event: Event) -> None:
         et = event.event_type
@@ -826,7 +843,8 @@ class ProjectionCore:
                 "valuation_class": event.body.get("valuation_class", "measured"),
                 "grade": event.body.get("grade", ""),
                 "provenance": event.provenance,
-                "is_cash": is_cash_row(instrument)}
+                "is_cash": is_cash_row(instrument),
+                "source_sequence": self._event_source_sequence}
             # History carries the WHOLE measurement, so a reader can rebuild any
             # statement's snapshot, not only the latest one per instrument.
             st.position_history.setdefault(instrument, []).append(record)

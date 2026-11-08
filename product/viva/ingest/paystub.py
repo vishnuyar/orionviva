@@ -67,15 +67,19 @@ class PayStubFacts:
     net_page: int | None = None
     payroll_source: PayrollSourceExtraction | None = None
     acquisition: dict | None = None
+    validated_source_page_count: int | None = None
 
     def __post_init__(self):
+        count = self.validated_source_page_count
+        if count is not None and (type(count) is not int or not 1 <= count <= 200):
+            raise ValueError('validated payroll source page count invalid')
         from ..acquisition import classification
         classification(self.doc_id, self.doc_type_confidence, self.acquisition)
         from ..retirement_funding.payroll_v2 import PayrollSourceExtractionV2
         if self.payroll_source is not None and type(self.payroll_source) not in (PayrollSourceExtraction,PayrollSourceExtractionV2):raise ValueError("typed payroll source extension required")
 
-    def provenance(self, note: str = "") -> Provenance:
-        return Provenance(doc_id=self.doc_id, note=note)
+    def provenance(self, note: str = "", *, page: int | None = None) -> Provenance:
+        return Provenance(doc_id=self.doc_id, page=page, note=note)
 
     def to_dict(self) -> dict:
         return {
@@ -89,6 +93,8 @@ class PayStubFacts:
             "deductions": [d.to_dict() for d in self.deductions],
             "employee_names": list(self.employee_names),
             "gross_page": self.gross_page, "net_page": self.net_page,
+            **({"validated_source_page_count": self.validated_source_page_count}
+               if self.validated_source_page_count is not None else {}),
             **({"payroll_source": self.payroll_source.to_dict()} if self.payroll_source is not None else {}),
         }
 
@@ -105,7 +111,8 @@ class PayStubFacts:
             gross=Decimal(d["gross"]), net=Decimal(d["net"]),
             deductions=[Deduction.from_dict(x) for x in d.get("deductions", [])],
             employee_names=list(d.get("employee_names", [])),
-            gross_page=d.get("gross_page"), net_page=d.get("net_page"),payroll_source=parse(d.get("payroll_source")))
+            gross_page=d.get("gross_page"), net_page=d.get("net_page"),payroll_source=parse(d.get("payroll_source")),
+            validated_source_page_count=d.get("validated_source_page_count"))
 
 
 def _find_json(text: str) -> str | None:

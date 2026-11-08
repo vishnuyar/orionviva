@@ -47,3 +47,4 @@ def materialize_authenticated_snapshot(connection,snapshot):
   materialize(connection,events,resolver(events))
   connection.execute('CREATE TABLE IF NOT EXISTS investment_evidence_authenticated_source(singleton INTEGER PRIMARY KEY CHECK(singleton=1),source_count INTEGER NOT NULL,source_head TEXT NOT NULL)')
   connection.execute('INSERT OR REPLACE INTO investment_evidence_authenticated_source VALUES(1,?,?)',(snapshot.identity.count,snapshot.identity.head_hash))
+ return events

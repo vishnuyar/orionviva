@@ -2,7 +2,7 @@
 
 Everything in this folder is **history, kept on purpose**. These documents
 describe a phase that has closed, a plan for work since done, or a snapshot of
-the world on a date. Each carries a ⛔ HISTORICAL RECORD banner saying so.
+the world on a date. Standalone documents carry a ⛔ HISTORICAL RECORD banner saying so.
 
 **Do not use anything here for development, and do not read anything here as a
 description of how OrionViva works today.** For what is true now, start at
@@ -17,6 +17,8 @@ in the open — worth reading for the *reasoning*, never for the *state*.
 A document lands here when the phase it describes closes: it gets the banner,
 its status line says what superseded it, its links are repointed, and the
 reading guide's historical section records it. Nothing is ever deleted.
+
+The [consolidation checkpoint subtree](consolidation/2026-11-05/README.md) is a narrow byte-preservation exception: its directory wrapper and this index supply the historical banner for 29 source-bound records whose bytes and modes remain unchanged. Its separately marked checkpoint index is an adapted reading copy with exact original Git and preservation provenance. This exception does not apply to current contracts or other archival moves.
 
 ## What is here
 

@@ -23,6 +23,7 @@ from .brokerage import BrokerageFacts
 from .diagnose import FORCED, SUGGESTED, UNLOCALIZED, ReconciliationFinding, diagnose
 from ..ledger.identity import account_key
 from .paystub import PayStubFacts
+from .cash_source_pages import payroll_decomposition_page
 from .raw_store import RawStore
 from .registry import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, INVESTMENT,
                        PAYSTUB_IDENTITY, account_kind_for, can_project,
@@ -147,7 +148,8 @@ def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
     ledger.append(paystub_decomposition(
         facts.gross, facts.net, facts.deductions,
         f"Pay from {facts.employer or 'employer'}", when,
-        provenance=facts.provenance("net-pay decomposition"),
+        provenance=facts.provenance("net-pay decomposition",
+                                    page=payroll_decomposition_page(facts)),
         matched_movement_key=deposit.key, matched_currency=deposit.currency))
     _retain_payroll_source(ledger,facts)
     log.info("post_paystub: decomposed pay from %r gross=%s net=%s deductions=%d "

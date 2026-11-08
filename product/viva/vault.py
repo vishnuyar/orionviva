@@ -28,7 +28,7 @@ import subprocess
 import sys
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -87,7 +87,7 @@ class Vault:
     _read_store_worker_expected: tuple[int | None, str | None, int] | None = None
     _read_store_worker_serial: int = 0
     _read_store_worker_cancel: threading.Event | None = None
-    _read_store_worker_lock: threading.RLock | None = None
+    _read_store_worker_lock: threading.RLock | None = field(default_factory=threading.RLock, repr=False)
     _read_store_worker_deadline_lock: threading.RLock = field(
         default_factory=threading.RLock, repr=False)
     _read_store_visibility_held: bool = False
@@ -560,6 +560,62 @@ class Vault:
             except ReadStoreError:
                 self.read_store_lifecycle = "degraded"
         return self.read_store_lifecycle
+
+    def _can_open_current_revision(self) -> bool:
+        lock = self._read_store_worker_lock
+        if lock is None:
+            return False
+        with lock:
+            if (self._read_store_worker is not None
+                    or self._read_store_worker_managed
+                    or type(self.read_store) is not ReadStore):
+                return False
+            with self._read_store_visibility_lock:
+                return not self._read_store_visibility_held
+
+    @contextmanager
+    def _owned_current_read_revision(self, *, deadline: float):
+        """Lease one authenticated unmanaged revision under one physical audit pair."""
+        lock = self._read_store_worker_lock
+        if lock is None:
+            raise ReadStoreError("unmanaged revision ownership unavailable")
+        with ExitStack() as leases:
+            with lock:
+                if not self._can_open_current_revision():
+                    raise ReadStoreError("read revision preparation mode changed")
+                with self._read_store_visibility_lock:
+                    serial = self._read_store_visibility_serial
+                store = self.read_store
+                source = self._read_store_event_source
+                primary = self.ledger.store
+                if source is None or source.path != primary.path:
+                    raise ReadStoreError("read revision source owner differs")
+                if time.monotonic() >= deadline:
+                    raise ReadStoreError("read revision preparation deadline")
+                before = primary.authenticated_identity()
+                if time.monotonic() >= deadline:
+                    raise ReadStoreError("read revision preparation deadline")
+                store.synchronize(source)
+                if time.monotonic() >= deadline:
+                    raise ReadStoreError("read revision preparation deadline")
+                revision = leases.enter_context(store.open_reader())
+                identity = store.authenticated_source_identity(revision)
+                after = primary.authenticated_identity()
+                with self._read_store_visibility_lock:
+                    visible = (serial == self._read_store_visibility_serial
+                               and not self._read_store_visibility_held)
+                if (time.monotonic() >= deadline or before != after
+                        or (identity['count'], identity['head']) != after[:2]
+                        or revision._store is not store or revision._closed
+                        or revision.generation != store.current_generation
+                        or self.read_store is not store
+                        or self._read_store_event_source is not source
+                        or not self._can_open_current_revision() or not visible):
+                    raise ReadStoreError("read revision changed during preparation")
+                if time.monotonic() >= deadline:
+                    raise ReadStoreError("read revision preparation deadline")
+                self.read_store_lifecycle = "equal"
+            yield revision
 
     def wait_for_read_store(self, *, timeout: float = 120.0,
                             checkpoint=None,

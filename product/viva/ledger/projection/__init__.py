@@ -78,14 +78,8 @@ class LedgerProjection:
         from .measurements import MeasurementSources
         self.__source_events = list(events)
         events = tuple(self.__source_events)
-        sources = MeasurementSources()
-        def with_source_context():
-            for event in events:
-                if as_of is None or event.occurred_at <= as_of:
-                    sources.apply(event)
-                yield event
-        self._core = ProjectionCore(with_source_context(), as_of, resolve_keys)
-        self._core._measurement_sources = sources
+        self._core = ProjectionCore(events, as_of, resolve_keys,
+                                    measurement_sources=MeasurementSources())
 
     def _event_count(self):
         return len(self.__source_events)
@@ -116,12 +110,17 @@ class LedgerProjection:
         if self._changes_prior_instrument_visibility(event):
             self._core = LedgerProjection(self._source_events, self.as_of, self._core._resolve_keys)._core
             return
-        if self.as_of is None or event.occurred_at <= self.as_of:
-            self._core._measurement_sources.apply(event)
         self._core.apply(event)
 
     def _changes_prior_instrument_visibility(self, event: Event) -> bool:
         """Rebuild when new knowledge can retire an existing interpretation."""
+        if event.event_type in {"InvestmentActivityStatementObserved", "InvestmentEvidenceChanged"}:
+            return True
+        if event.event_type == "ClosingBalanceObserved":
+            context = self._core._measurement_sources
+            if (event.provenance.doc_id in context.investment_documents
+                    or context.investment_lifecycle_invalid):
+                return True
         if event.event_type == "InstrumentObservationRecorded":
             record = event.body.get("record", {})
             if record.get("prior_id"):

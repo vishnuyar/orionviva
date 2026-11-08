@@ -337,7 +337,7 @@ def read_prepared_statement(pages, embedded_text, doc_id, spec, locale, currency
                             if any(page is not None and (type(page) is not int or not 1 <= page <= len(pages))
                                    for page in reference_pages):
                                 raise ValueError("reference evidence is outside the captured document")
-                        if identity in (BALANCE_IDENTITY, BROKERAGE_IDENTITY):
+                        if identity in (BALANCE_IDENTITY, BROKERAGE_IDENTITY, PAYSTUB_IDENTITY):
                             facts.validated_source_page_count = len(pages)
                     except ValueError as exc:
                         return None, str(exc)

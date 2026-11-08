@@ -1,39 +1,33 @@
-# Consolidated OrionViva work
+# Consolidated checkpoint index
 
-Branch: `codex/consolidated-sqlite-performance`  
-Durable checkout: `/Users/vishnu/orionviva-consolidated`  
-Shared repository: `/Users/vishnu/orionviva/.git`
+This page indexes a closed source-consolidation checkpoint. Branches, checkout paths, hashes and test counts in its linked records describe that checkpoint; they are not current qualification or publication claims. The [historical wrapper](../archived/consolidation/2026-11-05/README.md) preserves 29 source records byte-for-byte and marks its adapted checkpoint index with exact original provenance. Old rulings grant no new execution, spending, release or security-hook bypass authority.
 
-## Scope and current status
+## Current requirements carried forward
 
-This branch combines retained-main-import's actual staged source and six working policy/document overrides with the useful sample-completion prototype source. Both original checkouts and their staged, unstaged and untracked work remain intact. The retained untracked Pipfile is included as dependency configuration; credentials, real financial documents, runtime vaults and private evidence are excluded from Git.
+- The preserved full sample audit remains a nonmatching historical result. Targeted repairs do not re-upload originals, rewrite canonical events or establish a new full financial-accuracy pass.
+- Normal vault authority remains encrypted JSONL with derived SQL reads. Canonical SQL is experimental; no default migration is established. Count-bearing ordinary SQL payroll has targeted physical-page custody evidence across 335 distinct cases; count-absent legacy behavior, saved-authority migration, full sample SQL and installed delivery remain separate limits.
+- Remaining staged work and proof copies stay preserved. Whole-history/projection-copy performance work needs equivalent workload measurements; a scoped benchmark does not qualify the full sample.
+- Current affected-package, build and hosted/native qualification remain separate gates. Native file-picker, accessibility, reopen/restart and live-extraction gaps require their own evidence and applicable access controls.
+- Real-document vaults, all originals, completed baselines, stopped partial runs, unresolved holds, spending limits and history remain preserved.
 
-All source conflicts are resolved and all 2,446 source paths pass exact coverage, permission and Python syntax checks. Both original trees and Primary’s staged index remain byte-identical to their preserved snapshots. Independent source review found no retained public API or field loss and no default backend migration. All 95 conflicts and 15 clean merges now have explicit source dispositions; targeted Python execution is complete: 585 carried passes plus 340 fresh passes give 925 unique passing cases. The original guard failure is preserved. Frontend execution, four subprocess controls, local HTTP coverage and full-package acceptance remain open. This is archival work with open qualification gaps. Nothing has been pushed. A clean textual merge is not product acceptance. The immutable qualification plan records the proposal at creation; the result below records actual execution.
+Current work belongs to the [import and performance plan](../import-performance-plan.md), [investment contract](../positions-and-investments.md) and [SQL payroll plan](../sql-authority-payroll.md). The recorded checkpoint below does not close those requirements.
 
-The normal application retains its existing encrypted JSONL authority, raw originals, SQLCipher read generations, authenticated cursor catch-up and UI/conversation contracts. The separate canonical SQL authority and its guarded incremental-verification work are retained as experimental code. This branch does not silently select it as the default or migrate an existing vault. The prototype's financially unsupported instrument outcomes do not replace normal application instrument support.
+## Original checkpoint narrative
 
-## Source coverage and preservation
+The [original checkpoint index](../archived/consolidation/2026-11-05/CHECKPOINT-INDEX.md) retains the historical branch, source paths and qualification narrative, using a verified unique Git abbreviation for the prototype commit. Its banner and wrapper identify the adaptation; the exact original remains available with `git show 5964998:docs/consolidation/README.md`.
 
-The shared ancestor is `61d3820af25b2357f8c54f7d2361e907497da824`; this branch starts from existing local prototype history at `13a41040029383bba43c6ad323300f7b7f4e6706`. Primary retained-main-import remains on its existing branch, with 1,198 staged entries, six unstaged policy/document files and one untracked dependency file. Its original index SHA256 is `ced1ce44124ba828467a2c2f866c338d587c1b7ce6e3d7f2ecf6ba3d7284791a`.
+## Retained checkpoint records
 
-Every input source version and mode was archived before consolidation under `/Users/vishnu/OrionViva-Preservation/2026-11-05-consolidation`. The original 794-document baseline, stopped partial vault, earlier uploads, failures, spending history and holds remain at their preserved locations; no vault was opened or migrated by consolidation.
-
-- [Per-path coverage ledger](2026-11-05/COVERAGE.json): 2,446 paths, including 2,112 identical versions, 224 prototype-side changes, 15 clean textual merges and 95 conflicts requiring review.
-- [Actual targeted qualification result](2026-11-05/PUBLIC-QUALIFICATION-RESULT.txt)
-- [Exact evidence union](2026-11-05/EVIDENCE-UNION.json)
-- [Post-qualification documentation updates](2026-11-05/POST-QUALIFICATION-DOC-UPDATES.json)
-- [Current verified source coverage](2026-11-05/COVERAGE-VERIFIED.json)
-- [Final semantic merge dispositions](2026-11-05/MASTER-COVERAGE.json)
-- [Independent source review](2026-11-05/CONSOLIDATION-FINAL-SOURCE-FACTS.md)
-- [Fixed-wire and packaging source closure](2026-11-05/TEST-SOURCE-CLOSURE.json)
-- [Preparation record](2026-11-05/PREPARATION-RESULT.json)
-- [Historical-content comparison](2026-11-05/ANCESTOR-CONTENT-CHECK.json)
-- [Desktop, documentation and dependency resolutions](2026-11-05/UI-DOC-DEPENDENCY-RESOLUTIONS.json)
-- [Test resolutions and retained-definition coverage](2026-11-05/TEST-RESOLUTIONS.json)
-- [Backend resolutions](2026-11-05/BACKEND-RESOLUTIONS.json)
-
-## Performance evidence and remaining work
-
-An independently verified 25-document comparison on the canonical SQL prototype used identical inputs, driver and runtime: source-read plus ingest calls improved from 299.659357 seconds to 81.377853 seconds (3.6823x). Financial summaries matched, with 100 incremental advances, 25 custody/lock extensions, no ingress full replay and no fallback. Full final verification and reopen checks remained enabled. The result is preserved under `/Users/vishnu/OrionViva-Preservation/2026-11-04-baseline794/continuation-20261105-representative25-pair01`.
-
-That result does not measure this consolidated branch's normal application route or establish a 794-document result. After semantic conflict resolution, verify exact coverage and interface compatibility, run appropriate tests, then measure the actual normal import route with public synthetic PDFs and retained readings, zero model calls and an isolated partial vault. Reuse existing capabilities; do not construct another SQL read backend or cursor framework. Full final qualification, installed/browser evidence, financial eligibility and default/backend migration remain separate requirements.
+- [Per-path coverage ledger](../archived/consolidation/2026-11-05/COVERAGE.json): 2,446 paths, including 2,112 identical versions, 224 prototype-side changes, 15 clean textual merges and 95 conflicts requiring review.
+- [Actual targeted qualification result](../archived/consolidation/2026-11-05/PUBLIC-QUALIFICATION-RESULT.txt)
+- [Exact evidence union](../archived/consolidation/2026-11-05/EVIDENCE-UNION.json)
+- [Post-qualification documentation updates](../archived/consolidation/2026-11-05/POST-QUALIFICATION-DOC-UPDATES.json)
+- [Recorded consolidated source coverage](../archived/consolidation/2026-11-05/COVERAGE-VERIFIED.json)
+- [Final semantic merge dispositions](../archived/consolidation/2026-11-05/MASTER-COVERAGE.json)
+- [Independent source review](../archived/consolidation/2026-11-05/CONSOLIDATION-FINAL-SOURCE-FACTS.md)
+- [Fixed-wire and packaging source closure](../archived/consolidation/2026-11-05/TEST-SOURCE-CLOSURE.json)
+- [Preparation record](../archived/consolidation/2026-11-05/PREPARATION-RESULT.json)
+- [Historical-content comparison](../archived/consolidation/2026-11-05/ANCESTOR-CONTENT-CHECK.json)
+- [Desktop, documentation and dependency resolutions](../archived/consolidation/2026-11-05/UI-DOC-DEPENDENCY-RESOLUTIONS.json)
+- [Test resolutions and retained-definition coverage](../archived/consolidation/2026-11-05/TEST-RESOLUTIONS.json)
+- [Backend resolutions](../archived/consolidation/2026-11-05/BACKEND-RESOLUTIONS.json)

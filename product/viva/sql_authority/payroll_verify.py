@@ -14,6 +14,7 @@ from .store import canonical, IntegrityError
 from .schema import KEYS, TABLES, FORMAT, SCHEMA_VERSION
 from .bank import amount_key
 from .payroll import decode
+from ..ingest.cash_source_pages import payroll_decomposition_page
 
 
 
@@ -105,8 +106,13 @@ def _source(store,prefix,doc,interpretation,memo=None):
             normalized=decode(raw_facts,tags)
             if normalized.doc_id!=doc or reading.get('doc_type')!='pay_stub' or reading.get('error'):
                 normalized=None
-            elif reading.get('raw_text'):
-                facts,error=from_paystub_json(reading['raw_text'],doc,reading['source_locale'],normalized.currency)
+            elif reading.get('raw_text') or normalized.validated_source_page_count is not None:
+                if normalized.validated_source_page_count is not None:
+                    from .payroll_source_custody import reparse_physically_bound_payroll
+                    facts=reparse_physically_bound_payroll(store,doc,reading,normalized)
+                    error=None
+                else:
+                    facts,error=from_paystub_json(reading['raw_text'],doc,reading['source_locale'],normalized.currency)
                 if facts is None or error:
                     normalized=None
                 else:
@@ -239,8 +245,9 @@ def _advance(store, checkpoint, revision, operations, memo):
                 event=paystub_decomposition(facts.gross,facts.net,facts.deductions,'',facts.pay_date)
                 if sum((Decimal(p['amount']) for p in event.body['postings']),Decimal(0))!=0:
                     _fail('unbalanced payroll decomposition')
+                source_page=payroll_decomposition_page(facts) if facts.validated_source_page_count is not None else None
                 for leg,posting in enumerate(event.body['postings']):
-                    expected['payroll_legs'][(candidate,leg)]=dict(explanation_id=candidate,leg=leg,account_id=posting['account'],amount=posting['amount'],currency=facts.currency,grade=posting['grade'],doc_id=doc,page=facts.gross_page if leg==0 else facts.net_page if leg==1 else None)
+                    expected['payroll_legs'][(candidate,leg)]=dict(explanation_id=candidate,leg=leg,account_id=posting['account'],amount=posting['amount'],currency=facts.currency,grade=posting['grade'],doc_id=doc,page=(source_page if facts.validated_source_page_count is not None else facts.gross_page if leg==0 else facts.net_page if leg==1 else None))
             expected['payroll_witnesses'][(doc,candidate)]=dict(doc_id=doc,explanation_id=candidate)
             if len(signatures[binding['movement']])==1:
                 eid=candidate;physical=binding['physical_account'];desired.add(eid)

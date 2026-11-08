@@ -1018,7 +1018,10 @@ class SemanticFamilyRegistry:
             for name, path in SemanticFamilyRegistry._admitted_source_only_paths().items()
         })
         # Hash the added finite source closure without executing surface tiers.
-        resources = {'foundation_dependency:viva.vault': ('viva.vault', 'viva/vault.py'),
+        resources = {'foundation_dependency:viva.ingest.cash_source_pages': ('viva.ingest.cash_source_pages', 'viva/ingest/cash_source_pages.py'),
+                     'foundation_dependency:viva.ledger.projection.investment_snapshots': ('viva.ledger.projection.investment_snapshots', 'viva/ledger/projection/investment_snapshots.py'),
+                     'foundation_dependency:viva.read_store.investment_bindings': ('viva.read_store.investment_bindings', 'viva/read_store/investment_bindings.py'),
+                     'foundation_dependency:viva.vault': ('viva.vault', 'viva/vault.py'),
                      'foundation_dependency:viva.acquisition': ('viva.acquisition', 'viva/acquisition.py'),
  'foundation_dependency:viva.demo': ('viva.demo', 'viva/demo.py'),
  'foundation_dependency:viva.ingest.mortgage_known_allocation': ('viva.ingest.mortgage_known_allocation',
@@ -1208,7 +1211,7 @@ class SemanticFamilyRegistry:
             if manifest.resolve(strict=True) != manifest or not manifest.is_file():
                 raise RuntimeError("admission source artifact: invalid source map resource")
             mapping = json.loads(manifest.read_bytes())
-            if not isinstance(mapping, dict) or len(mapping) != 160:
+            if not isinstance(mapping, dict) or len(mapping) != 163:
                 raise RuntimeError("admission source artifact: incomplete source map")
             for name, relative in mapping.items():
                 if (not isinstance(name, str) or not isinstance(relative, str)

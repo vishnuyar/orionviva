@@ -20,7 +20,7 @@ def _install():
     if not manifest.resolve(strict=True).is_relative_to(root):
         raise RuntimeError('sidecar admission sources: manifest escapes extraction root')
     mapping = json.loads(manifest.read_bytes())
-    if not isinstance(mapping, dict) or len(mapping) != 160:
+    if not isinstance(mapping, dict) or len(mapping) != 163:
         raise RuntimeError('sidecar admission sources: invalid source map')
     for name, relative in mapping.items():
         if not isinstance(name, str) or not isinstance(relative, str):
@@ -31,7 +31,10 @@ def _install():
                 part.isidentifier() for part in name.split('.')):
             raise RuntimeError('sidecar admission sources: invalid source map')
 
-    expected = {'viva.answer_program.selected_balances': 'viva/answer_program/selected_balances.py',
+    expected = {'viva.ingest.cash_source_pages': 'viva/ingest/cash_source_pages.py',
+ 'viva.ledger.projection.investment_snapshots': 'viva/ledger/projection/investment_snapshots.py',
+ 'viva.read_store.investment_bindings': 'viva/read_store/investment_bindings.py',
+ 'viva.answer_program.selected_balances': 'viva/answer_program/selected_balances.py',
  'viva.tools.account_balances': 'viva/tools/account_balances.py',
  'viva.ledger.ledger': 'viva/ledger/ledger.py', 'viva.vault': 'viva/vault.py', 'viva.ledger.projection.coverage': 'viva/ledger/projection/coverage.py',
  'viva.read_store.documents': 'viva/read_store/documents.py',

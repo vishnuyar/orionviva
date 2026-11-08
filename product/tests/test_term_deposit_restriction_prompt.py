@@ -90,7 +90,7 @@ def test_normal_saved_read_rebuild_preserves_old_and_new_literal_proposals(tmp_p
     from viva.ingest.pipeline import capture_and_ingest,ReadResult
     from viva.ingest.instrument_read import parser_for
     from viva import rebuild
-    from test_rebuild_context import pdf
+    from normalization.test_rebuild_context import pdf
     data=payload(literal);text=json.dumps(data)
     ctx=ExtractionNormalizationContext(1,RULES_VERSION,'en-US','USD')
     def saved_reader(_data,doc):

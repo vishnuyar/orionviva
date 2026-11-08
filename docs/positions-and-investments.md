@@ -40,6 +40,8 @@
 5. Corrected activity reconciles before its required source-backed opening seed, movements and resolution record are appended in that order atomically. Unsupported first-seed corrections retain the hold without posting movements or resolving it. The snapshot is not reposted and the activity cannot replay twice.
 6. A holdings-only statement falls back to the snapshot path, with cash observed as a lone attested balance.
 
+New investment cash writes use the validated matching amount-source page when the typed source headers and complete activity rows agree with accepted facts. Repeated matching rows on different pages are ambiguous; missing, unsupported or out-of-bounds evidence leaves the page unavailable. Ordinary posting and held-activity correction use the same helper in `product/viva/ingest/cash_source_pages.py`. Posting amounts, dates, bodies, grades and duplicate controls are unchanged. This changes new writes only; it does not rewrite prior vault history.
+
 ### MON-32 — activity counter-legs, and a contribution counted once
 **State:** enforced
 **Code:** product/viva/ledger/postings.py:94 (the counter-leg map), :121 (`brokerage_activity_transaction`)
@@ -57,6 +59,13 @@
 1. A holdings figure sums the measurements carried on the newest statement date at or before the date asked about.
 2. An instrument the newest statement does not list is not held, and does not contribute.
 3. The projection keeps a latest-per-instrument view beside the full history; no holdings figure and no net-worth point reads it.
+4. An explicitly complete empty snapshot replaces earlier holdings. Zero cash, a classification-only receipt, missing fields and held activity do not establish an empty holdings set. A recognized but unsupported financial source remains unavailable; legacy native observations retain their earlier measurement behavior when the receipt declares no financial snapshot.
+5. Source-only capture and successful extract metadata follows lifecycle-visible log order over current knowledge. Its copied context freezes only after an eligible native closing folds successfully. Later unaccepted rereads cannot change it. Same-document acceptance is resolved before comparing measurement dates, including backward-dated corrections.
+6. Native holdings must match that accepted source exactly; pending, invalid or retracted typed positions authority cannot regain authority through legacy fallback. Activity-only revisions do not retire positions. Ordinary, bounded, historical, incremental and measurement paths share the accepted boundary selection.
+
+The encrypted SQL generation uses projector version `materialized-v31`, reusing typed lifecycle segments and compact accepted-read bindings with count/digest/native-frontier completeness. Position and binding inputs share one bounded traced statement. The existing 18-query prerequisite, 78-query full overview, persistent-plan, row and byte assertions remain in force. Old generations rebuild through the existing atomic protocol; an unsuccessful successor leaves a held reader intact.
+
+Targeted synthetic financial/source-admission verification passed 846 cases, including the original empty-closeout failures, current/historical SQL parity, lifecycle changes, held readers, reopen, publication failure, incomplete/corrupt bindings and legacy metadata. This is not a re-audit or rewrite of the preserved 794-document vault, nor live extraction or UI qualification.
 
 ### MON-34 — one composition, dated by the oldest and graded by the weakest
 **State:** enforced

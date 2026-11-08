@@ -40,8 +40,12 @@
 **Code:** product/viva/ingest/transfers.py:216 (`_EV_ACCOUNT`, `_EV_DATE`, `_EV_FLOOR`), :283 (`weigh`)
 **Test:** product/tests/test_transfers.py::test_the_printed_date_never_links_on_its_own
 
-1. Account evidence — a distinctive token, or a proven `account_ref` slot — is worth 2; a printed date matching the candidate's date is worth 1; nothing links below 2.
+1. Account evidence — a distinctive token, a proven `account_ref` slot, or a page-bound exact printed counterparty reference resolving uniquely to the held destination account — is worth 2; a printed date matching the candidate's date is worth 1; nothing links below 2.
 2. A matching date can never create a link; it separates pairs that already qualify (product/tests/test_transfers.py::test_the_printed_date_resolves_a_week_of_identical_card_payments).
+
+Printed source-reference evidence uses the native movement's transaction identity and cash dependency, matching its source document and page. Both source and destination account claims must be captured, issued and bounded by validated page counts. Resolution is literal and unique across every eligible held account; missing or ambiguous claims supply no evidence. The existing amount, currency, direction, five-day and two-sided uniqueness gates still apply. Explicit ruled spending, settlement or mixed treatment is excluded from new automatic matching. Existing links remain unchanged.
+
+The new `decided_by` values are `source_account_reference` and `source_account_reference+printed_date`. Links retain the rule name, never the matched account-reference value. The native source-custody, human-ruling and SQL Activity/schema tests are in `product/tests/test_structured_transfer_references.py`; this targeted coverage does not establish the separate SQL-authority matcher's reference generation or all investment/lifecycle scenarios.
 
 ### MON-60 — genericness is measured, never listed
 **State:** enforced

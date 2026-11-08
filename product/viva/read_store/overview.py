@@ -92,7 +92,8 @@ class SQLOverviewProjection:
     def _load_measurement_history(self):
         from .scalar_bounds import selected as scalar_selected, refuse as refuse_scalars
         for state in self._states.values():
-            state.closings, state.position_history = [], {}
+            state.closings, state.position_history, state.investment_snapshots = [], {}, []
+            state.investment_horizon = self._boundary
         observation_columns = (
             "account_id", "event_type", "occurred_at", "amount_text",
             "confirmed_by", "provenance_doc_id", "provenance_page",
@@ -122,12 +123,21 @@ class SQLOverviewProjection:
             "provenance_region", "provenance_note", "source_sequence")
         selected, bounds = scalar_selected(
             position_columns, ("provenance_page", "source_sequence"))
-        positions = _bounded(
-            self.connection,
-            f"SELECT {selected} FROM positions "
-            "WHERE occurred_at<=? ORDER BY source_sequence",
-            (*bounds, self._boundary), MAX_OVERVIEW_POSITIONS,
-            "Overview position history")
+        investment = any(state.kind == "investment" for state in self._states.values())
+        if investment:
+            from .investment_bindings import captured_history_query, unpack_history
+            query, parameters = captured_history_query(
+                selected, bounds, self._boundary, MAX_OVERVIEW_POSITIONS)
+            captured = self.connection.execute(query, parameters).fetchall()
+            positions = unpack_history(captured, self._states, self._boundary,
+                                       MAX_OVERVIEW_POSITIONS)
+        else:
+            positions = _bounded(
+                self.connection,
+                f"SELECT {selected} FROM positions "
+                "WHERE occurred_at<=? ORDER BY source_sequence",
+                (*bounds, self._boundary), MAX_OVERVIEW_POSITIONS,
+                "Overview position history")
         refuse_scalars(positions, position_columns,
                        ("provenance_page", "source_sequence"),
                        label="Overview position input")
@@ -141,7 +151,7 @@ class SQLOverviewProjection:
                 "cost_basis": None if basis == "" else Decimal(basis),
                 "valuation_class": valuation, "grade": grade,
                 "provenance": Provenance(doc, page, region, note),
-                "is_cash": is_cash_row(instrument),
+                "is_cash": is_cash_row(instrument), "source_sequence": _seq,
             })
 
     def _movement_view(self):
@@ -479,6 +489,11 @@ class SQLOverviewProjection:
             for item in snapshot_positions(state, boundary, cash=cash).values():
                 terms.append((item["market_value"], item["currency"] or state.currency,
                               item["as_of"], item["grade"], ""))
+        from ..ledger.projection.investment_snapshots import select_holdings_boundary, boundary_positions
+        snapshot = select_holdings_boundary(state, boundary)
+        if snapshot is not None and snapshot.position_count == 0:
+            boundary_positions(state, snapshot)
+            terms.append((Decimal(0), snapshot.currency, snapshot.dated, snapshot.grade, snapshot.document))
         grouped = {}
         for amount, currency, dated, grade, doc in terms:
             item = grouped.setdefault(currency, {"amount": Decimal(0), "dates": set(), "grades": [], "proves": ""})

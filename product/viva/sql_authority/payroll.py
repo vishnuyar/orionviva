@@ -7,6 +7,7 @@ import json
 from ..ingest.paystub import PayStubFacts, Deduction, CATEGORIES
 from ..ledger.identity import normalize_name
 from ..ledger.postings import paystub_decomposition
+from ..ingest.cash_source_pages import payroll_decomposition_page
 from vivacore.verify.arithmetic import check_paystub_identity
 from .schema import supported_amount
 from .store import canonical, AuthorityError, MAX_RECEIPT_BYTES
@@ -33,7 +34,7 @@ def decode(value, tags=None):
     """Validate retained scalar shapes before reconstructing exact typed facts."""
     fields = {'doc_id','doc_type','doc_type_confidence','employer','currency','pay_date',
               'period_start','period_end','gross','net','deductions','employee_names','gross_page','net_page'}
-    if type(value) is not dict or set(value)-fields-{'acquisition','payroll_source'} or not fields <= set(value):
+    if type(value) is not dict or set(value)-fields-{'acquisition','payroll_source','validated_source_page_count'} or not fields <= set(value):
         raise ValueError('closed payroll facts required')
     if tags is not None and (type(tags) is not dict or set(tags)!={'payroll','deductions','decimals','read_context_id'} or any(tags[k] is not True for k in ('payroll','deductions','decimals'))):
         raise ValueError('exact payroll capture types required')
@@ -56,6 +57,9 @@ def decode(value, tags=None):
             raise ValueError('payroll date invalid')
     if value['period_start'] and value['period_end'] and value['period_start']>value['period_end']:
         raise ValueError('payroll period reversed')
+    count=value.get('validated_source_page_count')
+    if count is not None and (type(count) is not int or not 1 <= count <= 200):
+        raise ValueError('validated payroll source page count invalid')
     for key in ('gross_page','net_page'):
         if value[key] is not None and (type(value[key]) is not int or not 1 <= value[key] <= 200):
             raise ValueError('payroll page invalid')
@@ -80,7 +84,7 @@ def decode(value, tags=None):
     facts=PayStubFacts(value['doc_id'],value['doc_type'],confidence,value['employer'],value['currency'],
         value['pay_date'],value['period_start'],value['period_end'],Decimal(value['gross']),Decimal(value['net']),
         [Deduction(d['label'],Decimal(d['amount']),d['category']) for d in value['deductions']],
-        list(value['employee_names']),value['gross_page'],value['net_page'],source,value.get('acquisition'))
+        list(value['employee_names']),value['gross_page'],value['net_page'],source,value.get('acquisition'),count)
     if len(canonical(facts.to_dict()).encode())>MAX_RECEIPT_BYTES:
         raise ValueError('payroll facts exceed receipt bound')
     return facts
@@ -253,8 +257,9 @@ def close_writer(store):
                     currency=facts.currency,pay_date=facts.pay_date,gross=str(facts.gross),net=str(facts.net),signature=body)
                 store._put('payroll_explanations',explanation)
                 event=paystub_decomposition(facts.gross,facts.net,facts.deductions,'',facts.pay_date)
+                source_page=payroll_decomposition_page(facts) if facts.validated_source_page_count is not None else None
                 for leg,posting in enumerate(event.body['postings']):
-                    store._put('payroll_legs',dict(explanation_id=candidate_id,leg=leg,account_id=posting['account'],amount=posting['amount'],currency=facts.currency,grade=posting['grade'],doc_id=doc,page=facts.gross_page if leg==0 else facts.net_page if leg==1 else None))
+                    store._put('payroll_legs',dict(explanation_id=candidate_id,leg=leg,account_id=posting['account'],amount=posting['amount'],currency=facts.currency,grade=posting['grade'],doc_id=doc,page=(source_page if facts.validated_source_page_count is not None else facts.gross_page if leg==0 else facts.net_page if leg==1 else None)))
             store._put('payroll_witnesses',dict(doc_id=doc,explanation_id=candidate_id))
             if len(movement_signatures[choice['movement']])==1:
                 eid=candidate_id;physical=choice['physical_account'];desired.add(eid)

@@ -62,6 +62,11 @@ def snapshot_positions(st, as_of: str = "", *, cash: bool = False) -> dict:
            for ob in history
            if ob.get("as_of") and (not as_of or ob["as_of"] <= as_of)
            and bool(ob.get("is_cash")) == cash]
+    if not cash:
+        from .investment_snapshots import select_holdings_boundary, boundary_positions
+        boundary = select_holdings_boundary(st, as_of)
+        if boundary is not None:
+            return boundary_positions(st, boundary)
     if not obs:
         return {}
     newest = max(ob["as_of"] for _n, ob in obs)
@@ -210,6 +215,14 @@ class SourceCapture:
 
 
 def _bounded_snapshot(st, capture, *, cash):
+    if not cash:
+        from .investment_snapshots import select_holdings_boundary, boundary_positions
+        boundary = select_holdings_boundary(st, check=capture.check)
+        if boundary is not None:
+            selected = boundary_positions(st, boundary, capture.check)
+            for index, row in enumerate(selected.values()):
+                capture.before_position(index)
+            return selected
     newest = ""
     for history in st.position_history.values():
         for observation in history:
@@ -293,6 +306,15 @@ def composed_values(core: ProjectionCore, account: str,
                     p["as_of"], p["grade"], p["provenance"])
                 terms.append((p["market_value"], p["currency"] or st.currency,
                               p["as_of"], p["grade"], ""))
+    from .investment_snapshots import select_holdings_boundary, boundary_positions
+    boundary = select_holdings_boundary(st, as_of, source_capture.check if source_capture else None)
+    if boundary is not None and boundary.position_count == 0:
+        boundary_positions(st, boundary, source_capture.check if source_capture else None)
+        terms.append((Decimal("0"), boundary.currency, boundary.dated, boundary.grade, boundary.document))
+        if source_capture is not None:
+            from ..events import Provenance
+            source_capture.add("holding", "complete_empty", Decimal("0"), boundary.currency,
+                               boundary.dated, boundary.grade, Provenance(boundary.document))
     groups: dict[str, dict] = {}
     for amount, currency, date, grade, doc in terms:
         g = groups.setdefault(currency, {"amount": Decimal("0"), "dates": set(),

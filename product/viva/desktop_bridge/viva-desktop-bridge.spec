@@ -175,6 +175,9 @@ ADMISSION_SOURCES = [
     (PRODUCT_ROOT / "viva/answer_program/selected_balances.py", "viva/answer_program"),
     (PRODUCT_ROOT / "viva/tools/account_balances.py", "viva/tools"),
     (PRODUCT_ROOT / "viva/ledger/ledger.py", "viva/ledger"),
+    (PRODUCT_ROOT / 'viva/ingest/cash_source_pages.py', 'viva/ingest'),
+    (PRODUCT_ROOT / 'viva/ledger/projection/investment_snapshots.py', 'viva/ledger/projection'),
+    (PRODUCT_ROOT / 'viva/read_store/investment_bindings.py', 'viva/read_store'),
 ]
 for source, destination in ADMISSION_SOURCES:
     if not source.is_file():

@@ -250,7 +250,7 @@ def _completed_audit_result(owner, source):
             refs += [row.page for row in facts.transactions if row.source_reference or row.counterparty_reference]
             if any(page is not None and (type(page) is not int or not 1 <= page <= len(pages)) for page in refs):
                 raise ValueError('reference evidence outside original')
-        if identity in (BALANCE_IDENTITY, BROKERAGE_IDENTITY):
+        if identity in (BALANCE_IDENTITY, BROKERAGE_IDENTITY, PAYSTUB_IDENTITY):
             facts.validated_source_page_count = len(pages)
     return ReadResult(kind, confidence, facts=facts, phases=phases,
         source_locale=context.parser_locale, normalization_context=context)

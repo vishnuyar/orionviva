@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from datetime import date
 
-from ...ingest.brokerage import from_brokerage_json, resolve_sweep_cash
-from vivacore.verify.arithmetic import check_brokerage_identity
 from .positions import _composed_grade
 
 
@@ -27,9 +25,26 @@ class Measurement:
 
 class MeasurementSources:
     """Source terms in replay order; metadata edits never relabel old sources."""
-    def __init__(self):
+    def __init__(self, *, validate_lifecycle=True):
+        self.validate_lifecycle = validate_lifecycle
         self.accounts = {}
         self.accepted = {}
+        self.investment_documents = set()
+        self.investment_lifecycle_invalid = False
+        from .investment_snapshots import AcceptedInvestmentSources
+        self.snapshots = AcceptedInvestmentSources()
+
+    def observe_source(self, event):
+        self.snapshots.observe(event)
+
+    def after_event(self, core, event, sequence):
+        self.apply(event)
+        self.snapshots.accepted(core, event, sequence)
+
+    def finish(self, core, events):
+        if self.validate_lifecycle:
+            from .investment_snapshots import bind_lifecycle
+            bind_lifecycle(core, events)
 
     def apply(self, event):
         if event.event_type not in {"AccountOpened", "ClosingBalanceObserved"}:
@@ -54,7 +69,9 @@ def accepted_closings(core, account):
     selected = {}
     context = getattr(core, "_measurement_sources", None)
     for sequence, (dated, amount, grade, doc) in enumerate(state.closings):
-        if not doc or doc not in core._captured:
+        if not doc or (doc not in core._captured and not any(
+                b.document == doc and b.read_id and b.read_digest
+                for b in getattr(state, "investment_snapshots", ()))):
             continue
         accepted = core._doc_closing.get(doc)
         if accepted is None:
@@ -78,37 +95,23 @@ def accepted_closings(core, account):
 
 def investment_snapshot(core, account, closing, locale='en-US'):
     """Match normalized statement components to accepted observations, never dates alone."""
+    from .investment_snapshots import boundary_positions, SnapshotUnavailable
     state = core._acct[account]
-    facts, error = from_brokerage_json(core._replies.get(closing.doc_id, ''),
-                                     closing.doc_id, locale, closing.currency)
-    if error or facts is None:
+    matches = [b for b in state.investment_snapshots if b.document == closing.doc_id
+               and b.dated == closing.dated and b.cash == closing.amount]
+    if not matches:
         return None
-    facts, _ = resolve_sweep_cash(facts)
-    if (facts.as_of != closing.dated or facts.currency != closing.currency
-            or facts.cash != closing.amount
-            or not check_brokerage_identity([p.market_value for p in facts.positions],
-                                             facts.cash, facts.total).passed):
+    boundary = max(matches, key=lambda b: b.sequence)
+    if boundary.status_at(core.as_of or "9999-12-31") not in {"complete", "accepted"}:
         return None
-    grades = [closing.grade]
-    instruments = set()
-    for position in facts.positions:
-        if not position.instrument or position.instrument in instruments:
-            return None
-        instruments.add(position.instrument)
-        same_source = [row for row in state.position_history.get(position.instrument, [])
-                       if row['provenance'].doc_id == closing.doc_id]
-        if not same_source:
-            return None
-        observed = same_source[-1]
-        if (observed['as_of'][:10] != closing.dated
-                or observed['currency'] != closing.currency
-                or observed['market_value'] != position.market_value
-                or observed['units'] != position.units or observed['is_cash']):
-            return None
-        grades.append(observed['grade'])
-    grade = _composed_grade(grades)
-    return Measurement(facts.total, closing.currency, closing.dated, grade,
-                       closing.doc_id, (closing.doc_id,), closing.source_sequence, closing.kind, closing.context_conflict)
+    try:
+        observed = boundary_positions(state, boundary)
+    except SnapshotUnavailable:
+        return None
+    grade = _composed_grade([closing.grade, *(p["grade"] for p in observed.values())])
+    return Measurement(boundary.total, closing.currency, closing.dated, grade,
+                       closing.doc_id, (closing.doc_id,), closing.source_sequence,
+                       closing.kind, closing.context_conflict)
 
 
 def measurements(core, account, *, cash=False, locale='en-US'):

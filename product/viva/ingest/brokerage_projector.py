@@ -22,6 +22,7 @@ from ..ledger.postings import (brokerage_activity_transaction,
                                brokerage_cash_effect, paystub_decomposition,
                                simple_transaction)
 from .brokerage import BrokerageFacts
+from .cash_source_pages import brokerage_activity_pages
 from .diagnose import FORCED, SUGGESTED, UNLOCALIZED, ReconciliationFinding, diagnose
 from ..ledger.identity import account_key
 from .paystub import PayStubFacts
@@ -291,11 +292,13 @@ def _post_brokerage_cash_and_snapshot(ledger: Ledger, facts: BrokerageFacts) -> 
                 account, opening_cash, opening_source[0],
                 facts.provenance(f"opening cash (from {opening_from})",
                                  page=opening_source[1])))
-        for a in facts.activity:
+        activity_pages = brokerage_activity_pages(facts)
+        for ordinal, a in enumerate(facts.activity):
             ledger.append(brokerage_activity_transaction(
                 account, a.kind, a.amount, a.description, a.date or when,
                 instrument=a.instrument, realized_gain=a.realized_gain,
-                provenance=facts.provenance(f"{a.kind} {a.instrument}".strip())))
+                provenance=facts.provenance(f"{a.kind} {a.instrument}".strip(),
+                                            page=activity_pages[ordinal])))
     # Cash: the attested balance at the statement date — the closing of the
     # flow, or a lone snapshot on a holdings-only statement.
     ledger.append(closing_balance_observed(
@@ -411,13 +414,15 @@ def apply_brokerage_activity_correction(
                 account, corrected.opening_cash, opening_source[0],
                 corrected.provenance("opening cash (from the statement)",
                                      page=opening_source[1])))
+        activity_pages = brokerage_activity_pages(corrected)
         events.extend(brokerage_activity_transaction(
             account, item.kind, item.amount, item.description,
             item.date or corrected.as_of, instrument=item.instrument,
             realized_gain=item.realized_gain,
             provenance=corrected.provenance(
-                f"{item.kind} {item.instrument}".strip()))
-            for item in corrected.activity)
+                f"{item.kind} {item.instrument}".strip(),
+                page=activity_pages[ordinal]))
+            for ordinal, item in enumerate(corrected.activity))
         events.append(brokerage_activity_resolved(
             doc_id, corrected.as_of, Provenance(doc_id=doc_id)))
         accepted_sources.append((corrected, account))

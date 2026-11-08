@@ -106,9 +106,10 @@ def valid_evidence(value):
         return False
     try:
         from .schema import supported_amount
+        from ..ledger.transfer_admission import TRANSFER_EVIDENCE_RULES
         return (value["verdict"] in {"decisive","suggested"} and supported_amount(Decimal(value["amount"]))
             and Decimal(value["amount"])>0 and len(value["currency"])==3 and value["currency"].isascii() and value["currency"].isalpha()
-            and value["decided_by"] in {"","printed_date","account_ref_slot","account_ref_slot+printed_date","named_account","named_account+printed_date"})
+            and value["decided_by"] in TRANSFER_EVIDENCE_RULES | {"", "printed_date"})
     except InvalidOperation:
         return False
 

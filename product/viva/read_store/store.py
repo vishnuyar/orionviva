@@ -41,7 +41,7 @@ _MANIFEST_DOMAIN = b"viva-read-store-manifest-key-v1"
 _DATABASE_DOMAIN = b"viva-read-store-database-key-v1"
 _ACQUISITION_DOMAIN = b"viva-read-store-acquisition-key-v1"
 CONTROL_SCHEMA_VERSION = 39
-PROJECTOR_VERSION = "materialized-v30"
+PROJECTOR_VERSION = "materialized-v31"
 RESOLVER_VERSION = "resolver-v3"
 AS_OF_VERSION = "as-of-v1"
 _APPLIED_EVENTS_GENESIS_DOMAIN = b"viva-read-store-applied-events-genesis-v1\0"
@@ -1898,6 +1898,8 @@ class ReadStore:
         try:
             with self.open_reader() as reader:
                 control = self._control_state(reader.connection)
+                investment_accounts = {row[0] for row in reader.connection.execute(
+                    "SELECT DISTINCT account_id FROM accounts WHERE kind='investment'")}
                 investment_active = reader.connection.execute(
                     "SELECT 1 FROM applied_events WHERE event_type IN "
                     "('InvestmentActivityStatementObserved','InvestmentEvidenceChanged') LIMIT 1"
@@ -1905,6 +1907,7 @@ class ReadStore:
         except Exception:
             control = None
             investment_active = False
+            investment_accounts = set()
 
         try:
             if (control is not None and control["versions"] == versions
@@ -1922,9 +1925,13 @@ class ReadStore:
                             "equal", self.current_generation,
                             suffix.identity.count, 0)
                     investment_snapshot = None
-                    if projector_version == PROJECTOR_VERSION and (investment_active or any(entry.event.event_type in (
-                            'InvestmentActivityStatementObserved', 'InvestmentEvidenceChanged',
+                    investment_accounts.update(entry.event.body.get("account_id") for entry in suffix.events
+                        if entry.event.event_type == "AccountOpened" and entry.event.body.get("kind") == "investment")
+                    if projector_version == PROJECTOR_VERSION and (investment_active or any(
+                            entry.event.event_type in ('InvestmentActivityStatementObserved', 'InvestmentEvidenceChanged',
                             'RetirementPayrollPopulationObserved', 'RetirementPayrollPopulationRetracted')
+                            or (entry.event.event_type in ('ClosingBalanceObserved', 'PositionObserved')
+                                and entry.event.body.get('account_id') in investment_accounts)
                             for entry in suffix.events)):
                         investment_snapshot = event_store.committed_snapshot()
                         if investment_snapshot.identity != suffix.identity:
@@ -1949,7 +1956,8 @@ class ReadStore:
                     resolver_profiles,
                     snapshot if projector_version == PROJECTOR_VERSION and any(entry.event.event_type in (
                         'InvestmentActivityStatementObserved', 'InvestmentEvidenceChanged',
-                            'RetirementPayrollPopulationObserved', 'RetirementPayrollPopulationRetracted')
+                        'RetirementPayrollPopulationObserved', 'RetirementPayrollPopulationRetracted')
+                        or (entry.event.event_type == 'AccountOpened' and entry.event.body.get('kind') == 'investment')
                         for entry in snapshot.events) else None),
                 fail_at=("after_build" if fail_at == "after_database_commit"
                          else None))
@@ -2072,7 +2080,11 @@ class ReadStore:
                 if actual != (captured.event_id, captured.record_hash):
                     raise ReadStoreError("investment source entry differs from authenticated prefix")
             from ..investment.authenticated import materialize_authenticated_snapshot
-            materialize_authenticated_snapshot(connection, investment_snapshot)
+            owned_events = materialize_authenticated_snapshot(connection, investment_snapshot)
+            from .investment_bindings import materialize as materialize_accepted_bindings
+            materialize_accepted_bindings(connection, owned_events)
+        from .investment_bindings import seal as seal_investment_bindings
+        seal_investment_bindings(connection, identity.count, identity.head_hash)
         if fail_at == "before_metadata_advance":
             raise RuntimeError(
                 "injected read-store projection failure: before_metadata_advance")
@@ -2752,6 +2764,16 @@ class ReadStore:
             amount_text TEXT NOT NULL, grade TEXT NOT NULL,
             PRIMARY KEY(source_sequence, posting_index),
             CHECK(typeof(amount_text)='text'))""")
+        connection.execute("""CREATE TABLE investment_accepted_bindings (
+            source_sequence INTEGER PRIMARY KEY REFERENCES applied_events(sequence)
+                DEFERRABLE INITIALLY DEFERRED,
+            account_id TEXT NOT NULL REFERENCES account_entities(account_id),
+            doc_id TEXT NOT NULL, dated TEXT NOT NULL, binding_json TEXT NOT NULL)""")
+        connection.execute("CREATE INDEX investment_accepted_bindings_date ON investment_accepted_bindings(account_id,dated,source_sequence)")
+        connection.execute("""CREATE TABLE investment_binding_frontier (
+            singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+            source_count INTEGER NOT NULL, source_head TEXT NOT NULL,
+            binding_count INTEGER NOT NULL, binding_digest TEXT NOT NULL)""")
         connection.execute("""CREATE TABLE positions (
             source_sequence INTEGER PRIMARY KEY REFERENCES applied_events(sequence)
                 DEFERRABLE INITIALLY DEFERRED,
@@ -3256,6 +3278,8 @@ class ReadStore:
 
         connection.execute("CREATE INDEX instrument_states_by_observation ON instrument_component_states(observation_id,source_sequence)")
         connection.execute("CREATE INDEX instrument_positions_snapshot ON positions(account_id,occurred_at,provenance_doc_id)")
+        from .investment_bindings import seal as seal_investment_bindings
+        seal_investment_bindings(connection)
         from .document_index import create_tables as create_document_index
         create_document_index(connection)
         from .allocation_continuation import create_tables as create_allocation_continuation

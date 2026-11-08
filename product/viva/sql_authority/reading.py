@@ -32,6 +32,7 @@ _IMPLEMENTATION_MODULES = (
     "viva.sql_authority.application_io", "viva.sql_authority.application_backup",
     "viva.sql_authority.application_schema", "viva.sql_authority.payroll_schema",
     "viva.sql_authority.payroll", "viva.sql_authority.payroll_verify",
+    "viva.sql_authority.payroll_source_custody", "viva.ingest.cash_source_pages",
     "viva.sql_authority.investment", "viva.sql_authority.investment_schema",
     "viva.sql_authority.investment_numbers", "viva.sql_authority.investment_verify",
     "viva.sql_authority.accounting", "viva.sql_authority.accounting_verify",
@@ -315,8 +316,13 @@ def interpret(store, receipt):
             facts = decode(json.loads(facts_json), tags if receipt["facts_type"] != "curated" else None)
             if facts.doc_id != receipt["doc_id"] or reading["doc_type"] != facts.doc_type or reading.get("error"):
                 raise ValueError("payroll reading binding differs")
-            if receipt["facts_type"] != "curated" and reading.get("raw_text"):
-                parsed,error=from_paystub_json(reading["raw_text"],receipt["doc_id"],reading["source_locale"],facts.currency)
+            if receipt["facts_type"] != "curated" and (reading.get("raw_text") or facts.validated_source_page_count is not None):
+                if facts.validated_source_page_count is not None:
+                    from .payroll_source_custody import reparse_physically_bound_payroll
+                    parsed=reparse_physically_bound_payroll(store,receipt["doc_id"],reading,facts)
+                    error=None
+                else:
+                    parsed,error=from_paystub_json(reading["raw_text"],receipt["doc_id"],reading["source_locale"],facts.currency)
                 if parsed is None or error:
                     raise ValueError("payroll raw response cannot normalize")
                 expected,actual=facts.to_dict(),parsed.to_dict()

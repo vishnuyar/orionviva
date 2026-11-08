@@ -149,8 +149,9 @@ def test_sidecar_delivers_exact_sources_authenticated_by_runtime_admission(monke
         'viva/ledger/projection/coverage.py', 'viva/read_store/documents.py', 'viva/vault.py')})
     expected.update({relative: ROOT / ('product/' + relative) for relative in (
         'viva/answer_program/selected_balances.py', 'viva/tools/account_balances.py', 'viva/ledger/ledger.py')})
-    assert len(expected) == len(set(expected.values())) == 160
-    assert len([source for source, _destination in data if Path(source).suffix == '.py']) == len(bundled) == 160
+    expected.update({relative: ROOT / ("product/" + relative) for relative in ('viva/ingest/cash_source_pages.py', 'viva/ledger/projection/investment_snapshots.py', 'viva/read_store/investment_bindings.py')})
+    assert len(expected) == len(set(expected.values())) == 163
+    assert len([source for source, _destination in data if Path(source).suffix == '.py']) == len(bundled) == 163
     assert bundled.keys() == expected.keys()
     for name, path in expected.items():
         assert bundled[name] == path.read_bytes(), name

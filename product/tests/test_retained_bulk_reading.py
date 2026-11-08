@@ -329,9 +329,9 @@ def test_raw_bound_accepts_exact_fifty_mib_and_refuses_one_more(setup_bulk):
 def test_selected_provenance_probe_is_indexed_and_unknown_or_oversized_unavailable():
     import sqlite3
     from viva.read_store.documents_page import retained_retry_status
+    from viva.read_store.store import CONTROL_SCHEMA_VERSION, PROJECTOR_VERSION
     c=sqlite3.connect(':memory:')
     c.executescript("""CREATE TABLE projection_meta(singleton INTEGER,schema_version INTEGER,projector_version TEXT);
-      INSERT INTO projection_meta VALUES(1,39,'materialized-v30');
       CREATE TABLE event_provenance(doc_id TEXT,source_sequence INTEGER);
       CREATE INDEX event_provenance_by_document_source ON event_provenance(doc_id,source_sequence);
       CREATE TABLE applied_events(sequence INTEGER PRIMARY KEY,event_type TEXT);
@@ -341,6 +341,7 @@ def test_selected_provenance_probe_is_indexed_and_unknown_or_oversized_unavailab
       CREATE INDEX document_reads_by_doc_date ON document_reads(doc_id,source_sequence);
       CREATE TABLE extraction_responses(doc_id TEXT,source_sequence INTEGER,event_id TEXT);
       CREATE INDEX extraction_responses_by_document_source ON extraction_responses(doc_id,source_sequence);""")
+    c.execute("INSERT INTO projection_meta VALUES(1,?,?)", (CONTROL_SCHEMA_VERSION, PROJECTOR_VERSION))
     doc='a'*64;item={'id':doc,'raw_available':True}
     plans=c.execute('EXPLAIN QUERY PLAN SELECT source_sequence FROM event_provenance INDEXED BY event_provenance_by_document_source WHERE doc_id=? LIMIT 10001',(doc,)).fetchall()
     assert any('COVERING INDEX event_provenance_by_document_source' in p[-1] for p in plans)
@@ -350,7 +351,9 @@ def test_selected_provenance_probe_is_indexed_and_unknown_or_oversized_unavailab
     assert retained_retry_status(revision,item)['state']=='available'
     c.execute("UPDATE projection_meta SET schema_version=38,projector_version='materialized-v29'")
     assert retained_retry_status(revision,item)['state']=='unavailable'
-    c.execute("UPDATE projection_meta SET schema_version=39,projector_version='materialized-v30'")
+    c.execute("UPDATE projection_meta SET schema_version=?,projector_version='materialized-v30'", (CONTROL_SCHEMA_VERSION,))
+    assert retained_retry_status(revision,item)['state']=='unavailable'
+    c.execute("UPDATE projection_meta SET schema_version=?,projector_version=?", (CONTROL_SCHEMA_VERSION, PROJECTOR_VERSION))
     c.execute('INSERT INTO event_provenance VALUES(?,0)',(doc,));c.execute("INSERT INTO applied_events VALUES(0,'PublicUnknownFinancialState')")
     assert retained_retry_status(revision,item)['reason']=='financial_review'
     c.executemany('INSERT INTO event_provenance VALUES(?,?)',((doc,n) for n in range(1,10001)))

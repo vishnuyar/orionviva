@@ -375,6 +375,8 @@ def test_packaging_inventory_matches_every_admitted_module(monkeypatch):
     paths['viva.read_store.documents']=ROOT/'product/viva/read_store/documents.py'
     paths.update({name: ROOT / ("product/" + relative)
                   for name, relative in _SELECTED_REPORT_RESOURCES.values()})
+    paths.update({name: ROOT / ('product/' + relative)
+                  for name, relative in _FINANCIAL_HELPER_RESOURCES.values()})
     mapping = source_map()
     assert set(mapping) == set(paths)
     for name, relative in mapping.items():
@@ -482,7 +484,7 @@ def test_metadata_resources_independently_change_actual_candidate_identity(monke
     from viva.answer_program.intents import SemanticFamilyRegistry
     original=SemanticFamilyRegistry._admitted_source_only_paths
     baseline=SemanticFamilyRegistry._admitted_implementation_digests()
-    assert len(baseline)==160
+    assert len(baseline)==163
     for key,(module,relative) in _METADATA_RESOURCES.items():
         assert baseline[key]==hashlib.sha256((ROOT/'product'/relative).read_bytes()).hexdigest()[:16]
         changed_source=tmp_path/(module.replace('.','_')+'.py')
@@ -503,8 +505,8 @@ def test_metadata_resources_independently_change_actual_candidate_identity(monke
 
 def test_metadata_packaged_map_roundtrip_has_exact_two_real_additions():
     mapping=source_map()
-    assert len(mapping)==160
-    assert len(set(mapping.values()))==160
+    assert len(mapping)==163
+    assert len(set(mapping.values()))==163
     for module,relative in _METADATA_RESOURCES.values():
         assert mapping[module]==relative
         assert (ROOT/'product'/relative).is_file()
@@ -512,7 +514,7 @@ def test_metadata_packaged_map_roundtrip_has_exact_two_real_additions():
 
 
 @pytest.mark.parametrize('guard',['hook','source_only'])
-@pytest.mark.parametrize('size',[153,154,155,156,157,158,159,161])
+@pytest.mark.parametrize('size',[153,154,155,156,157,158,159,160,161,162,164])
 def test_metadata_strict_map_rejects_old_missing_and_extra_cardinalities(frozen,monkeypatch,guard,size):
     from viva.answer_program.intents import SemanticFamilyRegistry
     module,mapping=frozen
@@ -520,7 +522,7 @@ def test_metadata_strict_map_rejects_old_missing_and_extra_cardinalities(frozen,
     for name,relative in _METADATA_RESOURCES.values():
         module(name)
     install()
-    assert len(mapping)==160
+    assert len(mapping)==163
     assert set(SemanticFamilyRegistry._admitted_source_only_paths(_METADATA_RESOURCES))==set(_METADATA_RESOURCES)
     changed=dict(mapping)
     while len(changed)>size:changed.pop(next(reversed(changed)))
@@ -571,11 +573,11 @@ def test_vault_is_exact_additive_source_resource_and_mutation_changes_only_its_d
     from viva.answer_program.intents import SemanticFamilyRegistry
     key='foundation_dependency:viva.vault'
     baseline=SemanticFamilyRegistry._admitted_implementation_digests()
-    assert len(baseline)==160 and key in baseline
+    assert len(baseline)==163 and key in baseline
     mapping=source_map()
-    assert len(mapping)==160 and mapping['viva.vault']=='viva/vault.py'
-    assert len({k:v for k,v in mapping.items() if k!='viva.vault'})==159
-    assert len({k:v for k,v in baseline.items() if k!=key})==159
+    assert len(mapping)==163 and mapping['viva.vault']=='viva/vault.py'
+    assert len({k:v for k,v in mapping.items() if k!='viva.vault'})==162
+    assert len({k:v for k,v in baseline.items() if k!=key})==162
     source=ROOT/'product/viva/vault.py'
     assert baseline[key]==hashlib.sha256(source.read_bytes()).hexdigest()[:16]
     original=SemanticFamilyRegistry._admitted_source_only_paths
@@ -631,3 +633,63 @@ def test_selected_report_and_exact_owner_sources_are_in_the_actual_frozen_admiss
     for key, (name, relative) in _SELECTED_REPORT_RESOURCES.items():
         assert mapping[name] == relative
         assert paths[key].read_bytes() == (ROOT / 'product' / relative).read_bytes()
+
+
+_FINANCIAL_HELPER_RESOURCES = {
+    'foundation_dependency:viva.ingest.cash_source_pages':
+        ('viva.ingest.cash_source_pages','viva/ingest/cash_source_pages.py'),
+    'foundation_dependency:viva.ledger.projection.investment_snapshots':
+        ('viva.ledger.projection.investment_snapshots','viva/ledger/projection/investment_snapshots.py'),
+    'foundation_dependency:viva.read_store.investment_bindings':
+        ('viva.read_store.investment_bindings','viva/read_store/investment_bindings.py'),
+}
+
+
+@pytest.mark.parametrize('target',list(_FINANCIAL_HELPER_RESOURCES))
+def test_financial_helper_frozen_source_bytes_match_canonical_source(frozen,target):
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    module,mapping=frozen;module('viva.answer_program.intents')
+    for name,relative in _FINANCIAL_HELPER_RESOURCES.values():
+        _,path=module(name);path.write_bytes((ROOT/'product'/relative).read_bytes())
+    install()
+    actual=SemanticFamilyRegistry._admitted_source_only_paths(_FINANCIAL_HELPER_RESOURCES)
+    name,relative=_FINANCIAL_HELPER_RESOURCES[target]
+    assert len(mapping)==163 and mapping[name]==relative
+    assert actual[target].read_bytes()==(ROOT/'product'/relative).read_bytes()
+    assert hashlib.sha256(actual[target].read_bytes()).hexdigest()==hashlib.sha256((ROOT/'product'/relative).read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize('target',list(_FINANCIAL_HELPER_RESOURCES))
+@pytest.mark.parametrize('defect',['missing_file','file_symlink','directory_symlink'])
+def test_financial_helper_frozen_resource_path_refuses_missing_or_symlink(frozen,tmp_path,target,defect):
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    module,_mapping=frozen;module('viva.answer_program.intents')
+    for name,relative in _FINANCIAL_HELPER_RESOURCES.values():module(name)
+    install()
+    resource=SemanticFamilyRegistry._admitted_source_only_paths(_FINANCIAL_HELPER_RESOURCES)[target]
+    if defect=='missing_file':resource.unlink()
+    elif defect=='file_symlink':
+        alternate=tmp_path/'synthetic-alternate.py';alternate.write_bytes(resource.read_bytes())
+        resource.unlink();resource.symlink_to(alternate)
+    else:
+        original=resource.parent;relocated=tmp_path/'synthetic-relocated-package'
+        original.rename(relocated);original.symlink_to(relocated,target_is_directory=True)
+    with pytest.raises((RuntimeError,FileNotFoundError)):
+        SemanticFamilyRegistry._admitted_source_only_paths(_FINANCIAL_HELPER_RESOURCES)
+
+
+@pytest.mark.parametrize('guard',['hook','source_only'])
+@pytest.mark.parametrize('target',list(_FINANCIAL_HELPER_RESOURCES))
+@pytest.mark.parametrize('defect',['missing_mapping','wrong_mapping','duplicate_path'])
+def test_financial_helper_frozen_mapping_is_exact(frozen,guard,target,defect):
+    from viva.answer_program.intents import SemanticFamilyRegistry
+    module,mapping=frozen;module('viva.answer_program.intents')
+    for name,relative in _FINANCIAL_HELPER_RESOURCES.values():module(name)
+    install();changed=dict(mapping);name,relative=_FINANCIAL_HELPER_RESOURCES[target]
+    if defect=='missing_mapping':changed.pop(name)
+    elif defect=='wrong_mapping':changed[name]='viva/synthetic_wrong_resource.py'
+    else:changed['viva.answer_program.compiler']=relative
+    (Path(sys._MEIPASS)/'admission-source-map.json').write_text(json.dumps(changed))
+    with pytest.raises(RuntimeError):
+        if guard=='hook':install()
+        else:SemanticFamilyRegistry._admitted_source_only_paths(_FINANCIAL_HELPER_RESOURCES)

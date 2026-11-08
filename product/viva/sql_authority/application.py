@@ -8,7 +8,7 @@ import threading
 import time
 
 from ..crypto import (new_vault_header, open_vault_header, seal, open_sealed,
-                      SCRYPT_N, SCRYPT_R, SCRYPT_P, SALT_LEN, VERSION)
+                      SCRYPT_N, SCRYPT_R, SCRYPT_P, SALT_LEN, VERSION, CryptoError)
 from .store import SQLAuthority, AuthorityError, IntegrityError, _connect, _derive, ZERO
 from .schema import DDL, FORMAT as SQL_FORMAT, SCHEMA_VERSION
 from . import application_io as io
@@ -460,7 +460,10 @@ class ApplicationSQLAuthority:
         for doc,digest,size in representation.originals:
             path=originals/(doc+".blob")
             before=io.regular(path)
-            data,actual=self._engine._original_with_commitment(doc)
+            try:
+                data,actual=self._engine._original_with_commitment(doc)
+            except CryptoError as error:
+                raise IntegrityError("retained original authentication failed") from error
             after=io.regular(path)
             if ((before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns)
                     !=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns)

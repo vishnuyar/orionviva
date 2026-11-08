@@ -1,10 +1,13 @@
 # Reading Guide — where every document sits
 
-Current local work is recorded in [Consolidated source and qualification state](consolidation/README.md). The durable branch preserves retained and prototype work with per-path provenance. Normal vault authority remains unchanged; canonical SQL remains experimental. The targeted evidence covers 925 unique cases across two executions, with the original guard failure preserved. Frontend execution, four subprocess controls, full-package acceptance and normal-route/full-794 performance remain open.
+**State:** built
+**Rules:** SPINE-5, SPINE-6
+
+The retained consolidation checkpoint is indexed in [Consolidated source and qualification state](consolidation/README.md), with byte-preserved [historical records](archived/consolidation/2026-11-05/README.md). Its source snapshots and test counts are historical evidence. Current import and performance work is tracked in the [owning plan](import-performance-plan.md); investment behavior is recorded in [positions and investments](positions-and-investments.md). Normal vault authority remains encrypted JSONL with derived SQL reads, and canonical SQL remains experimental. Focused tests do not qualify a complete financial audit, live extraction or hosted/native delivery.
 
 ## Historical storage slice records
 
-The following storage status paragraphs describe their original stages. The current source and qualification record above supersedes their pending/failed status descriptions; earlier outcomes remain evidence.
+The following storage status paragraphs describe their original stages. Their recorded outcomes remain evidence; current requirements and qualification limits live in the owning plans linked above.
 
 Current storage experiment: [Encrypted SQLite financial authority prototype](sql-authority-prototype.md)
 records the isolated staging, validation and atomic acceptance design, integrity
@@ -51,9 +54,6 @@ with the proposed [exact validation reuse amendments](import-validation-reuse-pl
 and its [stable bank funding provenance amendment](import-bank-witness-plan.md).
 records the incremental-import scope, retained measurements and outstanding
 verification. The prepared artifact and installed delivery remain unverified.
-
-**State:** built
-**Rules:** SPINE-5, SPINE-6
 
 ## Rules
 

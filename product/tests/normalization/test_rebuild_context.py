@@ -10,7 +10,7 @@ from viva.ingest.instrument_read import parser_for
 from viva.ledger.events import read_recorded
 from viva.ledger.instruments import reference_accounts
 from test_instrument_projector_b import mortgage
-from test_reader_context import response
+from normalization.test_reader_context import response
 
 
 def pdf(payload):

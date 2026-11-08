@@ -2,6 +2,8 @@
 
 TRANSFER_CANDIDATE_LIMIT = 20
 TRANSFER_EVIDENCE_RULES = frozenset({
+    "source_account_reference",
+    "source_account_reference+printed_date",
     "account_ref_slot",
     "account_ref_slot+printed_date",
     "named_account",

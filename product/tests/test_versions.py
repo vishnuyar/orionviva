@@ -108,8 +108,8 @@ def test_an_undeclared_family_raises_and_says_what_is_declared():
 
 # Fixed historical wire discriminators are not active resource selections.
 # These exact AST sites and full source bytes are reviewed replay contracts.
-_FIXED_WIRE_VERSION_SITES = {'ingest/paystub.py': {'sha256': '90cd4887b8d61fc1de6778ecbb49f83647e8ea61b5f6b3cfa3b2a4afee1598a1',
-                       'sites': [(166, 97, 'payroll-source-v2')]},
+_FIXED_WIRE_VERSION_SITES = {'ingest/paystub.py': {'sha256': '24ce7a3f5e92b46eaccf3043b50aa62c0a7c063ae68f9879c21300d4dc1fc91a',
+                       'sites': [(173, 97, 'payroll-source-v2')]},
  'ingest/registry.py': {'sha256': 'e0b51ac064ebb99b546418f56f98f2c89c282bee41b14b41e563b0a4f513f6b5',
                         'sites': [(103, 24, 'payroll-source-v2')]},
  'investment/payroll_extraction.py': {'sha256': 'a3d88941829bc47f53c482422f804223a41b716df8f5f99521652eadbc6801ba',
@@ -119,8 +119,8 @@ _FIXED_WIRE_VERSION_SITES = {'ingest/paystub.py': {'sha256': '90cd4887b8d61fc1de
  'retirement_funding/payroll_v2.py': {'sha256': '9ce976307ea4eac6f3e2889a815e24b6a9e926c722e1e903bca3c66877e4b820',
                                       'sites': [(24, 26, 'payroll-source-v2'),
                                                 (34, 103, 'payroll-source-v2')]},
- 'retirement_funding/population.py': {'sha256': 'ee517557848e42575c085245aedf452f2fd027d9233e796d9d96e306827363aa',
-                                      'sites': [(92, 28, 'payroll-source-v2'),
+ 'retirement_funding/population.py': {'sha256': '9239207a56f5215f094f6151a999025d5a9018f9965dd80bc9391e9d2bc5a87c',
+                                      'sites': [(99, 28, 'payroll-source-v2'),
                                                 (27, 27, 'payroll-source-v2'),
                                                 (23, 53, 'payroll-source-v2')]}}
 
